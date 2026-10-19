@@ -704,4 +704,63 @@ describe("useClientLiteRTWhisper Hook", () => {
     vi.useRealTimers();
     window.SpeechRecognition = originalSpeechRecognition;
   });
+
+  it("filters Whisper noise artifacts and falls back to Firebase AI Logic STT", async () => {
+    mockTranscribeAudioWithFirebaseAI.mockResolvedValueOnce("Real student speech after noise");
+    const mockOnTranscript = vi.fn();
+    const { result } = renderHook(() =>
+      useClientLiteRTWhisper({
+        classId: "CLASS_TEST",
+        studentUid: "student_123",
+        speechLanguage: "en-US",
+        onTranscript: mockOnTranscript,
+        enabled: false,
+      })
+    );
+
+    let preloadPromise;
+    act(() => {
+      preloadPromise = result.current.preloadModel();
+    });
+    const initCall = mockWorkerInstance.postMessage.mock.calls.find(c => c[0].type === "INIT");
+    await act(async () => {
+      mockWorkerInstance.onmessage({
+        data: {
+          type: "INIT_COMPLETE",
+          id: initCall[0].id,
+          payload: { ready: true, delegate: "wasm", cached: true },
+        },
+      });
+      await preloadPromise;
+    });
+
+    const fakePcm = new Float32Array(16000);
+    let transcribePromise;
+    act(() => {
+      transcribePromise = result.current.transcribeAudioChunk(fakePcm, { audioPath: "audio/noise.webm" });
+    });
+
+    const transCall = mockWorkerInstance.postMessage.mock.calls.find(c => c[0].type === "TRANSCRIBE");
+    await act(async () => {
+      mockWorkerInstance.onmessage({
+        data: {
+          type: "TRANSCRIBE_COMPLETE",
+          id: transCall[0].id,
+          payload: {
+            transcript: "[BLANK_AUDIO]",
+            language: "en-US",
+          },
+        },
+      });
+      await transcribePromise;
+    });
+
+    expect(mockTranscribeAudioWithFirebaseAI).toHaveBeenCalledWith(fakePcm, 16000, "en-US");
+    expect(result.current.latestTranscript).toBe("Real student speech after noise");
+    expect(mockOnTranscript).toHaveBeenCalledWith(
+      "Real student speech after noise",
+      expect.objectContaining({ language: "en-US", isFinal: true })
+    );
+  });
 });
+

@@ -329,16 +329,16 @@ const processFrame = async (now, metadata) => {
 ---
 
 ## Browser-Native Edge Speech AI: LiteRT Whisper & Gemma 4
-### Bilingual Cantonese & English Code-Switching with Zero Cloud Egress
+### Bilingual Cantonese & English Code-Switching, Lab PC Pre-Warming & Live Telemetry
 
 ![bg right:60% 95%](images/slide_edge_speech_proctor.png)
 
 - **16kHz Float32 Audio Stream:** Captured via Web Audio API.
-- **LiteRT Whisper Speech Engine Worker:** Real-time bilingual transcription.
-- **LiteRT Gemma 4 E2B Worker:** Real-time intent classification.
-- **Browser Cache Storage Persistence:**
-  - `caches.open('litert-gemma-cache-v1')` caches ~1.5 GB model locally.
-  - `navigator.storage.persist()` prevents browser disk eviction.
+- **LiteRT Whisper Speech Engine & Gemma 4 E2B Workers:** Real-time bilingual transcription & intent classification.
+- **Step-1 Readiness Pre-Warming & Cache Persistence (`litert-gemma-cache-v1`):**
+  - Pre-downloads **Whisper Base (~140 MB)** & **Gemma 4 E2B (~1.3 GB)** during Step 1 hardware testing on wiped/DeepFreeze lab PCs; `navigator.storage.persist()` prevents eviction.
+- **Graceful Fallback, Hot-Swap & Live Teacher Telemetry (`StudentScreen.jsx`):**
+  - Runs via `browser_speech` / `cloud_gemini` while downloading and **auto-promotes to `client_whisper_gemma`** once ready; teacher tiles show live `🧠 Edge AI`, `⏳ AI X%`, or `☁️ Cloud Fallback` badges.
 - **Sub-$0.00 Cloud Incurrence:** Total privacy-by-design.
 
 ---
@@ -578,37 +578,35 @@ const processFrame = async (now, metadata) => {
 ---
 
 ## 3-Step Exam Readiness Wizard & Schedule Automation
-### Guided Pre-Flight Diagnostics, Timezone Scheduling & Multi-Class Buffers
+### Guided Pre-Flight Diagnostics, Dynamic Screen+Mic Quick Start & Multi-Class Buffers
 
 ![bg right:60% 95%](images/slide_readiness_wizard_schedule.png)
 
-- **3-Step Exam Readiness Wizard (`ExamReadinessWizard.jsx`):**
-  - **Step 1: 🎙️ Microphone Test:** VU volume bar (15%–65%), spoken challenge, 3s loopback playback.
-  - **Step 2: 📷 Camera & Gaze:** Oval alignment guide, 1-click neutral baseline pitch/yaw calibration.
-  - **Step 3: 🖥️ Display Surface:** Mandatory entire-screen sharing; window/tab sharing rejected.
+- **3-Step Exam Readiness Wizard & Dynamic `⚡ Quick Start (Screen + Mic)`:**
+  - **Step 1: 🎙️ Microphone Test:** VU volume bar (15%–65%), spoken challenge, 3s loopback playback, plus automatic **Whisper & Gemma Edge AI Pre-Warming**.
+  - **Step 2 & 3:** 📷 Camera & Gaze calibration + 🖥️ Mandatory entire-screen sharing (`displaySurface === 'monitor'`).
+  - **Dynamic `⚡ Quick Start (Screen + Mic)`:** Adapts to `enableAudioCapture`, warns of dual Screen + Mic permission prompts, and auto-launches `MicSetupModal` if mic is blocked.
 - **Schedule-Driven Engine (`useStudentClassSchedule.js`):**
   - Poller evaluates enrolled class timetables every 30s with automatic timezone adjustment.
   - Auto-selects active course with visual **"(Live)"** tag; manual override with 1-click **"Follow Schedule"** restore.
 - **Concurrent Classes & 10-Minute Back-to-Back Buffer:**
-  - Automated Live Capture (5m before/after) & Session Video Compilation default checked.
-  - **Zero-Waste Single Storage Upload:** One image blob upload mapped to multi-class Firestore records (`targetClasses`).
-- **Schedule Segments & Past Lesson Preservation (`scheduleHistory`):**
-  - Timetable changes preserve historical lesson segments, maintaining continuous chronological lesson numbering (`Lesson 1..N`) for past attendance and recordings without data loss.
-- **Student Self-Service Records Portal (`StudentRecordsView.jsx`):**
-  - 5 tabbed views (Videos, Attendance, Tasks, Irregularities, Audio) with exam confidentiality shields.
+  - Automated Live Capture (5m before/after) & **Zero-Waste Single Storage Upload** mapped to multi-class Firestore records (`targetClasses`).
+- **Schedule Segments & Student Self-Service Records Portal (`StudentRecordsView.jsx`):**
+  - Preserves historical lesson segments (`scheduleHistory`) & 5 tabbed student views with exam confidentiality shields.
 
 ---
 
 ## Teacher Command Center: Solving Cognitive Overload
-### Zero-Space Compliance Filtering & 1-Click Targeted Nudge ('N')
+### Multi-Stream Quick Filters (Screen, Cam, Mic, Cam+Mic) & 1-Click Targeted Nudge
 
 ![bg right:60% 95%](images/slide_teacher_command_center.png)
 
-- **Zero-Space Compliance Filter:** Instantly isolate students flagged with `Problems` or `Critical Alerts`.
-- **1-Click Targeted Nudge:** Press `N` keyboard shortcut to display a gentle focus alert on the student's screen.
-- **Offline Resilience:** If a student disconnects, their tile caches the last known frame and displays `(Offline)`.
-- **Integrated Video Peek:** Instant one-click jump to full-screen peer-to-peer live stream.
-- **Concept Templates & 1-Click Filter Tags:** 1-click class setup (**🏛️ Lecture**, **💻 Lab**, **🖥️🎧 Lecture in Lab**) with sensible defaults, collapsible advanced overrides, and auto-syncing tags for 1-click dashboard filtering.
+- **Multi-Stream Compliance Quick Filters (`MonitorView.jsx` & `ControlsPanel.jsx`):**
+  - Instant toolbar & sidebar quick filters for `🖥️ No Screen`, `📷 No Webcam`, `🎙️ No Mic`, `📷🎙️ No Cam & Mic`, `⚠️ Problems`, and `🚨 AI Alerts`.
+  - Multi-tab **"Students Not Sharing"** modal with `🔍 Filter Grid` action and per-student `🖥️ ON/OFF`, `📷 ON/OFF`, `🎙️ ON/OFF` stream pills.
+- **1-Click Targeted Nudge (`📣 Nudge Filtered` / `N`):** Sends stream-specific compliance reminders (e.g., *"enable both your webcam and microphone"*) to all filtered students.
+- **Offline Resilience & Integrated Video Peek:** Caches last known frame (`(Offline)`) + 1-click jump to 30 FPS WebRTC Live Peek.
+- **Concept Templates & 1-Click Filter Tags:** 1-click class setup (**🏛️ Lecture**, **💻 Lab**, **🖥️🎧 Lecture in Lab**) with auto-syncing dashboard filter tags.
 
 ---
 

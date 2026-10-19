@@ -14,6 +14,18 @@ import { downsamplePcmTo16k } from '../utils/audioDecoder';
 import { transcribeAudioWithFirebaseAI } from '../utils/aiLogic';
 import { attachAudioProcessor } from '../utils/audioWorkletHelper';
 
+const MAX_CONTINUOUS_SPEECH_SAMPLES = 16000 * 15;
+
+/**
+ * Detects common Whisper silence/background-noise hallucination tokens so they
+ * do not overwrite real transcripts, suppress the Cloud AI fallback, or trigger bogus alerts.
+ */
+export function isWhisperNoiseArtifact(text) {
+  const trimmed = (text || '').trim();
+  if (!trimmed) return true;
+  return /^(\[.*\]|\(.*\)|♪+.*♪*|thank you\.?|thanks for watching\.?|you\.?)$/i.test(trimmed);
+}
+
 export function useClientLiteRTWhisper({
   classId,
   studentUid,
@@ -43,6 +55,8 @@ export function useClientLiteRTWhisper({
   const pendingRequestsRef = useRef(new Map());
   const initializationPromiseRef = useRef(null);
   const reqIdCounterRef = useRef(0);
+  const lastSpeechRecInterimAtRef = useRef(0);
+  const clearPendingVadBufferRef = useRef(null);
 
   // Check initial cache state
   useEffect(() => {
@@ -84,8 +98,9 @@ export function useClientLiteRTWhisper({
           }
         } else if (type === 'TRANSCRIBE_COMPLETE') {
           setStatus('ready');
-          if (payload.transcript && payload.transcript.trim()) {
-            setLatestTranscript(payload.transcript.trim());
+          const rawTranscript = (payload?.transcript || '').trim();
+          if (rawTranscript && !isWhisperNoiseArtifact(rawTranscript)) {
+            setLatestTranscript(rawTranscript);
             setLatestLanguage(payload.language || 'mixed');
           }
           const pending = pendingRequestsRef.current.get(id);
@@ -207,17 +222,19 @@ export function useClientLiteRTWhisper({
       pendingRequestsRef.current.set(id, {
         reject,
         resolve: async (result) => {
-        let text = (result?.transcript || simulatedText || '').trim();
+        const rawTranscript = (result?.transcript || simulatedText || '').trim();
+        let text = isWhisperNoiseArtifact(rawTranscript) ? '' : rawTranscript;
         let language = result?.language || 'mixed';
         const timestamp = Date.now();
+        const activeSpeechLang = speechLanguageRef.current || 'zh-HK';
 
-        // If on-device Whisper returned empty because dynamic output is unsupported, attempt Firebase AI Logic multimodal STT
+        // If on-device Whisper returned empty or noise artifact, attempt Firebase AI Logic multimodal STT
         if (!text && audioPcm && audioPcm.length >= 8000) {
           try {
-            const aiTranscript = await transcribeAudioWithFirebaseAI(audioPcm, 16000, speechLanguage);
-            if (aiTranscript && aiTranscript.trim()) {
+            const aiTranscript = await transcribeAudioWithFirebaseAI(audioPcm, 16000, activeSpeechLang);
+            if (aiTranscript && aiTranscript.trim() && !isWhisperNoiseArtifact(aiTranscript.trim())) {
               text = aiTranscript.trim();
-              language = speechLanguage || 'zh-HK';
+              language = activeSpeechLang;
               console.log(
                 '%c[Firebase AI Logic STT] 🎙️ Speech Transcribed via Firebase AI:',
                 'background: #1e3a8a; color: #60a5fa; font-weight: bold; padding: 2px 6px; border-radius: 4px;',
@@ -335,10 +352,24 @@ export function useClientLiteRTWhisper({
     let debounceTimer = null;
     let lastDispatchedText = '';
 
+    const startRecognitionSafe = (rec, track) => {
+      try {
+        rec.start(track);
+      } catch (trackErr) {
+        try {
+          rec.start();
+        } catch (fallbackErr) {
+          console.debug('[useClientLiteRTWhisper] SpeechRecognition start notice:', fallbackErr || trackErr);
+        }
+      }
+    };
+
     const dispatchEvaluation = (textToEvaluate) => {
       const cleaned = (textToEvaluate || '').trim();
       if (!cleaned || cleaned === lastDispatchedText) return;
       lastDispatchedText = cleaned;
+      lastSpeechRecInterimAtRef.current = 0;
+      clearPendingVadBufferRef.current?.();
       if (onTranscriptRef.current) {
         try {
           console.log(
@@ -373,6 +404,10 @@ export function useClientLiteRTWhisper({
           } else {
             interimText += event.results[i][0].transcript;
           }
+        }
+
+        if (interimText && interimText.trim()) {
+          lastSpeechRecInterimAtRef.current = Date.now();
         }
 
         const transcript = (finalText || interimText || '').trim();
@@ -432,15 +467,11 @@ export function useClientLiteRTWhisper({
           debounceTimer = null;
         }
         if (!isStopped && activeTrack.readyState === 'live') {
-          try {
-            recognition.start(activeTrack);
-          } catch (err) {
-            console.debug('[useClientLiteRTWhisper] Selected-track recognition restart failed:', err);
-          }
+          startRecognitionSafe(recognition, activeTrack);
         }
       };
 
-      recognition.start(activeTrack);
+      startRecognitionSafe(recognition, activeTrack);
     } catch (err) {
       console.debug('[useClientLiteRTWhisper] Selected-track recognition not started:', err);
     }
@@ -474,8 +505,20 @@ export function useClientLiteRTWhisper({
 
     // Buffer for speech PCM accumulation
     let speechPcmChunks = [];
+    let speechBufferedSamples = 0;
     let silenceTimer = null;
     let isSpeechActive = false;
+
+    const clearPendingVadBuffer = () => {
+      speechPcmChunks = [];
+      speechBufferedSamples = 0;
+      isSpeechActive = false;
+      if (silenceTimer) {
+        clearTimeout(silenceTimer);
+        silenceTimer = null;
+      }
+    };
+    clearPendingVadBufferRef.current = clearPendingVadBuffer;
 
     const flushSpeechBuffer = () => {
       if (speechPcmChunks.length === 0) return;
@@ -485,8 +528,7 @@ export function useClientLiteRTWhisper({
         totalSamples += chunk.length;
       }
       if (totalSamples < 3200) { // Under 0.2s of audio, likely a transient click
-        speechPcmChunks = [];
-        isSpeechActive = false;
+        clearPendingVadBuffer();
         return;
       }
 
@@ -498,8 +540,7 @@ export function useClientLiteRTWhisper({
       }
 
       const durationSec = Math.max(1, Math.round(totalSamples / 16000));
-      speechPcmChunks = [];
-      isSpeechActive = false;
+      clearPendingVadBuffer();
 
       console.log('%c[useClientLiteRTWhisper:Flush] 🎙️ Processing speech buffer from selected mic:', 'background:#2563eb;color:white;font-weight:bold;padding:2px 6px;border-radius:4px;', {
         totalSamples,
@@ -518,9 +559,34 @@ export function useClientLiteRTWhisper({
         if (!AudioCtx) return;
 
         audioCtx = new AudioCtx();
-        if (audioCtx.state === 'suspended') {
-          audioCtx.resume().catch(() => {});
+        const tryResumeAudioCtx = () => {
+          if (audioCtx && (audioCtx.state === 'suspended' || audioCtx.state === 'interrupted')) {
+            try {
+              const resumePromise = audioCtx.resume?.();
+              if (resumePromise && typeof resumePromise.catch === 'function') {
+                resumePromise.catch(() => {});
+              }
+            } catch {}
+          }
+        };
+        tryResumeAudioCtx();
+
+        if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+          window.addEventListener('touchstart', tryResumeAudioCtx, { passive: true });
+          window.addEventListener('touchend', tryResumeAudioCtx, { passive: true });
+          window.addEventListener('pointerdown', tryResumeAudioCtx, { passive: true });
+          window.addEventListener('click', tryResumeAudioCtx, { passive: true });
+          window.addEventListener('keydown', tryResumeAudioCtx, { passive: true });
         }
+        audioCtx.__cleanupResumeListeners = () => {
+          if (typeof window !== 'undefined' && typeof window.removeEventListener === 'function') {
+            window.removeEventListener('touchstart', tryResumeAudioCtx);
+            window.removeEventListener('touchend', tryResumeAudioCtx);
+            window.removeEventListener('pointerdown', tryResumeAudioCtx);
+            window.removeEventListener('click', tryResumeAudioCtx);
+            window.removeEventListener('keydown', tryResumeAudioCtx);
+          }
+        };
 
         const tracks = targetStream.getAudioTracks();
         const activeTrack = tracks && tracks[0];
@@ -557,21 +623,34 @@ export function useClientLiteRTWhisper({
               silenceTimer = null;
             }
             speechPcmChunks.push(pcm16k);
+            speechBufferedSamples += pcm16k.length;
 
-            // If accumulated speech exceeds 5 seconds, flush to transcribe segment
-            const accumulatedSamples = speechPcmChunks.reduce((acc, c) => acc + c.length, 0);
-            if (accumulatedSamples >= 16000 * 5) {
+            // If accumulated speech exceeds 5s (or MAX_CONTINUOUS_SPEECH_SAMPLES), flush to transcribe segment
+            if (speechBufferedSamples >= Math.min(16000 * 5, MAX_CONTINUOUS_SPEECH_SAMPLES)) {
               flushSpeechBuffer();
             }
           } else if (isSpeechActive) {
             speechPcmChunks.push(pcm16k);
+            speechBufferedSamples += pcm16k.length;
 
             if (!silenceTimer) {
               silenceTimer = setTimeout(() => {
-                if (isMounted) {
-                  flushSpeechBuffer();
-                }
                 silenceTimer = null;
+                if (!isMounted) return;
+                // If SpeechRecognition is actively streaming interim results for this utterance,
+                // give it 600ms to emit its final result before running Whisper fallback.
+                if (
+                  lastSpeechRecInterimAtRef.current > 0 &&
+                  Date.now() - lastSpeechRecInterimAtRef.current < 1500
+                ) {
+                  lastSpeechRecInterimAtRef.current = 0;
+                  silenceTimer = setTimeout(() => {
+                    silenceTimer = null;
+                    if (isMounted) flushSpeechBuffer();
+                  }, 600);
+                  return;
+                }
+                flushSpeechBuffer();
               }, 800);
             }
           }
@@ -592,6 +671,7 @@ export function useClientLiteRTWhisper({
 
     return () => {
       isMounted = false;
+      clearPendingVadBufferRef.current = null;
       if (silenceTimer) clearTimeout(silenceTimer);
       if (isSpeechActive) flushSpeechBuffer();
 
@@ -611,9 +691,12 @@ export function useClientLiteRTWhisper({
           // The audio graph may already be disconnected during browser teardown.
         }
       }
-      if (audioCtx && audioCtx.state !== 'closed') {
-        try { audioCtx.close(); } catch {
-          // The browser may close the context before React cleanup runs.
+      if (audioCtx) {
+        try { audioCtx.__cleanupResumeListeners?.(); } catch {}
+        if (audioCtx.state !== 'closed') {
+          try { audioCtx.close(); } catch {
+            // The browser may close the context before React cleanup runs.
+          }
         }
       }
     };

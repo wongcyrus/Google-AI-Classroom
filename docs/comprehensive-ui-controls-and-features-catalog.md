@@ -176,17 +176,27 @@ flowchart TD
 ### Monitor Sticky Toolbar & Auto-Rolling Controls
 - **Sticky Docking (`.monitor-toolbar-card`):** Configured with `position: sticky; top: 64px; z-index: 20;`, keeping toolbar controls immediately accessible beneath the app header during page scroll.
 - **Channel Selector Dropdown (`channel-select-compact`):** Switch between `🔲 Dual View`, `🖥️ Screen`, and `📷 Webcam`.
-- **Problem Filter Dropdown (`problem-filter-select`):** Filters student streams by `👥 All Students`, `⚠️ Problems`, `📷 Missing Cam`, `🎙️ Missing Mic`, `🖥️ Not Sharing`, or `🚨 AI Alerts`.
+- **Problem Filter Dropdown (`problem-filter-select`):** Filters student streams by `👥 All Students`, `⚠️ Problems`, `📷 Missing Webcam`, `🎙️ Missing Mic`, `📷🎙️ Missing Cam & Mic`, `🖥️ Missing Screen`, or `🚨 AI Alerts`.
 - **Auto-Roll Dropdown (`auto-roll-select`):**
   - **Interval Presets:** `⏸️ Auto-Roll: Off` (default), `🔄 Roll 1 Row (5s, 10s, 15s, 20s, 30s)`, and `🔄 Roll 2 Rows (10s, 15s, 30s)`.
   - **In-Place Cyclical Reordering:** Advances rows by rotating the array in-place without triggering window or page scrolling, keeping the top 2 rows on instructor podium monitors continuously refreshed with all student screens.
   - **Responsive Dynamic Column Calculation (`ResizeObserver`):** Monitors the grid container to detect when the sidebar is hidden/shown or the window is resized, immediately realigning the rolling cycle to Row 0 so student cards never split mid-row.
   - **Smart Pausing:** Pauses automatically when the mouse hovers over the grid or when any dialog/modal is open.
   - **Persistence:** Selected auto-roll configuration persists to `localStorage ('monitor_auto_roll_speed')`.
-- **Inline Nudge Trigger (`📢 Nudge (N)`):** Broadcasts targeted reminder messages to all currently filtered students.
-- **Excel Audit Export (`📥 Export Excel`):** Exports filtered student records into an Excel workbook.
+- **Inline Nudge Trigger (`📣 Nudge Filtered`):** Broadcasts targeted reminder messages (including dedicated templates for `no_cam`, `no_mic`, `no_cam_mic`, and `no_screen`) to all currently filtered students.
+- **Excel Audit Export (`📥 Export Filtered`):** Exports filtered student records into an Excel workbook.
 
-### Live Controls Panel (`ControlsPanel.jsx`) & Broadcast Modal (`TeacherScreenBroadcastModal.jsx`)
+### Live Controls Panel (`ControlsPanel.jsx`), Attendance Quick Filters & Broadcast Modal (`TeacherScreenBroadcastModal.jsx`)
+- **👥 Attendance & Status Quick-Filter Buttons (`ControlsPanel.jsx`):**
+  - **`👀 Not Sharing (N)`**: Opens the "Students Not Sharing" modal on the `🖥️ No Screen` tab.
+  - **`📷 No Webcam (N)`**: Opens the modal directly on the `📷 No Webcam` tab.
+  - **`🎙️ No Mic (N)`**: Opens the modal directly on the `🎙️ No Mic` tab.
+  - **`📷🎙️ No Cam & Mic (N)`**: Opens the modal directly on the `📷+🎙️ No Cam & Mic` tab.
+  - **`📥 Download Excel`**: Downloads the class attendance spreadsheet.
+- **Multi-Stream "Students Not Sharing" Modal (`MonitorView.jsx`):**
+  - **Quick-Switch Filter Tabs:** `🖥️ No Screen (N)`, `📷 No Webcam (N)`, `🎙️ No Mic (N)`, and `📷+🎙️ No Cam & Mic (N)`.
+  - **`🔍 Filter Grid` Action Button:** Immediately applies the active modal tab's filter (`no_screen`, `no_cam`, `no_mic`, or `no_cam_mic`) to the main student monitor grid and closes the modal.
+  - **Per-Student Stream Status Pills:** Displays `🖥️ ON/OFF`, `📷 ON/OFF`, and `🎙️ ON/OFF` badges on every row alongside search and multi-column sorting (`Name`, `Email`, `Class`, `Programme`).
 - **Teacher Screen Broadcast Setup:** Launched from the Class Hub header `🎙️🖥️ Broadcast` button or Controls Panel:
   - **Step 1 (Audio, Microphone Verification & Live Subtitles Setup):**
     - **Subtitles Toggle Button (`🟢 Subtitles ON` / `⚪ Subtitles OFF`):** Enables or disables real-time multilingual subtitles (`userToggledSubtitlesRef` preserves manual toggle state across re-renders).
@@ -230,6 +240,10 @@ flowchart TD
   - `🔴 Multiple Faces Detected`
   - `🔴 Face Absent / No Person`
   - `⚠️ Non-Fullscreen Window`
+- **On-Device Edge AI Telemetry Pill (`voiceAiBadge`):**
+  - `🧠 Edge AI`: Both Whisper Base ONNX and Gemma 4 E2B WebGPU are loaded and actively running in the student's browser (`client_whisper_gemma`).
+  - `⏳ AI X%`: Edge AI models are downloading/initializing in the background, with hover tooltip showing Whisper/Gemma download percentages and WebGPU/WASM execution providers.
+  - `☁️ Cloud Fallback` / `🗣️ WebSpeech`: Indicates active fallback voice engine while edge models download or on unsupported hardware.
 - **Audio Activity Meter (VU Bar):** Real-time green/yellow/red volume level meter reflecting speech intensity.
 - **Bingo Status Pill:** Displays `🎯 Bingo Pending (42s)` or `✅ Verified` badge during active challenges.
 - **Single-Click Card Inspection:** Clicking any student card opens the 1-on-1 inspection modal.
@@ -284,9 +298,10 @@ flowchart TD
 - **Proctored Session Banner (`🔒 Exam Mode Active`):** Displays when the current lesson falls within an exam window, warning student of strict anti-cheating protocols.
 
 ### Setup Hero Card & Readiness Indicators
-- **`🚀 Start Setup & Readiness Test` Button:** Opens the 3-step Exam Readiness Wizard.
-- **`🖥️ Quick Start (Screen Only)` Button:** Bypasses webcam checks for screen-only classrooms.
+- **`🚀 Start Setup & Readiness Test` Button:** Opens the 3-step Exam Readiness Wizard. Automatically triggers background pre-warming of on-device **Whisper Base ONNX (~140 MB)** and **Gemma 4 E2B WebGPU (~1.3 GB)** as soon as a class is selected in Step 1 (`select-class`).
+- **`⚡ Quick Start (Screen + Mic)` / `⚡ Quick Start (Screen Only)` Button:** Dynamically reflects whether class audio monitoring (`enableAudioCapture`) is enabled, alerting students that Chrome will prompt for both Screen Share and Microphone permissions and automatically opening [`MicSetupModal.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/MicSetupModal.jsx) if microphone access is blocked.
 - **`📋 My Records` Button:** Direct route to student self-service records.
+- **Clickable `_blank` Links (`linkify.jsx`):** Automatically renders `http://` and `https://` URLs in class banners, broadcast messages, alerts, and custom properties as clickable `<a target="_blank" rel="noopener noreferrer">` links.
 - **Hardware Telemetry Badges:**
   - Desktop capture readiness indicator.
   - Camera detection indicator.
@@ -295,7 +310,7 @@ flowchart TD
   - Gemma on-device Intent LLM status badge (`Preload` / `🤖 Gemma Ready`).
 
 ### Active In-Session Header Bar
-- **Live Stream Pill (`🟢 Streaming Active`):** Confirms snapshots and WebRTC signals are transmitting.
+- **Live Stream Pill (`🟢 Streaming Active` / `🟢 Streaming Active (Screen + Mic)` / `🟡 Streaming Active (Screen Only — Mic Blocked)`):** Confirms which media streams (Screen, Webcam, Microphone) are actively transmitting or warns if the microphone was blocked.
 - **Capture Cadence Tag (`📸 15s capture`):** Displays active sampling frequency.
 - **Microphone Mute / Unmute Button (`🔇 Unmute` / `🔊 Speaking` / `🎙️ Mic Active`):** Controls audio capture state.
 - **Webcam Switcher Dropdown (`📷 Camera 1 / Camera 2`):** Hot-swaps active camera input.

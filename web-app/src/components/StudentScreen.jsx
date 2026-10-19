@@ -68,6 +68,38 @@ const StudentScreen = ({ student, isSharing, screenshotData, screenshotUrl, sele
           {student?.hasWebcam !== false && student?.faceStatus === 'no_face' && <span className="ai-status-badge danger" title="No Face in Frame">🔴</span>}
           {student?.hasWebcam !== false && student?.faceStatus === 'multiple_faces' && <span className="ai-status-badge danger" title="Multiple People Detected">👥</span>}
           {student?.clientAiStatus === 'cloud_fallback' && <span className="ai-status-badge fallback" title={`Cloud AI Fallback Active ${student?.fallbackReason ? `(${student.fallbackReason})` : ''}`}>☁️</span>}
+          {student?.whisperModelStatus === 'ready' && (
+            <span
+              className="ai-status-badge normal"
+              title={`Whisper STT is loaded on this student device (${(student?.whisperDelegate || 'wasm').toUpperCase()})`}
+            >
+              🎙️🟢
+            </span>
+          )}
+          {student?.whisperModelStatus === 'loading' && (
+            <span
+              className="ai-status-badge initializing"
+              title={`Student is loading Whisper STT (${student?.whisperLoadingProgress || 0}%)`}
+            >
+              🎙️ {student?.whisperLoadingProgress || 0}%
+            </span>
+          )}
+          {student?.whisperModelStatus === 'cached' && (
+            <span
+              className="ai-status-badge fallback"
+              title="Whisper STT is cached in student browser storage"
+            >
+              ⚡🎙️
+            </span>
+          )}
+          {student?.whisperModelStatus === 'unavailable' && (
+            <span
+              className="ai-status-badge danger"
+              title={`Whisper STT unavailable: ${student?.whisperError || 'Using Cloud STT fallback'}`}
+            >
+              ☁️🎙️
+            </span>
+          )}
           {student?.gemmaModelStatus === 'ready' && (
             <span className="ai-status-badge normal" title="Gemma 4 E2B is loaded on this student device">🤖</span>
           )}
@@ -75,6 +107,9 @@ const StudentScreen = ({ student, isSharing, screenshotData, screenshotUrl, sele
             <span className="ai-status-badge initializing" title={`Student is loading Gemma 4 E2B (${student?.gemmaLoadingProgress || 0}%)`}>
               🤖 {student?.gemmaLoadingProgress || 0}%
             </span>
+          )}
+          {student?.gemmaModelStatus === 'cached' && (
+            <span className="ai-status-badge normal" title="Gemma 4 E2B is cached on this student device (initializing)">⚡🤖</span>
           )}
           {student?.gemmaModelStatus === 'unavailable' && (
             <span className="ai-status-badge danger" title={`Gemma unavailable: ${student?.gemmaUnavailableReason || 'Unknown reason'}`}>⛔🤖</span>

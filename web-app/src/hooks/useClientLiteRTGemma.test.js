@@ -419,4 +419,42 @@ describe('useClientLiteRTGemma Hook', () => {
     expect(res).toBeNull();
     expect(mockWorkerInstance.postMessage).not.toHaveBeenCalled();
   });
+
+  it('guards against loading ~1.9 GB Gemma 4 model on mobile/iOS browsers', async () => {
+    const originalUserAgent = navigator.userAgent;
+    Object.defineProperty(navigator, 'userAgent', {
+      value: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)',
+      configurable: true,
+    });
+
+    const { result } = renderHook(() =>
+      useClientLiteRTGemma({
+        classId: 'CLASS_TEST',
+        studentUid: 'student_123',
+      })
+    );
+
+    let preloadRes;
+    await act(async () => {
+      preloadRes = await result.current.preloadGemmaModel();
+    });
+
+    expect(preloadRes).toEqual(
+      expect.objectContaining({
+        ready: false,
+        engine: 'unavailable',
+      })
+    );
+    expect(result.current.status).toBe('unavailable');
+    expect(result.current.unavailableReason).toContain('mobile browser memory limits');
+    expect(mockWorkerInstance.postMessage).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'INIT' })
+    );
+
+    Object.defineProperty(navigator, 'userAgent', {
+      value: originalUserAgent,
+      configurable: true,
+    });
+  });
 });
+

@@ -496,9 +496,14 @@ describe('MonitorView Component Suite', () => {
     // Clear search
     fireEvent.change(searchInput, { target: { value: '' } });
 
-    // Close modal
-    const closeBtn = screen.getByRole('button', { name: /Close/i });
-    fireEvent.click(closeBtn);
+    // Switch quick filter tabs inside modal (Webcam, Mic, Cam & Mic)
+    const camAndMicTab = screen.getByRole('button', { name: /No Cam & Mic/i });
+    fireEvent.click(camAndMicTab);
+    expect(screen.getByText(/Students Not Sharing Mic & Webcam/i)).toBeInTheDocument();
+
+    // Apply filter directly to the monitor grid
+    const filterGridBtn = screen.getByRole('button', { name: /Filter Grid/i });
+    fireEvent.click(filterGridBtn);
     expect(screen.queryByText(/Students Not Sharing/i)).not.toBeInTheDocument();
   });
 

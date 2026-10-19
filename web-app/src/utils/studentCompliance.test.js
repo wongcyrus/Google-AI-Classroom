@@ -164,9 +164,16 @@ describe('studentCompliance Utility', () => {
       expect(filterStudentsByCompliance(students, 'problems', dualSettings)).toHaveLength(3);
       expect(filterStudentsByCompliance(students, 'no_cam', dualSettings).map((s) => s.id)).toEqual(['2', '3']);
       expect(filterStudentsByCompliance(students, 'no_mic', dualSettings).map((s) => s.id)).toEqual(['3']);
+      expect(filterStudentsByCompliance(students, 'no_cam_mic', dualSettings).map((s) => s.id)).toEqual(['3']);
       expect(filterStudentsByCompliance(students, 'no_screen', dualSettings).map((s) => s.id)).toEqual(['3']);
       expect(filterStudentsByCompliance(students, 'ai_alert', dualSettings).map((s) => s.id)).toEqual(['4']);
       expect(filterStudentsByCompliance([], 'problems', dualSettings)).toEqual([]);
+
+      // Direct stream filters work even if class settings are screen-only / audio disabled
+      const minimalSettings = { captureMode: 'screen', enableAudioCapture: false };
+      expect(filterStudentsByCompliance(students, 'no_cam', minimalSettings).map((s) => s.id)).toEqual(['2', '3']);
+      expect(filterStudentsByCompliance(students, 'no_mic', minimalSettings).map((s) => s.id)).toEqual(['3']);
+      expect(filterStudentsByCompliance(students, 'no_cam_mic', minimalSettings).map((s) => s.id)).toEqual(['3']);
     });
   });
 
@@ -174,6 +181,7 @@ describe('studentCompliance Utility', () => {
     it('returns appropriate guidance message for each issue filter and default fallback', () => {
       expect(getNudgeMessageForFilter('no_cam')).toContain('webcam');
       expect(getNudgeMessageForFilter('no_mic')).toContain('Microphone');
+      expect(getNudgeMessageForFilter('no_cam_mic')).toContain('webcam and microphone');
       expect(getNudgeMessageForFilter('no_screen')).toContain('sharing your entire screen');
       expect(getNudgeMessageForFilter('ai_alert')).toContain('looking directly');
       expect(getNudgeMessageForFilter('problems')).toContain('compliant');

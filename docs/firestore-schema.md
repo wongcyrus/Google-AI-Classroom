@@ -631,6 +631,15 @@ Stores information about each class.
             *   `isMultiSpeaker`: (boolean) Flag when multiple simultaneous speakers are detected by Gemini.
             *   `speakerCount`: (number) Number of distinct speakers identified in recent window.
             *   `audioRiskLevel`: (string) Audio integrity classification severity (`none`, `low`, `medium`, `high`).
+            *   `whisperModelState`: (string) On-device Whisper Base ONNX status (`idle`, `loading`, `ready`, `transcribing`, `error`, `unsupported`).
+            *   `whisperModelProgress`: (number) Whisper model download/initialization progress percentage (`0` to `100`).
+            *   `whisperExecutionProvider`: (string | null) Active ONNX runtime execution provider for Whisper (`webgpu` or `wasm`).
+            *   `whisperModelError`: (string | null) Error reason if Whisper initialization failed.
+            *   `gemmaModelState`: (string) On-device Gemma 4 E2B intent classifier status (`idle`, `loading`, `ready`, `evaluating`, `error`, `unsupported`).
+            *   `gemmaModelProgress`: (number) Gemma 4 E2B model download/initialization progress percentage (`0` to `100`).
+            *   `gemmaExecutionProvider`: (string | null) Active runtime execution provider for Gemma (`webgpu` or `wasm`).
+            *   `gemmaModelError`: (string | null) Error reason if Gemma initialization failed.
+            *   `effectiveVoiceEngine`: (string) Currently active student voice invigilation runtime (`client_whisper_gemma`, `browser_speech`, `cloud_gemini`, or `disabled`).
             *   `timestamp`: (timestamp) A timestamp of the last heartbeat / screenshot update.
             *   `lastUploadTimestamp`: (timestamp) A timestamp of the last screenshot upload.
             *   `sessionId`: (string) A unique ID for the student's session.

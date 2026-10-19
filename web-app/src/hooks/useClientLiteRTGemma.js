@@ -10,6 +10,15 @@ import { doc, setDoc, collection, addDoc, serverTimestamp } from 'firebase/fires
 import { db } from '../firebase-config';
 import { isGemmaModelCached, DEFAULT_GEMMA_CONFIG } from '../utils/gemmaLiteRTLoader';
 
+function isMobileOrIosBrowser() {
+  if (typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent || '';
+  return (
+    /iPhone|iPad|iPod|Android|CriOS|FxiOS/i.test(ua) ||
+    (navigator.platform === 'MacIntel' && Number(navigator.maxTouchPoints) > 1)
+  );
+}
+
 export function useClientLiteRTGemma({
   classId,
   studentUid,
@@ -19,6 +28,7 @@ export function useClientLiteRTGemma({
   const [status, setStatus] = useState('idle'); // 'idle' | 'loading' | 'ready' | 'evaluating' | 'unavailable' | 'error'
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [isModelCached, setIsModelCached] = useState(false);
+  const [isWorkable, setIsWorkable] = useState(true);
   const [delegateUsed, setDelegateUsed] = useState('wasm');
   const [engine, setEngine] = useState('uninitialized');
   const [unavailableReason, setUnavailableReason] = useState('');
@@ -51,12 +61,63 @@ export function useClientLiteRTGemma({
     statusRef.current = status;
   }, [status]);
 
-  // Check initial cache state
+  // Check initial cache state and PC WebGPU workability
   useEffect(() => {
     let isMounted = true;
     isGemmaModelCached().then((cached) => {
       if (isMounted) setIsModelCached(cached);
     });
+
+    const isJsdom =
+      typeof navigator !== 'undefined' && /jsdom/i.test(navigator.userAgent || '');
+
+    if (isMobileOrIosBrowser()) {
+      const reason =
+        'On-device Gemma 4 (~1.9 GB) exceeds mobile browser memory limits; using Cloud fallback.';
+      setIsWorkable(false);
+      setStatus('unavailable');
+      statusRef.current = 'unavailable';
+      setEngine('unavailable');
+      engineRef.current = 'unavailable';
+      setUnavailableReason(reason);
+    } else if (typeof navigator !== 'undefined' && navigator.gpu?.requestAdapter) {
+      navigator.gpu
+        .requestAdapter()
+        .then((adapter) => {
+          if (!isMounted) return;
+          if (!adapter && statusRef.current === 'idle') {
+            const reason = 'No compatible WebGPU adapter on this PC; using Cloud fallback.';
+            setIsWorkable(false);
+            setStatus('unavailable');
+            statusRef.current = 'unavailable';
+            setEngine('unavailable');
+            engineRef.current = 'unavailable';
+            setUnavailableReason(reason);
+          } else if (adapter) {
+            setIsWorkable(true);
+            setDelegateUsed('webgpu');
+          }
+        })
+        .catch(() => {
+          if (!isMounted || statusRef.current !== 'idle') return;
+          const reason = 'WebGPU adapter initialization failed on this PC; using Cloud fallback.';
+          setIsWorkable(false);
+          setStatus('unavailable');
+          statusRef.current = 'unavailable';
+          setEngine('unavailable');
+          engineRef.current = 'unavailable';
+          setUnavailableReason(reason);
+        });
+    } else if (typeof navigator !== 'undefined' && !navigator.gpu && !isJsdom) {
+      const reason = 'WebGPU is not supported in this browser; using Cloud fallback.';
+      setIsWorkable(false);
+      setStatus('unavailable');
+      statusRef.current = 'unavailable';
+      setEngine('unavailable');
+      engineRef.current = 'unavailable';
+      setUnavailableReason(reason);
+    }
+
     return () => {
       isMounted = false;
     };
@@ -86,6 +147,7 @@ export function useClientLiteRTGemma({
           const nextStatus = isGemmaReady ? 'ready' : 'unavailable';
           setStatus(nextStatus);
           statusRef.current = nextStatus;
+          setIsWorkable(isGemmaReady);
           setLoadingProgress(isGemmaReady ? 100 : 0);
           setIsModelCached(Boolean(payload?.cached));
           const initializedEngine = payload?.engine || 'unavailable';
@@ -154,6 +216,17 @@ export function useClientLiteRTGemma({
    * Preload the LiteRT Gemma model into CacheStorage.
    */
   const preloadGemmaModel = useCallback(async () => {
+    if (isMobileOrIosBrowser()) {
+      const reason =
+        'On-device Gemma 4 (~1.9 GB) exceeds mobile browser memory limits; using Cloud fallback.';
+      setStatus('unavailable');
+      statusRef.current = 'unavailable';
+      setEngine('unavailable');
+      engineRef.current = 'unavailable';
+      setLoadingProgress(0);
+      setUnavailableReason(reason);
+      return { ready: false, engine: 'unavailable', unavailableReason: reason };
+    }
     if (!workerRef.current) return;
     if (
       statusRef.current === 'ready' &&
@@ -356,6 +429,7 @@ export function useClientLiteRTGemma({
     status,
     loadingProgress,
     isModelCached,
+    isWorkable,
     delegateUsed,
     engine,
     unavailableReason,

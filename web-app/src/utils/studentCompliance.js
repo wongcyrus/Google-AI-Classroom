@@ -102,12 +102,14 @@ export function getComplianceSummary(students = [], classSettings = {}, screensh
     if (issues.length > 0) {
       problems += 1;
     }
-    for (const issue of issues) {
-      if (issue.type === 'no_cam') noCam += 1;
-      if (issue.type === 'no_mic') noMic += 1;
-      if (issue.type === 'no_screen') noScreen += 1;
-      if (issue.type === 'ai_alert') aiAlert += 1;
-    }
+    const hasScreenActive = Boolean(student?.isSharing);
+    const hasWebcamActive = Boolean(student?.isWebcamSharing);
+    const hasMicActive = Boolean(student?.isAudioSharing && !student?.audioError);
+
+    if (!hasScreenActive) noScreen += 1;
+    if (!hasWebcamActive) noCam += 1;
+    if (!hasMicActive) noMic += 1;
+    if (issues.some((issue) => issue.type === 'ai_alert')) aiAlert += 1;
   }
 
   return {
@@ -124,7 +126,7 @@ export function getComplianceSummary(students = [], classSettings = {}, screensh
  * Filters students by specific compliance issue type.
  *
  * @param {Array<Object>} students - Array of student status objects
- * @param {string} filterType - 'all' | 'problems' | 'no_cam' | 'no_mic' | 'no_screen' | 'ai_alert'
+ * @param {string} filterType - 'all' | 'problems' | 'no_cam' | 'no_mic' | 'no_cam_mic' | 'no_screen' | 'ai_alert'
  * @param {Object} classSettings - Class configuration
  * @param {Object} [screenshots={}] - Map of student UID to screenshot data
  * @returns {Array<Object>} Filtered students
@@ -135,6 +137,15 @@ export function filterStudentsByCompliance(students = [], filterType = 'all', cl
   }
 
   return students.filter((student) => {
+    const hasScreenActive = Boolean(student?.isSharing);
+    const hasWebcamActive = Boolean(student?.isWebcamSharing);
+    const hasMicActive = Boolean(student?.isAudioSharing && !student?.audioError);
+
+    if (filterType === 'no_screen') return !hasScreenActive;
+    if (filterType === 'no_cam') return !hasWebcamActive;
+    if (filterType === 'no_mic') return !hasMicActive;
+    if (filterType === 'no_cam_mic') return !hasWebcamActive && !hasMicActive;
+
     const screenshotData = screenshots[student.id];
     const { issues } = evaluateStudentCompliance(student, classSettings, screenshotData, true);
 
@@ -149,7 +160,7 @@ export function filterStudentsByCompliance(students = [], filterType = 'all', cl
 /**
  * Returns a targeted direct/broadcast nudge message string based on the active filter.
  *
- * @param {string} filterType - 'problems' | 'no_cam' | 'no_mic' | 'no_screen' | 'ai_alert'
+ * @param {string} filterType - 'problems' | 'no_cam' | 'no_mic' | 'no_cam_mic' | 'no_screen' | 'ai_alert'
  * @returns {string} Suggested nudge text
  */
 export function getNudgeMessageForFilter(filterType) {
@@ -158,6 +169,8 @@ export function getNudgeMessageForFilter(filterType) {
       return '⚠️ Invigilation Notice: Your webcam feed is required for this session. Please turn on your camera immediately.';
     case 'no_mic':
       return '⚠️ Invigilation Notice: Microphone monitoring is required. Please check and enable your microphone permissions.';
+    case 'no_cam_mic':
+      return '⚠️ Invigilation Notice: Both your webcam and microphone are currently inactive. Please enable your camera and microphone immediately.';
     case 'no_screen':
       return '⚠️ Invigilation Notice: You are not currently sharing your screen. Please start sharing your entire screen.';
     case 'ai_alert':

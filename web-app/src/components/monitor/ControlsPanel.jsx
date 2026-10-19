@@ -17,7 +17,9 @@ const ControlsPanel = ({
     selectedChannel = 'both', setSelectedChannel,
     isCapturing, toggleCapture, isPaused, setIsPaused, 
     isExamActive = false, handleToggleExamMode,
-    setShowPromptModal, notSharingStudents, setShowNotSharingModal, 
+    setShowPromptModal, students = [], notSharingStudents = [],
+    notSharingWebcamStudents, notSharingMicStudents, notSharingCamAndMicStudents,
+    setShowNotSharingModal, onOpenNotSharingFilter,
     handleDownloadAttendance, editablePromptText, isPerImageAnalysisRunning, 
     isAllImagesAnalysisRunning, setIsPerImageAnalysisRunning, setIsAllImagesAnalysisRunning,
     samplingRate = 5, setSamplingRate,
@@ -809,6 +811,61 @@ const ControlsPanel = ({
                 <div style={{ color: '#64748b', fontSize: '0.7rem' }}>
                   {currentVoiceMode === 'disabled' ? 'Voice recognition is deactivated.' : `Stride: ${audioMovingWindowStride || 15}s / ${audioSegmentDuration || 30}s (VAD: ${vadSensitivity || 15}%)`}
                 </div>
+                {(currentVoiceMode === 'hybrid' || currentVoiceMode === 'client_only') && Array.isArray(students) && students.length > 0 && (() => {
+                  const whisperReady = students.filter(s => s?.whisperModelStatus === 'ready').length;
+                  const whisperLoading = students.filter(s => s?.whisperModelStatus === 'loading').length;
+                  const whisperCached = students.filter(s => s?.whisperModelStatus === 'cached').length;
+                  const whisperFallback = students.filter(s => s?.whisperModelStatus === 'unavailable').length;
+
+                  const gemmaReady = students.filter(s => s?.gemmaModelStatus === 'ready').length;
+                  const gemmaLoading = students.filter(s => s?.gemmaModelStatus === 'loading').length;
+                  const gemmaCached = students.filter(s => s?.gemmaModelStatus === 'cached').length;
+                  const gemmaUnavailable = students.filter(s => s?.gemmaModelStatus === 'unavailable').length;
+                  const gemmaWorkableNotLoaded = students.filter(s => s?.gemmaModelStatus === 'not_loaded' && s?.gemmaWorkable !== false).length;
+
+                  return (
+                    <div
+                      data-testid="student-voice-ai-readiness-summary"
+                      style={{
+                        marginTop: '6px',
+                        padding: '5px 7px',
+                        background: '#f1f5f9',
+                        borderRadius: '6px',
+                        fontSize: '0.68rem',
+                        color: '#334155',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '3px',
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '4px' }}>
+                        <span style={{ fontWeight: 600 }}>🎙️ Whisper (40MB):</span>
+                        <span>
+                          <span title="Loaded in student browser (Client active)" style={{ color: '#15803d', fontWeight: 600 }}>🟢{whisperReady}</span>
+                          {' · '}
+                          <span title="Downloading Whisper model (Cloud fallback active until 100%)" style={{ color: '#b45309' }}>⏳{whisperLoading}</span>
+                          {whisperCached > 0 ? <> · <span title="Cached in browser storage">⚡{whisperCached}</span></> : null}
+                          {whisperFallback > 0 ? <> · <span title="Unsupported/Failed (Using Cloud STT)" style={{ color: '#b91c1c' }}>☁️{whisperFallback}</span></> : null}
+                        </span>
+                      </div>
+                      {currentVoiceMode === 'hybrid' && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '4px' }}>
+                          <span style={{ fontWeight: 600 }}>🤖 Gemma 4 (1.9GB):</span>
+                          <span>
+                            <span title="Loaded on WebGPU (Client active, 0 Cloud quota)" style={{ color: '#15803d', fontWeight: 600 }}>🟢{gemmaReady}</span>
+                            {' · '}
+                            <span title="Downloading 1.9GB model (Cloud fallback active until 100%)" style={{ color: '#b45309' }}>⏳{gemmaLoading}</span>
+                            {gemmaCached > 0 ? <> · <span title="Cached on PC (Auto-initializing)">⚡{gemmaCached}</span></> : null}
+                            {' · '}
+                            <span title="WebGPU workable on PC, not downloaded yet (Using Cloud fallback)">⚪{gemmaWorkableNotLoaded}</span>
+                            {' · '}
+                            <span title="No WebGPU or Mobile browser (Cloud fallback only)" style={{ color: '#b91c1c' }}>⛔{gemmaUnavailable}</span>
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* Modality 3: 🖥️ Screen & Multimodal Vision Analysis */}
@@ -1169,28 +1226,101 @@ const ControlsPanel = ({
         {/* 4. Student Attendance & Status */}
         <div className="control-section">
             <h4 className="control-section-header">👥 Attendance & Status</h4>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
-                <button 
-                  onClick={() => setShowNotSharingModal(true)} 
-                  className="outline-action-btn"
-                  style={{ 
-                    padding: '6px 8px', 
-                    fontSize: '0.78rem',
-                    borderColor: notSharingStudents.length > 0 ? '#fca5a5' : undefined,
-                    color: notSharingStudents.length > 0 ? '#dc2626' : undefined,
-                    background: notSharingStudents.length > 0 ? '#fef2f2' : undefined
-                  }}
-                >
-                  👀 Not Sharing ({notSharingStudents.length})
-                </button>
-                <button 
-                  onClick={handleDownloadAttendance} 
-                  className="outline-action-btn"
-                  style={{ padding: '6px 8px', fontSize: '0.78rem' }}
-                >
-                  📥 Download Excel
-                </button>
-            </div>
+            {(() => {
+              const noCamList = Array.isArray(notSharingWebcamStudents)
+                ? notSharingWebcamStudents
+                : students.filter((s) => !s?.isWebcamSharing);
+              const noMicList = Array.isArray(notSharingMicStudents)
+                ? notSharingMicStudents
+                : students.filter((s) => !(s?.isAudioSharing && !s?.audioError));
+              const noCamAndMicList = Array.isArray(notSharingCamAndMicStudents)
+                ? notSharingCamAndMicStudents
+                : students.filter((s) => !s?.isWebcamSharing && !(s?.isAudioSharing && !s?.audioError));
+
+              return (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+                    <button 
+                      onClick={() => setShowNotSharingModal(true)} 
+                      className="outline-action-btn"
+                      title="Students not sharing their screen"
+                      style={{ 
+                        padding: '6px 8px', 
+                        fontSize: '0.78rem',
+                        borderColor: notSharingStudents.length > 0 ? '#fca5a5' : undefined,
+                        color: notSharingStudents.length > 0 ? '#dc2626' : undefined,
+                        background: notSharingStudents.length > 0 ? '#fef2f2' : undefined
+                      }}
+                    >
+                      👀 Not Sharing ({notSharingStudents.length})
+                    </button>
+                    <button 
+                      onClick={handleDownloadAttendance} 
+                      className="outline-action-btn"
+                      style={{ padding: '6px 8px', fontSize: '0.78rem' }}
+                    >
+                      📥 Download Excel
+                    </button>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.35rem' }}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (onOpenNotSharingFilter) onOpenNotSharingFilter('webcam');
+                        else setShowNotSharingModal?.(true);
+                      }}
+                      className="outline-action-btn"
+                      title="Students not sharing their webcam"
+                      style={{
+                        padding: '5px 6px',
+                        fontSize: '0.72rem',
+                        borderColor: noCamList.length > 0 ? '#fde68a' : undefined,
+                        color: noCamList.length > 0 ? '#b45309' : undefined,
+                        background: noCamList.length > 0 ? '#fffbeb' : undefined
+                      }}
+                    >
+                      📷 No Webcam ({noCamList.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (onOpenNotSharingFilter) onOpenNotSharingFilter('mic');
+                        else setShowNotSharingModal?.(true);
+                      }}
+                      className="outline-action-btn"
+                      title="Students not sharing their microphone"
+                      style={{
+                        padding: '5px 6px',
+                        fontSize: '0.72rem',
+                        borderColor: noMicList.length > 0 ? '#fde68a' : undefined,
+                        color: noMicList.length > 0 ? '#b45309' : undefined,
+                        background: noMicList.length > 0 ? '#fffbeb' : undefined
+                      }}
+                    >
+                      🎙️ No Mic ({noMicList.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (onOpenNotSharingFilter) onOpenNotSharingFilter('cam_and_mic');
+                        else setShowNotSharingModal?.(true);
+                      }}
+                      className="outline-action-btn"
+                      title="Students not sharing both webcam and microphone"
+                      style={{
+                        padding: '5px 6px',
+                        fontSize: '0.72rem',
+                        borderColor: noCamAndMicList.length > 0 ? '#fca5a5' : undefined,
+                        color: noCamAndMicList.length > 0 ? '#dc2626' : undefined,
+                        background: noCamAndMicList.length > 0 ? '#fef2f2' : undefined
+                      }}
+                    >
+                      📷🎙️ No Cam &amp; Mic ({noCamAndMicList.length})
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
         </div>
 
         {/* 5. Usage & Quotas */}

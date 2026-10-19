@@ -65,9 +65,14 @@ To prevent password sharing and enable 2-second in-class attendance, your accoun
 
 ### D. Arriving at the Student Home Dashboard
 Once authenticated:
-- **`🚀 Start Setup & Readiness Test`**: Launches the guided calibration wizard.
-- **`🖥️ Quick Start (Screen Only)`**: Used only when instructed by your teacher for screen-only programming labs.
+- **`🚀 Start Setup & Readiness Test` (`Start Hardware Check →`)**: Launches the guided calibration wizard. As soon as your class is selected on Step 1, background pre-warming of on-device speech and intent AI models (**Whisper Base** & **Gemma 4 E2B**) starts automatically so your lab PC is ready by the time you finish hardware checks.
+- **`⚡ Quick Start (Screen + Mic)` / `⚡ Quick Start (Screen Only)`**:
+  - Dynamically adapts to your class settings:
+    - When your instructor has enabled class audio monitoring (`enableAudioCapture: true`), the card displays **`⚡ Quick Start (Screen + Mic)`** and informs you that Chrome will prompt for both **Screen Share** and **Microphone** permissions.
+    - When class audio monitoring is disabled, it displays **`⚡ Quick Start (Screen Only)`**.
+  - If you use **`⚡ Quick Start (Screen + Mic)`** and your microphone permission is denied or blocked, an immediate warning alert is shown and the **Microphone Setup & Verification Modal** opens automatically so you can fix or enable your mic.
 - **`📋 My Records`**: Direct access to your attendance history, video recordings, and lab grades.
+- **Clickable Links in Messages, Banners & Properties**: Any `https://` or `http://` URLs sent by your teacher in class banners, broadcast messages, alerts, or student properties automatically render as clickable links that open safely in a new browser tab (`target="_blank"`).
 
 ---
 
@@ -150,7 +155,7 @@ Proctoring integrity requires sharing your **entire desktop monitor**, rather th
 Once connected, your active session top bar displays your real-time telemetry:
 
 ### Top Navigation & Control Bar
-- **`🟢 Streaming Active`**: Indicates your screen and camera feeds are transmitting.
+- **`🟢 Streaming Active` / `🟢 Streaming Active (Screen + Mic)` / `🟡 Streaming Active (Screen Only — Mic Blocked)`**: Clearly indicates which media streams (Screen, Webcam, Microphone) are actively transmitting or if microphone permission is blocked.
 - **`📸 15s capture`**: Shows how frequently snapshots are uploaded.
 - **Microphone Button (`🔇 Unmute` / `🎙️ Mic Active` / `🔊 Speaking`)**: Mutes or enables your microphone.
 - **Camera Switcher Dropdown**: Allows switching between webcams if you have multiple cameras connected.

@@ -164,26 +164,23 @@ vi.mock('../hooks/useFaceMonitor', () => ({
 }));
 
 let lastAudioRecorderOptions = null;
+let mockAudioRecorderReturn = {
+  isRecording: false,
+  audioStream: null,
+  audioLevel: 0,
+  isSpeaking: false,
+  hasMicPermission: true,
+  audioError: null,
+  startRecording: vi.fn(),
+};
 vi.mock('../hooks/useAudioRecorder', () => ({
   default: (opts) => {
     lastAudioRecorderOptions = opts;
-    return {
-      isRecording: false,
-      audioStream: null,
-      audioLevel: 0,
-      isSpeaking: false,
-      hasMicPermission: true,
-    };
+    return mockAudioRecorderReturn;
   },
   useAudioRecorder: (opts) => {
     lastAudioRecorderOptions = opts;
-    return {
-      isRecording: false,
-      audioStream: null,
-      audioLevel: 0,
-      isSpeaking: false,
-      hasMicPermission: true,
-    };
+    return mockAudioRecorderReturn;
   },
 }));
 
@@ -327,6 +324,16 @@ describe('StudentView Component Extended Test Suite', () => {
     window.alert = vi.fn();
     snapshotCallbacks = [];
 
+    mockAudioRecorderReturn = {
+      isRecording: false,
+      audioStream: null,
+      audioLevel: 0,
+      isSpeaking: false,
+      hasMicPermission: true,
+      audioError: null,
+      startRecording: vi.fn(),
+    };
+
     mockWhisperReturn = {
       status: 'ready',
       loadingProgress: 100,
@@ -437,7 +444,7 @@ describe('StudentView Component Extended Test Suite', () => {
 
     expect(screen.getByText(/Welcome to Your Classroom Session/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Start Setup & Readiness Test/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Quick Start \(Screen Only\)/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Quick Start \(Screen/i })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /My Records/i })).not.toBeInTheDocument();
     expect(screen.getByText(/My Recent Alerts/i)).toBeInTheDocument();
   });
@@ -463,7 +470,7 @@ describe('StudentView Component Extended Test Suite', () => {
 
     render(<StudentView user={mockUser} />);
 
-    const quickStartBtn = screen.getByRole('button', { name: /Quick Start \(Screen Only\)/i });
+    const quickStartBtn = screen.getByRole('button', { name: /Quick Start \(Screen/i });
     await act(async () => {
       fireEvent.click(quickStartBtn);
     });
@@ -490,7 +497,7 @@ describe('StudentView Component Extended Test Suite', () => {
 
     render(<StudentView user={mockUser} />);
 
-    const quickStartBtn = screen.getByRole('button', { name: /Quick Start \(Screen Only\)/i });
+    const quickStartBtn = screen.getByRole('button', { name: /Quick Start \(Screen/i });
     fireEvent.click(quickStartBtn);
     fireEvent.click(quickStartBtn);
 
@@ -673,7 +680,7 @@ describe('StudentView Component Extended Test Suite', () => {
 
     render(<StudentView user={mockUser} />);
 
-    const quickStartBtn = screen.getByRole('button', { name: /Quick Start \(Screen Only\)/i });
+    const quickStartBtn = screen.getByRole('button', { name: /Quick Start \(Screen/i });
     await act(async () => {
       fireEvent.click(quickStartBtn);
     });
@@ -755,7 +762,7 @@ describe('StudentView Component Extended Test Suite', () => {
 
     render(<StudentView user={mockUser} />);
 
-    const quickStartBtn = screen.getByRole('button', { name: /Quick Start \(Screen Only\)/i });
+    const quickStartBtn = screen.getByRole('button', { name: /Quick Start \(Screen/i });
     await act(async () => {
       fireEvent.click(quickStartBtn);
     });
@@ -842,7 +849,7 @@ describe('StudentView Component Extended Test Suite', () => {
   it('allows switching webcam selection in active invigilation mode', async () => {
     render(<StudentView user={mockUser} />);
 
-    const quickStartBtn = screen.getByRole('button', { name: /Quick Start \(Screen Only\)/i });
+    const quickStartBtn = screen.getByRole('button', { name: /Quick Start \(Screen/i });
     await act(async () => {
       fireEvent.click(quickStartBtn);
     });
@@ -862,7 +869,7 @@ describe('StudentView Component Extended Test Suite', () => {
 
     render(<StudentView user={mockUser} />);
 
-    const quickStartBtn = screen.getByRole('button', { name: /Quick Start \(Screen Only\)/i });
+    const quickStartBtn = screen.getByRole('button', { name: /Quick Start \(Screen/i });
     await act(async () => {
       fireEvent.click(quickStartBtn);
     });
@@ -878,7 +885,7 @@ describe('StudentView Component Extended Test Suite', () => {
 
     render(<StudentView user={mockUser} />);
 
-    const quickStartBtn = screen.getByRole('button', { name: /Quick Start \(Screen Only\)/i });
+    const quickStartBtn = screen.getByRole('button', { name: /Quick Start \(Screen/i });
     await act(async () => {
       fireEvent.click(quickStartBtn);
     });
@@ -1180,7 +1187,7 @@ describe('StudentView Component Extended Test Suite', () => {
     render(<StudentView user={mockUser} />);
 
     // Start sharing
-    const quickStartBtn = screen.getByRole('button', { name: /Quick Start \(Screen Only\)/i });
+    const quickStartBtn = screen.getByRole('button', { name: /Quick Start \(Screen/i });
     await act(async () => {
       fireEvent.click(quickStartBtn);
     });
@@ -1766,7 +1773,7 @@ describe('StudentView Component Extended Test Suite', () => {
 
     render(<StudentView user={mockUser} />);
 
-    const shareBtn = screen.getByRole('button', { name: /Quick Start \(Screen Only\)/i });
+    const shareBtn = screen.getByRole('button', { name: /Quick Start \(Screen/i });
     await act(async () => {
       fireEvent.click(shareBtn);
     });
@@ -1781,7 +1788,7 @@ describe('StudentView Component Extended Test Suite', () => {
 
     render(<StudentView user={mockUser} />);
 
-    const shareBtn = screen.getByRole('button', { name: /Quick Start \(Screen Only\)/i });
+    const shareBtn = screen.getByRole('button', { name: /Quick Start \(Screen/i });
     await act(async () => {
       fireEvent.click(shareBtn);
     });
@@ -1852,7 +1859,7 @@ describe('StudentView Component Extended Test Suite', () => {
 
     render(<StudentView user={mockUser} />);
 
-    const shareBtn = screen.getByRole('button', { name: /Quick Start \(Screen Only\)/i });
+    const shareBtn = screen.getByRole('button', { name: /Quick Start \(Screen/i });
     await act(async () => {
       fireEvent.click(shareBtn);
     });
@@ -1874,7 +1881,73 @@ describe('StudentView Component Extended Test Suite', () => {
       expect(localStorage.getItem('student_desktop_screen_mode')).toBe('standard');
     }
   });
+
+  it('reflects Screen + Mic in Quick Start button and active status badge when enableAudioCapture is true', async () => {
+    mockAudioRecorderReturn = {
+      ...mockAudioRecorderReturn,
+      isRecording: true,
+      hasMicPermission: true,
+      audioError: null,
+    };
+
+    render(<StudentView user={mockUser} />);
+
+    const quickStartBtn = screen.getByRole('button', { name: /Quick Start \(Screen \+ Mic\)/i });
+    expect(quickStartBtn).toBeInTheDocument();
+
+    await act(async () => {
+      fireEvent.click(quickStartBtn);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/Streaming Active \(Screen \+ Mic\)/i)).toBeInTheDocument();
+    });
+
+    expect(mockSetDoc).toHaveBeenCalledWith(
+      expect.objectContaining({ path: 'classes/class1/status/student123' }),
+      expect.objectContaining({
+        activeStreams: expect.arrayContaining(['screen', 'audio']),
+      }),
+      { merge: true }
+    );
+  });
+
+  it('alerts student and renders microphone error banner when microphone permission fails in Quick Start mode', async () => {
+    mockAudioRecorderReturn = {
+      ...mockAudioRecorderReturn,
+      isRecording: false,
+      hasMicPermission: false,
+      audioError: 'Permission denied',
+      startRecording: vi.fn(),
+    };
+
+    render(<StudentView user={mockUser} />);
+
+    const quickStartBtn = screen.getByRole('button', { name: /Quick Start \(Screen \+ Mic\)/i });
+    await act(async () => {
+      fireEvent.click(quickStartBtn);
+    });
+
+    await waitFor(() => {
+      expect(window.alert).toHaveBeenCalledWith(
+        expect.stringContaining('Microphone Unavailable')
+      );
+      expect(screen.getByText(/Streaming Active \(Screen Only — Mic Blocked\)/i)).toBeInTheDocument();
+      expect(screen.getByText(/Microphone Not Recording:/i)).toBeInTheDocument();
+    });
+
+    const retryBtn = screen.getByRole('button', { name: /Retry Mic/i });
+    fireEvent.click(retryBtn);
+    expect(mockAudioRecorderReturn.startRecording).toHaveBeenCalled();
+
+    const setupMicBtn = screen.getByRole('button', { name: /Setup Microphone/i });
+    await act(async () => {
+      fireEvent.click(setupMicBtn);
+    });
+    expect(screen.getByText(/Microphone Setup & Verification/i)).toBeInTheDocument();
+  });
 });
+
 
 
 

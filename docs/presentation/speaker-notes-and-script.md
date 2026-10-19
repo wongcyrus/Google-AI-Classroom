@@ -276,7 +276,8 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocation
 > - The Web Audio API captures a 16kHz Float32 stream.
 > - Our `litertWhisper.worker.js` provides real-time bilingual English and Cantonese Speech Recognition directly in the browser.
 > - Spoken sentences are passed to `litertGemma.worker.js` (Gemma 4 E2B) for intent classification.
-> - **Browser Cache Persistence:** Using `caches.open('litert-gemma-cache-v1')` and `navigator.storage.persist()`, models are downloaded once during the first orientation and persisted offline permanently.
+> - **Step-1 Readiness Pre-Warming & Cache Persistence (`litert-gemma-cache-v1`):** In university labs where students rotate across different PCs or where DeepFreeze wipes local drives on reboot, background downloading of Whisper Base (~140 MB) and Gemma 4 E2B (~1.3 GB) starts immediately in Step 1 (`select-class`) while the student tests their screen, camera, and microphone. Using `caches.open('litert-gemma-cache-v1')` and `navigator.storage.persist()`, cached weights load in `<2s` on repeat sessions.
+> - **Graceful Fallback, Hot-Swap & Live Teacher Telemetry:** While models download on a fresh PC, the student session runs via browser speech recognition or Cloud Gemini, and **automatically hot-swaps to 100% private on-device `client_whisper_gemma`** the instant both models reach `ready`. Teachers see live `🧠 Edge AI`, `⏳ AI X%`, or `☁️ Cloud Fallback` badges on every student tile.
 > - Cloud egress cost: **$0.00**."
 
 ---
@@ -527,10 +528,11 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocation
 > **Cyrus Wong:**  
 > "To prevent hardware surprises during exams, we built an automated onboarding and schedule-driven workflow:
 >
-> 1. **3-Step Exam Readiness Wizard (`ExamReadinessWizard.jsx`):**
->    - **Step 1: 🎙️ Microphone Test:** Detects hardware, displays a live VU volume meter (calibrated between 15% and 65%), requires reading a spoken challenge sentence, and plays back a 3-second audio loopback so students verify their voice clearly.
+> 1. **3-Step Exam Readiness Wizard (`ExamReadinessWizard.jsx`) & Step-1 Edge AI Pre-Warming:**
+>    - **Step 1: 🎙️ Microphone Test & Edge AI Pre-Warming:** Detects hardware, displays a live VU volume meter (calibrated between 15% and 65%), requires reading a spoken challenge sentence, and plays back a 3-second audio loopback so students verify their voice clearly. Crucially, as soon as the student arrives at Step 1, the browser begins downloading and compiling the Whisper and Gemma 4 ONNX models in the background (`preloadOnMount`), eliminating cold-start wait times on shared or DeepFreeze lab PCs.
 >    - **Step 2: 📷 Camera & Gaze Calibration:** Aligns the student's face inside an oval guide and records a 1-click neutral baseline pitch/yaw calibration (`🎯 Set Center Pose`).
 >    - **Step 3: 🖥️ Display Surface Verification:** Enforces mandatory full-screen display sharing, rejecting window or single-tab shares during exam mode.
+>    - **Dynamic `⚡ Quick Start` Awareness:** Outside strict exam mode, the Quick Start button dynamically shows `⚡ Quick Start (Screen + Mic)` or `⚡ Quick Start (Screen Only)` based on class audio policies, displays live `🟢 Streaming Active (Screen + Mic)` or `🟡 Streaming Active (Screen Only — Mic Blocked)` badges, and automatically launches the `MicSetupModal` recovery dialog if microphone permissions are blocked.
 > 2. **Schedule-Driven Engine (`useStudentClassSchedule.js`):**
 >    - Evaluates enrolled course schedules every 30 seconds with automatic timezone adjustment.
 >    - Automatically binds the student to the active class with a visual **'(Live)'** tag.
@@ -550,10 +552,10 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocation
 > "Monitoring 50 live video feeds simultaneously causes extreme cognitive fatigue for human proctors.
 >
 > Our Teacher Command Center solves this:
-> - **Zero-Space Compliance Filters:** Instructors filter the grid with a single click: `⚠️ Problems`, `📷 Missing Cam`, `🎙️ Missing Mic`, `🖥️ Not Sharing`, or `🚨 AI Alerts`.
-> - **1-Click Targeted Nudge (`N`):** Selecting a student tile and pressing `N` instantly transmits a gentle focus notification to that student's screen.
-> - **Offline Resilience:** If a student experiences a network glitch, their tile caches the last known frame and marks them as `(Offline)`.
-> - **Integrated Video Peek:** Instant one-click jump to full-screen peer-to-peer live stream."
+> - **Multi-Stream Compliance Quick Filters:** Instructors filter the grid with a single click from either the Monitor toolbar dropdown or the ControlsPanel **👥 Attendance & Status** bar: `⚠️ Problems`, `🖥️ Not Sharing`, `📷 No Webcam`, `🎙️ No Mic`, `📷🎙️ No Cam & Mic`, or `🚨 AI Alerts`.
+> - **Multi-Tab 'Students Not Sharing' Modal:** Clicking any quick-filter counter opens a 4-tab compliance modal (`🖥️ No Screen`, `📷 No Webcam`, `🎙️ No Mic`, `📷🎙️ No Cam & Mic`) displaying per-student `🖥️/📷/🎙️ ON/OFF` badges, one-click `🔍 Filter Grid` activation, and instant tile navigation.
+> - **1-Click Targeted Nudge (`N`):** Selecting a student tile and pressing `N` instantly transmits a gentle focus notification to that student's screen, with automatic `_blank` URL linkification for exam instructions or resource links.
+> - **Offline Resilience & Integrated Video Peek:** If a student experiences a network glitch, their tile caches the last known frame and marks them as `(Offline)`, with one-click jump to full-screen peer-to-peer live stream."
 
 ---
 

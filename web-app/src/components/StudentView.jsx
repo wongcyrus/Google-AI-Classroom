@@ -520,6 +520,7 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
     status: gemmaStatus,
     loadingProgress: gemmaLoadingProgress,
     isModelCached: isGemmaCached,
+    isWorkable: isGemmaWorkable = true,
     delegateUsed: gemmaDelegate,
     engine: gemmaEngine,
     unavailableReason: gemmaUnavailableReason,
@@ -538,31 +539,34 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
   const handleLiveVoiceTranscript = useCallback(async (transcript) => {
     if (!shouldEvaluateVoiceWithGemma) return null;
 
-    const localEvaluationPromise = isGemmaReady
-      ? evaluateSpeechWithGemma(transcript)
-      : Promise.resolve(null);
-    if (!shouldSendTranscriptToCloud(effectiveVoiceAiMode)) {
-      return localEvaluationPromise;
+    // 1. When on-device Gemma 4 E2B is ready, run client-side evaluation first
+    // and skip Cloud Genkit call if local evaluation succeeds.
+    if (isGemmaReady) {
+      const localResult = await evaluateSpeechWithGemma(transcript);
+      if (localResult) {
+        return localResult;
+      }
     }
 
-    console.log('[StudentView:CloudTranscriptAnalysis] Sending selected-track STT to Genkit.', {
+    if (!shouldSendTranscriptToCloud(effectiveVoiceAiMode)) {
+      return null;
+    }
+
+    console.log('[StudentView:CloudTranscriptAnalysis] Sending selected-track STT to Genkit (Cloud Fallback).', {
       transcript,
       gemmaStatus,
       gemmaEngine,
     });
     try {
       const analyzeAudioCallable = httpsCallable(functions, 'analyzeAudio');
-      const [, response] = await Promise.all([
-        localEvaluationPromise,
-        analyzeAudioCallable({
-          transcript,
-          classId: activeClass,
-          studentUid: user?.uid,
-          studentEmail: user?.email,
-          prompt: liveAudioPrompt?.promptText ||
-            (typeof liveAudioPrompt === 'string' ? liveAudioPrompt : undefined),
-        }),
-      ]);
+      const response = await analyzeAudioCallable({
+        transcript,
+        classId: activeClass,
+        studentUid: user?.uid,
+        studentEmail: user?.email,
+        prompt: liveAudioPrompt?.promptText ||
+          (typeof liveAudioPrompt === 'string' ? liveAudioPrompt : undefined),
+      });
       console.log('[StudentView:CloudTranscriptAnalysis] Genkit analysis completed.', response?.data);
       return response?.data || null;
     } catch (error) {
@@ -618,6 +622,8 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
     audioLevel,
     isSpeaking,
     hasMicPermission,
+    audioError,
+    startRecording: startAudioRecording,
   } = useAudioRecorder({
     classId: activeClass,
     studentUid: user?.uid,
@@ -637,6 +643,30 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
     onDeviceResolved: handleMicDeviceResolved,
   });
 
+  // Alert student when microphone permission/capture fails in Quick Start or active session
+  const lastAlertedAudioErrorRef = useRef(null);
+  useEffect(() => {
+    if (!enableAudioCapture || !isSharing || !isAudioUserEnabled) {
+      lastAlertedAudioErrorRef.current = null;
+      return;
+    }
+    const errKey = audioError || (hasMicPermission === false ? 'mic_permission_denied' : null);
+    if (errKey && lastAlertedAudioErrorRef.current !== errKey) {
+      lastAlertedAudioErrorRef.current = errKey;
+      const errMsg =
+        typeof audioError === 'string' && audioError
+          ? audioError
+          : 'Microphone permission denied or no device found';
+      alert(
+        audioCaptureMode === 'mandatory'
+          ? `⚠️ Microphone Required\n\nCould not start microphone recording (${errMsg}).\n\nMicrophone capture is mandatory for this class. Please allow microphone permission in your browser settings and verify your audio input device.`
+          : `⚠️ Microphone Unavailable\n\nScreen sharing is active, but microphone recording could not start (${errMsg}).\n\nPlease allow microphone permission in your browser settings or configure your microphone.`
+      );
+    } else if (!errKey) {
+      lastAlertedAudioErrorRef.current = null;
+    }
+  }, [enableAudioCapture, isSharing, isAudioUserEnabled, audioError, hasMicPermission, audioCaptureMode]);
+
   // 2. Client-Side Whisper STT Engine (LiteRT.js in Web Worker) connected to selected audioStream
   const {
     status: whisperStatus,
@@ -645,6 +675,7 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
     delegateUsed: whisperDelegate,
     latestTranscript: whisperTranscript,
     latestLanguage: whisperLanguage,
+    error: whisperError,
     preloadModel: preloadWhisperModel,
     transcribeAudioChunk,
     setLatestTranscript: setWhisperTranscript,
@@ -659,19 +690,34 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
     onTranscript: shouldEvaluateVoiceWithGemma ? handleLiveVoiceTranscript : undefined,
   });
 
-  // Teacher broadcast preloads only lightweight models. Gemma E2B remains
-  // student-controlled because its download is approximately 2 GB.
+  // Teacher broadcast preloads lightweight models and initializes Gemma E2B if already cached on this PC.
   useEffect(() => {
     if (preloadClientAi && effectiveVoiceAiMode !== 'disabled') {
       console.log('[StudentView:PreloadBroadcast] Teacher AI preload signal received.', {
         preloadClientAi,
         voiceAiMode: effectiveVoiceAiMode,
       });
-      if (isLocalVoiceAiEnabled && !isWhisperCached && preloadWhisperModel) {
+      if (isLocalVoiceAiEnabled && whisperStatus !== 'ready' && whisperStatus !== 'loading' && preloadWhisperModel) {
         preloadWhisperModel().catch(err => console.debug('[StudentView] Whisper preload error:', err));
       }
+      if (shouldEvaluateVoiceWithGemma && isGemmaCached && isGemmaWorkable && !isGemmaReady && gemmaStatus !== 'loading' && preloadGemmaModel) {
+        preloadGemmaModel().catch(err => console.debug('[StudentView] Cached Gemma preload error:', err));
+      }
     }
-  }, [preloadClientAi, effectiveVoiceAiMode, isLocalVoiceAiEnabled, isWhisperCached, preloadWhisperModel]);
+  }, [preloadClientAi, effectiveVoiceAiMode, isLocalVoiceAiEnabled, whisperStatus, preloadWhisperModel, shouldEvaluateVoiceWithGemma, isGemmaCached, isGemmaWorkable, isGemmaReady, gemmaStatus, preloadGemmaModel]);
+
+  const whisperModelStatus = !isLocalVoiceAiEnabled
+    ? 'disabled'
+    : whisperStatus === 'ready' || whisperStatus === 'transcribing'
+      ? 'ready'
+      : whisperStatus === 'loading'
+        ? 'loading'
+        : whisperStatus === 'error'
+          ? 'unavailable'
+          : isWhisperCached
+            ? 'cached'
+            : 'idle';
+  const whisperProgressBucket = Math.floor((whisperLoadingProgress || 0) / 10) * 10;
 
   const gemmaModelStatus = !shouldEvaluateVoiceWithGemma
     ? 'disabled'
@@ -679,9 +725,11 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
       ? 'ready'
       : gemmaStatus === 'loading'
         ? 'loading'
-        : gemmaUnavailableReason
+        : gemmaStatus === 'unavailable' || gemmaStatus === 'error' || Boolean(gemmaUnavailableReason)
           ? 'unavailable'
-          : 'not_loaded';
+          : isGemmaCached
+            ? 'cached'
+            : 'not_loaded';
   const gemmaProgressBucket = Math.floor((gemmaLoadingProgress || 0) / 10) * 10;
 
   useEffect(() => {
@@ -689,22 +737,36 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
 
     const statusDocRef = doc(db, 'classes', activeClass, 'status', user.uid);
     setDoc(statusDocRef, {
+      whisperModelStatus,
+      whisperLoadingProgress: whisperProgressBucket,
+      whisperDelegate: whisperDelegate || 'wasm',
+      whisperCached: Boolean(isWhisperCached),
+      whisperError: whisperError ? String(whisperError).slice(0, 240) : '',
       gemmaModelStatus,
       gemmaEngine,
       gemmaLoadingProgress: gemmaProgressBucket,
+      gemmaCached: Boolean(isGemmaCached),
+      gemmaWorkable: Boolean(isGemmaWorkable),
       gemmaUnavailableReason: gemmaUnavailableReason
         ? gemmaUnavailableReason.slice(0, 240)
         : '',
       gemmaStatusUpdatedAt: serverTimestamp(),
     }, { merge: true }).catch(error => {
-      console.warn('[StudentView] Failed to publish Gemma capability status:', error);
+      console.warn('[StudentView] Failed to publish AI model capability status:', error);
     });
   }, [
     activeClass,
     user?.uid,
+    whisperModelStatus,
+    whisperProgressBucket,
+    whisperDelegate,
+    isWhisperCached,
+    whisperError,
     gemmaModelStatus,
     gemmaEngine,
     gemmaProgressBucket,
+    isGemmaCached,
+    isGemmaWorkable,
     gemmaUnavailableReason,
   ]);
 
@@ -956,10 +1018,13 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
     if (aiMonitoringMode !== 'disabled' && aiMonitoringMode !== 'cloud_only' && !isModelCached && !isPreloading && clientAiStatus === 'idle') {
       preloadModel?.();
     }
-    if (isAudioCaptureActive && isLocalVoiceAiEnabled && !isWhisperCached && whisperStatus === 'idle') {
+    if ((isAudioCaptureActive || isWhisperCached) && isLocalVoiceAiEnabled && whisperStatus === 'idle') {
       preloadWhisperModel?.();
     }
-  }, [activeClass, aiMonitoringMode, isModelCached, isPreloading, clientAiStatus, isAudioCaptureActive, isLocalVoiceAiEnabled, isWhisperCached, whisperStatus, preloadModel, preloadWhisperModel]);
+    if (shouldEvaluateVoiceWithGemma && isGemmaCached && isGemmaWorkable && gemmaStatus === 'idle') {
+      preloadGemmaModel?.();
+    }
+  }, [activeClass, aiMonitoringMode, isModelCached, isPreloading, clientAiStatus, isAudioCaptureActive, isLocalVoiceAiEnabled, isWhisperCached, whisperStatus, preloadModel, preloadWhisperModel, shouldEvaluateVoiceWithGemma, isGemmaCached, isGemmaWorkable, gemmaStatus, preloadGemmaModel]);
 
   const lastTelemetrySyncRef = useRef(0);
   const telemetryTimerRef = useRef(null);
@@ -1062,9 +1127,14 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
     if (classesToHeartbeat.length === 0) return;
 
     const sendHeartbeat = () => {
+      const isMicActive = Boolean(
+        enableAudioCapture &&
+          (isAudioRecording || (isAudioUserEnabled && hasMicPermission !== false && !audioError))
+      );
       const activeStreams = [
         ...(isScreenSharing ? ['screen'] : []),
         ...(isWebcamSharing ? ['webcam'] : []),
+        ...(isMicActive ? ['audio'] : []),
       ];
       for (const cls of classesToHeartbeat) {
         const statusRef = doc(db, 'classes', cls, 'status', user.uid);
@@ -1084,7 +1154,7 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
     const heartbeatInterval = setInterval(sendHeartbeat, 12000);
 
     return () => clearInterval(heartbeatInterval);
-  }, [user?.uid, user?.email, user?.displayName, isSharing, isScreenSharing, isWebcamSharing, activeClass, targetClasses]);
+  }, [user?.uid, user?.email, user?.displayName, isSharing, isScreenSharing, isWebcamSharing, enableAudioCapture, isAudioRecording, isAudioUserEnabled, hasMicPermission, audioError, activeClass, targetClasses]);
 
   const stopScreen = useCallback(async () => {
     displaySurfaceRef.current = null;
@@ -1096,10 +1166,21 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
       screenVideoRef.current.srcObject = null;
     }
     setIsScreenSharing(false);
-    const activeStreams = isWebcamSharing ? ['webcam'] : [];
+    const activeStreams = isWebcamSharing
+      ? [
+          'webcam',
+          ...(enableAudioCapture && isAudioUserEnabled && hasMicPermission !== false && !audioError
+            ? ['audio']
+            : []),
+        ]
+      : [];
     await updateCaptureStatus(activeStreams);
-    showSystemNotification("Screen sharing has stopped.");
-  }, [isWebcamSharing, updateCaptureStatus, showSystemNotification]);
+    showSystemNotification(
+      enableAudioCapture && !isWebcamSharing
+        ? "Screen and microphone sharing have stopped."
+        : "Screen sharing has stopped."
+    );
+  }, [enableAudioCapture, isAudioUserEnabled, hasMicPermission, audioError, isWebcamSharing, updateCaptureStatus, showSystemNotification]);
 
   const stopWebcam = useCallback(async () => {
     if (webcamStreamRef.current) {
@@ -1110,10 +1191,17 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
       webcamVideoRef.current.srcObject = null;
     }
     setIsWebcamSharing(false);
-    const activeStreams = isScreenSharing ? ['screen'] : [];
+    const activeStreams = isScreenSharing
+      ? [
+          'screen',
+          ...(enableAudioCapture && isAudioUserEnabled && hasMicPermission !== false && !audioError
+            ? ['audio']
+            : []),
+        ]
+      : [];
     await updateCaptureStatus(activeStreams);
     showSystemNotification("Webcam stream has stopped.");
-  }, [isScreenSharing, updateCaptureStatus, showSystemNotification]);
+  }, [enableAudioCapture, isAudioUserEnabled, hasMicPermission, audioError, isScreenSharing, updateCaptureStatus, showSystemNotification]);
 
   const stopAllStreams = useCallback(async () => {
     if (intervalRef.current) {
@@ -1207,7 +1295,13 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
       // Re-enumerate to get human-readable labels now that camera permission is granted
       refreshWebcams();
 
-      const activeStreams = ['webcam', ...(isScreenSharing ? ['screen'] : [])];
+      const activeStreams = [
+        'webcam',
+        ...(isScreenSharing ? ['screen'] : []),
+        ...(enableAudioCapture && isAudioUserEnabled && hasMicPermission !== false && !audioError
+          ? ['audio']
+          : []),
+      ];
       await updateCaptureStatus(activeStreams);
 
       if (activeTrack) {
@@ -1224,7 +1318,7 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
       setIsWebcamSharing(false);
       return;
     }
-  }, [selectedWebcamId, availableWebcams, isScreenSharing, updateCaptureStatus, stopWebcam, refreshWebcams]);
+  }, [selectedWebcamId, availableWebcams, isScreenSharing, enableAudioCapture, isAudioUserEnabled, hasMicPermission, audioError, updateCaptureStatus, stopWebcam, refreshWebcams]);
 
   const handleWebcamChange = (e) => {
     const newDeviceId = e.target.value;
@@ -1357,10 +1451,27 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
         screenVideoRef.current.srcObject = stream;
       }
       screenStreamRef.current = stream;
+      if (!existingStream && enableAudioCapture) {
+        setIsAudioUserEnabled(true);
+      }
       setIsScreenSharing(true);
-      const activeStreams = ['screen', ...(isWebcamSharing ? ['webcam'] : [])];
+      const willRecordAudio = Boolean(
+        enableAudioCapture &&
+          (isAudioUserEnabled || !existingStream) &&
+          hasMicPermission !== false &&
+          !audioError
+      );
+      const activeStreams = [
+        'screen',
+        ...(isWebcamSharing ? ['webcam'] : []),
+        ...(willRecordAudio ? ['audio'] : []),
+      ];
       await updateCaptureStatus(activeStreams, activeClass);
-      showSystemNotification("Screen recording has started.");
+      showSystemNotification(
+        enableAudioCapture
+          ? "Screen and microphone recording have started."
+          : "Screen recording has started."
+      );
 
       stream.getVideoTracks()[0].onended = () => {
         stopScreen();
@@ -1373,7 +1484,7 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
     } finally {
       isStartingScreenRef.current = false;
     }
-  }, [activeClass, isWebcamSharing, requireFullScreenOnly, showSystemNotification, stopScreen, updateCaptureStatus, user]);
+  }, [activeClass, enableAudioCapture, isAudioUserEnabled, hasMicPermission, audioError, isCapturing, isWebcamSharing, requireFullScreenOnly, showSystemNotification, stopScreen, updateCaptureStatus, user]);
 
   // Ensure screen video element srcObject is always attached
   useEffect(() => {
@@ -2472,9 +2583,15 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
                     type="button"
                     onClick={() => startScreen()}
                     className="btn-quick-start-screen"
-                    title="Start Screen Sharing Directly"
+                    title={
+                      enableAudioCapture
+                        ? 'Start Screen Sharing and Microphone Recording Directly'
+                        : 'Start Screen Sharing Directly'
+                    }
                   >
-                    🖥️ Quick Start (Screen Only)
+                    {enableAudioCapture
+                      ? '🖥️🎙️ Quick Start (Screen + Mic)'
+                      : '🖥️ Quick Start (Screen Only)'}
                   </button>
                 </div>
 
@@ -2531,16 +2648,20 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
                       <div className="summary-text">
                         <strong>Gemma Intent AI</strong>
                         <span>
-                          {isGemmaReady || isGemmaCached
+                          {isGemmaReady
                             ? 'Ready (On-Device)'
                             : gemmaStatus === 'loading'
                             ? `Downloading (${gemmaLoadingProgress}%)`
+                            : gemmaUnavailableReason
+                            ? `Cloud Fallback (${gemmaUnavailableReason})`
+                            : isGemmaCached
+                            ? 'Cached in Browser (Click to Load)'
                             : 'Cloud Fallback (Optional Preload)'}
                         </span>
                       </div>
                       {gemmaStatus === 'loading' ? (
                         <span className="summary-badge loading">Loading</span>
-                      ) : isGemmaReady || isGemmaCached ? (
+                      ) : isGemmaReady ? (
                         <span className="summary-badge ready">Ready</span>
                       ) : (
                         <button
@@ -2558,7 +2679,7 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
                           }}
                           title="Download & cache on-device Gemma 4 E2B model in browser storage"
                         >
-                          Preload
+                          {isGemmaCached ? 'Preload (Cached)' : 'Preload'}
                         </button>
                       )}
                     </div>
@@ -2571,10 +2692,16 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
                   <div className="active-pulse-badge">
                     <span className="pulse-dot"></span>
                     <span className="active-badge-label">
-                      {isScreenSharing && isWebcamSharing && isAudioRecording
+                      {isScreenSharing && isWebcamSharing && (isAudioRecording || (enableAudioCapture && isAudioUserEnabled && hasMicPermission !== false && !audioError))
                         ? '🟢 Streaming Active (Screen + Cam + Mic)'
                         : isScreenSharing && isWebcamSharing
                         ? '🟢 Streaming Active (Screen + Cam)'
+                        : isScreenSharing && (isAudioRecording || (enableAudioCapture && isAudioUserEnabled && hasMicPermission !== false && !audioError))
+                        ? '🟢 Streaming Active (Screen + Mic)'
+                        : isScreenSharing && enableAudioCapture && (audioError || hasMicPermission === false)
+                        ? '🟡 Streaming Active (Screen Only — Mic Blocked)'
+                        : isScreenSharing && enableAudioCapture && !isAudioUserEnabled
+                        ? '🟡 Streaming Active (Screen Only — Mic Muted)'
                         : '🟡 Streaming Active (Screen Only)'}
                     </span>
                   </div>
@@ -2637,15 +2764,33 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
                 </div>
 
                 <div className="active-controls-right">
-                  {/* Mic Mute Toggle */}
+                  {/* Mic Mute / Blocked Toggle */}
                   {(enableAudioCapture || isAudioRecording) && (
                     <button
                       type="button"
-                      onClick={() => setIsAudioUserEnabled((prev) => !prev)}
-                      className={`active-tool-button ${!isAudioUserEnabled ? 'muted' : 'active'}`}
-                      title={!isAudioUserEnabled ? 'Unmute Mic' : 'Mute Mic'}
+                      onClick={() => {
+                        if (isAudioUserEnabled && (audioError || hasMicPermission === false)) {
+                          setIsMicSetupOpen(true);
+                        } else {
+                          setIsAudioUserEnabled((prev) => !prev);
+                        }
+                      }}
+                      className={`active-tool-button ${!isAudioUserEnabled || audioError || hasMicPermission === false ? 'muted' : 'active'}`}
+                      title={
+                        !isAudioUserEnabled
+                          ? 'Unmute Mic'
+                          : audioError || hasMicPermission === false
+                          ? 'Microphone blocked or unavailable — Click to configure microphone'
+                          : 'Mute Mic'
+                      }
                     >
-                      {!isAudioUserEnabled ? '🔇 Unmute' : isSpeaking ? '🔊 Speaking' : '🎙️ Mic Active'}
+                      {!isAudioUserEnabled
+                        ? '🔇 Unmute'
+                        : audioError || hasMicPermission === false
+                        ? '⚠️ Mic Blocked'
+                        : isSpeaking
+                        ? '🔊 Speaking'
+                        : '🎙️ Mic Active'}
                     </button>
                   )}
 
@@ -2691,9 +2836,80 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
               </div>
             )}
 
+            {enableAudioCapture && isSharing && isAudioUserEnabled && (audioError || hasMicPermission === false) && (
+              <div
+                className="mic-permission-alert-banner"
+                role="alert"
+                style={{
+                  background: '#fef2f2',
+                  border: '1px solid #f87171',
+                  color: '#991b1b',
+                  padding: '10px 16px',
+                  borderRadius: '8px',
+                  marginBottom: '12px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '12px',
+                  flexWrap: 'wrap',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.875rem' }}>
+                  <span>🎙️⚠️</span>
+                  <span>
+                    <strong>Microphone Not Recording:</strong>{' '}
+                    {audioError || 'Microphone permission is blocked or no microphone was detected.'}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setIsMicSetupOpen(true)}
+                    style={{
+                      background: '#dc2626',
+                      color: '#ffffff',
+                      border: 'none',
+                      borderRadius: '6px',
+                      padding: '5px 12px',
+                      fontSize: '0.8rem',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    🎙️ Setup Microphone
+                  </button>
+                  {typeof startAudioRecording === 'function' && (
+                    <button
+                      type="button"
+                      onClick={() => startAudioRecording()}
+                      style={{
+                        background: '#ffffff',
+                        color: '#991b1b',
+                        border: '1px solid #f87171',
+                        borderRadius: '6px',
+                        padding: '5px 12px',
+                        fontSize: '0.8rem',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      🔄 Retry Mic
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
             {(isCapturing || isExamActive) && isSharing && (
               <p className="recording-indicator">
-                🔴 Live invigilation active: Capturing every {frameRate}s (Quality optimized).
+                🔴 Live invigilation active: Capturing every {frameRate}s (Quality optimized)
+                {enableAudioCapture
+                  ? isAudioRecording || (isAudioUserEnabled && hasMicPermission !== false && !audioError)
+                    ? ' • 🎙️ Mic recording active'
+                    : audioError || hasMicPermission === false
+                    ? ' • ⚠️ Mic blocked'
+                    : ' • 🔇 Mic muted'
+                  : ''}.
               </p>
             )}
             
@@ -3050,7 +3266,7 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
 
                     {/* Gemma On-Device Intent LLM Status & Preload Control */}
                     {shouldEvaluateVoiceWithGemma && (
-                      isGemmaReady || isGemmaCached ? (
+                      isGemmaReady ? (
                         <span
                           style={{ fontSize: '0.72rem', padding: '3px 9px', background: '#ede9fe', color: '#5b21b6', borderRadius: '9999px', fontWeight: 600 }}
                           title={`On-device Gemma 4 E2B intent model ready (${gemmaDelegate || 'WASM'})`}
@@ -3082,11 +3298,18 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
                               alignItems: 'center',
                               gap: '4px',
                             }}
-                            title="Download & cache on-device Gemma 4 E2B model (~1.5GB) in browser storage for zero-cloud intent analysis"
+                            title={
+                              isGemmaCached
+                                ? 'Load cached Gemma 4 E2B model from browser storage into WebGPU worker'
+                                : 'Download & cache on-device Gemma 4 E2B model (~1.5GB) in browser storage for zero-cloud intent analysis'
+                            }
                           >
-                            📥 Preload Gemma AI
+                            {isGemmaCached ? '⚡ Preload Cached Gemma AI' : '📥 Preload Gemma AI'}
                           </button>
-                          <span style={{ fontSize: '0.68rem', color: '#64748b' }} title="Cloud Gemini analyzes audio while local Gemma is not loaded">
+                          <span
+                            style={{ fontSize: '0.68rem', color: '#64748b' }}
+                            title={gemmaUnavailableReason || 'Cloud Gemini analyzes audio while local Gemma is not loaded'}
+                          >
                             (☁️ Cloud Active)
                           </span>
                         </div>

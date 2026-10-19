@@ -68,6 +68,7 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
   const [maxImageSize, setMaxImageSize] = useState(0.1 * 1024 * 1024);
   const [isCapturing, setIsCapturing] = useState(false);
   const [showNotSharingModal, setShowNotSharingModal] = useState(false);
+  const [notSharingFilter, setNotSharingFilter] = useState('screen');
   const [notSharingSortBy, setNotSharingSortBy] = useState('name');
   const [notSharingSortDirection, setNotSharingSortDirection] = useState('asc');
   const [notSharingSearchQuery, setNotSharingSearchQuery] = useState('');
@@ -1177,9 +1178,16 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
         ...getStudentVoiceStatus(status),
         faceStatus: isActuallySharing ? status?.faceStatus : null,
         clientAiStatus: isActuallySharing ? status?.clientAiStatus : null,
+        whisperModelStatus: status?.whisperModelStatus || (status?.clientWhisperStatus === 'ready' ? 'ready' : 'idle'),
+        whisperLoadingProgress: status?.whisperLoadingProgress || 0,
+        whisperDelegate: status?.whisperDelegate || 'wasm',
+        whisperCached: Boolean(status?.whisperCached),
+        whisperError: status?.whisperError || '',
         gemmaModelStatus: status?.gemmaModelStatus || 'not_loaded',
         gemmaEngine: status?.gemmaEngine || 'uninitialized',
         gemmaLoadingProgress: status?.gemmaLoadingProgress || 0,
+        gemmaCached: Boolean(status?.gemmaCached),
+        gemmaWorkable: status?.gemmaWorkable !== false,
         gemmaUnavailableReason: status?.gemmaUnavailableReason || '',
         yawAngle: isActuallySharing ? status?.yawAngle : null,
         pitchAngle: isActuallySharing ? status?.pitchAngle : null,
@@ -1668,26 +1676,47 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
     setSelectedStudent(student);
   };
 
+  const normalizeNotSharingStudent = useCallback((s) => {
+    const rawDisplayName = s.displayName;
+    const displayName = rawDisplayName && rawDisplayName !== 'Unknown Student'
+      ? rawDisplayName
+      : (s.email || (s.id ? `Student (${s.id.slice(0, 8)})` : 'Unknown Student'));
+    return {
+      ...s,
+      displayName,
+      name: displayName,
+      studentClass: s.studentClass || s.profile?.studentClass || '',
+      programme: s.programme || s.profile?.programme || '',
+    };
+  }, []);
+
   const notSharingStudents = useMemo(() => {
+    return students.filter(s => !s.isSharing).map(normalizeNotSharingStudent);
+  }, [students, normalizeNotSharingStudent]);
+
+  const notSharingWebcamStudents = useMemo(() => {
+    return students.filter(s => !s.isWebcamSharing).map(normalizeNotSharingStudent);
+  }, [students, normalizeNotSharingStudent]);
+
+  const notSharingMicStudents = useMemo(() => {
+    return students.filter(s => !s.isAudioSharing || Boolean(s.audioError)).map(normalizeNotSharingStudent);
+  }, [students, normalizeNotSharingStudent]);
+
+  const notSharingCamAndMicStudents = useMemo(() => {
     return students
-      .filter(s => !s.isSharing)
-      .map(s => {
-        const rawDisplayName = s.displayName;
-        const displayName = rawDisplayName && rawDisplayName !== 'Unknown Student'
-          ? rawDisplayName
-          : (s.email || (s.id ? `Student (${s.id.slice(0, 8)})` : 'Unknown Student'));
-        return {
-          ...s,
-          displayName,
-          name: displayName,
-          studentClass: s.studentClass || s.profile?.studentClass || '',
-          programme: s.programme || s.profile?.programme || '',
-        };
-      });
-  }, [students]);
+      .filter(s => !s.isWebcamSharing && (!s.isAudioSharing || Boolean(s.audioError)))
+      .map(normalizeNotSharingStudent);
+  }, [students, normalizeNotSharingStudent]);
+
+  const activeNotSharingList = useMemo(() => {
+    if (notSharingFilter === 'webcam') return notSharingWebcamStudents;
+    if (notSharingFilter === 'mic') return notSharingMicStudents;
+    if (notSharingFilter === 'cam_and_mic') return notSharingCamAndMicStudents;
+    return notSharingStudents;
+  }, [notSharingFilter, notSharingStudents, notSharingWebcamStudents, notSharingMicStudents, notSharingCamAndMicStudents]);
 
   const sortedNotSharingStudents = useMemo(() => {
-    let list = [...notSharingStudents];
+    let list = [...activeNotSharingList];
 
     if (notSharingSearchQuery.trim()) {
       const q = notSharingSearchQuery.trim().toLowerCase();
@@ -1719,7 +1748,7 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
     });
 
     return list;
-  }, [notSharingStudents, notSharingSortBy, notSharingSortDirection, notSharingSearchQuery]);
+  }, [activeNotSharingList, notSharingSortBy, notSharingSortDirection, notSharingSearchQuery]);
 
   const liveSelectedStudent = selectedStudent
     ? students.find(student => student.id === selectedStudent.id) || selectedStudent
@@ -2078,8 +2107,19 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
         isExamActive={isExamActive}
         handleToggleExamMode={handleToggleExamMode}
         setShowPromptModal={setShowPromptModal}
+        students={students}
         notSharingStudents={notSharingStudents}
-        setShowNotSharingModal={setShowNotSharingModal}
+        notSharingWebcamStudents={notSharingWebcamStudents}
+        notSharingMicStudents={notSharingMicStudents}
+        notSharingCamAndMicStudents={notSharingCamAndMicStudents}
+        setShowNotSharingModal={(open) => {
+          if (open) setNotSharingFilter('screen');
+          setShowNotSharingModal(open);
+        }}
+        onOpenNotSharingFilter={(filterKey) => {
+          setNotSharingFilter(filterKey || 'screen');
+          setShowNotSharingModal(true);
+        }}
         handleDownloadAttendance={handleDownloadAttendance}
         editablePromptText={editablePromptText}
         isPerImageAnalysisRunning={isPerImageAnalysisRunning}
@@ -2407,6 +2447,7 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
                 <option value="problems">⚠️ Problems ({complianceSummary.problems})</option>
                 <option value="no_cam">📷 Missing Cam ({complianceSummary.noCam})</option>
                 <option value="no_mic">🎙️ Missing Mic ({complianceSummary.noMic})</option>
+                <option value="no_cam_mic">📷🎙️ Missing Cam & Mic ({notSharingCamAndMicStudents.length})</option>
                 <option value="no_screen">🖥️ Not Sharing ({complianceSummary.noScreen})</option>
                 <option value="ai_alert">🚨 AI Alerts ({complianceSummary.aiAlert})</option>
               </select>
@@ -2518,132 +2559,270 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
       <Modal 
         show={showNotSharingModal} 
         onClose={() => setShowNotSharingModal(false)} 
-        title={`Students Not Sharing Screen (${notSharingStudents.length})`}
+        title={
+          notSharingFilter === 'webcam'
+            ? `Students Not Sharing Webcam (${notSharingWebcamStudents.length})`
+            : notSharingFilter === 'mic'
+            ? `Students Not Sharing Microphone (${notSharingMicStudents.length})`
+            : notSharingFilter === 'cam_and_mic'
+            ? `Students Not Sharing Mic & Webcam (${notSharingCamAndMicStudents.length})`
+            : `Students Not Sharing Screen (${notSharingStudents.length})`
+        }
       >
-        {notSharingStudents.length > 0 ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', height: '100%', minHeight: 0 }}>
-            {/* Toolbar for Search & Sort */}
-            <div style={{
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', height: '100%', minHeight: 0 }}>
+          {/* Quick Filter Modality Tabs (Screen / Webcam / Mic / Cam + Mic) */}
+          <div
+            role="tablist"
+            aria-label="Filter non-sharing students by stream type"
+            style={{
               display: 'flex',
               flexWrap: 'wrap',
-              gap: '0.6rem',
+              gap: '0.45rem',
+              paddingBottom: '0.55rem',
+              borderBottom: '1px solid var(--color-border, #e2e8f0)',
               alignItems: 'center',
               justifyContent: 'space-between',
-              paddingBottom: '0.6rem',
-              borderBottom: '1px solid var(--color-border, #e2e8f0)'
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flex: '1 1 200px' }}>
-                <input
-                  type="text"
-                  placeholder="🔍 Search name, email, class..."
-                  value={notSharingSearchQuery}
-                  onChange={(e) => setNotSharingSearchQuery(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '0.45rem 0.65rem',
-                    fontSize: '0.85rem',
-                    borderRadius: '6px',
-                    border: '1px solid var(--color-border, #cbd5e1)',
-                    outline: 'none',
-                    backgroundColor: 'var(--color-surface, #ffffff)',
-                    color: 'var(--color-text-main, #1e293b)'
-                  }}
-                  aria-label="Search non-sharing students"
-                />
-              </div>
-
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-                <label style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--color-text-muted, #64748b)' }}>
-                  Sort by:
-                </label>
-                <select
-                  value={notSharingSortBy}
-                  onChange={(e) => setNotSharingSortBy(e.target.value)}
-                  style={{
-                    padding: '0.42rem 0.65rem',
-                    fontSize: '0.82rem',
-                    borderRadius: '6px',
-                    border: '1px solid var(--color-border, #cbd5e1)',
-                    backgroundColor: 'var(--color-surface, #ffffff)',
-                    color: 'var(--color-text-main, #1e293b)',
-                    cursor: 'pointer',
-                    fontWeight: 500
-                  }}
-                  aria-label="Sort non-sharing students by"
-                >
-                  <option value="name">Name</option>
-                  <option value="email">Email / ID</option>
-                  <option value="studentClass">Class / Programme</option>
-                </select>
-
-                <button
-                  type="button"
-                  onClick={() => setNotSharingSortDirection(prev => prev === 'asc' ? 'desc' : 'asc')}
-                  style={{
-                    padding: '0.42rem 0.65rem',
-                    fontSize: '0.82rem',
-                    borderRadius: '6px',
-                    border: '1px solid var(--color-border, #cbd5e1)',
-                    backgroundColor: 'var(--color-bg-secondary, #f8fafc)',
-                    color: 'var(--color-text-main, #334155)',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '4px',
-                    fontWeight: 600
-                  }}
-                  title={notSharingSortDirection === 'asc' ? 'Sort Ascending (A to Z)' : 'Sort Descending (Z to A)'}
-                  aria-label="Toggle sort direction"
-                >
-                  {notSharingSortDirection === 'asc' ? '↑ Asc (A-Z)' : '↓ Desc (Z-A)'}
-                </button>
-              </div>
+            }}
+          >
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+              {[
+                { key: 'screen', label: `🖥️ No Screen (${notSharingStudents.length})`, gridFilter: 'no_screen' },
+                { key: 'webcam', label: `📷 No Webcam (${notSharingWebcamStudents.length})`, gridFilter: 'no_cam' },
+                { key: 'mic', label: `🎙️ No Mic (${notSharingMicStudents.length})`, gridFilter: 'no_mic' },
+                { key: 'cam_and_mic', label: `📷+🎙️ No Cam & Mic (${notSharingCamAndMicStudents.length})`, gridFilter: 'no_cam_mic' },
+              ].map((tab) => {
+                const isActive = notSharingFilter === tab.key;
+                return (
+                  <button
+                    key={tab.key}
+                    type="button"
+                    role="tab"
+                    aria-selected={isActive}
+                    onClick={() => setNotSharingFilter(tab.key)}
+                    style={{
+                      padding: '0.38rem 0.7rem',
+                      fontSize: '0.8rem',
+                      fontWeight: 600,
+                      borderRadius: '6px',
+                      border: isActive ? '1px solid #2563eb' : '1px solid var(--color-border, #cbd5e1)',
+                      backgroundColor: isActive ? '#eff6ff' : 'var(--color-surface, #ffffff)',
+                      color: isActive ? '#1d4ed8' : 'var(--color-text-main, #334155)',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {tab.label}
+                  </button>
+                );
+              })}
             </div>
 
-            {/* Students List */}
-            {sortedNotSharingStudents.length > 0 ? (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', maxHeight: '55vh', overflowY: 'auto', paddingRight: '4px' }}>
-                {sortedNotSharingStudents.map(s => {
-                  const hasDistinctName = s.displayName && s.email && s.displayName !== s.email;
-                  return (
-                    <div 
-                      key={s.id} 
-                      style={{ 
-                        display: 'flex', 
-                        alignItems: 'center', 
-                        justifyContent: 'space-between',
-                        padding: '0.65rem 0.9rem',
-                        backgroundColor: 'var(--color-bg-secondary, #f8fafc)',
-                        borderRadius: '8px',
-                        border: '1px solid var(--color-border, #e2e8f0)'
-                      }}
-                    >
-                      <div>
-                        <div style={{ fontWeight: 600, fontSize: '0.95rem', color: 'var(--color-text-main, #1e293b)' }}>
-                          {s.displayName || s.email || (s.id ? `Student (${s.id.slice(0, 8)})` : 'Unknown Student')}
-                        </div>
-                        {hasDistinctName && (
-                          <div style={{ fontSize: '0.82rem', color: 'var(--color-text-muted, #64748b)' }}>
-                            {s.email}
-                          </div>
-                        )}
-                      </div>
-                      {(s.studentClass || s.programme) && (
-                        <span style={{ fontSize: '0.75rem', fontWeight: 500, padding: '3px 8px', borderRadius: '4px', backgroundColor: '#e2e8f0', color: '#475569' }}>
-                          {[s.studentClass, s.programme].filter(Boolean).join(' • ')}
-                        </span>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <p style={{ margin: 0, padding: '1rem 0', textAlign: 'center', color: 'var(--color-text-muted, #64748b)' }}>
-                No non-sharing students match "{notSharingSearchQuery}".
-              </p>
-            )}
+            <button
+              type="button"
+              onClick={() => {
+                const mapToGrid = {
+                  screen: 'no_screen',
+                  webcam: 'no_cam',
+                  mic: 'no_mic',
+                  cam_and_mic: 'no_cam_mic',
+                };
+                setProblemFilter(mapToGrid[notSharingFilter] || 'no_screen');
+                setShowNotSharingModal(false);
+              }}
+              style={{
+                padding: '0.36rem 0.65rem',
+                fontSize: '0.78rem',
+                fontWeight: 600,
+                borderRadius: '6px',
+                border: '1px solid #c7d2fe',
+                backgroundColor: '#eef2ff',
+                color: '#4338ca',
+                cursor: 'pointer',
+              }}
+              title="Apply this filter directly to the live student monitor grid"
+            >
+              🔍 Filter Grid
+            </button>
           </div>
-        ) : <p style={{ margin: 0, padding: '0.5rem 0', color: 'var(--color-text-muted, #64748b)' }}>All students are sharing their screen.</p>}
+
+          {activeNotSharingList.length > 0 ? (
+            <>
+              {/* Toolbar for Search & Sort */}
+              <div style={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                gap: '0.6rem',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                paddingBottom: '0.6rem',
+                borderBottom: '1px solid var(--color-border, #e2e8f0)'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flex: '1 1 200px' }}>
+                  <input
+                    type="text"
+                    placeholder="🔍 Search name, email, class..."
+                    value={notSharingSearchQuery}
+                    onChange={(e) => setNotSharingSearchQuery(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '0.45rem 0.65rem',
+                      fontSize: '0.85rem',
+                      borderRadius: '6px',
+                      border: '1px solid var(--color-border, #cbd5e1)',
+                      outline: 'none',
+                      backgroundColor: 'var(--color-surface, #ffffff)',
+                      color: 'var(--color-text-main, #1e293b)'
+                    }}
+                    aria-label="Search non-sharing students"
+                  />
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  <label style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--color-text-muted, #64748b)' }}>
+                    Sort by:
+                  </label>
+                  <select
+                    value={notSharingSortBy}
+                    onChange={(e) => setNotSharingSortBy(e.target.value)}
+                    style={{
+                      padding: '0.42rem 0.65rem',
+                      fontSize: '0.82rem',
+                      borderRadius: '6px',
+                      border: '1px solid var(--color-border, #cbd5e1)',
+                      backgroundColor: 'var(--color-surface, #ffffff)',
+                      color: 'var(--color-text-main, #1e293b)',
+                      cursor: 'pointer',
+                      fontWeight: 500
+                    }}
+                    aria-label="Sort non-sharing students by"
+                  >
+                    <option value="name">Name</option>
+                    <option value="email">Email / ID</option>
+                    <option value="studentClass">Class / Programme</option>
+                  </select>
+
+                  <button
+                    type="button"
+                    onClick={() => setNotSharingSortDirection(prev => prev === 'asc' ? 'desc' : 'asc')}
+                    style={{
+                      padding: '0.42rem 0.65rem',
+                      fontSize: '0.82rem',
+                      borderRadius: '6px',
+                      border: '1px solid var(--color-border, #cbd5e1)',
+                      backgroundColor: 'var(--color-bg-secondary, #f8fafc)',
+                      color: 'var(--color-text-main, #334155)',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      fontWeight: 600
+                    }}
+                    title={notSharingSortDirection === 'asc' ? 'Sort Ascending (A to Z)' : 'Sort Descending (Z to A)'}
+                    aria-label="Toggle sort direction"
+                  >
+                    {notSharingSortDirection === 'asc' ? '↑ Asc (A-Z)' : '↓ Desc (Z-A)'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Students List */}
+              {sortedNotSharingStudents.length > 0 ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', maxHeight: '55vh', overflowY: 'auto', paddingRight: '4px' }}>
+                  {sortedNotSharingStudents.map(s => {
+                    const hasDistinctName = s.displayName && s.email && s.displayName !== s.email;
+                    const hasMic = Boolean(s.isAudioSharing && !s.audioError);
+                    return (
+                      <div 
+                        key={s.id} 
+                        style={{ 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          justifyContent: 'space-between',
+                          padding: '0.65rem 0.9rem',
+                          backgroundColor: 'var(--color-bg-secondary, #f8fafc)',
+                          borderRadius: '8px',
+                          border: '1px solid var(--color-border, #e2e8f0)',
+                          gap: '0.5rem',
+                          flexWrap: 'wrap'
+                        }}
+                      >
+                        <div>
+                          <div style={{ fontWeight: 600, fontSize: '0.95rem', color: 'var(--color-text-main, #1e293b)' }}>
+                            {s.displayName || s.email || (s.id ? `Student (${s.id.slice(0, 8)})` : 'Unknown Student')}
+                          </div>
+                          {hasDistinctName && (
+                            <div style={{ fontSize: '0.82rem', color: 'var(--color-text-muted, #64748b)' }}>
+                              {s.email}
+                            </div>
+                          )}
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                          <span
+                            title={s.isSharing ? 'Screen sharing active' : 'Not sharing screen'}
+                            style={{
+                              fontSize: '0.72rem',
+                              fontWeight: 600,
+                              padding: '2px 7px',
+                              borderRadius: '4px',
+                              backgroundColor: s.isSharing ? '#dcfce7' : '#fee2e2',
+                              color: s.isSharing ? '#166534' : '#991b1b',
+                            }}
+                          >
+                            🖥️ {s.isSharing ? 'ON' : 'OFF'}
+                          </span>
+                          <span
+                            title={s.isWebcamSharing ? 'Webcam active' : 'Not sharing webcam'}
+                            style={{
+                              fontSize: '0.72rem',
+                              fontWeight: 600,
+                              padding: '2px 7px',
+                              borderRadius: '4px',
+                              backgroundColor: s.isWebcamSharing ? '#dcfce7' : '#fee2e2',
+                              color: s.isWebcamSharing ? '#166534' : '#991b1b',
+                            }}
+                          >
+                            📷 {s.isWebcamSharing ? 'ON' : 'OFF'}
+                          </span>
+                          <span
+                            title={hasMic ? 'Microphone active' : (s.audioError ? `Mic error: ${s.audioError}` : 'Not sharing microphone')}
+                            style={{
+                              fontSize: '0.72rem',
+                              fontWeight: 600,
+                              padding: '2px 7px',
+                              borderRadius: '4px',
+                              backgroundColor: hasMic ? '#dcfce7' : '#fee2e2',
+                              color: hasMic ? '#166534' : '#991b1b',
+                            }}
+                          >
+                            🎙️ {hasMic ? 'ON' : 'OFF'}
+                          </span>
+                          {(s.studentClass || s.programme) && (
+                            <span style={{ fontSize: '0.75rem', fontWeight: 500, padding: '3px 8px', borderRadius: '4px', backgroundColor: '#e2e8f0', color: '#475569' }}>
+                              {[s.studentClass, s.programme].filter(Boolean).join(' • ')}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p style={{ margin: 0, padding: '1rem 0', textAlign: 'center', color: 'var(--color-text-muted, #64748b)' }}>
+                  No non-sharing students match "{notSharingSearchQuery}".
+                </p>
+              )}
+            </>
+          ) : (
+            <p style={{ margin: 0, padding: '0.5rem 0', color: 'var(--color-text-muted, #64748b)' }}>
+              {notSharingFilter === 'webcam'
+                ? 'All students are sharing their webcam.'
+                : notSharingFilter === 'mic'
+                ? 'All students are sharing their microphone.'
+                : notSharingFilter === 'cam_and_mic'
+                ? 'No students are missing both microphone and webcam.'
+                : 'All students are sharing their screen.'}
+            </p>
+          )}
+        </div>
       </Modal>
 
       {liveSelectedStudent && (

@@ -255,6 +255,19 @@ describe('StudentScreen Component', () => {
       <StudentScreen
         student={{
           ...mockStudent,
+          gemmaModelStatus: 'cached',
+        }}
+        isSharing={false}
+      />
+    );
+    expect(screen.getByTitle(
+      'Gemma 4 E2B is cached on this student device (initializing)'
+    )).toHaveTextContent('⚡🤖');
+
+    rerender(
+      <StudentScreen
+        student={{
+          ...mockStudent,
           gemmaModelStatus: 'unavailable',
           gemmaUnavailableReason: 'WebGPU is unavailable on this device',
         }}
@@ -264,6 +277,40 @@ describe('StudentScreen Component', () => {
     expect(screen.getByTitle(
       'Gemma unavailable: WebGPU is unavailable on this device'
     )).toHaveTextContent('⛔🤖');
+  });
+
+  it('shows the teacher whether Whisper STT is loading, ready, cached, or unavailable', () => {
+    const { rerender } = render(
+      <StudentScreen
+        student={{ ...mockStudent, whisperModelStatus: 'loading', whisperLoadingProgress: 50 }}
+        isSharing={false}
+      />
+    );
+    expect(screen.getByTitle('Student is loading Whisper STT (50%)')).toHaveTextContent('🎙️ 50%');
+
+    rerender(
+      <StudentScreen
+        student={{ ...mockStudent, whisperModelStatus: 'ready', whisperDelegate: 'webgpu' }}
+        isSharing={false}
+      />
+    );
+    expect(screen.getByTitle('Whisper STT is loaded on this student device (WEBGPU)')).toHaveTextContent('🎙️🟢');
+
+    rerender(
+      <StudentScreen
+        student={{ ...mockStudent, whisperModelStatus: 'cached' }}
+        isSharing={false}
+      />
+    );
+    expect(screen.getByTitle('Whisper STT is cached in student browser storage')).toHaveTextContent('⚡🎙️');
+
+    rerender(
+      <StudentScreen
+        student={{ ...mockStudent, whisperModelStatus: 'unavailable', whisperError: 'WASM init failed' }}
+        isSharing={false}
+      />
+    );
+    expect(screen.getByTitle('Whisper STT unavailable: WASM init failed')).toHaveTextContent('☁️🎙️');
   });
 
   it('renders Bingo active status badges accurately', () => {

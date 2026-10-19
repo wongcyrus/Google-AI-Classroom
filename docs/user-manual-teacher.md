@@ -410,17 +410,29 @@ The **Monitor View** ([`MonitorView.jsx`](file:///home/developer/Documents/Gemin
 - **Snapshot Upload Cadence Slider:** Adjust the student upload interval between **5 seconds** (high security) and **60 seconds** (bandwidth-conserving).
 - **Audio Master Listen / Mute Toggle:** Listen in on classroom ambient microphones or mute all incoming student audio.
 
-### Problem Student Quick Filters & Toolbar Actions
-Use the compact toolbar controls docked below the main header:
-- `🔲 Dual View` / `🖥️ Screen` / `📷 Webcam`: Switch channel view across all student tiles simultaneously.
-- `👥 All Students`: Default view.
-- `⚠️ Problems`: Shows students with active flags (missing feeds, looking away, or unverified presence).
-- `📷 Missing Cam`: Isolates students who have not initialized or have muted their webcam.
-- `🎙️ Missing Mic`: Isolates students whose microphones are disabled.
-- `🖥️ Not Sharing`: Displays students whose desktop screen stream has dropped.
-- `🚨 AI Alerts`: Filters students triggering active MediaPipe or LiteRT Gemma intent violations.
-- `📢 Targeted Nudge`: Sends an immediate visual alert to all filtered students with one click.
-- `📥 Export Excel`: Exports the filtered student audit report with names, emails, and violation timestamps.
+### Problem Student Quick Filters, Attendance & Status Buttons, and Multi-Stream "Not Sharing" Modal
+Use the compact toolbar controls docked below the main header or the **👥 Attendance & Status** panel in the Controls sidebar:
+- **Toolbar Filter Dropdown ([`MonitorView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/MonitorView.jsx)):**
+  - `🔲 Dual View` / `🖥️ Screen` / `📷 Webcam`: Switch channel view across all student tiles simultaneously.
+  - `👥 All Students`: Default view.
+  - `⚠️ Problems`: Shows students with active flags (missing feeds, looking away, or unverified presence).
+  - `📷 Missing Webcam`: Isolates students who are not sharing their webcam (`!isWebcamSharing`).
+  - `🎙️ Missing Mic`: Isolates students whose microphones are disabled or blocked (`!(isAudioSharing && !audioError)`).
+  - `📷🎙️ Missing Cam & Mic`: Isolates students missing both webcam and microphone streams simultaneously.
+  - `🖥️ Missing Screen`: Displays students whose desktop screen stream is not active (`!isSharing`).
+  - `🚨 AI Alerts`: Filters students triggering active MediaPipe or LiteRT Gemma intent violations.
+  - `📣 Nudge Filtered`: Sends an immediate targeted visual alert (e.g., *"⚠️ Please enable both your webcam and microphone immediately for class compliance."*) to all currently filtered students with one click.
+  - `📥 Export Filtered`: Exports the filtered student audit report with names, emails, and violation timestamps to Excel.
+- **Controls Sidebar — 👥 Attendance & Status Quick Buttons ([`ControlsPanel.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/monitor/ControlsPanel.jsx)):**
+  - **`👀 Not Sharing (N)`**: Opens the "Students Not Sharing" modal on the `🖥️ No Screen` tab.
+  - **`📷 No Webcam (N)`**: Opens the modal directly on the `📷 No Webcam` tab.
+  - **`🎙️ No Mic (N)`**: Opens the modal directly on the `🎙️ No Mic` tab.
+  - **`📷🎙️ No Cam & Mic (N)`**: Opens the modal directly on the `📷+🎙️ No Cam & Mic` tab.
+  - **`📥 Download Excel`**: Downloads the class attendance Excel sheet.
+- **Multi-Stream "Students Not Sharing" Modal:**
+  - Features 4 quick-switch filter tabs at the top (`🖥️ No Screen`, `📷 No Webcam`, `🎙️ No Mic`, `📷+🎙️ No Cam & Mic`) with live student counts.
+  - Includes a **`🔍 Filter Grid`** button to immediately apply the active modal tab's filter to the main student monitor grid.
+  - Displays per-student stream status badges (`🖥️ ON/OFF`, `📷 ON/OFF`, `🎙️ ON/OFF`) alongside search and multi-column sorting (`Name`, `Email`, `Class`, `Programme`).
 
 ### 6.1 Auto-Rolling Student Rows via Cyclical In-Place Reordering
 When monitoring larger cohorts on podium displays or projectors that only fit the first 2 rows of students on screen:
@@ -434,13 +446,17 @@ When monitoring larger cohorts on podium displays or projectors that only fit th
 - **Sticky Toolbar:** The monitor toolbar docks stickily (`top: 64px`) directly below the main navigation bar, ensuring controls and filters remain accessible at all times.
 
 ### Reading Student Card Telemetry
-Each card in the student grid provides real-time multi-sensor status:
+Each card in the student grid ([`StudentScreen.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/StudentScreen.jsx)) provides real-time multi-sensor status:
 - **Dual Viewports:** Picture-in-picture student desktop and webcam. Click **`🔄 Swap View`** to flip them, or **`⛶ Fullscreen`** to inspect full-size.
 - **Biometric Pills:**
   - `🟢 Centered`: Normal posture.
   - `🟡 Looking Away`: Head rotated past configured angle threshold.
   - `🔴 Multiple People`: Unauthorized persons detected in frame.
   - `🔴 No Person`: Student has stepped away from camera.
+- **On-Device Edge AI Telemetry Pill (`voiceAiBadge`):**
+  - `🧠 Edge AI`: Both Whisper Base ONNX and Gemma 4 E2B WebGPU are loaded and actively running 100% locally in the student's browser (`client_whisper_gemma`).
+  - `⏳ AI X%`: Edge AI models are currently downloading/initializing in the background (with hover tooltip showing separate Whisper and Gemma download percentages and WebGPU/WASM delegates). While loading, the student automatically uses Browser Speech or Cloud Gemini fallback and hot-swaps to `🧠 Edge AI` once complete.
+  - `☁️ Cloud Fallback` / `🗣️ WebSpeech`: Indicates fallback voice engine when edge models are unavailable or unsupported on the student's hardware.
 - **VU Meter:** Visual green-to-red bar indicating speech volume.
 - **Whisper Speech Bubble:** Displays real-time subtitles of student speech with language tags (粵 / 普 / EN).
 - **Gemma Intent Tag:** If LiteRT Gemma detects an anomaly, a red tag appears: `COLLUSION_EXAM`, `EXTERNAL_AI_ASSIST`, or `UNAUTHORIZED_TALK`.

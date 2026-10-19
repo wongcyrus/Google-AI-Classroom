@@ -307,18 +307,24 @@ flowchart TD
  
 ---
  
-## 10. Persistent Cache Storage for Edge Models
+## 10. Persistent Cache Storage, Lab PC Pre-Warming & Real-Time Edge AI Telemetry
  
-To avoid re-downloading large AI models on every session, the client uses the browser's Cache Storage API and Persistent Storage permission:
+To avoid re-downloading large AI models on every session and to handle wiped/shared university lab PCs gracefully, the client uses the browser's Cache Storage API, Step-1 Readiness Pre-Warming, and real-time Firestore telemetry:
  
-1. **Whisper Speech Engine Model (`whisper_tiny.tflite` ~39 MB)**: Cached in Cache Storage namespace `webai-litert-whisper-v1`.
-2. **Gemma 4 E2B Model (`gemma-4-e2b.bin` ~1.5 GB)**:
+1. **Step-1 Readiness Pre-Warming (`StudentView.jsx`)**:
+   - In university computer labs where students rotate across different PCs or where machines reset on reboot (e.g., DeepFreeze), background downloading and initialization of **Whisper Base ONNX (~140 MB)** (`onnx-community/whisper-base`) and **Gemma 4 E2B WebGPU (~1.3 GB)** (`onnx-community/gemma-4-E2B-it-ONNX`) begins immediately when the student selects their class in **Step 1 (`select-class`)** of the Readiness Wizard (`shouldPrewarmVoiceAi`).
+   - This utilizes the 30–60 seconds of idle time while the student tests their screen, webcam, and microphone.
+2. **Whisper Speech Engine Model**: Cached in browser Cache Storage (`transformers-cache` / `webai-litert-whisper-v1`).
+3. **Gemma 4 E2B Model**:
    - Cached in Cache Storage namespace `litert-gemma-cache-v1`.
    - Background worker (`litertGemma.worker.js`) checks `caches.open('litert-gemma-cache-v1')` before initiating network download.
-   - Upon download, streams model data directly to the LiteRT engine while writing to Cache Storage in parallel.
-   - Subsequent sessions load the model directly from local disk/cache with zero network download.
-3. **Eviction Prevention (`navigator.storage.persist()`)**:
+   - Subsequent sessions on the same PC load the model directly from local disk/cache in `<2s` with zero network download.
+4. **Eviction Prevention (`navigator.storage.persist()`)**:
    - `useClientLiteRTGemma.js` requests persistent storage permission to prevent the browser from evicting cached model weights during disk cleanup.
+5. **Real-Time Edge AI Telemetry & Automatic Hot-Swap (`StudentScreen.jsx`)**:
+   - `StudentView.jsx` publishes `whisperModelState`, `whisperModelProgress`, `whisperExecutionProvider`, `gemmaModelState`, `gemmaModelProgress`, `gemmaExecutionProvider`, and `effectiveVoiceEngine` (`client_whisper_gemma` | `browser_speech` | `cloud_gemini` | `disabled`) to `classes/{classId}/status/{studentUid}`.
+   - While models are downloading on a fresh PC, the student session runs immediately via browser `webkitSpeechRecognition` (`browser_speech`) or Cloud Gemini (`cloud_gemini`) and **automatically hot-swaps** to `client_whisper_gemma` the moment both workers reach `ready`.
+   - Teachers see live status badges (`🧠 Edge AI`, `⏳ AI X%`, `☁️ Cloud Fallback`, or `🗣️ WebSpeech`) with rich hover tooltips on every student tile in [`StudentScreen.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/StudentScreen.jsx).
 
 ---
 

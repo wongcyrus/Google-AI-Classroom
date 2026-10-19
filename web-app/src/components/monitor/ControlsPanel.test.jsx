@@ -279,6 +279,32 @@ describe('ControlsPanel Full Component Suite', () => {
     const notSharingBtn = screen.getByRole('button', { name: /Not Sharing/i });
     fireEvent.click(notSharingBtn);
     expect(setShowNotSharingModal).toHaveBeenCalledWith(true);
+
+    // Quick filter buttons for Webcam, Mic, and Cam & Mic
+    const onOpenNotSharingFilter = vi.fn();
+    rerender(
+      <ControlsPanel
+        {...defaultProps}
+        notSharingStudents={[{ uid: 's1', email: 's1@test.local' }]}
+        notSharingWebcamStudents={[{ uid: 's1', email: 's1@test.local' }, { uid: 's2', email: 's2@test.local' }]}
+        notSharingMicStudents={[{ uid: 's2', email: 's2@test.local' }]}
+        notSharingCamAndMicStudents={[{ uid: 's2', email: 's2@test.local' }]}
+        setShowNotSharingModal={setShowNotSharingModal}
+        onOpenNotSharingFilter={onOpenNotSharingFilter}
+      />
+    );
+
+    const noWebcamBtn = screen.getByRole('button', { name: /No Webcam \(2\)/i });
+    fireEvent.click(noWebcamBtn);
+    expect(onOpenNotSharingFilter).toHaveBeenCalledWith('webcam');
+
+    const noMicBtn = screen.getByRole('button', { name: /No Mic \(1\)/i });
+    fireEvent.click(noMicBtn);
+    expect(onOpenNotSharingFilter).toHaveBeenCalledWith('mic');
+
+    const noCamAndMicBtn = screen.getByRole('button', { name: /No Cam & Mic \(1\)/i });
+    fireEvent.click(noCamAndMicBtn);
+    expect(onOpenNotSharingFilter).toHaveBeenCalledWith('cam_and_mic');
   });
 
   it('toggles AI live analysis triggers (per-image & all-images)', () => {
@@ -1063,5 +1089,28 @@ describe('ControlsPanel Full Component Suite', () => {
       samplingRate: 2,
     }));
   });
+
+  it('displays class-wide student browser Whisper and Gemma 4 readiness and workability summary', () => {
+    const mockStudents = [
+      { id: 's1', whisperModelStatus: 'ready', gemmaModelStatus: 'ready' },
+      { id: 's2', whisperModelStatus: 'loading', gemmaModelStatus: 'loading' },
+      { id: 's3', whisperModelStatus: 'cached', gemmaModelStatus: 'not_loaded', gemmaWorkable: true },
+      { id: 's4', whisperModelStatus: 'unavailable', gemmaModelStatus: 'unavailable', gemmaWorkable: false },
+    ];
+
+    render(
+      <ControlsPanel
+        {...defaultProps}
+        voiceAiMode="hybrid"
+        students={mockStudents}
+      />
+    );
+
+    const summary = screen.getByTestId('student-voice-ai-readiness-summary');
+    expect(summary).toBeInTheDocument();
+    expect(summary).toHaveTextContent('🎙️ Whisper (40MB):');
+    expect(summary).toHaveTextContent('🤖 Gemma 4 (1.9GB):');
+  });
 });
+
 
