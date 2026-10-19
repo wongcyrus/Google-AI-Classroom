@@ -144,6 +144,9 @@ export function useAudioRecorder({
     }
   }, [effWindowSec, vadSensitivity]);
 
+  const uploadLockTimerRef = useRef(null);
+  const uploadAttemptRef = useRef(0);
+
   // Upload a single audio window blob to Storage and Firestore
   const uploadAudioSegment = useCallback(async (blob, peakVol, avgVol, windowStartOffsetSec = 0) => {
     if (!classId || !studentUid || isUploadingRef.current || !isRecordingRef.current) return;
@@ -164,16 +167,29 @@ export function useAudioRecorder({
       return;
     }
 
+    const currentAttempt = ++uploadAttemptRef.current;
     isUploadingRef.current = true;
+    if (uploadLockTimerRef.current) clearTimeout(uploadLockTimerRef.current);
+    uploadLockTimerRef.current = setTimeout(() => {
+      if (isUploadingRef.current && uploadAttemptRef.current === currentAttempt) {
+        console.warn('[useAudioRecorder] Audio upload safety timeout (15s) elapsed, unlocking.');
+        isUploadingRef.current = false;
+      }
+    }, 15000);
+
     const now = Date.now();
     const strideIndex = strideCountRef.current;
     const fileName = `audio_${now}_stride_${strideIndex}.webm`;
     const fullAudioPath = `audio/${classId}/${studentUid}/${fileName}`;
+    const audioDocId = `${classId}_${studentUid}_${now}_${strideIndex}`;
     const fileRef = storageRef(storage, fullAudioPath);
+    let storageUploaded = false;
+    let downloadUrl = null;
+    let isTimeoutError = false;
 
     try {
-      // 1. Upload .webm blob to Cloud Storage
-      const snapshot = await uploadBytes(fileRef, blob, {
+      // 1. Upload .webm blob to Cloud Storage (with 15s timeout so hung sockets never stall capture)
+      const uploadPromise = uploadBytes(fileRef, blob, {
         contentType: 'audio/webm',
         customMetadata: {
           classId,
@@ -187,9 +203,16 @@ export function useAudioRecorder({
           peakVolume: String(peakVol),
         },
       });
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => {
+          isTimeoutError = true;
+          reject(new Error('Audio segment upload timed out after 15s'));
+        }, 15000)
+      );
+      const snapshot = await Promise.race([uploadPromise, timeoutPromise]);
+      storageUploaded = true;
 
       // Resolve direct public download URL immediately
-      let downloadUrl = null;
       try {
         downloadUrl = await getDownloadURL(fileRef);
       } catch (err) {
@@ -198,45 +221,52 @@ export function useAudioRecorder({
 
       const expireAt = new Date(Date.now() + (retentionDays || 30) * 86400000);
 
-      // 2. Write metadata document in Firestore audio/{audioId}
-      const audioDocRef = doc(collection(db, 'audio'));
-      await setDoc(audioDocRef, {
-        audioId: audioDocRef.id,
-        classId,
-        studentUid,
-        studentEmail,
-        audioPath: fullAudioPath,
-        audioUrl: downloadUrl,
-        aiMonitoringMode: effectiveMode,
-        allowCloudDiarization: effectiveMode === 'hybrid' || effectiveMode === 'cloud_only',
-        duration: effWindowSec,
-        strideDuration: effStrideSec,
-        strideIndex,
-        isSlidingWindow: enableMovingWindow,
-        windowStartSec: windowStartOffsetSec,
-        windowEndSec: windowStartOffsetSec + effWindowSec,
-        size: snapshot.metadata?.size || blob.size,
-        peakVolume: peakVol,
-        averageVolume: avgVol,
-        hasVoiceActivity: peakVol >= 15,
-        timestamp: new Date(now),
-        expireAt,
-        deleted: false,
-      });
+      // 2. Write metadata document in Firestore audio/{audioId} using deterministic ID for retry idempotency
+      const audioDocRef = doc(collection(db, 'audio'), audioDocId);
+      await Promise.race([
+        setDoc(audioDocRef, {
+          audioId: audioDocRef.id || audioDocId,
+          classId,
+          studentUid,
+          studentEmail,
+          audioPath: fullAudioPath,
+          audioUrl: downloadUrl,
+          aiMonitoringMode: effectiveMode,
+          allowCloudDiarization: effectiveMode === 'hybrid' || effectiveMode === 'cloud_only',
+          duration: effWindowSec,
+          strideDuration: effStrideSec,
+          strideIndex,
+          isSlidingWindow: enableMovingWindow,
+          windowStartSec: windowStartOffsetSec,
+          windowEndSec: windowStartOffsetSec + effWindowSec,
+          size: snapshot?.metadata?.size || blob.size,
+          peakVolume: peakVol,
+          averageVolume: avgVol,
+          hasVoiceActivity: peakVol >= 15,
+          timestamp: new Date(now),
+          expireAt,
+          deleted: false,
+        }),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Audio Firestore metadata write timed out after 10s')), 10000)
+        ),
+      ]);
 
-      console.log(`[useAudioRecorder] ✅ Uploaded audio segment & recorded Firestore doc audio/${audioDocRef.id} with audioUrl:`, downloadUrl);
+      console.log(`[useAudioRecorder] ✅ Uploaded audio segment & recorded Firestore doc audio/${audioDocRef.id || audioDocId} with audioUrl:`, downloadUrl);
 
       // 3. Mirror latest audio path and download URL in status/{studentUid}
       try {
         const statusDocRef = doc(db, `classes/${classId}/status/${studentUid}`);
-        await setDoc(statusDocRef, {
+        setDoc(statusDocRef, {
           latestAudioPath: fullAudioPath,
           latestAudioUrl: downloadUrl,
           isAudioSharing: true,
           audioLevel: peakVol,
           audioStatus: peakVol >= 50 ? 'speaking' : 'normal',
           lastAudioTimestamp: new Date(now),
-        }, { merge: true });
+        }, { merge: true }).catch((err) => {
+          console.warn('[useAudioRecorder] Could not update status doc:', err);
+        });
       } catch (err) {
         console.warn('[useAudioRecorder] Could not update status doc:', err);
       }
@@ -251,10 +281,16 @@ export function useAudioRecorder({
         windowStartSec: windowStartOffsetSec,
         blob,
       });
+
+      // If previous segments timed out while navigator.onLine stayed true, drain them now
+      if (hasOfflineAudioRef.current) {
+        flushOfflineAudioRef.current?.();
+      }
     } catch (err) {
       console.warn('[useAudioRecorder] ❌ Network error uploading audio segment, buffering in IndexedDB:', err);
       try {
         await saveToOfflineQueue({
+          id: `audio_${audioDocId}`,
           type: 'audio',
           classId,
           studentUid,
@@ -262,6 +298,13 @@ export function useAudioRecorder({
           blob,
           timestamp: now,
           metadata: {
+            audioPath: fullAudioPath,
+            audioDocId,
+            alreadyUploaded: storageUploaded,
+            timedOut: isTimeoutError,
+            downloadUrl: downloadUrl || null,
+            aiMonitoringMode: effectiveMode,
+            allowCloudDiarization: effectiveMode === 'hybrid' || effectiveMode === 'cloud_only',
             duration: effWindowSec,
             strideDuration: effStrideSec,
             strideIndex,
@@ -272,54 +315,122 @@ export function useAudioRecorder({
             retentionDays: retentionDays || 30,
           },
         });
+        hasOfflineAudioRef.current = true;
       } catch (queueErr) {
         console.error('Failed to buffer audio offline:', queueErr);
       }
+
+      // Keep student audio sharing status active even when Cloud Storage upload fails
+      try {
+        if (isRecordingRef.current) {
+          const statusDocRef = doc(db, `classes/${classId}/status/${studentUid}`);
+          setDoc(statusDocRef, {
+            isAudioSharing: true,
+            audioLevel: peakVol,
+            audioStatus: peakVol >= 50 ? 'speaking' : 'normal',
+            lastAudioTimestamp: new Date(now),
+          }, { merge: true }).catch(() => {});
+        }
+      } catch {}
+
+      // Still dispatch blob to local LiteRT Whisper / Gemma 4 voice AI so on-device speech proctoring never drops
+      try {
+        onAudioUploadedRef.current?.({
+          path: fullAudioPath,
+          url: downloadUrl || null,
+          timestamp: now,
+          size: blob.size,
+          strideIndex,
+          windowStartSec: windowStartOffsetSec,
+          blob,
+          isOfflineBuffered: true,
+        });
+      } catch (cbErr) {
+        console.warn('[useAudioRecorder] Error in onAudioUploaded offline fallback:', cbErr);
+      }
     } finally {
-      isUploadingRef.current = false;
+      if (uploadAttemptRef.current === currentAttempt) {
+        if (uploadLockTimerRef.current) clearTimeout(uploadLockTimerRef.current);
+        isUploadingRef.current = false;
+      }
     }
   }, [classId, studentUid, studentEmail, effWindowSec, effStrideSec, enableMovingWindow, silenceSuppression, vadSensitivity, retentionDays, effectiveMode]);
 
-  // Auto-flush offline queue when back online
+  const hasOfflineAudioRef = useRef(false);
+  const flushOfflineAudioRef = useRef(null);
+
+  // Auto-flush offline queue when back online or after recovery from a transient timeout
   useEffect(() => {
     const handleOnline = async () => {
       try {
-        await flushOfflineQueue({
+        const res = await flushOfflineQueue({
+          type: 'audio',
           uploadItemHandler: async (item) => {
-            if (item.type !== 'audio') return;
+            if (item.type !== 'audio') return false;
             const itemTime = item.timestamp || Date.now();
-            const dateStr = new Date(itemTime).toISOString().slice(0, 10);
-            const fileName = `audio_${item.studentUid}_${itemTime}.webm`;
-            const audioPath = `audio/${item.classId}/${dateStr}/${item.studentUid}/${fileName}`;
+            const strideIndex = item.metadata?.strideIndex || 0;
+            const fileName = `audio_${itemTime}_stride_${strideIndex}.webm`;
+            const audioPath = item.metadata?.audioPath || `audio/${item.classId}/${item.studentUid}/${fileName}`;
             const fileRef = storageRef(storage, audioPath);
 
-            await uploadBytes(fileRef, item.blob, {
-              contentType: 'audio/webm',
-              customMetadata: {
-                classId: item.classId,
-                studentUid: item.studentUid,
-                studentEmail: item.studentEmail || '',
-                isBackfilled: 'true',
-              },
-            });
+            let alreadyUploaded = Boolean(item.metadata?.alreadyUploaded);
+            let downloadUrl = item.metadata?.downloadUrl || null;
 
-            let downloadUrl = null;
-            try {
-              downloadUrl = await getDownloadURL(fileRef);
-            } catch {}
+            // If a 15s client timeout fired on uploadBytes, check if the slow upload actually completed in the background
+            if (!alreadyUploaded && item.metadata?.timedOut) {
+              try {
+                downloadUrl = await getDownloadURL(fileRef);
+                alreadyUploaded = true;
+              } catch {
+                alreadyUploaded = false;
+              }
+            }
+
+            if (!alreadyUploaded) {
+              await uploadBytes(fileRef, item.blob, {
+                contentType: 'audio/webm',
+                customMetadata: {
+                  classId: item.classId,
+                  studentUid: item.studentUid,
+                  studentEmail: item.studentEmail || '',
+                  duration: String(item.metadata?.duration || 30),
+                  strideDuration: String(item.metadata?.strideDuration || 15),
+                  strideIndex: String(strideIndex),
+                  isSlidingWindow: String(Boolean(item.metadata?.isSlidingWindow)),
+                  windowStartSec: String(item.metadata?.windowStartSec || 0),
+                  peakVolume: String(item.metadata?.peakVolume || 0),
+                  isBackfilled: 'true',
+                },
+              });
+            }
+
+            if (!downloadUrl) {
+              try {
+                downloadUrl = await getDownloadURL(fileRef);
+              } catch {}
+            }
 
             const expireAt = new Date(itemTime + (item.metadata?.retentionDays || 30) * 86400000);
-            const audioDocRef = doc(collection(db, 'audio'));
+            const docId = item.metadata?.audioDocId || `${item.classId}_${item.studentUid}_${itemTime}_${strideIndex}`;
+            const audioDocRef = doc(collection(db, 'audio'), docId);
+            const mode = item.metadata?.aiMonitoringMode || 'hybrid';
+            const allowCloudDiarization =
+              item.metadata?.allowCloudDiarization !== undefined
+                ? Boolean(item.metadata.allowCloudDiarization)
+                : mode === 'hybrid' || mode === 'cloud_only';
+
             await setDoc(audioDocRef, {
-              audioId: audioDocRef.id,
+              audioId: audioDocRef.id || docId,
               classId: item.classId,
               studentUid: item.studentUid,
               studentEmail: item.studentEmail || '',
               audioPath,
               audioUrl: downloadUrl,
+              aiMonitoringMode: mode,
+              allowCloudDiarization,
               duration: item.metadata?.duration || 30,
               strideDuration: item.metadata?.strideDuration || 15,
-              strideIndex: item.metadata?.strideIndex || 0,
+              strideIndex,
               isSlidingWindow: Boolean(item.metadata?.isSlidingWindow),
               windowStartSec: item.metadata?.windowStartSec || 0,
               windowEndSec: (item.metadata?.windowStartSec || 0) + (item.metadata?.duration || 30),
@@ -334,10 +445,15 @@ export function useAudioRecorder({
             });
           },
         });
+        if (!res || res.remaining === 0) {
+          hasOfflineAudioRef.current = false;
+        }
       } catch (err) {
         console.warn('Error flushing offline audio queue:', err);
       }
     };
+
+    flushOfflineAudioRef.current = handleOnline;
 
     if (typeof window !== 'undefined') {
       window.addEventListener('online', handleOnline);
@@ -527,12 +643,15 @@ export function useAudioRecorder({
   }, [deviceId, effStrideSec, enableCloudUpload, uploadAudioSegment, startVolumeAnalysis, classId, studentUid]);
 
   // Stop recording stream
-  const stopRecording = useCallback(() => {
+  const stopRecording = useCallback((options = {}) => {
+    const isRestarting = Boolean(options?.restarting);
     console.log('[useAudioRecorder] ⏹️ Stopping audio recording...');
     startAttemptRef.current += 1;
     isRecordingRef.current = false;
-    setIsRecording(false);
-    setCurrentVolume(0);
+    if (!isRestarting) {
+      setIsRecording(false);
+      setCurrentVolume(0);
+    }
 
     if (strideTimerRef.current) {
       clearTimeout(strideTimerRef.current);
@@ -556,7 +675,9 @@ export function useAudioRecorder({
       audioStreamRef.current.getTracks().forEach((track) => track.stop());
       audioStreamRef.current = null;
     }
-    setAudioStream(null);
+    if (!isRestarting) {
+      setAudioStream(null);
+    }
 
     if (animationFrameRef.current) {
       cancelAnimationFrame(animationFrameRef.current);
@@ -568,16 +689,18 @@ export function useAudioRecorder({
       audioContextRef.current = null;
     }
 
-    try {
-      if (classId && studentUid) {
-        const statusDocRef = doc(db, `classes/${classId}/status/${studentUid}`);
-        setDoc(statusDocRef, {
-          isAudioSharing: false,
-          audioLevel: 0,
-          audioStatus: 'inactive',
-        }, { merge: true }).catch(() => {});
-      }
-    } catch {}
+    if (!isRestarting) {
+      try {
+        if (classId && studentUid) {
+          const statusDocRef = doc(db, `classes/${classId}/status/${studentUid}`);
+          setDoc(statusDocRef, {
+            isAudioSharing: false,
+            audioLevel: 0,
+            audioStatus: 'inactive',
+          }, { merge: true }).catch(() => {});
+        }
+      } catch {}
+    }
   }, [classId, studentUid]);
 
   const recordingConfigKey = [
@@ -624,7 +747,7 @@ export function useAudioRecorder({
     if (shouldRecord) {
       if (configurationChanged && isRecordingRef.current) {
         console.log('[useAudioRecorder] 🔄 Audio capture settings changed; restarting the recording stream.');
-        stopRecording();
+        stopRecording({ restarting: true });
         startRecording();
       } else if (
         !isRecordingRef.current &&

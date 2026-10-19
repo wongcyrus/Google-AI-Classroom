@@ -156,45 +156,69 @@ export async function clearOfflineQueue() {
   }
 }
 
+const activeFlushes = new Map();
+
 /**
  * Flushes all pending items in chronological order using the provided handlers.
+ * Guards against concurrent flushes of the same item type so queued items are never uploaded twice.
  */
 export async function flushOfflineQueue({
+  type,
   uploadItemHandler,
   onProgress,
-}) {
+} = {}) {
   if (typeof navigator !== 'undefined' && !navigator.onLine) {
     return { synced: 0, remaining: await getOfflineQueueCount(), isOffline: true };
   }
 
-  const items = await getAllQueuedItems();
-  if (items.length === 0) {
-    return { synced: 0, remaining: 0, isOffline: false };
+  const lockKey = type || '__all__';
+  if (activeFlushes.has(lockKey)) {
+    return activeFlushes.get(lockKey);
   }
 
-  let synced = 0;
-  const total = items.length;
+  const runFlush = (async () => {
+    const allItems = await getAllQueuedItems();
+    const items = type ? allItems.filter((item) => item.type === type) : allItems;
+    if (items.length === 0) {
+      const remainingCount = await getOfflineQueueCount();
+      return { synced: 0, remaining: remainingCount, isOffline: false };
+    }
 
-  for (let i = 0; i < items.length; i++) {
-    const item = items[i];
-    try {
-      if (uploadItemHandler) {
-        await uploadItemHandler(item);
-      }
-      await removeOfflineItem(item.id);
-      synced++;
+    let synced = 0;
+    const total = items.length;
 
-      if (onProgress) {
-        onProgress({ current: synced, total, item });
-      }
-    } catch (err) {
-      console.warn(`[OfflineBuffer] Error syncing item ${item.id}:`, err);
-      if (typeof navigator !== 'undefined' && !navigator.onLine) {
-        break;
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      try {
+        if (uploadItemHandler) {
+          const result = await uploadItemHandler(item);
+          if (result === false) {
+            continue;
+          }
+        }
+        await removeOfflineItem(item.id);
+        synced++;
+
+        if (onProgress) {
+          onProgress({ current: synced, total, item });
+        }
+      } catch (err) {
+        console.warn(`[OfflineBuffer] Error syncing item ${item.id}:`, err);
+        if (typeof navigator !== 'undefined' && !navigator.onLine) {
+          break;
+        }
       }
     }
-  }
 
-  const remaining = await getOfflineQueueCount();
-  return { synced, remaining, isOffline: remaining > 0 && typeof navigator !== 'undefined' && !navigator.onLine };
+    const remaining = await getOfflineQueueCount();
+    return { synced, remaining, isOffline: remaining > 0 && typeof navigator !== 'undefined' && !navigator.onLine };
+  })();
+
+  activeFlushes.set(lockKey, runFlush);
+  try {
+    return await runFlush;
+  } finally {
+    activeFlushes.delete(lockKey);
+  }
 }
+

@@ -452,6 +452,10 @@ describe('useAudioRecorder Hook & AI Monitoring Modes', () => {
     window.MediaRecorder = OfflineMediaRecorder;
     global.MediaRecorder = OfflineMediaRecorder;
 
+    const onAudioUploaded = vi.fn();
+    const { saveToOfflineQueue } = await import('../utils/offlineBufferManager');
+    const { setDoc } = await import('firebase/firestore');
+
     const { result } = renderHook(() =>
       useAudioRecorder({
         classId: 'CLASS_1',
@@ -459,6 +463,7 @@ describe('useAudioRecorder Hook & AI Monitoring Modes', () => {
         enabled: false,
         aiMonitoringMode: 'hybrid',
         silenceSuppression: false,
+        onAudioUploaded,
       })
     );
 
@@ -469,7 +474,32 @@ describe('useAudioRecorder Hook & AI Monitoring Modes', () => {
     await act(async () => {
       const mockBlob = new Blob(['mock-offline-audio'], { type: 'audio/webm' });
       recorderInstance.ondataavailable({ data: mockBlob });
+      recorderInstance.stop();
     });
+
+    await waitFor(() => {
+      expect(saveToOfflineQueue).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'audio',
+          classId: 'CLASS_1',
+          studentUid: 's1',
+        })
+      );
+    });
+
+    // Recording must NOT drop and onAudioUploaded must still be called for local Whisper/Gemma AI
+    expect(result.current.isRecording).toBe(true);
+    expect(onAudioUploaded).toHaveBeenCalledWith(
+      expect.objectContaining({
+        isOfflineBuffered: true,
+        url: null,
+      })
+    );
+    expect(setDoc).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ isAudioSharing: true }),
+      { merge: true }
+    );
 
     act(() => {
       result.current.stopRecording();
@@ -528,4 +558,72 @@ describe('useAudioRecorder Hook & AI Monitoring Modes', () => {
 
     vi.useRealTimers();
   });
+
+  it('uses identical Storage path and skips duplicate uploadBytes on retry if timed-out upload already completed on server', async () => {
+    const { flushOfflineQueue } = await import('../utils/offlineBufferManager');
+    const { uploadBytes, getDownloadURL, ref } = await import('firebase/storage');
+    const { setDoc } = await import('firebase/firestore');
+
+    let capturedHandler = null;
+    flushOfflineQueue.mockImplementation(async ({ uploadItemHandler }) => {
+      capturedHandler = uploadItemHandler;
+      return { synced: 1, remaining: 0 };
+    });
+
+    renderHook(() =>
+      useAudioRecorder({
+        classId: 'CLASS_1',
+        studentUid: 's1',
+        enabled: false,
+        aiMonitoringMode: 'hybrid',
+      })
+    );
+
+    await act(async () => {
+      window.dispatchEvent(new Event('online'));
+    });
+
+    expect(capturedHandler).toBeTypeOf('function');
+
+    // Case 1: Timed-out upload that actually completed in background (getDownloadURL resolves)
+    uploadBytes.mockClear();
+    setDoc.mockClear();
+    getDownloadURL.mockResolvedValueOnce('https://storage.test/already-uploaded.webm');
+
+    await act(async () => {
+      await capturedHandler({
+        type: 'audio',
+        classId: 'CLASS_1',
+        studentUid: 's1',
+        studentEmail: 's1@school.edu',
+        blob: new Blob(['audio-data'], { type: 'audio/webm' }),
+        timestamp: 1700000000000,
+        metadata: {
+          audioPath: 'audio/CLASS_1/s1/audio_1700000000000_stride_2.webm',
+          audioDocId: 'CLASS_1_s1_1700000000000_2',
+          alreadyUploaded: false,
+          timedOut: true,
+          aiMonitoringMode: 'client_only',
+          allowCloudDiarization: false,
+          strideIndex: 2,
+          duration: 30,
+        },
+      });
+    });
+
+    // Should NOT call uploadBytes again because getDownloadURL confirmed the file already exists at the deterministic path
+    expect(ref).toHaveBeenCalledWith(expect.anything(), 'audio/CLASS_1/s1/audio_1700000000000_stride_2.webm');
+    expect(uploadBytes).not.toHaveBeenCalled();
+    expect(setDoc).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        audioPath: 'audio/CLASS_1/s1/audio_1700000000000_stride_2.webm',
+        audioUrl: 'https://storage.test/already-uploaded.webm',
+        aiMonitoringMode: 'client_only',
+        allowCloudDiarization: false,
+        isBackfilled: true,
+      })
+    );
+  });
 });
+

@@ -1946,6 +1946,49 @@ describe('StudentView Component Extended Test Suite', () => {
     });
     expect(screen.getByText(/Microphone Setup & Verification/i)).toBeInTheDocument();
   });
+
+  it('keeps screen sharing active when user object reference refreshes, initial sessionId write fails, or screenshot upload fails', async () => {
+    mockSetDoc.mockImplementation((docRef, data) => {
+      if (data && data.sessionId) {
+        return Promise.reject(new Error('Network write failed'));
+      }
+      return Promise.resolve({});
+    });
+    mockUploadBytes.mockRejectedValueOnce(new Error('Storage upload failed'));
+
+    const { rerender } = render(
+      <StudentView user={{ uid: 'student123', email: 'student@vtc.edu.hk' }} />
+    );
+
+    const quickStartBtn = screen.getByRole('button', { name: /Quick Start \(Screen/i });
+    await act(async () => {
+      fireEvent.click(quickStartBtn);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/Streaming Active/i)).toBeInTheDocument();
+    });
+
+    // Simulate Firebase Auth token refresh (new user object reference with same uid)
+    await act(async () => {
+      rerender(<StudentView user={{ uid: 'student123', email: 'student@vtc.edu.hk' }} />);
+    });
+
+    // Simulate stale cached status snapshot arriving after failed initial sessionId write
+    const statusCallbackObj = snapshotCallbacks.find(item => item.ref?.path?.includes('status'));
+    if (statusCallbackObj) {
+      act(() => {
+        statusCallbackObj.callback({
+          exists: () => true,
+          data: () => ({ sessionId: 'stale-cached-session-id' }),
+        });
+      });
+    }
+
+    // Screen sharing must remain active and not be falsely displaced
+    expect(screen.getByText(/Streaming Active/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Classroom session active in another tab or device/i)).not.toBeInTheDocument();
+  });
 });
 
 

@@ -373,7 +373,16 @@ export const processVideoJob = onDocumentCreated({ document: 'videoJobs/{jobId}'
       return;
     }
 
-    const screenshots = querySnapshot.docs.map(doc => doc.data());
+    const seenImagePaths = new Set();
+    const screenshots = querySnapshot.docs
+      .map(doc => doc.data())
+      .filter(s => {
+        const imgPath = s?.imagePath || s?.storagePath;
+        if (!imgPath) return true;
+        if (seenImagePaths.has(imgPath)) return false;
+        seenImagePaths.add(imgPath);
+        return true;
+      });
     const tempDir = path.join(os.tmpdir(), jobId);
     fs.mkdirSync(tempDir, { recursive: true });
 

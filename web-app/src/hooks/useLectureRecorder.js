@@ -210,12 +210,12 @@ export default function useLectureRecorder({
           const mimeType = item.mimeType || 'video/webm';
           const ext = mimeType.includes('mp4') ? 'mp4' : 'webm';
 
-          let audioUrl = null;
-          let audioStoragePath = null;
-          let audioFileSize = null;
+          let audioUrl = item.uploadedAudioUrl || null;
+          let audioStoragePath = item.uploadedAudioStoragePath || null;
+          let audioFileSize = item.uploadedAudioFileSize || null;
 
-          // 1. Upload parallel pure audio if recorded
-          if (item.audioBlob && item.audioBlob.size > 0) {
+          // 1. Upload parallel pure audio if recorded and not already uploaded in a previous attempt
+          if (!audioUrl && item.audioBlob && item.audioBlob.size > 0) {
             try {
               const audioMimeType = item.audioMimeType || 'audio/webm';
               const audioExt = audioMimeType.includes('mp4') ? 'm4a' : 'webm';
@@ -234,45 +234,54 @@ export default function useLectureRecorder({
               });
               audioUrl = await getDownloadURL(audioUploadTask?.ref || audioRef);
               audioFileSize = item.audioBlob.size;
+              item.uploadedAudioUrl = audioUrl;
+              item.uploadedAudioStoragePath = audioStoragePath;
+              item.uploadedAudioFileSize = audioFileSize;
             } catch (audioErr) {
               console.warn('[useLectureRecorder] Parallel audio upload failed for segment:', item.sessionId, audioErr);
             }
           }
 
-          // 2. Upload video
-          const filePath = `recordings/${targetClassId}/${item.sessionId}/lecture.${ext}`;
+          // 2. Upload video (skip re-uploading if video already completed in a previous retry before Firestore write failed)
+          const filePath = item.uploadedVideoStoragePath || `recordings/${targetClassId}/${item.sessionId}/lecture.${ext}`;
           const fileRef = storageRef(storage, filePath);
-          const uploadTask = uploadBytesResumable(fileRef, item.blob, {
-            contentType: mimeType,
-            customMetadata: {
-              classId: targetClassId,
-              sessionId: item.sessionId,
-              sessionGroupId: item.sessionGroupId || '',
-              segmentIndex: String(item.segmentIndex || 1),
-              durationSeconds: String(item.duration || 60),
-              teacherEmail: item.teacherEmail || teacherEmail || '',
-            },
-          });
+          let downloadUrl = item.uploadedVideoUrl || null;
 
-          await new Promise((resolveUpload, rejectUpload) => {
-            uploadTask.on(
-              'state_changed',
-              (snapshot) => {
-                if (snapshot.totalBytes > 0) {
-                  const progress = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
-                  setUploadProgress(progress);
-                }
+          if (!downloadUrl) {
+            const uploadTask = uploadBytesResumable(fileRef, item.blob, {
+              contentType: mimeType,
+              customMetadata: {
+                classId: targetClassId,
+                sessionId: item.sessionId,
+                sessionGroupId: item.sessionGroupId || '',
+                segmentIndex: String(item.segmentIndex || 1),
+                durationSeconds: String(item.duration || 60),
+                teacherEmail: item.teacherEmail || teacherEmail || '',
               },
-              (err) => rejectUpload(err),
-              () => resolveUpload()
-            );
-          });
+            });
 
-          const downloadUrl = await getDownloadURL(uploadTask.snapshot?.ref || fileRef);
+            await new Promise((resolveUpload, rejectUpload) => {
+              uploadTask.on(
+                'state_changed',
+                (snapshot) => {
+                  if (snapshot.totalBytes > 0) {
+                    const progress = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
+                    setUploadProgress(progress);
+                  }
+                },
+                (err) => rejectUpload(err),
+                () => resolveUpload()
+              );
+            });
 
-          // 3. Update Firestore segment document
+            downloadUrl = await getDownloadURL(uploadTask.snapshot?.ref || fileRef);
+            item.uploadedVideoUrl = downloadUrl;
+            item.uploadedVideoStoragePath = filePath;
+          }
+
+          // 3. Update Firestore segment document (fallback to setDoc merge if initial doc creation was skipped while offline)
           const sessionDocRef = doc(db, `classes/${targetClassId}/lectureRecordings/${item.sessionId}`);
-          await updateDoc(sessionDocRef, {
+          const segmentUpdatePayload = {
             status: 'ready',
             videoUrl: downloadUrl,
             storagePath: filePath,
@@ -282,13 +291,41 @@ export default function useLectureRecorder({
             audioFileSize: audioFileSize || null,
             durationSeconds: item.duration,
             endedAt: serverTimestamp(),
-          });
+          };
+          try {
+            await updateDoc(sessionDocRef, segmentUpdatePayload);
+          } catch (updateErr) {
+            const isNotFound =
+              updateErr?.code === 'not-found' ||
+              updateErr?.code === 5 ||
+              (typeof updateErr?.message === 'string' && updateErr.message.includes('No document to update'));
+            if (isNotFound) {
+              await setDoc(
+                sessionDocRef,
+                {
+                  ...metadataRef.current,
+                  classId: targetClassId,
+                  sessionGroupId: item.sessionGroupId || sessionGroupIdRef.current || null,
+                  segmentIndex: item.segmentIndex || 1,
+                  isRollingSegment: true,
+                  title: item.title || metadataRef.current?.title || 'Lecture',
+                  topic: item.topic || metadataRef.current?.topic || '',
+                  targetLanguages: item.targetLanguages || metadataRef.current?.targetLanguages || ['en', 'zh-Hant', 'zh-Hans', 'ja'],
+                  teacherEmail: item.teacherEmail || teacherEmail || null,
+                  ...segmentUpdatePayload,
+                },
+                { merge: true }
+              );
+            } else {
+              throw updateErr;
+            }
+          }
 
           // 4. Safely clear from IndexedDB offline storage
           await clearPendingSegment(item.sessionId);
           await clearRecoverySession(item.sessionId);
 
-          // 5. Add to completed segments list
+          // 5. Add to completed segments list (deduplicated by sessionId)
           const completedRecord = {
             sessionId: item.sessionId,
             segmentIndex: item.segmentIndex,
@@ -302,7 +339,9 @@ export default function useLectureRecorder({
             fileSize: item.blob.size,
             audioFileSize,
           };
-          recordedSegmentsRef.current.push(completedRecord);
+          if (!recordedSegmentsRef.current.some((s) => s.sessionId === item.sessionId)) {
+            recordedSegmentsRef.current.push(completedRecord);
+          }
 
           // 6. Remove from queue
           uploadQueueRef.current.shift();
@@ -1068,10 +1107,11 @@ export default function useLectureRecorder({
       let finalResult;
 
       if (totalSegments.length > 1) {
-        // Multi-segment lecture: trigger cloud background combine job
+        // Multi-segment lecture: trigger cloud background combine job with deterministic ID per sessionGroupId
         console.info(`[useLectureRecorder] Multi-segment recording complete (${totalSegments.length} segments). Creating merge job.`);
         try {
-          const jobId = `merge_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+          const groupKey = sessionGroupIdRef.current || rootSessionIdRef.current || finalSegSessionId || Date.now();
+          const jobId = `merge_${classId}_${groupKey}`;
           const mergeJobRef = doc(db, 'lectureMergeJobs', jobId);
           await setDoc(mergeJobRef, {
             classId,

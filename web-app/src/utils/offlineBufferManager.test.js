@@ -220,4 +220,41 @@ describe('Offline IndexedDB Buffer Manager', () => {
     expect(result.synced).toBe(1);
     expect(result.remaining).toBe(1);
   });
+
+  it('preserves items of other types when flushing with a specific type filter', async () => {
+    await saveToOfflineQueue({ id: 'shot_item', type: 'screenshot', classId: 'C1', blob: new Blob(['img']) });
+    await saveToOfflineQueue({ id: 'aud_item', type: 'audio', classId: 'C1', blob: new Blob(['aud']) });
+
+    const handledIds = [];
+    const result = await flushOfflineQueue({
+      type: 'screenshot',
+      uploadItemHandler: async (item) => {
+        if (item.type !== 'screenshot') return false;
+        handledIds.push(item.id);
+      },
+    });
+
+    expect(handledIds).toEqual(['shot_item']);
+    expect(result.synced).toBe(1);
+    expect(result.remaining).toBe(1);
+  });
+
+  it('prevents duplicate uploads when flushOfflineQueue is invoked concurrently for the same type', async () => {
+    await saveToOfflineQueue({ id: 'aud_dup_1', type: 'audio', classId: 'C1', blob: new Blob(['aud1']) });
+
+    const uploadHandler = vi.fn(async () => {
+      await new Promise((r) => setTimeout(r, 20));
+    });
+
+    const [res1, res2] = await Promise.all([
+      flushOfflineQueue({ type: 'audio', uploadItemHandler: uploadHandler }),
+      flushOfflineQueue({ type: 'audio', uploadItemHandler: uploadHandler }),
+    ]);
+
+    expect(uploadHandler).toHaveBeenCalledTimes(1);
+    expect(res1.synced).toBe(1);
+    expect(res2.synced).toBe(1);
+    expect(await getOfflineQueueCount()).toBe(0);
+  });
 });
+

@@ -465,7 +465,10 @@ export const useFaceMonitor = ({
           );
         }
 
-        await Promise.all(uploadPromises);
+        await Promise.race([
+          Promise.all(uploadPromises),
+          new Promise((resolve) => setTimeout(resolve, 10000)),
+        ]);
       } catch (uploadErr) {
         console.warn('Incident snapshot upload error (proceeding with doc creation):', uploadErr);
       }
@@ -533,16 +536,23 @@ export const useFaceMonitor = ({
     const intervalMs = Math.max(4000, (cloudFallbackRate || 3) * 4000);
     const analyzeFaceFallbackCallable = httpsCallable(functions, 'analyzeFaceFallback');
     let isCancelled = false;
+    let isTickInFlight = false;
 
     const intervalId = setInterval(async () => {
-      if (isCancelled) return;
+      if (isCancelled || isTickInFlight) return;
+      isTickInFlight = true;
       try {
         const webcamBlob = await grabVideoBlob(webcamVideoRef?.current);
         if (!webcamBlob || isCancelled) return;
 
         const tempPath = `temp_ai/fallback_${user.uid}_${Date.now()}.jpg`;
         const storageRef = ref(storage, tempPath);
-        await uploadBytes(storageRef, webcamBlob, { contentType: 'image/jpeg' });
+        await Promise.race([
+          uploadBytes(storageRef, webcamBlob, { contentType: 'image/jpeg' }),
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('Fallback webcam image upload timed out after 10s')), 10000)
+          ),
+        ]);
         const webcamUrl = await getDownloadURL(storageRef);
 
         if (isCancelled) return;
@@ -584,6 +594,8 @@ export const useFaceMonitor = ({
         }
       } catch (err) {
         console.warn('Cloud Fallback analysis tick error:', err);
+      } finally {
+        isTickInFlight = false;
       }
     }, intervalMs);
 

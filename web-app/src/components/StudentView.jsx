@@ -202,10 +202,16 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
   const [offlinePendingCount, setOfflinePendingCount] = useState(0);
 
   // Check offline queue count on mount and sync when online
+  const hasOfflineScreenshotsRef = useRef(false);
+  const flushOfflineScreenshotsRef = useRef(null);
+
   useEffect(() => {
     const updateQueueCount = async () => {
       const count = await getOfflineQueueCount();
       setOfflinePendingCount(count);
+      if (count > 0) {
+        hasOfflineScreenshotsRef.current = true;
+      }
     };
     updateQueueCount();
 
@@ -213,16 +219,32 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
       setIsOnline(true);
       try {
         await flushOfflineQueue({
+          type: 'screenshot',
           uploadItemHandler: async (item) => {
-            if (item.type !== 'screenshot') return;
+            if (item.type !== 'screenshot') return false;
             const itemTime = item.timestamp || Date.now();
             const channelName = item.metadata?.channel || 'screen';
-            const screenshotPath = `screenshots/${item.classId}/${item.studentUid}/${channelName}_${itemTime}.jpg`;
+            const screenshotPath =
+              item.metadata?.imagePath ||
+              `screenshots/${item.classId}/${item.studentUid}/${channelName}_${itemTime}.jpg`;
             const screenshotRef = ref(storage, screenshotPath);
-            await uploadBytes(screenshotRef, item.blob);
+
+            let alreadyUploaded = Boolean(item.metadata?.alreadyUploaded);
+            if (!alreadyUploaded && item.metadata?.timedOut) {
+              try {
+                await getDownloadURL(screenshotRef);
+                alreadyUploaded = true;
+              } catch {
+                alreadyUploaded = false;
+              }
+            }
+
+            if (!alreadyUploaded) {
+              await uploadBytes(screenshotRef, item.blob);
+            }
 
             const expireAtDate = new Date(itemTime + (item.metadata?.retentionDays || 30) * 86400000);
-            await addDoc(collection(db, 'screenshots'), {
+            const docData = {
               classId: item.classId,
               studentUid: item.studentUid,
               email: (item.studentEmail || '').toLowerCase(),
@@ -236,15 +258,25 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
               ipAddress: item.metadata?.ipAddress || null,
               captureInterval: item.metadata?.captureInterval || sessionFrameRate || frameRate || 15,
               sessionId: item.metadata?.sessionId || null,
-            });
+            };
+            if (item.metadata?.activeTaskId) {
+              docData.activeTaskId = item.metadata.activeTaskId;
+              docData.activeAttemptNumber = item.metadata.activeAttemptNumber || 1;
+            }
+            await addDoc(collection(db, 'screenshots'), docData);
           },
         });
         const remaining = await getOfflineQueueCount();
         setOfflinePendingCount(remaining);
+        if (remaining === 0) {
+          hasOfflineScreenshotsRef.current = false;
+        }
       } catch (err) {
         console.warn('Error flushing offline screenshot queue:', err);
       }
     };
+
+    flushOfflineScreenshotsRef.current = handleOnline;
 
     const handleOffline = () => {
       setIsOnline(false);
@@ -1223,6 +1255,15 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
     await updateCaptureStatus([]);
   }, [updateCaptureStatus]);
 
+  const stopScreenRef = useRef(stopScreen);
+  const stopWebcamRef = useRef(stopWebcam);
+  const stopAllStreamsRef = useRef(stopAllStreams);
+  useEffect(() => {
+    stopScreenRef.current = stopScreen;
+    stopWebcamRef.current = stopWebcam;
+    stopAllStreamsRef.current = stopAllStreams;
+  }, [stopScreen, stopWebcam, stopAllStreams]);
+
   /**
    * Enumerate all videoinput (webcam) devices on the client machine.
    * Dynamically tracks device labels and ensures selectedWebcamId remains valid
@@ -1289,6 +1330,12 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
       setIsWebcamSharing(true);
 
       const activeTrack = stream.getVideoTracks()[0];
+      if (activeTrack) {
+        activeTrack.onended = () => {
+          stopWebcamRef.current?.();
+        };
+      }
+
       const actualDeviceId = activeTrack?.getSettings?.().deviceId || deviceIdToUse;
       if (actualDeviceId) setSelectedWebcamId(actualDeviceId);
 
@@ -1303,12 +1350,6 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
           : []),
       ];
       await updateCaptureStatus(activeStreams);
-
-      if (activeTrack) {
-        activeTrack.onended = () => {
-          stopWebcam();
-        };
-      }
     } catch (err) {
       console.warn("Webcam unavailable or permission not granted:", err);
       const permissionDenied = err?.name === 'NotAllowedError' || err?.name === 'PermissionDeniedError';
@@ -1411,7 +1452,10 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
                 const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.8));
                 if (blob) {
                   const proofRef = ref(storage, `irregularities/${activeClass}/${user.uid}/${Date.now()}_screen_reject_webcam.jpg`);
-                  const s = await uploadBytes(proofRef, blob);
+                  const s = await Promise.race([
+                    uploadBytes(proofRef, blob),
+                    new Promise((_, reject) => setTimeout(() => reject(new Error('Proof upload timeout')), 8000)),
+                  ]);
                   webcamProofUrl = await getDownloadURL(s.ref);
                 }
               }
@@ -1451,6 +1495,11 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
         screenVideoRef.current.srcObject = stream;
       }
       screenStreamRef.current = stream;
+      if (videoTrack) {
+        videoTrack.onended = () => {
+          stopScreenRef.current?.();
+        };
+      }
       if (!existingStream && enableAudioCapture) {
         setIsAudioUserEnabled(true);
       }
@@ -1472,10 +1521,6 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
           ? "Screen and microphone recording have started."
           : "Screen recording has started."
       );
-
-      stream.getVideoTracks()[0].onended = () => {
-        stopScreen();
-      };
     } catch (error) {
       console.error("Error starting screen sharing:", error);
       setIsScreenSharing(false);
@@ -1507,6 +1552,8 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
   const isUploadingWebcamRef = useRef(false);
   const screenUploadLockTimerRef = useRef(null);
   const webcamUploadLockTimerRef = useRef(null);
+  const screenUploadAttemptRef = useRef(0);
+  const webcamUploadAttemptRef = useRef(0);
 
   const captureVideoElement = useCallback(async (videoElement, channelName, targetClassesInput) => {
     if (!user || !user.uid) {
@@ -1536,16 +1583,18 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
       return;
     }
 
+    let currentAttempt = 0;
     // Guard: Prevent stacking/queuing uploads if previous upload is still in-flight with safety timeout
     if (channelName === 'screen') {
       if (isUploadingScreenRef.current) {
         console.debug("[StudentView] Screen upload still in flight, skipping frame.");
         return;
       }
+      currentAttempt = ++screenUploadAttemptRef.current;
       isUploadingScreenRef.current = true;
       if (screenUploadLockTimerRef.current) clearTimeout(screenUploadLockTimerRef.current);
       screenUploadLockTimerRef.current = setTimeout(() => {
-        if (isUploadingScreenRef.current) {
+        if (isUploadingScreenRef.current && screenUploadAttemptRef.current === currentAttempt) {
           console.warn("[StudentView] Screen upload safety timeout (15s) elapsed, unlocking.");
           isUploadingScreenRef.current = false;
         }
@@ -1555,10 +1604,11 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
         console.debug("[StudentView] Webcam upload still in flight, skipping frame.");
         return;
       }
+      currentAttempt = ++webcamUploadAttemptRef.current;
       isUploadingWebcamRef.current = true;
       if (webcamUploadLockTimerRef.current) clearTimeout(webcamUploadLockTimerRef.current);
       webcamUploadLockTimerRef.current = setTimeout(() => {
-        if (isUploadingWebcamRef.current) {
+        if (isUploadingWebcamRef.current && webcamUploadAttemptRef.current === currentAttempt) {
           console.warn("[StudentView] Webcam upload safety timeout (15s) elapsed, unlocking.");
           isUploadingWebcamRef.current = false;
         }
@@ -1638,16 +1688,22 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
         const timestamp = Date.now();
         const screenshotPath = `screenshots/${primaryClass}/${user.uid}/${channelName}_${timestamp}.jpg`;
         const screenshotRef = ref(storage, screenshotPath);
+        const actualInterval = sessionFrameRate || frameRate || 15;
+        let isTimeoutError = false;
         
         try {
           const uploadPromise = uploadBytes(screenshotRef, blob);
           const timeoutPromise = new Promise((_, reject) =>
-            setTimeout(() => reject(new Error('Screenshot upload timed out after 15s')), 15000)
+            setTimeout(() => {
+              isTimeoutError = true;
+              reject(new Error('Screenshot upload timed out after 15s'));
+            }, 15000)
           );
           await Promise.race([uploadPromise, timeoutPromise]);
           const expireAtDate = new Date(Date.now() + (retentionDays || 30) * 24 * 60 * 60 * 1000);
-          const actualInterval = sessionFrameRate || frameRate || 15;
+          const resolvedImagePath = screenshotRef.fullPath || screenshotPath;
 
+          let bufferedAnyForFirestore = false;
           for (const cls of classes) {
             try {
               const docData = {
@@ -1655,7 +1711,7 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
                 studentUid: user.uid,
                 email: user.email.toLowerCase(),
                 channel: channelName,
-                imagePath: screenshotRef.fullPath,
+                imagePath: resolvedImagePath,
                 size: blob.size,
                 timestamp: serverTimestamp(),
                 expireAt: expireAtDate,
@@ -1668,8 +1724,44 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
                 docData.activeTaskId = activeTaskSession.taskId;
                 docData.activeAttemptNumber = activeTaskSession.attemptNumber || 1;
               }
-              await addDoc(collection(db, 'screenshots'), docData);
+              await Promise.race([
+                addDoc(collection(db, 'screenshots'), docData),
+                new Promise((_, reject) =>
+                  setTimeout(() => reject(new Error('Screenshot Firestore metadata write timed out after 10s')), 10000)
+                ),
+              ]);
+            } catch (err) {
+              console.warn(`[StudentView] Error recording screenshot doc for class ${cls}, queueing metadata retry:`, err);
+              try {
+                await saveToOfflineQueue({
+                  id: `screenshot_${cls}_${user.uid}_${channelName}_${timestamp}`,
+                  type: 'screenshot',
+                  classId: cls,
+                  studentUid: user.uid,
+                  studentEmail: user.email.toLowerCase(),
+                  blob,
+                  timestamp,
+                  metadata: {
+                    channel: channelName,
+                    imagePath: resolvedImagePath,
+                    alreadyUploaded: true,
+                    retentionDays: retentionDays || 30,
+                    ipAddress: ipAddress || null,
+                    captureInterval: actualInterval,
+                    sessionId: activeCaptureSessionId || null,
+                    activeTaskId: activeTaskSession?.taskId || null,
+                    activeAttemptNumber: activeTaskSession?.attemptNumber || null,
+                  },
+                });
+                bufferedAnyForFirestore = true;
+                hasOfflineScreenshotsRef.current = true;
+              } catch (queueErr) {
+                console.error(`Error saving ${channelName} screenshot metadata to offline queue:`, queueErr);
+              }
+            }
 
+            // Mirror status non-blockingly so a slow status write never triggers duplicate screenshot queueing
+            try {
               const statusRef = doc(db, "classes", cls, "status", user.uid);
               const statusUpdate = {
                 isSharing: true,
@@ -1679,61 +1771,88 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
                 lastHeartbeat: Date.now(),
               };
               if (channelName === 'screen') {
-                statusUpdate.latestScreenPath = screenshotRef.fullPath;
+                statusUpdate.latestScreenPath = resolvedImagePath;
               } else {
-                statusUpdate.latestWebcamPath = screenshotRef.fullPath;
+                statusUpdate.latestWebcamPath = resolvedImagePath;
               }
               await setDoc(statusRef, statusUpdate, { merge: true });
-            } catch (err) {
-              console.warn(`[StudentView] Error recording screenshot doc for overlapping class ${cls}:`, err);
+            } catch (statusErr) {
+              console.warn(`[StudentView] Error updating status for class ${cls}:`, statusErr);
             }
           }
-          console.log(`[StudentView] 📸 Successfully uploaded ${channelName} snapshot (${blob.size} bytes) to ${screenshotRef.fullPath} for classes:`, classes);
+
+          if (bufferedAnyForFirestore) {
+            setOfflinePendingCount(c => c + 1);
+          } else if (hasOfflineScreenshotsRef.current) {
+            flushOfflineScreenshotsRef.current?.();
+          }
+          console.log(`[StudentView] 📸 Successfully uploaded ${channelName} snapshot (${blob.size} bytes) to ${resolvedImagePath} for classes:`, classes);
         } catch (uploadErr) {
           console.warn(`Network error uploading ${channelName} screenshot, buffering offline:`, uploadErr);
-          const actualInterval = sessionFrameRate || frameRate || 15;
+          const resolvedImagePath = screenshotRef.fullPath || screenshotPath;
+          let bufferedAny = false;
           for (const cls of classes) {
-            await saveToOfflineQueue({
-              type: 'screenshot',
-              classId: cls,
-              studentUid: user.uid,
-              studentEmail: user.email.toLowerCase(),
-              blob,
-              timestamp,
-              metadata: {
-                channel: channelName,
-                retentionDays: retentionDays || 30,
-                ipAddress: ipAddress || null,
-                captureInterval: actualInterval,
-                sessionId: activeCaptureSessionId || null,
-              },
-            });
+            try {
+              await saveToOfflineQueue({
+                id: `screenshot_${cls}_${user.uid}_${channelName}_${timestamp}`,
+                type: 'screenshot',
+                classId: cls,
+                studentUid: user.uid,
+                studentEmail: user.email.toLowerCase(),
+                blob,
+                timestamp,
+                metadata: {
+                  channel: channelName,
+                  imagePath: resolvedImagePath,
+                  alreadyUploaded: false,
+                  timedOut: isTimeoutError,
+                  retentionDays: retentionDays || 30,
+                  ipAddress: ipAddress || null,
+                  captureInterval: actualInterval,
+                  sessionId: activeCaptureSessionId || null,
+                  activeTaskId: activeTaskSession?.taskId || null,
+                  activeAttemptNumber: activeTaskSession?.attemptNumber || null,
+                },
+              });
+              bufferedAny = true;
+              hasOfflineScreenshotsRef.current = true;
+            } catch (queueErr) {
+              console.error(`Error saving ${channelName} screenshot to offline queue:`, queueErr);
+            }
             // Keep status fresh in Firestore even when screenshot upload is buffered offline
             try {
               const statusRef = doc(db, "classes", cls, "status", user.uid);
-              await setDoc(statusRef, {
+              setDoc(statusRef, {
                 isSharing: true,
                 email: user.email.toLowerCase(),
                 name: user.displayName || user.email,
                 timestamp: serverTimestamp(),
                 lastHeartbeat: Date.now(),
-              }, { merge: true });
+              }, { merge: true }).catch(statusErr => {
+                console.debug("Error updating status on offline buffer:", statusErr);
+              });
             } catch (statusErr) {
               console.debug("Error updating status on offline buffer:", statusErr);
             }
           }
-          setOfflinePendingCount(c => c + 1);
+          if (bufferedAny) {
+            setOfflinePendingCount(c => c + 1);
+          }
         }
       }
     } catch (err) {
       console.error(`Error processing ${channelName} snapshot:`, err);
     } finally {
       if (channelName === 'screen') {
-        if (screenUploadLockTimerRef.current) clearTimeout(screenUploadLockTimerRef.current);
-        isUploadingScreenRef.current = false;
+        if (screenUploadAttemptRef.current === currentAttempt) {
+          if (screenUploadLockTimerRef.current) clearTimeout(screenUploadLockTimerRef.current);
+          isUploadingScreenRef.current = false;
+        }
       } else if (channelName === 'webcam') {
-        if (webcamUploadLockTimerRef.current) clearTimeout(webcamUploadLockTimerRef.current);
-        isUploadingWebcamRef.current = false;
+        if (webcamUploadAttemptRef.current === currentAttempt) {
+          if (webcamUploadLockTimerRef.current) clearTimeout(webcamUploadLockTimerRef.current);
+          isUploadingWebcamRef.current = false;
+        }
       }
     }
   }, [user, maxImageSize, imageQuality, retentionDays, ipAddress, targetClasses, frameRate, sessionFrameRate, activeCaptureSessionId, activeTaskSession]);
@@ -1769,40 +1888,77 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
     }
   }, []);
 
+  const ownSessionIdsRef = useRef(new Set());
+  const sessionWriteFailedRef = useRef(false);
+  const ipAddressRef = useRef(ipAddress);
+  ipAddressRef.current = ipAddress;
+
   const handleResumeSession = useCallback(() => {
-    if (!user || !activeClass) return;
+    if (!user?.uid || !activeClass) return;
     const newSessionId = uuidv4();
     sessionIdRef.current = newSessionId;
+    ownSessionIdsRef.current.add(newSessionId);
+    sessionWriteFailedRef.current = false;
     setIsSessionDisplaced(false);
     const statusRef = doc(db, "classes", activeClass, "status", user.uid);
     const statusData = { sessionId: newSessionId };
-    if (ipAddress) {
-      statusData.ipAddress = ipAddress;
+    if (ipAddressRef.current) {
+      statusData.ipAddress = ipAddressRef.current;
     }
     setDoc(statusRef, statusData, { merge: true })
-      .catch(err => console.error("Firestore: Error updating session ID:", err));
-  }, [activeClass, ipAddress, user]);
+      .then(() => {
+        sessionWriteFailedRef.current = false;
+      })
+      .catch(err => {
+        sessionWriteFailedRef.current = true;
+        console.error("Firestore: Error updating session ID:", err);
+      });
+  }, [activeClass, user?.uid]);
 
   useEffect(() => {
-    if (user && activeClass) {
+    if (user?.uid && activeClass && ipAddress) {
+      const statusRef = doc(db, "classes", activeClass, "status", user.uid);
+      setDoc(statusRef, { ipAddress }, { merge: true })
+        .catch(err => console.debug("Firestore: Error updating IP address:", err));
+    }
+  }, [user?.uid, activeClass, ipAddress]);
+
+  useEffect(() => {
+    if (user?.uid && activeClass) {
       const newSessionId = uuidv4();
       sessionIdRef.current = newSessionId;
+      ownSessionIdsRef.current.add(newSessionId);
+      sessionWriteFailedRef.current = false;
       const statusRef = doc(db, "classes", activeClass, "status", user.uid);
       const statusData = { sessionId: newSessionId };
-      if (ipAddress) {
-        statusData.ipAddress = ipAddress;
+      if (ipAddressRef.current) {
+        statusData.ipAddress = ipAddressRef.current;
       }
       setDoc(statusRef, statusData, { merge: true })
-        .catch(err => console.error("Firestore: Error setting session ID:", err));
+        .then(() => {
+          sessionWriteFailedRef.current = false;
+        })
+        .catch(err => {
+          sessionWriteFailedRef.current = true;
+          console.error("Firestore: Error setting session ID:", err);
+        });
 
       const unsubscribe = onSnapshot(statusRef, (docSnap) => {
         if (docSnap.exists()) {
           const data = docSnap.data();
-          if (data.sessionId && data.sessionId !== sessionIdRef.current) {
+          if (
+            data.sessionId &&
+            data.sessionId !== sessionIdRef.current &&
+            !ownSessionIdsRef.current.has(data.sessionId) &&
+            !sessionWriteFailedRef.current
+          ) {
             console.warn("Classroom session moved to another tab or device.");
-            stopAllStreams();
+            stopAllStreamsRef.current?.();
             setIsSessionDisplaced(true);
-          } else if (data.sessionId && data.sessionId === sessionIdRef.current) {
+          } else if (
+            data.sessionId &&
+            (data.sessionId === sessionIdRef.current || ownSessionIdsRef.current.has(data.sessionId))
+          ) {
             setIsSessionDisplaced(false);
           }
         }
@@ -1812,7 +1968,7 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
 
       return () => unsubscribe();
     }
-  }, [user, activeClass, ipAddress, stopAllStreams]);
+  }, [user?.uid, activeClass]);
 
   useEffect(() => {
     if (!activeClass) return;
