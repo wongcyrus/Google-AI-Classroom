@@ -93,7 +93,7 @@ export default function StudentMobileView({
   }, [previewClassId, isManualScheduleOverride, selectedClassId, currentActiveClassId, userClasses]);
 
   const activeClassName = useMemo(() => {
-    if (!activeClass || !userClasses) return 'Google AI Classroom';
+    if (!activeClass || !userClasses) return 'HKIIT AI Classroom';
     const found = userClasses.find(c => (typeof c === 'string' ? c : c.id) === activeClass);
     return (typeof found === 'object' ? found?.name : found) || activeClass;
   }, [activeClass, userClasses]);

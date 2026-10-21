@@ -44,3 +44,9 @@ variable "google_client_id" {
   description = "Google OAuth 2.0 Web Client ID for Google Drive integration"
   default     = ""
 }
+
+variable "custom_domains" {
+  type        = list(string)
+  description = "Optional list of custom domains to authorize in Identity Platform (set via terraform.tfvars)"
+  default     = []
+}

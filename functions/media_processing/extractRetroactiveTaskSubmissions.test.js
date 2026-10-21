@@ -388,6 +388,71 @@ describe('extractRetroactiveTaskSubmissions', () => {
       expect(summary.totalCandidates).toBe(1);
       expect(summary.processedCount).toBe(1);
     });
+
+    it('marks absent students when classData.students is stored as a Firestore Map { [uid]: email }', async () => {
+      const setSubMock = vi.fn().mockResolvedValue();
+      const mockDb = {
+        collection: (colName) => {
+          if (colName === 'classes') {
+            return {
+              doc: () => ({
+                get: vi.fn().mockResolvedValue({
+                  exists: true,
+                  data: () => ({
+                    students: {
+                      uid_absent_1: 'absent1@school.edu',
+                      uid_absent_2: { email: 'absent2@school.edu', displayName: 'Student Two' },
+                    },
+                  }),
+                }),
+                collection: () => ({
+                  doc: () => ({
+                    get: vi.fn().mockResolvedValue({
+                      exists: true,
+                      data: () => ({ title: 'Retro Map Test' }),
+                    }),
+                    collection: () => ({
+                      doc: () => ({
+                        get: vi.fn().mockResolvedValue({ exists: false }),
+                        set: setSubMock,
+                      }),
+                    }),
+                  }),
+                }),
+              }),
+            };
+          }
+          if (colName === 'videoJobs') {
+            return {
+              where: vi.fn().mockReturnThis(),
+              get: vi.fn().mockResolvedValue({ docs: [] }),
+            };
+          }
+          return {};
+        },
+      };
+
+      const summary = await executeExtractRetroactiveTaskSubmissions({
+        classId: 'c1',
+        taskId: 'task_map',
+        dbInstance: mockDb,
+        bucketInstance: {},
+      });
+
+      expect(summary.success).toBe(true);
+      expect(summary.absentCount).toBe(2);
+      expect(setSubMock).toHaveBeenCalledTimes(2);
+      expect(setSubMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: 'missing',
+          studentUid: 'uid_absent_1',
+          email: 'absent1@school.edu',
+          studentEmail: 'absent1@school.edu',
+          absent: true,
+        }),
+        { merge: true }
+      );
+    });
   });
 
   describe('extractRetroactiveTaskSubmissions onCall authorization', () => {

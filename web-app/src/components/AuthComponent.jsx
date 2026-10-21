@@ -23,6 +23,7 @@ const AuthComponent = ({ unverifiedUser }) => {
   const isMobile = isHandheldPhone();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [cooldown, setCooldown] = useState(0);
@@ -121,7 +122,16 @@ const AuthComponent = ({ unverifiedUser }) => {
     setMessage('');
 
     try {
-      const userCredential = await signInWithEmailAndPassword(auth, cleanEmail, password);
+      let userCredential;
+      try {
+        userCredential = await signInWithEmailAndPassword(auth, cleanEmail, password);
+      } catch (firstErr) {
+        if (firstErr?.code === 'auth/invalid-credential' && password.trim() && password.trim() !== password) {
+          userCredential = await signInWithEmailAndPassword(auth, cleanEmail, password.trim());
+        } else {
+          throw firstErr;
+        }
+      }
       const loggedInUser = userCredential?.user;
 
       // Ensure freshest emailVerified status from Firebase backend
@@ -492,15 +502,37 @@ const AuthComponent = ({ unverifiedUser }) => {
 
           <div className="auth-field">
             <label htmlFor="auth-password">Password</label>
-            <input
-              id="auth-password"
-              type="password"
-              placeholder="Enter your password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              disabled={isLoading}
-              required
-            />
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+              <input
+                id="auth-password"
+                type={showPassword ? 'text' : 'password'}
+                placeholder="Enter your password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                disabled={isLoading}
+                required
+                style={{ width: '100%', paddingRight: '2.5rem' }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((prev) => !prev)}
+                aria-label={showPassword ? 'Hide characters' : 'Reveal characters'}
+                title={showPassword ? 'Hide password' : 'Show password'}
+                tabIndex={-1}
+                style={{
+                  position: 'absolute',
+                  right: '0.5rem',
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: '1rem',
+                  padding: '0.25rem',
+                  lineHeight: 1,
+                }}
+              >
+                {showPassword ? '🙈' : '👁️'}
+              </button>
+            </div>
           </div>
 
           <div className="auth-buttons-stack">

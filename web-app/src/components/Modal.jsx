@@ -12,13 +12,16 @@ const Modal = ({ show, onClose, title, footer = null, hideDefaultFooter = false,
                 bottom: 0, 
                 backgroundColor: 'rgba(15, 23, 42, 0.65)', 
                 backdropFilter: 'blur(4px)',
-                zIndex: 1000, 
+                zIndex: 1300, 
                 display: 'flex', 
                 alignItems: 'center', 
                 justifyContent: 'center',
                 padding: '1.5rem'
             }} 
-            onClick={onClose}
+            onClick={(e) => {
+                e.stopPropagation();
+                if (onClose) onClose(e);
+            }}
         >
             <div 
                 className={className}
@@ -28,7 +31,7 @@ const Modal = ({ show, onClose, title, footer = null, hideDefaultFooter = false,
                     borderRadius: 'var(--radius-lg, 14px)', 
                     border: '1px solid var(--color-border, #e2e8f0)',
                     boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.05)',
-                    zIndex: 1001, 
+                    zIndex: 1301, 
                     width: '60vw', 
                     minWidth: '500px', 
                     maxWidth: '90vw', 

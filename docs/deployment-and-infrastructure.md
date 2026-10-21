@@ -363,28 +363,29 @@ The platform is designed to be fully adaptable by any university, college, or K-
 
 | Layer | Environment Variable | Default (VTC Hong Kong) | Description / Example for Another Institution |
 | :--- | :--- | :--- | :--- |
-| **Backend Functions** | `TEACHER_EMAIL_DOMAINS` | `vtc.edu.hk` | Comma-separated domains for instructors (e.g. `stanford.edu,cs.stanford.edu`) |
-| **Backend Functions** | `STUDENT_EMAIL_DOMAINS` | `stu.vtc.edu.hk` | Comma-separated domains for students (e.g. `alumni.stanford.edu`) |
-| **Frontend Web App** | `VITE_TEACHER_DOMAINS` | `vtc.edu.hk` | Controls client-side registration validation & role display |
-| **Frontend Web App** | `VITE_STUDENT_DOMAINS` | `stu.vtc.edu.hk` | Enforces Google Chrome student browser requirements & placeholder text |
+| **Frontend & Single Source `.env`** | `VITE_TEACHER_DOMAINS` | `vtc.edu.hk` | Comma-separated domains for instructors (auto-synced to `TEACHER_EMAIL_DOMAINS` in Cloud Functions) |
+| **Frontend & Single Source `.env`** | `VITE_STUDENT_DOMAINS` | `stu.vtc.edu.hk` (`stu.vtc.edu.hk,gmail.com` in dev) | Comma-separated domains for students (auto-synced to `STUDENT_EMAIL_DOMAINS` in Cloud Functions) |
+| **Frontend & Single Source `.env`** | `VITE_CUSTOM_DOMAINS` | *(Optional)* | Comma-separated custom Hosting domains (auto-synced to Identity Platform `authorizedDomains` and WebAuthn Passkeys `CUSTOM_DOMAINS`) |
 | **Frontend Web App** | `VITE_INSTITUTION_NAME` | `VTC` | Displays institutional branding in authentication error dialogues |
+| **Backend Functions (Auto-Synced)** | `TEACHER_EMAIL_DOMAINS` | `vtc.edu.hk` | Populated automatically in `functions/*/.env.<projectId>` by `switch-env.sh` and `deploy.sh` |
+| **Backend Functions (Auto-Synced)** | `STUDENT_EMAIL_DOMAINS` | `stu.vtc.edu.hk` | Populated automatically in `functions/*/.env.<projectId>` by `switch-env.sh` and `deploy.sh` |
+| **Backend Functions (Auto-Synced)** | `CUSTOM_DOMAINS` | *(Optional)* | Populated automatically in `functions/*/.env.<projectId>` for WebAuthn RP ID resolution |
 
 ### How It Works:
-1. **Dynamic Precedence Engine (`deriveUserRole`)**:
+1. **Single `.env` Source of Truth (`switch-env.sh` & `deploy.sh`)**:
+   - Configure `VITE_TEACHER_DOMAINS`, `VITE_STUDENT_DOMAINS`, and optional `VITE_CUSTOM_DOMAINS` in your git-ignored `web-app/.env.dev` or `web-app/.env.prod`.
+   - Running `./switch-env.sh <dev|prod>` or `./deploy.sh <dev|prod>` automatically writes `STUDENT_EMAIL_DOMAINS`, `TEACHER_EMAIL_DOMAINS`, and `CUSTOM_DOMAINS` into `functions/*/.env.<projectId>` and patches Google Cloud Identity Platform's `authorizedDomains` list.
+2. **Dynamic Precedence Engine (`deriveUserRole`)**:
    - In both [`functions/config.js`](../functions/config.js) and [`web-app/src/utils/domainConfig.js`](../web-app/src/utils/domainConfig.js), student domains are evaluated prior to teacher domains. This guarantees that student subdomains (such as `stu.vtc.edu.hk` within `vtc.edu.hk` or `students.uni.edu` within `uni.edu`) are accurately classified as `student`.
-2. **Domain-Agnostic Zero-Trust Rules**:
+3. **Domain-Agnostic Zero-Trust Rules**:
    - [`firestore.rules`](../firestore.rules) and [`storage.rules`](../storage.rules) rely strictly on Firebase Custom Claims (`request.auth.token.role == 'teacher'`), eliminating all hardcoded email regexes and ensuring zero domain lock-in.
-3. **Turnkey Setup for Other Schools**:
-   To deploy the system for another school (e.g. `school.edu`):
+4. **Turnkey Setup for Other Schools or Custom Domains**:
    ```bash
-   # In web-app/.env
+   # In web-app/.env.prod (or web-app/.env.dev)
    VITE_TEACHER_DOMAINS="school.edu"
    VITE_STUDENT_DOMAINS="students.school.edu"
+   VITE_CUSTOM_DOMAINS="classroom.school.edu,www.classroom.school.edu"
    VITE_INSTITUTION_NAME="My School"
-
-   # In Google Cloud Functions environment
-   TEACHER_EMAIL_DOMAINS="school.edu"
-   STUDENT_EMAIL_DOMAINS="students.school.edu"
    ```
 
 ---

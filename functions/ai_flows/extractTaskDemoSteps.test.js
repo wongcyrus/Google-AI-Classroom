@@ -263,5 +263,51 @@ describe('extractTaskDemoSteps', () => {
     expect(res.steps).toHaveLength(2);
     expect(res.title).toBe('Rubric-Guided Lab');
   });
+
+  it('synthesizes rubric steps from promptText and promptGuidelines even without demoVideoPath', async () => {
+    mockGenerateWithResilience.mockResolvedValueOnce({
+      response: {
+        text: JSON.stringify({
+          title: 'Prompt-Only Rubric Task',
+          description: 'Synthesized from teacher rubric prompt',
+          suggestedMaxScore: 50,
+          steps: [
+            {
+              stepNumber: 1,
+              title: 'Create Virtual Env',
+              criteria: 'Run python -m venv .venv',
+              expectedEvidence: '.venv directory visible',
+              gradingCriteria: 'Full 25 pts if activated; 10 pts if created only',
+              weight: 25,
+            },
+            {
+              stepNumber: 2,
+              title: 'Install FastAPI',
+              description: 'pip install fastapi uvicorn',
+              expectedEvidence: 'Successfully installed fastapi',
+              gradingCriteria: 'Full 25 pts if both installed',
+              points: 25,
+            },
+          ],
+        }),
+        usage: { inputTokens: 90, outputTokens: 50 },
+      },
+      modelUsed: 'gemini-3.8-flash',
+    });
+
+    const res = await handleExtractTaskDemoSteps({
+      classId: 'c1',
+      promptText: 'Design a 2-step FastAPI setup rubric worth 50 points.',
+      promptGuidelines: 'Include partial credit criteria.',
+      maxScore: 50,
+    });
+
+    expect(res.title).toBe('Prompt-Only Rubric Task');
+    expect(res.suggestedMaxScore).toBe(50);
+    expect(res.steps).toHaveLength(2);
+    expect(res.steps[0].points).toBe(25);
+    expect(res.steps[0].description).toBe('Run python -m venv .venv');
+    expect(res.steps[0].gradingCriteria).toContain('Full 25 pts');
+  });
 });
 

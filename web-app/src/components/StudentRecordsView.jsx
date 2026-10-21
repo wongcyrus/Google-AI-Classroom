@@ -6,6 +6,7 @@ import { ref, getDownloadURL } from 'firebase/storage';
 import VideoPlayerModal from './VideoPlayerModal';
 import StudentTaskWorkspaceModal from './tasks/StudentTaskWorkspaceModal';
 import StudentTaskFeedbackView from './tasks/StudentTaskFeedbackView';
+import { isFeedbackReleased } from '../utils/taskConstraintUtils';
 import { computeLessonDuration, getLessonId } from '../utils/attendanceUtils';
 import { generateLessons } from '../hooks/useClassSchedule';
 import {
@@ -172,26 +173,60 @@ const StudentRecordsView = ({ user }) => {
 
     if (typeof onSnapshot !== 'function') return;
 
+    let subUnsubs = [];
+    const cleanupSubUnsubs = () => {
+      subUnsubs.forEach((fn) => {
+        if (typeof fn === 'function') fn();
+      });
+      subUnsubs = [];
+    };
+
     const tasksRef = collection(db, 'classes', selectedClassId, 'tasks');
     const unsub = onSnapshot(tasksRef, async (snap) => {
-      const tasksList = (snap?.docs || []).map((d) => ({ id: d.id, ...d.data() }));
+      cleanupSubUnsubs();
+      const tasksList = (snap?.docs || [])
+        .map((d) => ({ id: d.id, ...d.data() }))
+        .filter((t) => !t.status || t.status === 'published');
       setPracticalTasks(tasksList);
 
       const subMap = {};
       for (const t of tasksList) {
+        const subRef = doc(db, 'classes', selectedClassId, 'tasks', t.id, 'submissions', user.uid);
         try {
-          const subDoc = await getDoc(doc(db, 'classes', selectedClassId, 'tasks', t.id, 'submissions', user.uid));
+          const subDoc = await getDoc(subRef);
           if (subDoc && subDoc.exists()) {
             subMap[t.id] = { id: subDoc.id, ...subDoc.data() };
           }
         } catch (e) {
           console.debug('No submission doc for task:', t.id);
         }
+
+        try {
+          const unsubSub = onSnapshot(
+            subRef,
+            (subSnap) => {
+              if (subSnap && typeof subSnap.exists === 'function' && subSnap.exists()) {
+                const updatedSub = { id: subSnap.id, ...subSnap.data() };
+                setTaskSubmissionsMap((prev) => ({ ...prev, [t.id]: updatedSub }));
+                setFeedbackSubmission((prev) =>
+                  prev && prev.id === updatedSub.id ? updatedSub : prev
+                );
+              }
+            },
+            () => {}
+          );
+          if (typeof unsubSub === 'function') {
+            subUnsubs.push(unsubSub);
+          }
+        } catch {
+          // Ignore if mock onSnapshot doesn't support doc ref
+        }
       }
-      setTaskSubmissionsMap(subMap);
+      setTaskSubmissionsMap((prev) => ({ ...prev, ...subMap }));
     });
 
     return () => {
+      cleanupSubUnsubs();
       if (typeof unsub === 'function') unsub();
     };
   }, [selectedClassId, user?.uid]);
@@ -1195,13 +1230,28 @@ const StudentRecordsView = ({ user }) => {
     const payload = {
       studentUid: user.uid,
       email: user.email?.toLowerCase(),
+      studentEmail: user.email?.toLowerCase(),
+      displayName: user.displayName || user.email?.split('@')[0] || 'Student',
       status: 'in_progress',
-      attemptsCount: attempts.length,
+      attemptsCount: startedAttempt.attemptNumber || attempts.length,
       attempts,
+      activeAttempt: startedAttempt,
       latestAttempt: startedAttempt,
       updatedAt: serverTimestamp(),
     };
     await setDoc(subRef, payload, { merge: true });
+
+    try {
+      const attRef = doc(subRef, 'attempts', String(startedAttempt.attemptNumber || attempts.length));
+      await setDoc(attRef, {
+        ...startedAttempt,
+        studentUid: user.uid,
+        updatedAt: serverTimestamp(),
+      }, { merge: true });
+    } catch (e) {
+      console.debug('Could not write attempt subdoc:', e);
+    }
+
     setTaskSubmissionsMap((prev) => ({ ...prev, [taskId]: { ...existing, ...payload } }));
   };
 
@@ -1209,9 +1259,16 @@ const StudentRecordsView = ({ user }) => {
     if (!selectedClassId || !user?.uid) return;
     const subRef = doc(db, 'classes', selectedClassId, 'tasks', taskId, 'submissions', user.uid);
     const existing = taskSubmissionsMap[taskId] || {};
+    const finishedAt = new Date();
+    const startedAtDate = finishedAttempt.startedAt?.toDate
+      ? finishedAttempt.startedAt.toDate()
+      : new Date(finishedAttempt.startedAt || finishedAt);
+    const durationSeconds = Math.max(1, Math.round((finishedAt.getTime() - startedAtDate.getTime()) / 1000));
+
     const attemptWithEnd = {
       ...finishedAttempt,
-      finishedAt: new Date(),
+      finishedAt,
+      durationSeconds,
       status: 'compiling',
     };
 
@@ -1221,11 +1278,26 @@ const StudentRecordsView = ({ user }) => {
 
     const payload = {
       status: 'compiling',
+      attemptsCount: attemptWithEnd.attemptNumber || attempts.length || 1,
       attempts,
+      activeAttempt: null,
       latestAttempt: attemptWithEnd,
+      lastSubmittedAt: finishedAt,
+      durationSeconds,
       updatedAt: serverTimestamp(),
     };
     await setDoc(subRef, payload, { merge: true });
+
+    try {
+      const attRef = doc(subRef, 'attempts', String(attemptWithEnd.attemptNumber || 1));
+      await setDoc(attRef, {
+        ...attemptWithEnd,
+        studentUid: user.uid,
+        updatedAt: serverTimestamp(),
+      }, { merge: true });
+    } catch (e) {
+      console.debug('Could not write finished attempt subdoc:', e);
+    }
 
     // Submit videoJob for task slice compilation
     const jobId = `task_${taskId}_${user.uid}_att${attemptWithEnd.attemptNumber}_${Date.now()}`;
@@ -2413,6 +2485,19 @@ const StudentRecordsView = ({ user }) => {
                 {practicalTasks.map((t) => {
                   const sub = taskSubmissionsMap[t.id];
                   const isEvaluated = sub?.status === 'evaluated';
+                  const canViewFeedback = isEvaluated && isFeedbackReleased(t, sub);
+                  const isProcessing =
+                    sub?.status === 'awaiting_class_video' ||
+                    sub?.status === 'compiling' ||
+                    sub?.status === 'compiling_complete' ||
+                    sub?.status === 'evaluating' ||
+                    sub?.status === 'submitted';
+                  const isFailed =
+                    sub?.status === 'compilation_failed' || sub?.status === 'evaluation_failed';
+                  const maxAttempts = t.constraints?.attempts?.maxAttempts || 1;
+                  const canRetry =
+                    t.scheduleMode !== 'retroactive' &&
+                    (sub?.attemptsCount || 0) < maxAttempts;
                   const effectiveScore = typeof sub?.teacherOverride?.manualScore === 'number'
                     ? sub.teacherOverride.manualScore
                     : (typeof sub?.effectiveScore === 'number' ? sub.effectiveScore : sub?.evaluation?.finalScore);
@@ -2461,33 +2546,55 @@ const StudentRecordsView = ({ user }) => {
                       <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: '0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <div>
                           {isEvaluated ? (
-                            <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#16a34a' }}>
-                              Score: {effectiveScore} / {t.maxScore || 100}
-                            </span>
-                          ) : sub?.status === 'compiling' || sub?.status === 'submitted' ? (
+                            canViewFeedback ? (
+                              <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#16a34a' }}>
+                                Score: {effectiveScore} / {t.maxScore || 100}
+                              </span>
+                            ) : (
+                              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#6366f1' }}>
+                                🔒 Graded (Pending Release)
+                              </span>
+                            )
+                          ) : isProcessing ? (
                             <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#d97706' }}>
                               ⏳ Evaluating...
                             </span>
+                          ) : isFailed ? (
+                            <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#dc2626' }}>
+                              ⚠️ Processing Failed
+                            </span>
                           ) : (
                             <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
-                              Attempts: {sub?.attemptsCount || 0} / {t.constraints?.attempts?.maxAttempts || 1}
+                              Attempts: {sub?.attemptsCount || 0} / {maxAttempts}
                             </span>
                           )}
                         </div>
 
                         <div style={{ display: 'flex', gap: '0.5rem' }}>
                           {isEvaluated ? (
-                            <button
-                              type="button"
-                              className="scope-toggle-btn"
-                              style={{ padding: '4px 10px', fontSize: '0.75rem' }}
-                              onClick={() => {
-                                setViewingFeedbackTask(t);
-                                setFeedbackSubmission(sub);
-                              }}
-                            >
-                              📊 View Feedback
-                            </button>
+                            <>
+                              <button
+                                type="button"
+                                className="scope-toggle-btn"
+                                style={{ padding: '4px 10px', fontSize: '0.75rem' }}
+                                onClick={() => {
+                                  setViewingFeedbackTask(t);
+                                  setFeedbackSubmission(sub);
+                                }}
+                              >
+                                📊 View Feedback
+                              </button>
+                              {canRetry && (
+                                <button
+                                  type="button"
+                                  className="scope-toggle-btn"
+                                  style={{ padding: '4px 10px', fontSize: '0.75rem', background: '#2563eb', color: '#fff' }}
+                                  onClick={() => setActiveWorkspaceTask(t)}
+                                >
+                                  🔄 Retry
+                                </button>
+                              )}
+                            </>
                           ) : (
                             <button
                               type="button"
@@ -2915,6 +3022,9 @@ const StudentRecordsView = ({ user }) => {
           onClose={() => setActiveWorkspaceTask(null)}
           task={activeWorkspaceTask}
           submission={taskSubmissionsMap[activeWorkspaceTask.id] || null}
+          classId={selectedClassId}
+          user={user}
+          captureInterval={activeClassObj?.sessionFrameRate || activeClassObj?.frameRate || 15}
           onStartAttempt={handleStartTaskAttempt}
           onFinishAttempt={handleFinishTaskAttempt}
         />

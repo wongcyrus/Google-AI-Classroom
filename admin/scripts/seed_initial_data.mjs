@@ -23,12 +23,16 @@ const db = getFirestore(app);
 
 const defaultPasswordEnv = process.env.DEMO_PASSWORD || 'IT114115';
 
-async function getOrCreateUser(email, role, displayName, defaultPassword = defaultPasswordEnv) {
+async function getOrCreateUser(email, role, displayName, defaultPassword = defaultPasswordEnv, forcePasswordUpdate = false) {
   try {
     const existing = await auth.getUserByEmail(email);
     console.log(`ℹ️ User ${email} exists (UID: ${existing.uid}). Updating claims...`);
     await auth.setCustomUserClaims(existing.uid, { role });
-    await auth.updateUser(existing.uid, { emailVerified: true, displayName });
+    const updatePayload = { emailVerified: true, displayName };
+    if (forcePasswordUpdate && defaultPassword) {
+      updatePayload.password = defaultPassword;
+    }
+    await auth.updateUser(existing.uid, updatePayload);
     return existing;
   } catch (err) {
     if (err.code === 'auth/user-not-found') {
@@ -154,6 +158,7 @@ async function main() {
   const demoTeachers = [
     { email: 'teacher1@vtc.edu.hk', displayName: 'Teacher 1 (Lead Instructor)' },
     { email: 'teacher2@vtc.edu.hk', displayName: 'Teacher 2 (Co-Instructor)' },
+    ...(isDev ? [{ email: 'teacher3@vtc.edu.hk', displayName: 'Teacher 3 (Co-Instructor)' }] : []),
     { email: 'cywong@vtc.edu.hk', displayName: 'CY Wong' },
     { email: 'kcheung@vtc.edu.hk', displayName: 'K Cheung' },
     { email: 'rontam@vtc.edu.hk', displayName: 'Ron Tam' },
@@ -207,7 +212,13 @@ async function main() {
 
   const teacherMap = {};
   for (const t of demoTeachers) {
-    const tUser = await getOrCreateUser(t.email, 'teacher', t.displayName || t.email.split('@')[0]);
+    const tUser = await getOrCreateUser(
+      t.email,
+      'teacher',
+      t.displayName || t.email.split('@')[0],
+      t.password || defaultPasswordEnv,
+      Boolean(process.env.DEMO_PASSWORD)
+    );
     teacherMap[tUser.uid] = t.email;
   }
 

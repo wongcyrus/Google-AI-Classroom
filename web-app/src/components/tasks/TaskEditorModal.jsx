@@ -77,22 +77,35 @@ const TaskEditorModal = ({
   const [requiredChannel, setRequiredChannel] = useState('screen_only');
   const [feedbackReleasePolicy, setFeedbackReleasePolicy] = useState('immediate');
 
+  const scheduleLessons = Array.isArray(classSchedule)
+    ? classSchedule
+    : Array.isArray(classSchedule?.weeklySlots)
+    ? classSchedule.weeklySlots.map((slot, idx) => ({
+        id: slot.id || `slot_${idx}`,
+        title: slot.title || `${slot.day || ''} ${slot.startTime || ''}-${slot.endTime || ''}`.trim(),
+        day: slot.day,
+        date: slot.date,
+      }))
+    : [];
+
   useEffect(() => {
+    const toLocalDateTimeString = (ts) => {
+      if (!ts) return '';
+      const d = ts.toDate ? ts.toDate() : new Date(ts);
+      if (isNaN(d.getTime())) return '';
+      const localDate = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
+      return localDate.toISOString().slice(0, 16);
+    };
+
     if (initialTask) {
       setTitle(initialTask.title || '');
       setDescription(initialTask.description || '');
       setMaxScore(initialTask.maxScore ?? 100);
       setScheduleMode(initialTask.scheduleMode || 'homework');
       setLessonId(initialTask.lessonId || '');
-      
-      const toIsoDateString = (ts) => {
-        if (!ts) return '';
-        const d = ts.toDate ? ts.toDate() : new Date(ts);
-        return isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 16);
-      };
 
-      setAvailableFrom(toIsoDateString(initialTask.constraints?.timing?.availableFrom));
-      setDeadline(toIsoDateString(initialTask.constraints?.timing?.deadline));
+      setAvailableFrom(toLocalDateTimeString(initialTask.constraints?.timing?.availableFrom));
+      setDeadline(toLocalDateTimeString(initialTask.constraints?.timing?.deadline));
 
       const vPath = initialTask.demoVideoPath || initialTask.youtubeUrl || '';
       setDemoVideoPath(vPath);
@@ -107,9 +120,15 @@ const TaskEditorModal = ({
         setVideoSourceMode('library');
       }
       
-      if (Array.isArray(initialTask.rubricSteps) && initialTask.rubricSteps.length > 0) {
+      if (Array.isArray(initialTask.rubricSteps)) {
         setRubricSteps(initialTask.rubricSteps);
+      } else {
+        setRubricSteps([]);
       }
+
+      setSelectedPromptId(initialTask.selectedPromptId || '');
+      setSelectedPromptText(initialTask.selectedPromptText || '');
+      setPromptGuidelines(initialTask.promptGuidelines || '');
 
       const c = initialTask.constraints || {};
       const t = c.timing || {};
@@ -125,7 +144,7 @@ const TaskEditorModal = ({
       setLatePolicy(t.latePolicy || 'allow_with_flag');
       setGracePeriodMinutes(t.gracePeriodMinutes ?? 15);
       setRequiredChannel(p.requiredChannel || 'screen_only');
-      setFeedbackReleasePolicy(f.policy || 'immediate');
+      setFeedbackReleasePolicy(a.feedbackRelease || f.policy || 'immediate');
 
       if (initialTask.retroactiveConfig) {
         const rc = initialTask.retroactiveConfig;
@@ -134,8 +153,8 @@ const TaskEditorModal = ({
         setRetroactiveWindowType(rc.windowType || 'relative_offset');
         setRetroactiveStartMinute(rc.startMinute ?? 0);
         setRetroactiveDurationMinutes(rc.durationMinutes ?? 30);
-        setRetroactiveStartTime(toIsoDateString(rc.startTime));
-        setRetroactiveEndTime(toIsoDateString(rc.endTime));
+        setRetroactiveStartTime(toLocalDateTimeString(rc.startTime));
+        setRetroactiveEndTime(toLocalDateTimeString(rc.endTime));
         setAutoExtractOnSave(false);
       } else {
         const todayStr = new Date().toISOString().slice(0, 10);
@@ -148,12 +167,28 @@ const TaskEditorModal = ({
         setRetroactiveEndTime('');
         setAutoExtractOnSave(true);
       }
+      setErrorMessage(null);
+      setExtractionSuccess(null);
     } else {
+      // Reset fields when creating a new task
+      setActiveTab('basic');
+      setTitle('');
+      setDescription('');
+      setMaxScore(100);
+      setScheduleMode('homework');
+      setLessonId('');
+      setRubricSteps([]);
+      setSelectedPromptId('');
+      setSelectedPromptText('');
+      setPromptGuidelines('');
+      setErrorMessage(null);
+      setExtractionSuccess(null);
+
       // Default dates: available now, deadline in 7 days
       const now = new Date();
       const inAWeek = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-      setAvailableFrom(now.toISOString().slice(0, 16));
-      setDeadline(inAWeek.toISOString().slice(0, 16));
+      setAvailableFrom(toLocalDateTimeString(now));
+      setDeadline(toLocalDateTimeString(inAWeek));
       setDemoVideoPath('');
       setYoutubeInput('');
       setYoutubeVideoId('');
@@ -271,9 +306,30 @@ const TaskEditorModal = ({
         title: `Milestone ${nextNum}`,
         description: '',
         expectedEvidence: '',
+        gradingCriteria: '',
         points: 10,
       },
     ]);
+  };
+
+  const handleDistributePoints = () => {
+    if (rubricSteps.length === 0) return;
+    const targetTotal = Number(maxScore) || 100;
+    const currentTotal = rubricSteps.reduce((sum, s) => sum + (Number(s.points) || 0), 0);
+    let remaining = targetTotal;
+    const balanced = rubricSteps.map((step, idx) => {
+      if (idx === rubricSteps.length - 1) {
+        return { ...step, points: Math.max(1, remaining) };
+      }
+      const share =
+        currentTotal > 0
+          ? Math.max(1, Math.round(((Number(step.points) || 1) / currentTotal) * targetTotal))
+          : Math.max(1, Math.floor(targetTotal / rubricSteps.length));
+      const allocated = Math.min(share, Math.max(1, remaining - (rubricSteps.length - 1 - idx)));
+      remaining -= allocated;
+      return { ...step, points: allocated };
+    });
+    setRubricSteps(balanced);
   };
 
   const handleRemoveStep = (index) => {
@@ -302,7 +358,7 @@ const TaskEditorModal = ({
   };
 
   const handleExtractRubricWithGemini = async () => {
-    if (!demoVideoPath) {
+    if (!demoVideoPath && !selectedPromptText.trim() && !promptGuidelines.trim()) {
       setErrorMessage('Please select or specify a reference demo video first.');
       return;
     }
@@ -316,8 +372,9 @@ const TaskEditorModal = ({
       const res = await extractFn({
         classId,
         demoVideoPath,
-        promptGuidelines,
+        promptGuidelines: promptGuidelines || description,
         promptText: selectedPromptText,
+        maxScore: Number(maxScore) || 100,
       });
 
       const data = res.data;
@@ -383,6 +440,9 @@ const TaskEditorModal = ({
               ? trimmedDemoPath
               : `https://www.youtube.com/watch?v=${derivedYtId}`)
           : null,
+        selectedPromptId: selectedPromptId || null,
+        selectedPromptText: selectedPromptText || null,
+        promptGuidelines: promptGuidelines.trim() || null,
         rubricSteps,
         constraints: {
           timing: {
@@ -397,6 +457,7 @@ const TaskEditorModal = ({
             maxAttempts: Number(maxAttempts),
             scoringStrategy,
             retryCooldownMinutes: Number(retryCooldownMinutes) || 0,
+            feedbackRelease: feedbackReleasePolicy,
           },
           proctoring: {
             requiredChannel,
@@ -574,7 +635,7 @@ const TaskEditorModal = ({
                   </div>
                 </div>
 
-                {scheduleMode === 'in_class' && classSchedule && classSchedule.length > 0 && (
+                {scheduleMode === 'in_class' && scheduleLessons.length > 0 && (
                   <div>
                     <label htmlFor="task-linked-lesson" className="block text-sm font-semibold text-gray-800 mb-1">
                       Linked Timetable Lesson
@@ -586,8 +647,8 @@ const TaskEditorModal = ({
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 text-sm"
                     >
                       <option value="">-- Select Linked Lesson --</option>
-                      {classSchedule.map((lesson) => (
-                        <option key={lesson.id} value={lesson.id}>
+                      {scheduleLessons.map((lesson) => (
+                        <option key={lesson.id || lesson.lessonId} value={lesson.id || lesson.lessonId}>
                           {lesson.title || `Lesson on ${lesson.date || lesson.day}`}
                         </option>
                       ))}
@@ -618,7 +679,7 @@ const TaskEditorModal = ({
                         />
                       </div>
 
-                      {classSchedule && classSchedule.length > 0 && (
+                      {scheduleLessons.length > 0 && (
                         <div>
                           <label className="block text-xs font-semibold text-gray-800 mb-1">
                             Link to Timetable Lesson (Optional)
@@ -629,8 +690,8 @@ const TaskEditorModal = ({
                             className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-white text-gray-900 text-sm focus:ring-2 focus:ring-amber-500"
                           >
                             <option value="">-- Match All Sessions on Date --</option>
-                            {classSchedule.map((lesson) => (
-                              <option key={lesson.id} value={lesson.id}>
+                            {scheduleLessons.map((lesson) => (
+                              <option key={lesson.id || lesson.lessonId} value={lesson.id || lesson.lessonId}>
                                 {lesson.title || `Lesson on ${lesson.date || lesson.day}`}
                               </option>
                             ))}
@@ -1076,7 +1137,7 @@ const TaskEditorModal = ({
                   <button
                     type="button"
                     onClick={handleExtractRubricWithGemini}
-                    disabled={isExtracting || !demoVideoPath}
+                    disabled={isExtracting || (!demoVideoPath && !selectedPromptText.trim() && !promptGuidelines.trim())}
                     className="w-full py-3 px-4 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-bold rounded-xl shadow-md flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {isExtracting ? (
@@ -1091,9 +1152,9 @@ const TaskEditorModal = ({
                       </>
                     )}
                   </button>
-                  {!demoVideoPath && (
+                  {!demoVideoPath && !selectedPromptText.trim() && !promptGuidelines.trim() && (
                     <p className="text-center text-xs text-gray-500 mt-2">
-                      ⚠️ Specify or select a reference video above to enable AI milestone extraction.
+                      ⚠️ Specify a reference video or select/enter AI rubric prompt guidelines above to enable AI milestone synthesis.
                     </p>
                   )}
                 </div>
@@ -1126,15 +1187,26 @@ const TaskEditorModal = ({
             {/* TAB 3: RUBRIC STEPS */}
             {activeTab === 'rubric' && (
               <div className="space-y-4">
-                <div className="flex justify-between items-center bg-gray-50 p-3 rounded-xl border border-gray-200">
-                  <div>
+                <div className="flex flex-wrap justify-between items-center gap-2 bg-gray-50 p-3 rounded-xl border border-gray-200">
+                  <div className="flex flex-wrap items-center gap-2">
                     <span className="text-sm font-bold text-gray-800">
                       Total Rubric Points: {totalRubricPoints} / {maxScore}
                     </span>
-                    {totalRubricPoints !== maxScore && (
-                      <span className="ml-2 text-xs font-semibold text-amber-600">
-                        (⚠️ Suggested points do not sum to {maxScore})
-                      </span>
+                    {totalRubricPoints !== Number(maxScore) && (
+                      <>
+                        <span className="text-xs font-semibold text-amber-600">
+                          (⚠️ Suggested points do not sum to {maxScore})
+                        </span>
+                        {rubricSteps.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={handleDistributePoints}
+                            className="px-2.5 py-1 bg-amber-100 hover:bg-amber-200 text-amber-900 border border-amber-300 text-xs font-bold rounded-lg transition-colors"
+                          >
+                            ⚖️ Auto-Balance to {maxScore} pts
+                          </button>
+                        )}
+                      </>
                     )}
                   </div>
                   <button
@@ -1227,17 +1299,31 @@ const TaskEditorModal = ({
                           />
                         </div>
 
-                        <div>
-                          <label className="block text-[11px] font-semibold text-gray-600 mb-0.5">
-                            🔍 Expected Visual Proof for AI:
-                          </label>
-                          <input
-                            type="text"
-                            value={step.expectedEvidence}
-                            onChange={(e) => handleStepChange(idx, 'expectedEvidence', e.target.value)}
-                            placeholder="e.g., Terminal displaying 'Server listening on port 5000'..."
-                            className="w-full text-xs px-2.5 py-1 border border-gray-300 rounded bg-white text-gray-800 font-mono"
-                          />
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                          <div>
+                            <label className="block text-[11px] font-semibold text-gray-600 mb-0.5">
+                              🔍 Expected Visual Proof for AI:
+                            </label>
+                            <input
+                              type="text"
+                              value={step.expectedEvidence || ''}
+                              onChange={(e) => handleStepChange(idx, 'expectedEvidence', e.target.value)}
+                              placeholder="e.g., Terminal displaying 'Server listening on port 5000'..."
+                              className="w-full text-xs px-2.5 py-1 border border-gray-300 rounded bg-white text-gray-800 font-mono"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[11px] font-semibold text-gray-600 mb-0.5">
+                              ⚖️ Marking / Partial Credit Criteria:
+                            </label>
+                            <input
+                              type="text"
+                              value={step.gradingCriteria || ''}
+                              onChange={(e) => handleStepChange(idx, 'gradingCriteria', e.target.value)}
+                              placeholder="e.g., Full marks if server starts; 50% if config written but port error..."
+                              className="w-full text-xs px-2.5 py-1 border border-gray-300 rounded bg-white text-gray-800"
+                            />
+                          </div>
                         </div>
                       </div>
                     ))}

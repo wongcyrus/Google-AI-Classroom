@@ -41,29 +41,35 @@ export const canStartTask = (task, submission, userNow = new Date()) => {
   }
 
   // 2. Active in-progress attempt check (allow resuming)
-  if (submission && submission.status === 'in_progress' && submission.activeAttempt) {
+  const activeAttempt = submission?.activeAttempt || (submission?.status === 'in_progress' ? submission?.latestAttempt : null);
+  if (submission && submission.status === 'in_progress' && activeAttempt) {
     return { 
       allowed: true, 
       isResume: true,
-      activeAttempt: submission.activeAttempt,
+      activeAttempt,
       code: 'RESUME_IN_PROGRESS' 
     };
   }
 
   // 3. Deadline and Late Policy Check
+  let isLate = false;
   if (timing.deadline) {
     const deadlineTime = timing.deadline.toDate ? timing.deadline.toDate().getTime() : new Date(timing.deadline).getTime();
-    const graceMs = (timing.gracePeriodMinutes || 0) * 60 * 1000;
+    const policy = timing.latePolicy || 'strictly_closed';
+    const graceMs = policy === 'grace_period' ? (timing.gracePeriodMinutes || 0) * 60 * 1000 : 0;
     const effectiveCutoff = deadlineTime + graceMs;
 
     if (nowTime > effectiveCutoff) {
-      if (timing.latePolicy === 'strictly_closed' || !timing.latePolicy) {
+      if (policy === 'strictly_closed' || policy === 'grace_period') {
         return { 
           allowed: false, 
           reason: `The submission deadline (${new Date(deadlineTime).toLocaleString()}) has passed. Late submissions are not accepted.`, 
-          code: 'DEADLINE_PASSED' 
+          code: policy === 'grace_period' ? 'GRACE_PERIOD_EXPIRED' : 'DEADLINE_PASSED' 
         };
       }
+      isLate = true;
+    } else if (nowTime > deadlineTime) {
+      isLate = true;
     }
   }
 
@@ -81,8 +87,9 @@ export const canStartTask = (task, submission, userNow = new Date()) => {
 
   // 5. Cooldown Period Check between attempts
   const cooldownMinutes = attempts.retryCooldownMinutes || 0;
-  if (cooldownMinutes > 0 && submission?.lastSubmittedAt) {
-    const lastSubTime = submission.lastSubmittedAt.toDate ? submission.lastSubmittedAt.toDate().getTime() : new Date(submission.lastSubmittedAt).getTime();
+  const lastSubmittedRaw = submission?.lastSubmittedAt || submission?.latestAttempt?.finishedAt;
+  if (cooldownMinutes > 0 && lastSubmittedRaw) {
+    const lastSubTime = lastSubmittedRaw.toDate ? lastSubmittedRaw.toDate().getTime() : new Date(lastSubmittedRaw).getTime();
     const cooldownMs = cooldownMinutes * 60 * 1000;
     const nextEligibleTime = lastSubTime + cooldownMs;
 
@@ -97,7 +104,41 @@ export const canStartTask = (task, submission, userNow = new Date()) => {
     }
   }
 
-  return { allowed: true, code: 'CAN_START' };
+  return { allowed: true, isLate, code: 'CAN_START' };
+};
+
+/**
+ * Determines whether evaluated grade and feedback should be visible to the student
+ * based on task.constraints.attempts.feedbackRelease.
+ *
+ * @param {Object} task
+ * @param {Object} submission
+ * @param {Date} [userNow=new Date()]
+ * @returns {boolean}
+ */
+export const isFeedbackReleased = (task, submission, userNow = new Date()) => {
+  if (!task || !submission) return false;
+  if (submission.feedbackReleased === true || submission.teacherOverride?.manualScore !== undefined) {
+    return true;
+  }
+  const policy =
+    task.constraints?.attempts?.feedbackRelease ||
+    task.constraints?.feedbackRelease?.policy ||
+    'immediate';
+  if (policy === 'immediate') {
+    return true;
+  }
+  if (policy === 'after_deadline') {
+    const deadline = task.constraints?.timing?.deadline;
+    if (!deadline) return true;
+    const deadlineMs = deadline.toDate ? deadline.toDate().getTime() : new Date(deadline).getTime();
+    const nowMs = userNow instanceof Date ? userNow.getTime() : new Date(userNow).getTime();
+    return nowMs >= deadlineMs;
+  }
+  if (policy === 'manual_by_teacher') {
+    return false;
+  }
+  return true;
 };
 
 /**

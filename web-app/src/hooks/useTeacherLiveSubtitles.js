@@ -19,7 +19,7 @@ import { isTeacherEmail } from '../utils/domainConfig';
 import { acquireInputDeviceStream } from '../utils/mediaDeviceCapture';
 import { isGemmaModelCached } from '../utils/gemmaLiteRTLoader';
 
-const DEFAULT_TARGET_LANGS = ['zh-Hans', 'en'];
+const DEFAULT_TARGET_LANGS = ['zh-Hant', 'zh-Hans', 'en'];
 const MAX_CONTINUOUS_SPEECH_SAMPLES = 16000 * 15; // Auto-flush after 15s of non-stop speech
 const DUPLICATE_SUBTITLE_WINDOW_MS = 2000;
 
@@ -78,17 +78,30 @@ export function useTeacherLiveSubtitles({
   });
 
   const [targetLanguages, setTargetLanguagesState] = useState(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const saved = localStorage.getItem('teacher_subtitle_target_langs');
-        if (saved) return JSON.parse(saved);
-      } catch {}
-    }
     if (Array.isArray(initialTargetLanguages) && initialTargetLanguages.length > 0) {
       return initialTargetLanguages;
     }
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('teacher_subtitle_target_langs_v2');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      } catch {}
+    }
     return DEFAULT_TARGET_LANGS;
   });
+
+  const initialTargetLangsKey = Array.isArray(initialTargetLanguages) && initialTargetLanguages.length > 0
+    ? initialTargetLanguages.join(',')
+    : '';
+
+  useEffect(() => {
+    if (initialTargetLangsKey) {
+      setTargetLanguagesState(initialTargetLangsKey.split(',').filter(Boolean));
+    }
+  }, [classId, initialTargetLangsKey]);
 
   const [status, setStatus] = useState('idle'); // 'idle' | 'loading' | 'listening' | 'translating' | 'error'
   const [latestTranscript, setLatestTranscript] = useState('');
@@ -152,10 +165,16 @@ export function useTeacherLiveSubtitles({
   }, []);
 
   const setTargetLanguages = useCallback((langs) => {
-    setTargetLanguagesState(langs);
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('teacher_subtitle_target_langs', JSON.stringify(langs));
-    }
+    setTargetLanguagesState((prev) => {
+      const next = typeof langs === 'function' ? langs(prev) : langs;
+      if (typeof window !== 'undefined' && Array.isArray(next)) {
+        try {
+          localStorage.setItem('teacher_subtitle_target_langs', JSON.stringify(next));
+          localStorage.setItem('teacher_subtitle_target_langs_v2', JSON.stringify(next));
+        } catch {}
+      }
+      return next;
+    });
   }, []);
 
   // Initialize LiteRT Whisper Web Worker for on-device STT

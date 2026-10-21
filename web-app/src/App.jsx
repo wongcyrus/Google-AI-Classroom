@@ -351,7 +351,7 @@ const MainHeader = ({ onLogout, user, role }) => {
           <Link to={role === 'teacher' ? '/teacher' : '/student'} className="brand-link">
             <img src={hkiitLogo} alt="HKIIT Logo" className="header-logo-img" />
             <div className="header-title-wrapper">
-              <span className="header-title">Google AI Classroom</span>
+              <span className="header-title">HKIIT AI Classroom</span>
               <span className="header-subtitle">Intelligent Teaching Assistant</span>
             </div>
           </Link>

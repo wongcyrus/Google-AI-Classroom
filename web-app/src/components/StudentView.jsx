@@ -329,6 +329,33 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
     return () => unsub();
   }, [activeClass]);
 
+  // Subscribe to student's submission for the active/selected task challenge
+  const targetBannerTask = selectedTaskChallenge || classTasks[0] || null;
+  useEffect(() => {
+    if (!activeClass || !user?.uid || !targetBannerTask?.id) {
+      setCurrentTaskSubmission(null);
+      return;
+    }
+    const subRef = doc(db, 'classes', activeClass, 'tasks', targetBannerTask.id, 'submissions', user.uid);
+    const unsub = onSnapshot(
+      subRef,
+      (snap) => {
+        if (snap.exists()) {
+          const data = { id: snap.id, ...snap.data() };
+          setCurrentTaskSubmission(data);
+          if (data.status === 'in_progress' && (data.activeAttempt || data.latestAttempt)) {
+            const att = data.activeAttempt || data.latestAttempt;
+            setActiveTaskSession({ taskId: targetBannerTask.id, attemptNumber: att.attemptNumber || 1 });
+          }
+        } else {
+          setCurrentTaskSubmission(null);
+        }
+      },
+      (err) => console.warn('[StudentView] Task submission snapshot error:', err)
+    );
+    return () => unsub();
+  }, [activeClass, user?.uid, targetBannerTask?.id]);
+
   const isClassSessionOngoing = Boolean(isCapturing || activeClass);
 
   // Active Bingo Challenge resolver across all enrolled classes
@@ -3765,6 +3792,9 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
           task={selectedTaskChallenge}
           submission={currentTaskSubmission}
           existingScreenStream={screenStreamRef.current}
+          classId={activeClass}
+          user={user}
+          captureInterval={sessionFrameRate || frameRate || 15}
           onStartAttempt={async (taskId, startedAttempt) => {
             setActiveTaskSession({ taskId, attemptNumber: startedAttempt.attemptNumber });
             if (activeClass && user?.uid) {
@@ -3772,8 +3802,19 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
               await setDoc(subRef, {
                 studentUid: user.uid,
                 email: user.email?.toLowerCase(),
+                studentEmail: user.email?.toLowerCase(),
+                displayName: user.displayName || user.email?.split('@')[0] || 'Student',
                 status: 'in_progress',
+                attemptsCount: startedAttempt.attemptNumber,
+                activeAttempt: startedAttempt,
                 latestAttempt: startedAttempt,
+                updatedAt: serverTimestamp(),
+              }, { merge: true });
+
+              const attRef = doc(subRef, 'attempts', String(startedAttempt.attemptNumber));
+              await setDoc(attRef, {
+                ...startedAttempt,
+                studentUid: user.uid,
                 updatedAt: serverTimestamp(),
               }, { merge: true });
             }
@@ -3782,13 +3823,34 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
             setActiveTaskSession(null);
             if (activeClass && user?.uid) {
               const subRef = doc(db, 'classes', activeClass, 'tasks', taskId, 'submissions', user.uid);
-              const isClassActive = Boolean(isCapturing || selectedTaskChallenge?.scheduleMode === 'in_class');
+              const isClassActive = Boolean(isCapturing);
               const initialStatus = isClassActive ? 'awaiting_class_video' : 'compiling';
+              const finishedAt = new Date();
+              const startedAtDate = finishedAttempt.startedAt?.toDate
+                ? finishedAttempt.startedAt.toDate()
+                : new Date(finishedAttempt.startedAt || finishedAt);
+              const durationSeconds = Math.max(1, Math.round((finishedAt.getTime() - startedAtDate.getTime()) / 1000));
 
-              const finished = { ...finishedAttempt, finishedAt: new Date(), status: initialStatus };
+              const finished = {
+                ...finishedAttempt,
+                finishedAt,
+                durationSeconds,
+                status: initialStatus,
+              };
               await setDoc(subRef, {
                 status: initialStatus,
+                attemptsCount: finished.attemptNumber,
+                activeAttempt: null,
                 latestAttempt: finished,
+                lastSubmittedAt: finishedAt,
+                durationSeconds,
+                updatedAt: serverTimestamp(),
+              }, { merge: true });
+
+              const attRef = doc(subRef, 'attempts', String(finished.attemptNumber));
+              await setDoc(attRef, {
+                ...finished,
+                studentUid: user.uid,
                 updatedAt: serverTimestamp(),
               }, { merge: true });
 

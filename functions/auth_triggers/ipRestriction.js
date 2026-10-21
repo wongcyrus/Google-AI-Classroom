@@ -53,7 +53,7 @@ function isDuringScheduledTime(schedule) {
   return false; // Not in any scheduled time slot for the current day
 }
 
-export const checkipaddress = beforeUserSignedIn({ region: FUNCTION_REGION }, async (event) => {
+export const checkipaddress = beforeUserSignedIn({ region: FUNCTION_REGION, memory: '512MiB', cpu: 1 }, async (event) => {
   console.log('--- checkipaddress function triggered (v2) ---');
   const user = event.data;
   const ipAddress = event.ipAddress;

@@ -267,6 +267,57 @@ describe('evaluateTaskSubmission', () => {
     expect(res.effectiveScore).toBe(75); // latest score
   });
 
+  it('calculates scoring strategy = average and sorts attempts numerically', async () => {
+    mockTaskGet.mockResolvedValueOnce({
+      exists: true,
+      data: () => ({
+        title: 'Task Average Strategy Test',
+        maxScore: 100,
+        constraints: { attempts: { scoringStrategy: 'average' } },
+      }),
+    });
+
+    const mockEval = {
+      finalScore: 90,
+      maxScore: 100,
+      stepResults: [],
+    };
+
+    mockGenerateWithResilience.mockResolvedValueOnce({
+      response: {
+        text: JSON.stringify(mockEval),
+        usage: { inputTokens: 50, outputTokens: 20 },
+      },
+      modelUsed: 'gemini-3.8-flash',
+    });
+
+    // Return out of numeric order to verify numeric sorting
+    mockAttemptsSnap.mockResolvedValueOnce([
+      { id: '2', data: () => ({ attemptNumber: 2, status: 'evaluated', evaluation: { finalScore: 80 } }) },
+      { id: '1', data: () => ({ attemptNumber: 1, status: 'evaluated', evaluation: { finalScore: 70 } }) },
+      { id: '3', data: () => ({ attemptNumber: 3, status: 'evaluated', evaluation: { finalScore: 90 } }) },
+    ]);
+
+    const res = await handleEvaluateTaskSubmission({
+      classId: 'c1',
+      taskId: 't1',
+      studentUid: 's1',
+      attemptNumber: 3,
+    });
+
+    expect(res.success).toBe(true);
+    expect(res.effectiveScore).toBe(80); // (70 + 80 + 90) / 3 = 80
+    expect(mockSubmissionSet).toHaveBeenCalledWith(
+      expect.objectContaining({
+        effectiveScore: 80,
+        bestScore: 90,
+        latestScore: 90,
+        averageScore: 80,
+      }),
+      { merge: true }
+    );
+  });
+
   it('handles logJob error gracefully without failing submission evaluation', async () => {
     const { logJob } = await import('./jobLogger.js');
     vi.mocked(logJob).mockRejectedValueOnce(new Error('Log failure'));
@@ -436,6 +487,106 @@ describe('evaluateTaskSubmission', () => {
 
     expect(res.success).toBe(true);
     expect(res.queued).toBe(true);
+  });
+
+  it('reconciles omitted rubric steps, clamps step scores to maxPoints, and injects custom prompt templates', async () => {
+    mockTaskGet.mockResolvedValueOnce({
+      exists: true,
+      data: () => ({
+        title: 'Kubernetes Lab',
+        description: 'Deploy nginx pod and service',
+        maxScore: 100,
+        selectedPromptText: 'Evaluate {{taskDescription}} against steps: {{demoSteps}}',
+        promptGuidelines: 'Deduct 10 marks if readinessProbe is missing.',
+        rubricSteps: [
+          {
+            stepNumber: 1,
+            title: 'Create Pod YAML',
+            points: 40,
+            expectedEvidence: 'pod.yaml in editor',
+            gradingCriteria: 'Full marks for valid spec',
+          },
+          {
+            stepNumber: 2,
+            title: 'Expose Service',
+            points: 60,
+            expectedEvidence: 'kubectl expose output',
+            gradingCriteria: '30 pts if port mismatch',
+          },
+        ],
+      }),
+    });
+
+    // AI returns step 1 with an out-of-bounds score (55 > 40) and omits step 2 entirely
+    const partialAiEval = {
+      finalScore: 999,
+      overallFeedback: 'Pod created, service was not exposed.',
+      rubricScores: [
+        {
+          stepNumber: 1,
+          criterion: 'Create Pod YAML',
+          score: 55,
+          status: 'completed',
+          timestamp: '01:20',
+          evidence: 'pod.yaml edited and applied',
+          rationale: 'Pod YAML created properly.',
+        },
+      ],
+    };
+
+    mockGenerateWithResilience.mockResolvedValueOnce({
+      response: {
+        text: JSON.stringify(partialAiEval),
+        usage: { inputTokens: 300, outputTokens: 120 },
+      },
+      modelUsed: 'gemini-3.8-flash',
+    });
+
+    mockAttemptsSnap.mockResolvedValueOnce([]);
+
+    const res = await handleEvaluateTaskSubmission({
+      classId: 'c1',
+      taskId: 't1',
+      studentUid: 's1',
+      attemptNumber: 1,
+    });
+
+    // Verify custom prompt placeholders were interpolated and guidelines injected
+    expect(mockGenerateWithResilience).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt: expect.arrayContaining([
+          expect.objectContaining({
+            text: expect.stringContaining('Deduct 10 marks if readinessProbe is missing.'),
+          }),
+        ]),
+      }),
+      'gemini-3.8-flash'
+    );
+
+    // Step 1 clamped to 40, Step 2 reconciled as missing with 0 pts -> finalScore = 40
+    expect(res.evaluation.finalScore).toBe(40);
+    expect(res.evaluation.overallSummary).toBe('Pod created, service was not exposed.');
+    expect(res.evaluation.stepResults).toHaveLength(2);
+    expect(res.evaluation.stepResults[0]).toEqual(
+      expect.objectContaining({
+        stepNumber: 1,
+        title: 'Create Pod YAML',
+        maxPoints: 40,
+        scoreAwarded: 40,
+        status: 'completed',
+        evidenceObserved: 'pod.yaml edited and applied',
+        feedback: 'Pod YAML created properly.',
+      })
+    );
+    expect(res.evaluation.stepResults[1]).toEqual(
+      expect.objectContaining({
+        stepNumber: 2,
+        title: 'Expose Service',
+        maxPoints: 60,
+        scoreAwarded: 0,
+        status: 'missing',
+      })
+    );
   });
 });
 

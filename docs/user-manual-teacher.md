@@ -501,20 +501,20 @@ When delivering a seminar, lightning talk, or public conference presentation, yo
 > - As soon as you click **"Stop Sharing"**, public access is **automatically terminated and revoked immediately**, restoring total classroom privacy without any manual cleanup.
 
 #### Step-by-Step Speaker Workflow:
-1. **Open Broadcast Modal**: In any class (e.g., `it3101-ab` or a dedicated talk class like `open-talk`), click **`🖥️ Broadcast Screen & Audio`**.
-2. **Enable Public Presentation Mode**: In **Step 2 (Broadcast Settings)**, locate the **"Public Presentation Mode (QR Code & PIN)"** card and switch the toggle **ON**.
-3. **Session PIN & QR Code**:
-   - The system automatically generates a secure 4-digit PIN (e.g., `8341`). You can also click **`Generate New PIN`** or type a custom 4-digit number.
-   - Click **`Show Projector QR`** to open the full-screen projector modal.
-4. **Project to the Audience**:
-   - The **Projector QR Code Modal** (`PresentationQrModal`) displays a crisp SVG QR code pointing to `https://<domain>/live/<classId>?pin=XXXX` along with the bold 4-digit PIN and a quick link copy button.
-   - Project this QR code onto the auditorium projector screen so attendees can scan it with their smartphone cameras.
-5. **Start Broadcast**: Click **`Start Sharing & Subtitles`** to begin.
-6. **In-Flight Live HUD Controls**:
-   - During the live talk, a floating broadcast HUD displays a green **`📢 Public PIN: XXXX`** badge.
-   - Click the **`Projector QR`** button in the HUD at any time during your presentation to re-display the QR code on stage for late arrivals.
-7. **Instant Automatic Teardown**:
-   - Click **`⏹️ Stop Sharing`** at the end of the talk.
+1. **Open Broadcast Modal**: In any class (e.g., `it3101-ab` or a dedicated talk class like `open-talk`), click **`🎙️🖥️ Broadcast`**.
+2. **Enable Public Presentation Mode**: In **Step 2 (Screen & Recording Setup)**, click the **"🌐 Enable Public Presentation Mode (Audience QR Code & PIN)"** card to switch it **ON**.
+3. **Session PIN & Standalone Projector QR Popup Window**:
+   - The system automatically generates a secure 4-digit PIN (e.g., `8341`). You can also click **`🔄 New PIN`** or type a custom 4-digit number.
+   - Click **`📱 Preview Projector QR Code ↗`** to launch a **standalone browser popup window** (`580×760`).
+   - Because the QR code opens in a separate popup window, the main setup wizard remains completely unblocked—you can keep the QR code popup open on the projector screen (or click **`⛶ Fullscreen`** inside the popup) while immediately continuing your setup.
+   - If you change the PIN (`🔄 New PIN`) while the popup window is open, the QR code and PIN inside the popup automatically update in real time.
+4. **Start Broadcast**: Click **`🔴 Start Live Stream & Record`** (or **`🚀 Start Live Stream Only`**) in the main window to begin.
+5. **In-Flight Live Controls (Broadcast Studio & Top Classroom Header)**:
+   - During the live talk, you can re-open or focus the Projector QR Code popup window at any time with 1 click:
+     - Directly from the top classroom header bar via **`📱 Projector QR ↗`** (next to `● Live (N)` and `⏹ Stop`), without needing to open the Broadcast Studio modal.
+     - Or from inside the Broadcast Studio sidebar via **`📱 Projector QR ↗`** next to `Public PIN: XXXX`.
+6. **Instant Automatic Teardown**:
+   - Click **`⏹ Stop`** in the top classroom header (or **`⏹ Stop Screen Broadcast`** inside the studio) at the end of the talk.
    - The session document in Firestore instantly resets `isBroadcasting: false`, `isPublic: false`, and `publicPin: null`.
    - Firestore security rules immediately revoke external access. Spectator devices display "Broadcast ended".
 
@@ -1064,35 +1064,44 @@ flowchart LR
 
 ---
 
-## 18. Managing Practical Tasks & Lab Exams
-**Primary Tab:** `📋 Tasks & Homework` (in Class View navigation)
+## 18. Managing Practical Tasks & Rubric-Driven Lab Grading
+**Primary Tab:** `📋 Tasks & Homework` (in Class View navigation)  
+**Dedicated Step-by-Step Guide:** 📖 **[Practical Tasks & Rubric-Driven Grading User Guide](./practical-tasks-and-rubric-grading-user-guide.md)**
 
-The **Practical Task & Lab Exam System** enables instructors to evaluate hands-on technical skills and code execution via continuous screen recording and automated Gemini 3.8 Flash multimodal rubric grading.
+The **Practical Task & Lab Exam System** ([`TasksManagementView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/tasks/TasksManagementView.jsx), [`TaskEditorModal.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/tasks/TaskEditorModal.jsx), [`TaskGradingMatrixView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/tasks/TaskGradingMatrixView.jsx)) enables instructors to evaluate hands-on technical skills via screen recordings and automated **Gemini 3.8 Flash** rubric-driven mark breakdowns and per-student explanations.
 
-### 18.1 Creating a Practical Task
+### 18.1 Creating a Practical Task (4-Tab Wizard)
 1. Navigate to your class and click the **`📋 Tasks & Homework`** tab.
 2. Click **`+ Create Practical Task`** to launch the 4-tab Task Editor modal:
-   - **Tab 1: Basic Info**: Enter the assignment title, detailed instructions (Markdown supported), total points (e.g. 100), and schedule mode:
-     - **`🏠 Homework (Asynchronous)`**: Available 24/7 without requiring an active lecture. Students complete on their own schedule before the deadline.
-     - **`🏫 In-Class Lab Exam`**: Linked to a specific scheduled lesson slot.
-     - **`🔄 Flexible`**: Homework that can also be completed in class.
-   - **Tab 2: Constraints**: Set time limit (e.g., 45 minutes), maximum attempts allowed (e.g., 2 attempts, or 0 for unlimited), and deadline date/time.
-   - **Tab 3: Gemini Demo Video Rubric Extraction**:
-     - Select a walkthrough recording from the class video library.
-     - Click **`✨ Analyze Video & Extract Rubric`**.
-     - Gemini 3.8 Flash analyzes the instructor demonstration video in Google Cloud Storage and automatically generates the step-by-step rubric.
-   - **Tab 4: Rubric Checklist**: Review, fine-tune, or adjust points for each extracted step.
-3. Click **`Save & Publish Task`**.
+   - **`1. Basic Info`**: Enter the assignment title, detailed instructions, **Max Total Score** (e.g. `100`), and **Schedule Mode**:
+     - **`🏠 Homework (24/7 Self-Paced)`**: Available 24/7 via the Student Records portal without requiring an active lecture. Compiles and grades immediately upon student submission.
+     - **`🏫 In-Class Task`**: Linked to a live scheduled lesson slot; slices the `[startedAt, finishedAt]` clip from the student's class video at lesson end.
+     - **`🔄 Flexible (In-Class + Homework)`**: Can be started in class and completed/retried at home before the deadline.
+     - **`⏪ Post-Class (Retroactive Slicing)`**: Extracts a specified time window (`Relative Lesson Offset` or `Clock Time Window`) from completed student class recordings and automatically queues AI rubric grading.
+   - **`2. Demo Video & AI`**:
+     - Provide a reference demonstration video (**Select from Class Recordings**, **Upload `.mp4/.mov/.webm`**, or paste a **Public YouTube Link**) and/or select a **Rubric Prompt from the AI Prompts Library** with **Additional Task-Specific Guidelines** (persisted on the task document as `selectedPromptId`, `selectedPromptText`, and `promptGuidelines`).
+     - Click **`✨ Synthesize Rubric Milestones with Gemini`** ([`extractTaskDemoSteps.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/extractTaskDemoSteps.js)). Gemini 3.8 Flash synthesizes structured milestones with point allocations, `expectedEvidence`, and `gradingCriteria`.
+   - **`3. Rubric Milestones`**:
+     - Review and edit each step's **Title**, **Points**, **Action Description**, **🔍 Expected Visual Proof for AI** (`expectedEvidence`), and **⚖️ Marking / Partial Credit Criteria** (`gradingCriteria`).
+     - If step points do not sum to `Max Score`, click **`⚖️ Auto-Balance to {maxScore} pts`** to proportionally normalize step weights.
+   - **`4. Constraints & Policies`**:
+     - Configure **Time Limit (Minutes)**, **Auto-submit on expiry**, **Submission Deadline**, **Late Submission Policy** (`allow_flagged` / `strictly_closed`), **Max Attempts**, **Scoring Strategy** (`highest`, `latest`, `average`), **Retry Cooldown**, **Required Media Channels**, and **Feedback Release Policy** (`immediate`, `after_deadline`, `manual_by_teacher`).
+3. Click **`🚀 Publish Task`** (or **`💾 Update Task`**).
 
-### 18.2 Monitoring & Reviewing Submissions (Grading Matrix)
+### 18.2 Rubric-Driven Grading Matrix & Per-Student Explanations
 1. On the task card, click **`📊 Grading Matrix`**.
-2. View the full class roster populated with student display names, cohorts, and programmes.
-3. For each student:
-   - View their latest attempt status (`⏳ Evaluating`, `✅ Completed`).
-   - Click to inspect the step-by-step breakdown: which criteria passed, point deductions, and Gemini's technical findings.
-   - Jump directly to exact timecodes in the student's submission video.
-4. **Override Scores & Add Feedback**: Enter instructor adjustments in the score override field and provide direct guidance notes.
-5. **Exporting Grades**: Click **`📥 Export Matrix (.xlsx)`** to download a pure OpenXML Excel spreadsheet containing complete student identities, attempt numbers, step criteria scores, and timestamps ready for official grade submission.
+2. View the class roster with real-time submission statuses (`⏳ In Progress`, `⚙️ Compiling Video...`, `🎬 Ready to Grade`, `🤖 Evaluating...`, `✅ Evaluated`, `❌ Missing`).
+3. **Rubric Breakdown & Explanation Column**:
+   - Displays each student's step completion progress bar alongside **per-step mark badges** (`S1: 30/30`, `S2: 62/70`) color-coded by completion status.
+   - Hover over any step badge to read the step title, awarded marks, and AI/teacher explanation tooltip.
+4. **Inspecting & Editing Per-Step Rubric Marks (`Inspect 🔍`)**:
+   - Click **`Inspect 🔍`** on any evaluated student row to open the **Submission Detail Modal**.
+   - Review the **AI Assessment Summary**, **✨ Observed Strengths**, **⚠️ Deviations & Errors**, and **Rubric Milestones Evaluation** showing **`{scoreAwarded} / {maxPoints} pts`**, **Rubric Requirement**, **Observed Evidence** (`evidenceObserved`), and **Detailed Mark Explanation** (`feedback`) for every step.
+   - Click any **`⏱️ MM:SS`** badge to launch the student's video and seek directly to that milestone's timestamp.
+   - Click **`✏️ Edit Rubric Marks & Explanations`** inside the modal to adjust individual step marks (`0..maxPoints`), customize per-step explanations, and add an overall instructor comment. Clicking **`💾 Save Rubric Breakdown & Score`** auto-sums the step marks, updates `effectiveScore`, and releases feedback to the student.
+5. **Cloud Backup & Gradebook Export**:
+   - Click **`☁️ Backup Task Videos`** to archive student attempt MP4s to Google Drive (`Classroom Archives / {Class} / Tasks / {Task Title}`).
+   - Click **`📥 Export to Excel (.xlsx)`** to download `Task_{Title}_Grading_Results.xlsx` containing student identities, overall scores, `AI Assessment Summary`, and both `Step X: {Title}` (`score / maxPoints pts (status)`) and `Step X Explanation` columns for every rubric step.
 
 ---
 
@@ -1109,3 +1118,4 @@ The **Practical Task & Lab Exam System** enables instructors to evaluate hands-o
 ---
 
 [← Back to Documentation Index](../README.md#documentation-index)
+

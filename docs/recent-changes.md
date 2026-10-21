@@ -1,8 +1,85 @@
 # Recent Changes & Architectural Enhancements
 
 **Date**: October 2026  
-**System**: Google AI Classroom  
+**System**: HKIIT AI Classroom  
 **Production URL**: `https://it114115-2627.web.app`
+
+## 0.0.0.0.0.0.0.0.0.0.2.7 Standalone Projector QR Code Popup Window, Traditional Chinese (`zh-Hant`) Broadcast Subtitles, `.env` Custom Domain Sync & Auth Reliability
+
+**Date**: October 21, 2026  
+**Status**: Implemented, Verified with Passing Unit Tests (`PresentationQrModal.test.jsx` 4/4, `TeacherScreenBroadcastModal.test.jsx` 32/32, `AuthComponent.test.jsx` 21/21, `passkeyFlows.test.js` 106/106), and Deployed to `it114115-dev-2026`  
+**Primary Files**:
+- [`web-app/src/components/broadcast/PresentationQrModal.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/broadcast/PresentationQrModal.jsx) & [`PresentationQrModal.test.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/broadcast/PresentationQrModal.test.jsx)
+- [`web-app/src/components/TeacherScreenBroadcastModal.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/TeacherScreenBroadcastModal.jsx), [`ClassView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/ClassView.jsx), [`MonitorView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/MonitorView.jsx), [`Modal.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/Modal.jsx)
+- [`web-app/src/hooks/useTeacherLiveSubtitles.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/hooks/useTeacherLiveSubtitles.js), [`useStudentLiveSubtitles.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/hooks/useStudentLiveSubtitles.js), [`PublicLiveView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/public/PublicLiveView.jsx)
+- [`web-app/src/components/AuthComponent.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/AuthComponent.jsx) & [`functions/auth_triggers/ipRestriction.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/auth_triggers/ipRestriction.js)
+- [`switch-env.sh`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/switch-env.sh), [`deploy.sh`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/deploy.sh), [`functions/ai_flows/passkeyFlows.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/passkeyFlows.js), [`terraform/variables.tf`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/terraform/variables.tf), [`terraform/auth.tf`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/terraform/auth.tf), [`web-app/.env.example`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/.env.example)
+
+### Technical Analysis & Implementation Details:
+
+1. **Standalone Projector QR Code Popup Window (`openProjectorQrPopup`)**:
+   - Previously, clicking **`📱 Preview Projector QR Code`** in Step 2 of `TeacherScreenBroadcastModal` opened an in-page blocking modal on top of the setup wizard, preventing speakers from continuing the broadcast setup or running their session while displaying the QR code.
+   - Added [`openProjectorQrPopup`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/broadcast/PresentationQrModal.jsx#L19-L295) in [`PresentationQrModal.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/broadcast/PresentationQrModal.jsx) which launches a dedicated `580×760` browser popup window displaying the session title, high-contrast QR code (`300×300`), bold `ACCESS PIN`, one-click `📋 Copy Link`, and `⛶ Fullscreen` toggle.
+   - If the speaker clicks **`🔄 New PIN`** while the popup window is open, [`TeacherScreenBroadcastModal.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/TeacherScreenBroadcastModal.jsx#L130-L140) automatically live-updates the QR code and PIN inside the open popup window.
+   - Added a **`📱 Projector QR ↗`** quick-launch button in the top classroom bar of [`ClassView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/ClassView.jsx#L311-L328) whenever a public broadcast is active so speakers can pop open the QR window at any time without opening the Broadcast Studio modal.
+   - Fixed [`Modal.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/Modal.jsx) backdrop click propagation (`e.stopPropagation()`) and elevated `zIndex` (`1300`) so nested modals never close parent overlays.
+
+2. **Traditional Chinese (`zh-Hant`) in Target Broadcast Languages**:
+   - Added `zh-Hant` (`Traditional Chinese (繁體中文)`) to `AVAILABLE_LANGUAGES` and default `DEFAULT_TARGET_LANGS` (`['zh-Hant', 'zh-Hans', 'en']`) across [`TeacherScreenBroadcastModal.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/TeacherScreenBroadcastModal.jsx), [`MonitorView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/MonitorView.jsx), [`useTeacherLiveSubtitles.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/hooks/useTeacherLiveSubtitles.js), [`useStudentLiveSubtitles.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/hooks/useStudentLiveSubtitles.js), and [`PublicLiveView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/public/PublicLiveView.jsx).
+
+3. **Environment-Driven Custom Domains & Student/Teacher Domains (`.env`)**:
+   - Eliminated hardcoded custom domains from source code; configured `VITE_CUSTOM_DOMAINS`, `VITE_STUDENT_DOMAINS`, and `VITE_TEACHER_DOMAINS` in git-ignored `.env` files (`web-app/.env.dev` / `web-app/.env.prod`).
+   - Updated [`switch-env.sh`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/switch-env.sh#L78-L94) and [`deploy.sh`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/deploy.sh#L174-L207) to automatically propagate `STUDENT_EMAIL_DOMAINS`, `TEACHER_EMAIL_DOMAINS`, and `CUSTOM_DOMAINS` into `functions/*/.env.<projectId>` and dynamically patch Google Cloud Identity Platform `authorizedDomains`.
+   - Updated [`passkeyFlows.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/passkeyFlows.js#L18-L63) to dynamically resolve WebAuthn RP IDs and allowed origins from `process.env.CUSTOM_DOMAINS`.
+
+4. **Authentication UX & GCIP Blocking Trigger Cold-Start Prevention**:
+   - Added a Show/Hide (`👁️` / `🙈`) password toggle button and automatic `password.trim()` retry on whitespace paste in [`AuthComponent.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/AuthComponent.jsx).
+   - Configured `memory: '512MiB', cpu: 1` on `checkipaddress` (`beforeUserSignedIn`) in [`functions/auth_triggers/ipRestriction.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/auth_triggers/ipRestriction.js#L56) to prevent cold-start timeouts during Identity Platform sign-in.
+
+---
+
+## 0.0.0.0.0.0.0.0.0.0.2.6 Rubric-Driven Practical Task Mark Breakdown, Per-Student Explanations, Class Task Bug Fixes & Step-by-Step User Guide
+
+**Date**: October 20, 2026  
+**Status**: Implemented, Verified with 100% Passing Unit Tests (`web-app` 1,721/1,721 across 150 test files, `functions/ai_flows` 434/434, `functions/media_processing` 114/114), and Deployed to `it114115-dev-2026`  
+**Primary Files**:
+- [`docs/practical-tasks-and-rubric-grading-user-guide.md`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/docs/practical-tasks-and-rubric-grading-user-guide.md), [`docs/user-manual-teacher.md`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/docs/user-manual-teacher.md), [`docs/user-manual-student.md`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/docs/user-manual-student.md), [`README.md`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/README.md)
+- [`web-app/src/components/tasks/TaskEditorModal.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/tasks/TaskEditorModal.jsx), [`web-app/src/components/tasks/TaskGradingMatrixView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/tasks/TaskGradingMatrixView.jsx), [`web-app/src/components/tasks/TasksManagementView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/tasks/TasksManagementView.jsx)
+- [`web-app/src/components/tasks/StudentTaskFeedbackView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/tasks/StudentTaskFeedbackView.jsx), [`web-app/src/components/student/ActiveTaskWidget.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/student/ActiveTaskWidget.jsx), [`web-app/src/components/tasks/StudentHomeworkRecorderModal.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/tasks/StudentHomeworkRecorderModal.jsx)
+- [`functions/ai_flows/extractTaskDemoSteps.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/extractTaskDemoSteps.js), [`functions/ai_flows/evaluateTaskSubmission.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/evaluateTaskSubmission.js)
+- [`functions/media_processing/index.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/media_processing/index.js), [`web-app/src/utils/exportUtils.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/utils/exportUtils.js), [`storage.rules`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/storage.rules)
+
+### Technical Analysis & Implementation Details:
+
+1. **Rubric-Driven Mark Breakdown & Deterministic Per-Student Step Explanations**:
+   - **Task Wizard Rubric & Prompt Persistence ([`TaskEditorModal.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/tasks/TaskEditorModal.jsx))**:
+     - Persists `selectedPromptId`, `selectedPromptText`, and `promptGuidelines` onto `classes/{classId}/tasks/{taskId}`.
+     - Enables **🤖 Synthesize Rubric with Gemini** from a reference demo video, an Assessment Prompt template, or task instructions (`description` + `promptGuidelines`), with a one-click **`⚖️ Auto-Balance to {maxScore} pts`** button and per-step `gradingCriteria`.
+   - **Prompt- or Video-Driven Rubric Synthesis ([`extractTaskDemoSteps.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/extractTaskDemoSteps.js))**:
+     - Accepts `maxScore`, `promptText`, and `promptGuidelines` alongside optional `demoVideoStoragePath` / `demoYoutubeUrl`, returning structured `steps[]` with `stepNumber`, `title`, `expectedAction`, `gradingCriteria`, `points`, and `timestampRange`.
+   - **Deterministic Rubric Reconciliation ([`evaluateTaskSubmission.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/evaluateTaskSubmission.js))**:
+     - Injects `selectedPromptText`, `promptGuidelines`, and per-step `gradingCriteria` into the Gemini evaluation prompt.
+     - Reconciles Gemini's `rubricEvaluation` against `taskData.rubricSteps` via [`normalizeRubricEvaluation`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/evaluateTaskSubmission.js) so every rubric step is guaranteed to exist in the output with exact `maxPoints`, clamped `scoreAwarded` (`[0, maxPoints]`), `evidenceObserved`, and a non-empty per-step `feedback` explanation, plus a deterministic `finalScore` sum.
+   - **Grading Matrix Step Pills, Deep-Dive Inspector & Per-Step Teacher Overrides ([`TaskGradingMatrixView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/tasks/TaskGradingMatrixView.jsx), [`TasksManagementView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/tasks/TasksManagementView.jsx))**:
+     - Displays per-step mark badges (`S1: 30/30`, `S2: 62/70`) directly in the Grading Matrix table.
+     - Upgrades the **`Inspect 🔍`** modal with a full **📋 Rubric Mark Breakdown & Step Explanations** view (`scoreAwarded / maxPoints pts`, status badge, clickable `[MM:SS]` video seek, `Observed Evidence`, `Explanation / Justification`, `Strengths`, `Deviations / Deductions`) and interactive **✏️ Edit Step Marks** (`stepOverrides`) that automatically recalculate the student's total score.
+   - **Student Feedback Breakdown & Rich Excel Export ([`StudentTaskFeedbackView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/tasks/StudentTaskFeedbackView.jsx), [`exportUtils.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/utils/exportUtils.js))**:
+     - Displays the per-step mark breakdown (`scoreAwarded / maxPoints pts`), `Explanation`, `Observed in Recording`, and `Teacher Note` on the student's **🏆 My Task Feedback** tab.
+     - Enhances `.xlsx` grading exports with `AI Assessment Summary`, `Step X: {Title} (/MaxPts)`, and `Step X Explanation` columns.
+
+2. **12 Class Practical Task Pipeline Bug Fixes**:
+   - Fixed student homework upload path (`classes/{classId}/tasks/{taskId}/submissions/{studentUid}/...`) and matching Firebase Storage security rule in [`storage.rules`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/storage.rules).
+   - Fixed `TaskEditorModal.jsx` edit hydration so existing tasks retain their `mode`, `maxScore`, `rubricSteps`, and prompt configuration on re-open.
+   - Fixed `ActiveTaskWidget.jsx` to support `flexible` mode and handle `Timestamp`, ISO string, or numeric epoch `startedAt` values safely.
+   - Fixed `processVideoJob` in [`functions/media_processing/index.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/media_processing/index.js) to resolve `studentName` and `studentEmail` and enqueue `evaluateTaskSubmissionTask` with a graceful synchronous fallback if Cloud Tasks is unavailable.
+   - Fixed `extractRetroactiveTaskSubmissions` to slice each student's actual active session window (`sliceStartMs` to `sliceEndMs`) rather than only the last 30 minutes before task creation, and to avoid overwriting `graded` or `submitted` records.
+   - Fixed `StudentView.jsx` to mount `ActiveTaskWidget` in the student workspace sidebar and added an explicit `Evaluate Now 🤖` trigger in `TaskGradingMatrixView.jsx` for `submitted`, `grading_failed`, and `failed` submissions.
+
+3. **Step-by-Step Practical Tasks & Rubric-Driven AI Grading User Guide**:
+   - Created [`docs/practical-tasks-and-rubric-grading-user-guide.md`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/docs/practical-tasks-and-rubric-grading-user-guide.md) providing an end-to-end walkthrough for Teachers and Students (5-minute quick start, choosing the 4 task modes, 4-tab Task Creation Wizard, Gemini rubric synthesis, Grading Matrix inspection & per-step mark overrides, Post-Class Retroactive Slicing, Excel/Drive export, student task submission, and reading rubric mark breakdowns).
+   - Linked the new guide in [`README.md`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/README.md), [`docs/user-manual-teacher.md`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/docs/user-manual-teacher.md), and [`docs/user-manual-student.md`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/docs/user-manual-student.md).
+
+---
 
 ## 0.0.0.0.0.0.0.0.0.0.2.5 Edge AI Model Telemetry & Lab PC Pre-Warming, Screen+Mic Quick Start, Multi-Stream Quick Filters & URL Linkification
 

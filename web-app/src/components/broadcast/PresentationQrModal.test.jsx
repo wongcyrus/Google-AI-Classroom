@@ -1,7 +1,7 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import PresentationQrModal from './PresentationQrModal';
+import PresentationQrModal, { openProjectorQrPopup } from './PresentationQrModal';
 import QRCode from 'qrcode';
 
 vi.mock('qrcode', () => ({
@@ -75,5 +75,48 @@ describe('PresentationQrModal Component', () => {
     await waitFor(() => {
       expect(screen.getByText(/Copied!/i)).toBeInTheDocument();
     });
+  });
+
+  it('opens a dedicated popup window via openProjectorQrPopup with QR code and PIN', async () => {
+    const mockImg = { src: '', style: { display: 'none' } };
+    const mockLoading = { style: { display: 'flex' } };
+    const mockPopupWin = {
+      closed: false,
+      focus: vi.fn(),
+      document: {
+        open: vi.fn(),
+        write: vi.fn(),
+        close: vi.fn(),
+        getElementById: vi.fn((id) => {
+          if (id === 'qr-img') return mockImg;
+          if (id === 'qr-loading') return mockLoading;
+          return null;
+        }),
+      },
+    };
+    const openSpy = vi.spyOn(window, 'open').mockReturnValue(mockPopupWin);
+
+    const win = openProjectorQrPopup({
+      classId: 'AWS26-AUD-0945',
+      className: 'AWS Community Day Opening',
+      pin: '1234',
+    });
+
+    expect(win).toBe(mockPopupWin);
+    expect(openSpy).toHaveBeenCalledWith(
+      '',
+      'ProjectorQR_AWS26-AUD-0945',
+      expect.stringContaining('width=580,height=760')
+    );
+    expect(mockPopupWin.document.write).toHaveBeenCalledWith(expect.stringContaining('1234'));
+    expect(mockPopupWin.focus).toHaveBeenCalled();
+
+    await waitFor(() => {
+      expect(mockImg.src).toBe('data:image/png;base64,mockqrcode123');
+      expect(mockImg.style.display).toBe('block');
+      expect(mockLoading.style.display).toBe('none');
+    });
+
+    openSpy.mockRestore();
   });
 });

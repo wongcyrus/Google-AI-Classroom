@@ -170,6 +170,40 @@ if [ -n "$ACCESS_TOKEN" ]; then
             fi
         fi
     fi
+
+    STUDENT_DOMAINS_RAW=""
+    TEACHER_DOMAINS_RAW=""
+    CUSTOM_DOMAINS_RAW=""
+    if [ -f "$ACTIVE_ENV_FILE" ]; then
+        STUDENT_DOMAINS_RAW=$(grep -E "^VITE_STUDENT_DOMAINS=" "$ACTIVE_ENV_FILE" 2>/dev/null | cut -d'=' -f2- | tr -d '\r"' || true)
+        TEACHER_DOMAINS_RAW=$(grep -E "^VITE_TEACHER_DOMAINS=" "$ACTIVE_ENV_FILE" 2>/dev/null | cut -d'=' -f2- | tr -d '\r"' || true)
+        CUSTOM_DOMAINS_RAW=$(grep -E "^VITE_CUSTOM_DOMAINS=" "$ACTIVE_ENV_FILE" 2>/dev/null | cut -d'=' -f2- | tr -d '\r"' || true)
+    fi
+    for d in functions/*/ ; do
+        if [ -f "$d/package.json" ]; then
+            FUNC_ENV_FILE="${d}.env.${TARGET_PROJECT}"
+            : > "$FUNC_ENV_FILE"
+            [ -n "$STUDENT_DOMAINS_RAW" ] && echo "STUDENT_EMAIL_DOMAINS=$STUDENT_DOMAINS_RAW" >> "$FUNC_ENV_FILE"
+            [ -n "$TEACHER_DOMAINS_RAW" ] && echo "TEACHER_EMAIL_DOMAINS=$TEACHER_DOMAINS_RAW" >> "$FUNC_ENV_FILE"
+            [ -n "$CUSTOM_DOMAINS_RAW" ] && echo "CUSTOM_DOMAINS=$CUSTOM_DOMAINS_RAW" >> "$FUNC_ENV_FILE"
+        fi
+    done
+    if [ -n "$CUSTOM_DOMAINS_RAW" ]; then
+        AUTH_DOMAINS_JSON=$(node -e '
+          const project = process.argv[1];
+          const extra = (process.argv[2] || "").split(",").map(s => s.trim()).filter(Boolean);
+          const list = [...new Set(["localhost", "127.0.0.1", `${project}.firebaseapp.com`, `${project}.web.app`, ...extra])];
+          console.log(JSON.stringify({ authorizedDomains: list }));
+        ' "$TARGET_PROJECT" "$CUSTOM_DOMAINS_RAW" 2>/dev/null || true)
+        if [ -n "$AUTH_DOMAINS_JSON" ]; then
+            curl -s -X PATCH \
+                -H "Authorization: Bearer $ACCESS_TOKEN" \
+                -H "X-Goog-User-Project: $TARGET_PROJECT" \
+                -H "Content-Type: application/json" \
+                "https://identitytoolkit.googleapis.com/admin/v2/projects/$TARGET_PROJECT/config?updateMask=authorizedDomains" \
+                -d "$AUTH_DOMAINS_JSON" >/dev/null 2>&1 || true
+        fi
+    fi
 fi
 
 ONLY_HOSTING=false

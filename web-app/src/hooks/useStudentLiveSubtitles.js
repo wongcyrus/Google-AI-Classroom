@@ -47,7 +47,7 @@ export function useStudentLiveSubtitles({
   const [originalText, setOriginalText] = useState('');
   const [sourceLang, setSourceLang] = useState('zh-HK');
   const [translations, setTranslations] = useState({});
-  const [targetLanguages, setTargetLanguages] = useState(['zh-Hans', 'en']);
+  const [targetLanguages, setTargetLanguages] = useState(['zh-Hant', 'zh-Hans', 'en']);
   const [seq, setSeq] = useState(0);
   const [recentHistory, setRecentHistory] = useState([]);
   const [engine, setEngine] = useState('server');

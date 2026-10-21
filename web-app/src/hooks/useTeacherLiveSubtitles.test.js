@@ -91,7 +91,7 @@ describe('useTeacherLiveSubtitles Hook', () => {
 
     expect(result.current.speechLanguage).toBe('zh-HK');
     expect(result.current.engineMode).toBe('server');
-    expect(result.current.targetLanguages).toEqual(['zh-Hans', 'en']);
+    expect(result.current.targetLanguages).toEqual(['zh-Hant', 'zh-Hans', 'en']);
   });
 
   it('persists engineMode and language changes to localStorage', () => {

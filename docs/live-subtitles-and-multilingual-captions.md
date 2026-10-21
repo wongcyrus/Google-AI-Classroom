@@ -368,10 +368,11 @@ The platform supports 8 academic disciplines plus custom definitions:
 - The hook [`useAudioPrompts.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/hooks/useAudioPrompts.js) queries prompts filtered by `Live Subtitles & Multilingual Captions` and makes them available in the dropdown.
 - Instructors can reset customized prompts back to the library default at any time using **`↺ Reset to Library Original`**.
 
-### 9.4 Public Presentation Spectator Subtitles
+### 9.4 Public Presentation Spectator Subtitles & Standalone Projector QR Popup
 When the speaker activates **Public Presentation Mode** during a screen broadcast:
+- Clicking **`📱 Preview Projector QR Code ↗`** (in Step 2 setup) or **`📱 Projector QR ↗`** (in the live Broadcast Studio or top `ClassView` header) launches [`openProjectorQrPopup`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/broadcast/PresentationQrModal.jsx#L19-L295) in a standalone `580×760` browser popup window so the speaker can keep the QR code visible on the projector while continuing setup and running the session.
 - Public spectators scanning the session QR code or navigating to `/live/:classId?pin=XXXX` receive the live subtitle stream via [`PublicLiveView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/public/PublicLiveView.jsx).
-- The audience member can pick their individual preferred multilingual captioning language (`en`, `zh-Hant`, `zh-Hans`, `ja`, `ko`, `es`, `fr`, `de`, `vi`) from the floating toolbar on their mobile device.
+- Default target broadcast languages include **Traditional Chinese (`zh-Hant`)**, **Simplified Chinese (`zh-Hans`)**, and **English (`en`)**, and audience members can pick their preferred captioning language (`en`, `zh-Hant`, `zh-Hans`, `ja`, `ko`, `es`, `fr`, `de`, `vi`) from the floating toolbar on their mobile device.
 - Subtitle lines are rendered directly beneath the live instructor screen frames with high-contrast text outlines and responsive font scaling.
 
 ---
@@ -381,7 +382,7 @@ When the speaker activates **Public Presentation Mode** during a screen broadcas
 | Component / Utility | File Path | Responsibility |
 | :--- | :--- | :--- |
 | **Public Audience Spectator** | [`web-app/src/components/public/PublicLiveView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/public/PublicLiveView.jsx) | Mobile spectator UI for anonymous audience members with PIN auth, screen zoom, and live multilingual subtitles. |
-| **Presentation QR Code Modal** | [`web-app/src/components/broadcast/PresentationQrModal.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/broadcast/PresentationQrModal.jsx) | Projector-ready high-contrast modal displaying SVG QR code and 4-digit PIN for conference talks. |
+| **Presentation QR Popup & Modal** | [`web-app/src/components/broadcast/PresentationQrModal.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/broadcast/PresentationQrModal.jsx) | Standalone popup window (`openProjectorQrPopup`) and fallback modal displaying high-contrast QR code, live-synced 4-digit PIN, and fullscreen toggle. |
 | **Gemma LiteRT Loader** | [`web-app/src/utils/gemmaLiteRTLoader.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/utils/gemmaLiteRTLoader.js) | Pre-flight viability check (`precheckGemmaViability`), CacheStorage model download manager. |
 | **Gemma Web Worker** | [`web-app/src/workers/litertGemma.worker.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/workers/litertGemma.worker.js) | LiteRT WebGPU execution worker for exam proctoring and real-time multilingual captioning. |
 | **Local Gemma Translator Hook** | [`web-app/src/hooks/useLocalGemmaTranslator.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/hooks/useLocalGemmaTranslator.js) | Student-side on-demand local Gemma 4 E2B subtitle translator with explicit download button and mobile memory protection. |

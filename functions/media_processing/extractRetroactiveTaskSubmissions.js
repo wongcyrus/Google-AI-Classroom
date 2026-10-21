@@ -163,13 +163,16 @@ export async function sliceStudentClassVideo({
       .collection('tasks').doc(taskId)
       .collection('submissions').doc(studentUid);
 
+    const resolvedEmail = studentEmail || sourceJob.studentEmail || null;
     await subRef.set({
       status: 'compiling_complete',
       attemptsCount: attemptNumber,
       studentUid,
-      studentEmail: studentEmail || sourceJob.studentEmail || null,
+      email: resolvedEmail ? resolvedEmail.toLowerCase() : null,
+      studentEmail: resolvedEmail ? resolvedEmail.toLowerCase() : null,
       isRetroactive: true,
       compiledVideoPath: destinationPath,
+      durationSeconds: clipDuration,
       latestAttempt: {
         attemptNumber,
         status: 'compiling_complete',
@@ -338,12 +341,21 @@ export async function executeExtractRetroactiveTaskSubmissions({
         startSec = isTimelapseOneFps ? Math.floor(realOffsetSec / captureInterval) : realOffsetSec;
         durSec = isTimelapseOneFps ? Math.ceil(realWindowSec / captureInterval) : realWindowSec;
       } else {
-        startSec = Math.max(0, Number(startOffsetSeconds) || 0);
+        const captureInterval = job.captureInterval || 15;
+        const targetFrameRate = job.targetFrameRate || (1 / captureInterval);
         const availableDuration = job.duration || 3600;
-        const endSec = typeof endOffsetSeconds === 'number' && endOffsetSeconds > startSec
+        const rawStartSec = Math.max(0, Number(startOffsetSeconds) || 0);
+        const rawEndSec = typeof endOffsetSeconds === 'number' && endOffsetSeconds > rawStartSec
           ? endOffsetSeconds
           : availableDuration;
-        durSec = Math.max(1, Math.min(endSec - startSec, availableDuration - startSec));
+
+        const isTimelapseOneFps =
+          (Math.abs(targetFrameRate - 1) < 0.05 && captureInterval > 1) ||
+          (rawStartSec >= availableDuration && captureInterval > 1 && rawStartSec / captureInterval < availableDuration);
+
+        startSec = isTimelapseOneFps ? Math.floor(rawStartSec / captureInterval) : rawStartSec;
+        const scaledEndSec = isTimelapseOneFps ? Math.ceil(rawEndSec / captureInterval) : rawEndSec;
+        durSec = Math.max(1, Math.min(scaledEndSec - startSec, Math.max(1, availableDuration - startSec)));
       }
 
       console.log(`[extractRetroactiveTaskSubmissions] Slicing student ${studentUid} from job ${job.id}: startSec=${startSec}, durSec=${durSec}`);
@@ -372,8 +384,16 @@ export async function executeExtractRetroactiveTaskSubmissions({
     }
   }
 
-  // Handle enrolled students who were absent or have no class video
-  const enrolledStudents = Array.isArray(classData.students) ? classData.students : [];
+  // Handle enrolled students who were absent or have no class video (supports both Map and Array)
+  const enrolledStudents = Array.isArray(classData.students)
+    ? classData.students
+    : classData.students && typeof classData.students === 'object'
+    ? Object.entries(classData.students).map(([uid, val]) =>
+        typeof val === 'object' && val !== null
+          ? { uid, ...val }
+          : { uid, email: typeof val === 'string' ? val : null }
+      )
+    : [];
   let absentCount = 0;
 
   for (const enrolled of enrolledStudents) {
@@ -389,10 +409,12 @@ export async function executeExtractRetroactiveTaskSubmissions({
 
       const existingSub = await subRef.get();
       if (!existingSub.exists || existingSub.data()?.status === 'missing') {
+        const absentEmail = typeof enrolled === 'object' ? (enrolled.email || null) : null;
         await subRef.set({
           status: 'missing',
           studentUid,
-          studentEmail: typeof enrolled === 'object' ? (enrolled.email || null) : null,
+          email: absentEmail ? absentEmail.toLowerCase() : null,
+          studentEmail: absentEmail ? absentEmail.toLowerCase() : null,
           isRetroactive: true,
           absent: true,
           reason: 'No completed class video recording found for this session.',

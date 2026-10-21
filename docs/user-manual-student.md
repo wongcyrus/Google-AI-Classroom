@@ -448,36 +448,40 @@ During formal examinations, strict academic confidentiality rules apply:
 ---
 
 ## 11. Completing Practical Tasks & Homework Assignments
+**Dedicated Step-by-Step Guide:** 📖 **[Practical Tasks & Rubric-Driven Grading User Guide](./practical-tasks-and-rubric-grading-user-guide.md)**
 
-Hands-on lab exercises and asynchronous homework challenges allow you to demonstrate practical skills directly on your computer, with continuous screen capture and automated AI feedback from Gemini.
+Hands-on lab exercises and asynchronous homework challenges allow you to demonstrate practical skills directly on your computer, with continuous screen capture and automated rubric-driven mark breakdowns and explanations from Gemini 3.8 Flash.
 
 ### 11.1 Accessing Your Practical Tasks
 You can access your assigned practical challenges through two pathways:
-1. **From the Student Records Dashboard (`⚡ Tasks & AI Progress`)**:
-   - Log in and navigate to **Records** &rarr; **`⚡ Tasks & AI Progress`**.
-   - Review your published tasks. Homework assignments are accessible **24/7** anytime before the deadline.
-   - Click **`▶ Start Challenge`** (or **`▶ Resume`**).
+1. **From the Student Records Dashboard (`📋 My Records` $\to$ `📋 Tasks & Lab Progress`)**:
+   - Log in and navigate to **`📋 My Records`** (`/student/records`) $\to$ **`📋 Tasks & Lab Progress`**.
+   - Review your published tasks. **`🏠 Homework`** and **`🔄 Flexible`** assignments are accessible **24/7** anytime before the deadline.
+   - Click **`🚀 Start Task`** (or **`▶️ Resume Task`** / **`🔄 Retry Task`**).
 2. **From Live Class Mode (`StudentView.jsx`)**:
-   - If an instructor launches an in-class lab challenge, a top alert banner will appear: **`📋 Practical Task Available: [Task Title]`**.
-   - Click **`Start Task ➔`** to open your workspace immediately. Your active classroom screen share is automatically linked—no second permission prompt is required!
+   - During a live class session, view the **`📋 Practical Tasks & Challenges`** section on your dashboard.
+   - Click **`🚀 Start Task`** to open your workspace immediately. Your active classroom screen share is automatically linked—no second permission prompt is required!
 
 ### 11.2 The Practical Task Workspace
-When you open the workspace modal:
-- **Pre-Flight Screen Sharing Check**: If you aren't already sharing your screen, click **`🖥️ Start Screen Share`** and select **Entire Screen**.
+When you open the workspace modal ([`StudentTaskWorkspaceModal.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/tasks/StudentTaskWorkspaceModal.jsx)):
+- **Pre-Flight Screen Sharing Check**: If you aren't already sharing your screen, click **`🚀 Start Task Challenge (Share Screen)`** and select **Entire Screen**.
 - **Live Countdown HUD**:
   - The HUD displays your remaining time.
-  - When less than 5 minutes remain, the timer changes to amber warning.
-  - When less than 1 minute remains, the timer pulses red with an urgent alert.
+  - When less than 5 minutes remain, the timer changes to amber warning; when less than 1 minute remains, it pulses red.
   - **Graceful Auto-Submit**: If time expires, the system automatically submits your attempt and stops recording so that all completed work is saved.
-- **Dual-Pane Layout**: Follow the instructions and rubric checklist on the left pane while your active screen preview confirms your recording is crystal clear on the right pane.
-- **Finishing Your Attempt**: When you have completed the challenge, click **`Submit Lab Task`**. The system compiles your recording slice and sends it to Gemini for evaluation.
+- **Dual-Pane Layout**: Follow the instructions and rubric milestones (with step point weights) on the left pane while your active screen preview confirms your recording on the right pane.
+- **Finishing Your Attempt**: When you have completed the challenge, click **`✅ Finish & Submit`**.
+  - **Homework / Flexible Tasks (Outside Live Class)**: Your screen frames immediately compile into an MP4 video (`⚙️ Compiling Video...`) and trigger Gemini rubric grading (`🤖 AI Grading...`).
+  - **In-Class Tasks (During Live Class)**: Your start and end timestamps are recorded (`⏳ Submitted (Awaiting Class Video)`), and your clip is automatically sliced and graded when the class session video finishes compiling.
 
-### 11.3 Reviewing AI Feedback & Scores
-Once evaluation completes (typically 1–2 minutes):
-- Open your task card and click **`📋 Feedback & Review`**.
-- Review your **Overall Score** and **Gemini Summary Evaluation**.
-- Check the **Step-by-Step Checklist**: See which criteria were satisfied, view point allocations, and click the blue timestamp links to jump directly to that point in your submission video.
-- If your instructor has provided manual feedback or score adjustments, their comments will be highlighted.
+### 11.3 Reviewing Your Rubric Mark Breakdown & Step Explanations
+Once evaluation completes (and feedback is released per your instructor's policy):
+- Click **`📊 View Feedback`** (in Live Class view) or **`⭐ View Score & Feedback`** (in `My Records`) to open [`StudentTaskFeedbackView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/tasks/StudentTaskFeedbackView.jsx).
+- Review your **Your Grade Pill** (`effectiveScore / maxScore`), **✨ AI Assessment Verdict**, and any **👨‍🏫 Instructor Note**.
+- Inspect the **🎯 Rubric Mark Breakdown & Step Explanations**:
+  - View your exact score for every rubric milestone: **`{scoreAwarded} / {maxPoints} pts`** and status badge (`completed`, `partial`, `missing`).
+  - Read the **Rubric Criterion / Expected Proof / Marking Criteria**, **Observed on Screen** (`evidenceObserved`), and **Mark Explanation** (`feedback`) explaining why full, partial, or zero marks were awarded.
+  - Click **`⏱️ Jump to MM:SS`** on any step to seek your submission video player directly to that moment in your recording.
 
 ---
 

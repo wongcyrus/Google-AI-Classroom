@@ -1,4 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { doc, setDoc } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { db, storage } from '../../firebase-config';
 import {
   canStartTask,
   calculateRemainingTime,
@@ -11,6 +14,9 @@ const StudentTaskWorkspaceModal = ({
   onClose,
   task,
   submission,
+  classId = null,
+  user = null,
+  captureInterval = 15,
   existingScreenStream = null,
   onStartAttempt,
   onFinishAttempt,
@@ -22,9 +28,99 @@ const StudentTaskWorkspaceModal = ({
   const [screenStream, setScreenStream] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submissionResult, setSubmissionResult] = useState(null);
+  const [demoPlaybackUrl, setDemoPlaybackUrl] = useState(null);
 
   const videoPreviewRef = useRef(null);
   const timerIntervalRef = useRef(null);
+  const captureIntervalRef = useRef(null);
+  const ownedStreamRef = useRef(null);
+  const isSubmittingRef = useRef(false);
+
+  const stopOwnedStream = useCallback(() => {
+    if (captureIntervalRef.current) {
+      clearInterval(captureIntervalRef.current);
+      captureIntervalRef.current = null;
+    }
+    if (ownedStreamRef.current) {
+      try {
+        ownedStreamRef.current.getTracks?.().forEach((t) => t.stop?.());
+      } catch {}
+      ownedStreamRef.current = null;
+    }
+  }, []);
+
+  // Resolve Cloud Storage demo video playback URL when demoVideoPath is not a YouTube video
+  useEffect(() => {
+    if (!isOpen || !task?.demoVideoPath || task.youtubeVideoId) {
+      setDemoPlaybackUrl(null);
+      return;
+    }
+    if (task.demoVideoPath.startsWith('http://') || task.demoVideoPath.startsWith('https://')) {
+      setDemoPlaybackUrl(task.demoVideoPath);
+      return;
+    }
+    let cancelled = false;
+    try {
+      const fileRef = ref(storage, task.demoVideoPath);
+      getDownloadURL(fileRef)
+        .then((url) => {
+          if (!cancelled) setDemoPlaybackUrl(url);
+        })
+        .catch(() => {
+          if (!cancelled) setDemoPlaybackUrl(null);
+        });
+    } catch {
+      setDemoPlaybackUrl(null);
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, task?.demoVideoPath, task?.youtubeVideoId]);
+
+  // Capture a single frame from videoPreviewRef when operating standalone (without StudentView capture loop)
+  const captureStandaloneFrame = useCallback(async (attemptObj) => {
+    if (existingScreenStream || !classId || !user?.uid || !task?.id) return;
+    const videoEl = videoPreviewRef.current;
+    if (!videoEl || !videoEl.videoWidth || !videoEl.videoHeight) return;
+
+    try {
+      const canvas = document.createElement('canvas');
+      const maxWidth = 1280;
+      const scale = videoEl.videoWidth > maxWidth ? maxWidth / videoEl.videoWidth : 1;
+      canvas.width = Math.max(2, Math.floor(videoEl.videoWidth * scale));
+      canvas.height = Math.max(2, Math.floor(videoEl.videoHeight * scale));
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+      ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
+
+      const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.8));
+      if (!blob) return;
+
+      const tsMs = Date.now();
+      const imagePath = `screenshots/${classId}/${user.uid}/${tsMs}-screen.jpg`;
+      const storageRef = ref(storage, imagePath);
+      await uploadBytes(storageRef, blob, { contentType: 'image/jpeg' });
+
+      const docId = `screenshot_${classId}_${user.uid}_${tsMs}_screen`;
+      await setDoc(
+        doc(db, 'screenshots', docId),
+        {
+          classId,
+          studentUid: user.uid,
+          email: user.email?.toLowerCase() || '',
+          imagePath,
+          timestamp: new Date(tsMs),
+          channel: 'screen',
+          deleted: false,
+          activeTaskId: task.id,
+          activeAttemptNumber: attemptObj?.attemptNumber || 1,
+        },
+        { merge: true }
+      );
+    } catch (err) {
+      console.debug('[StudentTaskWorkspaceModal] Standalone frame capture skipped:', err);
+    }
+  }, [existingScreenStream, classId, user?.uid, user?.email, task?.id]);
 
   // Check pre-flight eligibility
   const eligibility = canStartTask(task, submission);
@@ -32,16 +128,53 @@ const StudentTaskWorkspaceModal = ({
   useEffect(() => {
     if (!isOpen) {
       if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+      stopOwnedStream();
       return;
     }
 
     if (eligibility.isResume && eligibility.activeAttempt) {
       setActiveAttempt(eligibility.activeAttempt);
+      if (existingScreenStream) {
+        setScreenStream(existingScreenStream);
+      }
       setSessionState('active');
     } else {
       setSessionState('preflight');
     }
-  }, [isOpen, task, submission]);
+
+    return () => {
+      if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+      stopOwnedStream();
+    };
+  }, [isOpen, task?.id]);
+
+  // Autonomous screenshot capture loop when operating standalone (e.g., from StudentRecordsView or when StudentView isn't already capturing)
+  useEffect(() => {
+    if (sessionState !== 'active' || !screenStream || existingScreenStream || !classId || !user?.uid) {
+      if (captureIntervalRef.current) {
+        clearInterval(captureIntervalRef.current);
+        captureIntervalRef.current = null;
+      }
+      return;
+    }
+
+    const initialTimer = setTimeout(() => {
+      captureStandaloneFrame(activeAttempt);
+    }, 600);
+
+    const intervalMs = Math.max(5, Number(captureInterval) || 15) * 1000;
+    captureIntervalRef.current = setInterval(() => {
+      captureStandaloneFrame(activeAttempt);
+    }, intervalMs);
+
+    return () => {
+      clearTimeout(initialTimer);
+      if (captureIntervalRef.current) {
+        clearInterval(captureIntervalRef.current);
+        captureIntervalRef.current = null;
+      }
+    };
+  }, [sessionState, screenStream, existingScreenStream, classId, user?.uid, captureInterval, activeAttempt, captureStandaloneFrame]);
 
   // Live Timer Countdown Loop
   useEffect(() => {
@@ -56,6 +189,10 @@ const StudentTaskWorkspaceModal = ({
       setIsExpired(calc.isExpired);
 
       if (calc.isExpired && task?.constraints?.timing?.autoSubmitOnExpiry) {
+        if (timerIntervalRef.current) {
+          clearInterval(timerIntervalRef.current);
+          timerIntervalRef.current = null;
+        }
         handleAutoSubmit();
       }
     };
@@ -82,15 +219,20 @@ const StudentTaskWorkspaceModal = ({
       let stream = existingScreenStream;
       if (!stream) {
         stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+        ownedStreamRef.current = stream;
       }
       setScreenStream(stream);
 
-      const attemptNumber = (submission?.attemptsCount || 0) + 1;
-      const startedAttempt = {
-        attemptNumber,
-        startedAt: new Date(),
-        status: 'in_progress',
-      };
+      const attemptNumber = eligibility.isResume && eligibility.activeAttempt?.attemptNumber
+        ? eligibility.activeAttempt.attemptNumber
+        : (submission?.attemptsCount || 0) + 1;
+      const startedAttempt = eligibility.isResume && eligibility.activeAttempt
+        ? eligibility.activeAttempt
+        : {
+            attemptNumber,
+            startedAt: new Date(),
+            status: 'in_progress',
+          };
 
       setActiveAttempt(startedAttempt);
       setSessionState('active');
@@ -105,12 +247,20 @@ const StudentTaskWorkspaceModal = ({
   };
 
   const handleFinishTask = async () => {
-    if (isSubmitting) return;
+    if (isSubmitting || isSubmittingRef.current) return;
+    isSubmittingRef.current = true;
     setIsSubmitting(true);
     setSessionState('submitting');
 
     try {
-      if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current);
+        timerIntervalRef.current = null;
+      }
+
+      // Capture final frame before sealing attempt if running standalone
+      await captureStandaloneFrame(activeAttempt);
+      stopOwnedStream();
 
       let evalResult = null;
       if (onFinishAttempt) {
@@ -124,6 +274,7 @@ const StudentTaskWorkspaceModal = ({
       alert('Error submitting attempt: ' + err.message);
       setSessionState('active');
     } finally {
+      isSubmittingRef.current = false;
       setIsSubmitting(false);
     }
   };
@@ -223,6 +374,14 @@ const StudentTaskWorkspaceModal = ({
                       className="w-full h-full border-0"
                       allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                       allowFullScreen
+                    />
+                  </div>
+                ) : demoPlaybackUrl ? (
+                  <div className="aspect-video w-full rounded-lg overflow-hidden bg-black shadow-sm">
+                    <video
+                      src={demoPlaybackUrl}
+                      controls
+                      className="w-full h-full object-contain"
                     />
                   </div>
                 ) : (

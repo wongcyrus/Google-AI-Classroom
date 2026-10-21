@@ -12,12 +12,12 @@ resource "google_identity_platform_config" "auth" {
     }
   }
 
-  authorized_domains = [
+  authorized_domains = concat([
     "localhost",
     "127.0.0.1",
     "${var.project_id}.firebaseapp.com",
     "${var.project_id}.web.app"
-  ]
+  ], var.custom_domains)
 
   depends_on = [
     google_project_service.apis,

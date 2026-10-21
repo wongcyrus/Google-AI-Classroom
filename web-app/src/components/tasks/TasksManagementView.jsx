@@ -226,40 +226,69 @@ const TasksManagementView = ({
     }
   };
 
+  const activeTaskForGrading = selectedTaskForGrading
+    ? tasks.find((t) => t.id === selectedTaskForGrading.id) || selectedTaskForGrading
+    : null;
+
   const handleSaveOverride = async (studentUid, overrideData) => {
-    if (!classId || !selectedTaskForGrading) return;
+    if (!classId || !activeTaskForGrading) return;
     try {
       const subRef = doc(
         db,
         'classes',
         classId,
         'tasks',
-        selectedTaskForGrading.id,
+        activeTaskForGrading.id,
         'submissions',
         studentUid
       );
-      await updateDoc(subRef, {
+      const updatePayload = {
         teacherOverride: overrideData,
+        feedbackReleased: true,
         updatedAt: new Date(),
-      });
+      };
+      if (typeof overrideData?.manualScore === 'number') {
+        updatePayload.effectiveScore = overrideData.manualScore;
+      }
+      try {
+        await updateDoc(subRef, updatePayload);
+      } catch (updateErr) {
+        if (updateErr?.code === 'not-found' || String(updateErr?.message || '').includes('No document to update')) {
+          await setDoc(
+            subRef,
+            {
+              studentUid,
+              ...updatePayload,
+              status: 'evaluated',
+            },
+            { merge: true }
+          );
+        } else {
+          throw updateErr;
+        }
+      }
     } catch (err) {
       console.error('Failed to save score override:', err);
       alert('Failed to save override: ' + err.message);
     }
   };
 
-  const handleTriggerEvaluation = async (studentUid, attemptNumber = 1) => {
-    if (!classId || !selectedTaskForGrading) return;
+  const handleTriggerEvaluation = async (studentUid, attemptNumber = 1, compiledVideoPath = undefined) => {
+    if (!classId || !activeTaskForGrading) return;
     try {
       const evaluateFn = httpsCallable(functions, 'evaluateTaskSubmission');
-      const res = await evaluateFn({
+      const payload = {
         classId,
-        taskId: selectedTaskForGrading.id,
+        taskId: activeTaskForGrading.id,
         studentUid,
         attemptNumber,
-        rubricSteps: selectedTaskForGrading.rubricSteps || [],
-        model: selectedTaskForGrading.model || 'gemini-3.8-flash',
-      });
+        rubricSteps: activeTaskForGrading.rubricSteps || [],
+        model: activeTaskForGrading.model || 'gemini-3.8-flash',
+      };
+      if (compiledVideoPath) {
+        payload.compiledVideoPath = compiledVideoPath;
+      }
+      const res = await evaluateFn(payload);
       return res.data;
     } catch (err) {
       console.error('Failed to trigger task evaluation:', err);
@@ -268,10 +297,10 @@ const TasksManagementView = ({
   };
 
   // If viewing grading matrix, render matrix sub-view
-  if (selectedTaskForGrading) {
+  if (activeTaskForGrading) {
     return (
       <TaskGradingMatrixView
-        task={selectedTaskForGrading}
+        task={activeTaskForGrading}
         classId={classId}
         className={className || classId}
         lessons={lessons}
@@ -469,7 +498,13 @@ const TasksManagementView = ({
         onSave={handleSaveTask}
         initialTask={editingTask}
         classId={classId}
-        classSchedule={classSchedule}
+        classSchedule={
+          Array.isArray(classSchedule) && classSchedule.length > 0
+            ? classSchedule
+            : lessons && lessons.length > 0
+            ? lessons
+            : classSchedule
+        }
         availableVideos={loadedVideos.length > 0 ? loadedVideos : availableVideos}
       />
     </div>

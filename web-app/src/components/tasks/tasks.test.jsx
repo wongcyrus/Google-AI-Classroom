@@ -1041,12 +1041,46 @@ describe('Tasks Component Suite', () => {
         expect.objectContaining({ manualScore: 98 })
       );
 
+      // Verify per-step rubric breakdown badges in matrix table
+      expect(screen.getByText('S1: 30/30')).toBeInTheDocument();
+      expect(screen.getByText('S2: 62/70')).toBeInTheDocument();
+
       // Test Inspect Modal
       const inspectButtons = screen.getAllByRole('button', { name: /Inspect 🔍/i });
       fireEvent.click(inspectButtons[0]);
 
       expect(screen.getByText(/High proficiency in migrations\./i)).toBeInTheDocument();
       expect(screen.getByText(/Step 2: Database Migrations/i)).toBeInTheDocument();
+      expect(screen.getByText('30 / 30 pts')).toBeInTheDocument();
+      expect(screen.getByText('62 / 70 pts')).toBeInTheDocument();
+
+      // Test interactive per-step rubric mark & explanation override inside Inspect Modal
+      fireEvent.click(screen.getByRole('button', { name: /Edit Rubric Marks & Explanations/i }));
+      const explanationInputs = screen.getAllByPlaceholderText(
+        /Explain why marks were awarded or deducted for this step/i
+      );
+      fireEvent.change(explanationInputs[1], {
+        target: { value: 'Awarded 68/70 after reviewing migration rollback script.' },
+      });
+      const stepScoreInputs = screen.getAllByDisplayValue('62');
+      fireEvent.change(stepScoreInputs[0], { target: { value: '68' } });
+
+      fireEvent.click(screen.getByRole('button', { name: /Save Rubric Breakdown & Score/i }));
+      await waitFor(() => {
+        expect(mockSaveOverride).toHaveBeenCalledWith(
+          'alice_uid',
+          expect.objectContaining({
+            manualScore: 98,
+            stepOverrides: expect.objectContaining({
+              2: expect.objectContaining({
+                scoreAwarded: 68,
+                maxPoints: 70,
+                teacherFeedback: 'Awarded 68/70 after reviewing migration rollback script.',
+              }),
+            }),
+          })
+        );
+      });
 
       // Close Inspect Modal
       fireEvent.click(screen.getAllByRole('button', { name: /Close/i })[0]);

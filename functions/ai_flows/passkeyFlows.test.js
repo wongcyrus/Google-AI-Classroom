@@ -146,9 +146,16 @@ describe('WebAuthn Passkey Flows Backend', () => {
   });
 
   describe('resolveRpId', () => {
-    it('returns clientRpId if allowed', () => {
+    it('returns clientRpId if allowed or configured via CUSTOM_DOMAINS env', () => {
       expect(resolveRpId('localhost')).toBe('localhost');
       expect(resolveRpId('it114115-dev-2026.web.app')).toBe('it114115-dev-2026.web.app');
+
+      const prevCustom = process.env.CUSTOM_DOMAINS;
+      process.env.CUSTOM_DOMAINS = 'custom.example.edu,www.custom.example.edu';
+      expect(resolveRpId('custom.example.edu')).toBe('custom.example.edu');
+      expect(resolveRpId('www.custom.example.edu')).toBe('custom.example.edu');
+      if (prevCustom === undefined) delete process.env.CUSTOM_DOMAINS;
+      else process.env.CUSTOM_DOMAINS = prevCustom;
     });
 
     it('falls back to default production RP ID when unlisted or missing', () => {

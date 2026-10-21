@@ -75,6 +75,22 @@ if [ -f "$ENV_FILE" ]; then
     else
         echo "✅ Google Drive integration configured (VITE_GOOGLE_CLIENT_ID detected)."
     fi
+    # 2c. Sync domain configuration (VITE_STUDENT_DOMAINS, VITE_TEACHER_DOMAINS, VITE_CUSTOM_DOMAINS) to functions/*/.env.$PROJECT_ID
+    STUDENT_DOMAINS_RAW=$(grep -E "^VITE_STUDENT_DOMAINS=" "$ENV_FILE" 2>/dev/null | cut -d'=' -f2- | tr -d '\r"' || true)
+    TEACHER_DOMAINS_RAW=$(grep -E "^VITE_TEACHER_DOMAINS=" "$ENV_FILE" 2>/dev/null | cut -d'=' -f2- | tr -d '\r"' || true)
+    CUSTOM_DOMAINS_RAW=$(grep -E "^VITE_CUSTOM_DOMAINS=" "$ENV_FILE" 2>/dev/null | cut -d'=' -f2- | tr -d '\r"' || true)
+    for d in functions/*/ ; do
+        if [ -f "$d/package.json" ]; then
+            FUNC_ENV_FILE="${d}.env.${PROJECT_ID}"
+            : > "$FUNC_ENV_FILE"
+            [ -n "$STUDENT_DOMAINS_RAW" ] && echo "STUDENT_EMAIL_DOMAINS=$STUDENT_DOMAINS_RAW" >> "$FUNC_ENV_FILE"
+            [ -n "$TEACHER_DOMAINS_RAW" ] && echo "TEACHER_EMAIL_DOMAINS=$TEACHER_DOMAINS_RAW" >> "$FUNC_ENV_FILE"
+            [ -n "$CUSTOM_DOMAINS_RAW" ] && echo "CUSTOM_DOMAINS=$CUSTOM_DOMAINS_RAW" >> "$FUNC_ENV_FILE"
+        fi
+    done
+    if [ -n "$CUSTOM_DOMAINS_RAW" ]; then
+        echo "✅ Custom domain(s) configured for Identity Platform & Passkeys: $CUSTOM_DOMAINS_RAW"
+    fi
 fi
 
 # 3. Generate functions/config.js
@@ -114,7 +130,7 @@ const _detectedProjectId = process.env.GCLOUD_PROJECT || (() => {
   try { return JSON.parse(process.env.FIREBASE_CONFIG || '{}').projectId; } catch { return ''; }
 })() || '';
 const _isDevRuntime = _detectedProjectId === 'it114115-dev-2026' || _detectedProjectId.includes('dev');
-const _fallbackStudentDomains = _isDevRuntime ? 'stu.vtc.edu.hk,gmail.com' : '${DEFAULT_STUDENT_DOMAINS:-stu.vtc.edu.hk}';
+const _fallbackStudentDomains = _isDevRuntime ? 'stu.vtc.edu.hk,gmail.com' : 'stu.vtc.edu.hk';
 
 export const STUDENT_EMAIL_DOMAINS = (process.env.STUDENT_EMAIL_DOMAINS || _fallbackStudentDomains)
   .split(',')

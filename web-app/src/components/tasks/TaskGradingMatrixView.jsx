@@ -66,17 +66,20 @@ const TaskGradingMatrixView = ({
   const [retroTargetStudentUid, setRetroTargetStudentUid] = useState(null);
   const [isExtractingRetro, setIsExtractingRetro] = useState(false);
   const [retroExtractionResult, setRetroExtractionResult] = useState(null);
+  const toLocalDateTimeInput = (val) => {
+    if (!val) return '';
+    const d = val.toDate ? val.toDate() : new Date(val);
+    if (isNaN(d.getTime())) return '';
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
   const [retroConfig, setRetroConfig] = useState({
-    sessionDate: task?.retroactiveConfig?.sessionDate || new Date().toISOString().slice(0, 10),
+    sessionDate: task?.retroactiveConfig?.sessionDate || toLocalDateTimeInput(new Date()).slice(0, 10),
     windowType: task?.retroactiveConfig?.windowType || 'relative_offset',
     startMinute: task?.retroactiveConfig?.startMinute ?? 0,
     durationMinutes: task?.retroactiveConfig?.durationMinutes ?? 30,
-    startTime: task?.retroactiveConfig?.startTime
-      ? (task.retroactiveConfig.startTime.toDate ? task.retroactiveConfig.startTime.toDate().toISOString().slice(0, 16) : new Date(task.retroactiveConfig.startTime).toISOString().slice(0, 16))
-      : '',
-    endTime: task?.retroactiveConfig?.endTime
-      ? (task.retroactiveConfig.endTime.toDate ? task.retroactiveConfig.endTime.toDate().toISOString().slice(0, 16) : new Date(task.retroactiveConfig.endTime).toISOString().slice(0, 16))
-      : '',
+    startTime: toLocalDateTimeInput(task?.retroactiveConfig?.startTime),
+    endTime: toLocalDateTimeInput(task?.retroactiveConfig?.endTime),
   });
 
   const handleOpenRetroactiveModal = (studentUid = null) => {
@@ -146,44 +149,91 @@ const TaskGradingMatrixView = ({
     submissions.forEach((sub) => {
       if (sub.studentUid) subMap.set(sub.studentUid, sub);
       if (sub.id) subMap.set(sub.id, sub);
-      if (sub.email) subMap.set(sub.email.toLowerCase(), sub);
+      const subEmail = (sub.email || sub.studentEmail || '').toLowerCase();
+      if (subEmail) subMap.set(subEmail, sub);
     });
 
-    return enrolledStudents.map((emailOrObj) => {
-      const email = typeof emailOrObj === 'string' ? emailOrObj : emailOrObj.email;
-      const normalizedEmail = email ? email.toLowerCase() : '';
-      const rawProfile = (studentProfiles && studentProfiles[normalizedEmail]) || (studentProfiles && studentProfiles[email]) || {};
-      const profile = getStudentProfile(email, studentProfiles) || {};
-      const uid = rawProfile.uid || profile.uid || email;
-      const sub = subMap.get(uid) || subMap.get(normalizedEmail) || subMap.get(email) || {};
+    const seenUids = new Set();
+    const seenEmails = new Set();
 
-      const displayName = getStudentDisplayName(email, studentProfiles);
+    const buildRow = (email, explicitUid, subObj) => {
+      const normalizedEmail = email ? email.toLowerCase() : '';
+      const rawProfile =
+        (studentProfiles && studentProfiles[normalizedEmail]) ||
+        (studentProfiles && studentProfiles[email]) ||
+        {};
+      const profile = getStudentProfile(email, studentProfiles) || {};
+      const uid =
+        subObj?.studentUid ||
+        subObj?.id ||
+        explicitUid ||
+        rawProfile.uid ||
+        profile.uid ||
+        email;
+      const sub =
+        subObj ||
+        subMap.get(uid) ||
+        (normalizedEmail ? subMap.get(normalizedEmail) : null) ||
+        (email ? subMap.get(email) : null) ||
+        {};
+
+      const resolvedUid = sub.studentUid || sub.id || uid;
+      const resolvedEmail = email || sub.email || sub.studentEmail || resolvedUid;
+      const normalizedResolvedEmail = resolvedEmail ? resolvedEmail.toLowerCase() : '';
+
+      if (resolvedUid) seenUids.add(resolvedUid);
+      if (normalizedResolvedEmail) seenEmails.add(normalizedResolvedEmail);
+
+      const displayName = getStudentDisplayName(resolvedEmail, studentProfiles);
 
       // Match video job
-      const matchedJob = videoJobs.find((v) =>
-        (v.studentUid === uid || v.studentEmail?.toLowerCase() === normalizedEmail) &&
-        (v.status === 'completed' || v.videoPath || v.videoUrl)
+      const matchedJob = videoJobs.find(
+        (v) =>
+          (v.studentUid === resolvedUid ||
+            (normalizedResolvedEmail && v.studentEmail?.toLowerCase() === normalizedResolvedEmail)) &&
+          (v.status === 'completed' || v.videoPath || v.videoUrl)
       );
 
-      const videoPath = sub.compiledVideoPath || sub.latestAttempt?.compiledVideoPath || matchedJob?.videoPath || null;
-      const videoUrl = sub.videoUrl || sub.latestAttempt?.videoUrl || matchedJob?.videoUrl || null;
-      const driveWebViewLink = sub.driveWebViewLink || sub.latestAttempt?.driveWebViewLink || matchedJob?.driveWebViewLink || null;
+      const videoPath =
+        sub.compiledVideoPath ||
+        sub.latestAttempt?.compiledVideoPath ||
+        matchedJob?.videoPath ||
+        null;
+      const videoUrl =
+        sub.videoUrl || sub.latestAttempt?.videoUrl || matchedJob?.videoUrl || null;
+      const driveWebViewLink =
+        sub.driveWebViewLink ||
+        sub.latestAttempt?.driveWebViewLink ||
+        matchedJob?.driveWebViewLink ||
+        null;
       const driveFolderPath = sub.driveFolderPath || matchedJob?.driveFolderPath || null;
       const hasVideo = Boolean(videoPath || videoUrl || matchedJob);
 
+      const durationSeconds =
+        sub.durationSeconds ||
+        sub.duration ||
+        sub.latestAttempt?.durationSeconds ||
+        sub.latestAttempt?.duration ||
+        sub.evaluation?.durationSeconds ||
+        matchedJob?.duration ||
+        0;
+
       return {
         ...sub,
-        studentUid: uid,
-        email: email || sub.email,
-        displayName: displayName || email,
+        studentUid: resolvedUid,
+        email: resolvedEmail,
+        displayName: displayName || resolvedEmail,
         cohort: profile.studentClass || profile.cohort || 'Default',
         programme: profile.programme || '',
         status: sub.status || 'missing',
         attemptsCount: sub.attemptsCount || 0,
-        effectiveScore: typeof sub.teacherOverride?.manualScore === 'number'
-          ? sub.teacherOverride.manualScore
-          : (typeof sub.effectiveScore === 'number' ? sub.effectiveScore : (sub.evaluation?.finalScore ?? null)),
-        durationSeconds: sub.durationSeconds || sub.evaluation?.durationSeconds || 0,
+        effectiveScore:
+          typeof sub.teacherOverride?.manualScore === 'number'
+            ? sub.teacherOverride.manualScore
+            : typeof sub.effectiveScore === 'number'
+            ? sub.effectiveScore
+            : sub.evaluation?.finalScore ?? null,
+        durationSeconds,
         videoPath,
         videoUrl,
         driveWebViewLink,
@@ -191,7 +241,26 @@ const TaskGradingMatrixView = ({
         hasVideo,
         matchedJobId: matchedJob?.id,
       };
+    };
+
+    const rows = enrolledStudents.map((emailOrObj) => {
+      const email = typeof emailOrObj === 'string' ? emailOrObj : emailOrObj?.email;
+      const explicitUid =
+        typeof emailOrObj === 'object' ? emailOrObj?.uid || emailOrObj?.id : null;
+      return buildRow(email, explicitUid, null);
     });
+
+    // Also include any submissions from students not present in enrolledStudents
+    submissions.forEach((sub) => {
+      const sUid = sub.studentUid || sub.id;
+      const sEmail = (sub.email || sub.studentEmail || '').toLowerCase();
+      if ((sUid && seenUids.has(sUid)) || (sEmail && seenEmails.has(sEmail))) {
+        return;
+      }
+      rows.push(buildRow(sub.email || sub.studentEmail, sUid, sub));
+    });
+
+    return rows;
   }, [enrolledStudents, submissions, studentProfiles, videoJobs]);
 
   const filteredSubmissions = useMemo(() => {
@@ -314,10 +383,197 @@ const TaskGradingMatrixView = ({
   const handleSaveOverride = async (studentUid) => {
     if (!onSaveOverride) return;
     await onSaveOverride(studentUid, {
+      ...(enrichedSubmissions.find((s) => s.studentUid === studentUid)?.teacherOverride || {}),
       manualScore: manualScoreInput === '' ? null : Number(manualScoreInput),
       teacherComment: teacherCommentInput.trim(),
     });
     setEditingStudentUid(null);
+  };
+
+  // Resolve complete rubric steps for a submission (merging task.rubricSteps + AI stepResults + teacher stepOverrides)
+  const resolveRubricSteps = (sub) => {
+    const evalSteps = sub?.evaluation?.stepResults || sub?.evaluation?.rubricScores || [];
+    const stepOverrides = sub?.teacherOverride?.stepOverrides || {};
+    const taskRubric = Array.isArray(task?.rubricSteps) ? task.rubricSteps : [];
+
+    if (taskRubric.length > 0) {
+      return taskRubric.map((rStep, idx) => {
+        const stepNum = Number(rStep.stepNumber ?? idx + 1);
+        const maxPoints = Number(rStep.points ?? rStep.weight ?? 0);
+        const matchedEval =
+          evalSteps.find((s) => Number(s?.stepNumber) === stepNum) ||
+          evalSteps.find(
+            (s) =>
+              s?.title &&
+              rStep.title &&
+              String(s.title).trim().toLowerCase() === String(rStep.title).trim().toLowerCase()
+          ) ||
+          evalSteps[idx] ||
+          {};
+        const override = stepOverrides[stepNum] || stepOverrides[String(stepNum)] || null;
+        const scoreAwarded =
+          override?.scoreAwarded !== undefined && override?.scoreAwarded !== null && override?.scoreAwarded !== ''
+            ? Number(override.scoreAwarded)
+            : matchedEval.scoreAwarded !== undefined && matchedEval.scoreAwarded !== null
+            ? Number(matchedEval.scoreAwarded)
+            : 0;
+        const status =
+          override?.status ||
+          matchedEval.status ||
+          (maxPoints > 0 && scoreAwarded >= maxPoints
+            ? 'completed'
+            : scoreAwarded > 0
+            ? 'partial'
+            : 'missing');
+
+        return {
+          stepNumber: stepNum,
+          title: rStep.title || matchedEval.title || `Step ${stepNum}`,
+          description: rStep.description || '',
+          expectedEvidence: matchedEval.expectedEvidence || rStep.expectedEvidence || '',
+          gradingCriteria: matchedEval.gradingCriteria || rStep.gradingCriteria || '',
+          maxPoints,
+          scoreAwarded,
+          status,
+          timestampInVideo: matchedEval.timestampInVideo || matchedEval.timestamp || null,
+          evidenceObserved: matchedEval.evidenceObserved || matchedEval.evidence || '',
+          feedback:
+            override?.teacherFeedback ||
+            matchedEval.feedback ||
+            matchedEval.rationale ||
+            matchedEval.explanation ||
+            '',
+          aiFeedback: matchedEval.feedback || matchedEval.rationale || '',
+          teacherFeedback: override?.teacherFeedback || '',
+          hasOverride: Boolean(override),
+        };
+      });
+    }
+
+    return evalSteps.map((s, idx) => {
+      const stepNum = Number(s.stepNumber ?? idx + 1);
+      const override = stepOverrides[stepNum] || stepOverrides[String(stepNum)] || null;
+      const maxPoints = Number(s.maxPoints ?? s.points ?? 0);
+      const scoreAwarded =
+        override?.scoreAwarded !== undefined && override?.scoreAwarded !== null && override?.scoreAwarded !== ''
+          ? Number(override.scoreAwarded)
+          : Number(s.scoreAwarded ?? 0);
+      return {
+        stepNumber: stepNum,
+        title: s.title || `Step ${stepNum}`,
+        description: s.description || '',
+        expectedEvidence: s.expectedEvidence || '',
+        gradingCriteria: s.gradingCriteria || '',
+        maxPoints,
+        scoreAwarded,
+        status:
+          override?.status ||
+          s.status ||
+          (maxPoints > 0 && scoreAwarded >= maxPoints
+            ? 'completed'
+            : scoreAwarded > 0
+            ? 'partial'
+            : 'missing'),
+        timestampInVideo: s.timestampInVideo || s.timestamp || null,
+        evidenceObserved: s.evidenceObserved || '',
+        feedback: override?.teacherFeedback || s.feedback || '',
+        aiFeedback: s.feedback || '',
+        teacherFeedback: override?.teacherFeedback || '',
+        hasOverride: Boolean(override),
+      };
+    });
+  };
+
+  // Inspect Modal Rubric Editing State
+  const [isEditingModalRubric, setIsEditingModalRubric] = useState(false);
+  const [modalStepEdits, setModalStepEdits] = useState({});
+  const [modalTeacherComment, setModalTeacherComment] = useState('');
+  const [isSavingModalOverride, setIsSavingModalOverride] = useState(false);
+  const previewVideoRef = useRef(null);
+  const [previewVideoSeekSeconds, setPreviewVideoSeekSeconds] = useState(null);
+
+  const activeSelectedSubmission = useMemo(() => {
+    if (!selectedSubmission) return null;
+    return (
+      enrichedSubmissions.find((s) => s.studentUid === selectedSubmission.studentUid) ||
+      selectedSubmission
+    );
+  }, [selectedSubmission, enrichedSubmissions]);
+
+  const handleOpenInspectModal = (sub) => {
+    setSelectedSubmission(sub);
+    setIsEditingModalRubric(false);
+    const steps = resolveRubricSteps(sub);
+    const initialEdits = {};
+    steps.forEach((st) => {
+      initialEdits[st.stepNumber] = {
+        scoreAwarded: st.scoreAwarded,
+        teacherFeedback: st.teacherFeedback || st.feedback || '',
+      };
+    });
+    setModalStepEdits(initialEdits);
+    setModalTeacherComment(sub.teacherOverride?.teacherComment || '');
+  };
+
+  const handleModalStepChange = (stepNumber, field, value) => {
+    setModalStepEdits((prev) => ({
+      ...prev,
+      [stepNumber]: {
+        ...(prev[stepNumber] || {}),
+        [field]: value,
+      },
+    }));
+  };
+
+  const handleSaveModalRubricOverride = async () => {
+    if (!onSaveOverride || !activeSelectedSubmission) return;
+    setIsSavingModalOverride(true);
+    try {
+      const steps = resolveRubricSteps(activeSelectedSubmission);
+      const stepOverrides = {};
+      let sumScore = 0;
+
+      steps.forEach((st) => {
+        const edit = modalStepEdits[st.stepNumber] || {};
+        const rawScore =
+          edit.scoreAwarded !== undefined && edit.scoreAwarded !== ''
+            ? Number(edit.scoreAwarded)
+            : st.scoreAwarded;
+        const maxPts = st.maxPoints || Number(task.maxScore) || 100;
+        const clampedScore = Math.max(0, Math.min(maxPts, Number.isFinite(rawScore) ? rawScore : 0));
+        sumScore += clampedScore;
+        stepOverrides[st.stepNumber] = {
+          scoreAwarded: clampedScore,
+          maxPoints: st.maxPoints,
+          status:
+            st.maxPoints > 0 && clampedScore >= st.maxPoints
+              ? 'completed'
+              : clampedScore > 0
+              ? 'partial'
+              : 'missing',
+          teacherFeedback: (edit.teacherFeedback ?? '').trim(),
+        };
+      });
+
+      const finalManualScore = Math.min(Number(task.maxScore) || 100, Math.round(sumScore * 100) / 100);
+      await onSaveOverride(activeSelectedSubmission.studentUid, {
+        manualScore: finalManualScore,
+        teacherComment: modalTeacherComment.trim(),
+        stepOverrides,
+      });
+      setIsEditingModalRubric(false);
+    } finally {
+      setIsSavingModalOverride(false);
+    }
+  };
+
+  const parseTimestampToSeconds = (tsStr) => {
+    if (!tsStr || typeof tsStr !== 'string') return 0;
+    const parts = tsStr.split(':').map(Number);
+    if (parts.some(isNaN)) return 0;
+    if (parts.length === 2) return parts[0] * 60 + parts[1];
+    if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+    return 0;
   };
 
   const readyVideosCount = useMemo(() => {
@@ -427,8 +683,9 @@ const TaskGradingMatrixView = ({
     }));
   };
 
-  const handlePlayPreview = async (sub) => {
-    if (sub.driveWebViewLink) {
+  const handlePlayPreview = async (sub, seekToSeconds = null) => {
+    setPreviewVideoSeekSeconds(seekToSeconds);
+    if (sub.driveWebViewLink && !sub.videoUrl && !sub.videoPath) {
       window.open(sub.driveWebViewLink, '_blank', 'noopener,noreferrer');
       return;
     }
@@ -439,7 +696,12 @@ const TaskGradingMatrixView = ({
       return;
     }
 
-    if (!sub.videoPath) return;
+    if (!sub.videoPath) {
+      if (sub.driveWebViewLink) {
+        window.open(sub.driveWebViewLink, '_blank', 'noopener,noreferrer');
+      }
+      return;
+    }
 
     try {
       setIsLoadingPreview(true);
@@ -601,7 +863,7 @@ const TaskGradingMatrixView = ({
               <th className="py-3 px-3">Status</th>
               <th className="py-3 px-3">Attempts</th>
               <th className="py-3 px-3">Duration</th>
-              <th className="py-3 px-3">Step Progress</th>
+              <th className="py-3 px-3">Rubric Breakdown & Explanation</th>
               <th className="py-3 px-3">Video / Drive</th>
               <th className="py-3 px-4 text-right">Score</th>
               <th className="py-3 px-3 text-center">Actions</th>
@@ -618,9 +880,9 @@ const TaskGradingMatrixView = ({
               filteredSubmissions.map((sub) => {
                 const isEditing = editingStudentUid === sub.studentUid;
                 const evalData = sub.evaluation || {};
-                const stepResults = evalData.stepResults || [];
-                const completedStepsCount = stepResults.filter((s) => s.status === 'completed').length;
-                const totalSteps = task.rubricSteps?.length || stepResults.length || 0;
+                const resolvedSteps = resolveRubricSteps(sub);
+                const completedStepsCount = resolvedSteps.filter((s) => s.status === 'completed').length;
+                const totalSteps = resolvedSteps.length;
 
                 return (
                   <tr key={sub.studentUid} className="hover:bg-gray-50/50 transition-colors">
@@ -688,18 +950,49 @@ const TaskGradingMatrixView = ({
                     <td className="py-3 px-3 text-xs text-gray-600 font-mono">
                       {sub.durationSeconds ? `${Math.round(sub.durationSeconds / 60)}m` : '-'}
                     </td>
-                    <td className="py-3 px-3">
+                    <td className="py-3 px-3 max-w-xs">
                       {totalSteps > 0 && sub.status === 'evaluated' ? (
-                        <div className="flex items-center gap-1.5">
-                          <div className="w-16 bg-gray-200 h-2 rounded-full overflow-hidden">
-                            <div
-                              className="bg-green-500 h-full rounded-full"
-                              style={{ width: `${Math.round((completedStepsCount / totalSteps) * 100)}%` }}
-                            />
+                        <div className="space-y-1.5">
+                          <div className="flex items-center gap-1.5">
+                            <div className="w-16 bg-gray-200 h-2 rounded-full overflow-hidden">
+                              <div
+                                className="bg-green-500 h-full rounded-full"
+                                style={{ width: `${Math.round((completedStepsCount / totalSteps) * 100)}%` }}
+                              />
+                            </div>
+                            <span className="text-[11px] font-semibold text-gray-700">
+                              {completedStepsCount}/{totalSteps}
+                            </span>
                           </div>
-                          <span className="text-[11px] font-semibold text-gray-700">
-                            {completedStepsCount}/{totalSteps}
-                          </span>
+                          <div
+                            className="flex flex-wrap gap-1"
+                            title={evalData.overallSummary || ''}
+                          >
+                            {resolvedSteps.map((st) => (
+                              <span
+                                key={st.stepNumber}
+                                title={`Step ${st.stepNumber}: ${st.title} (${st.scoreAwarded}/${st.maxPoints} pts)${st.feedback ? ` — ${st.feedback}` : ''}`}
+                                className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded border ${
+                                  st.status === 'completed'
+                                    ? 'bg-green-50 text-green-800 border-green-200'
+                                    : st.status === 'partial'
+                                    ? 'bg-amber-50 text-amber-800 border-amber-200'
+                                    : 'bg-red-50 text-red-700 border-red-200'
+                                }`}
+                              >
+                                S{st.stepNumber}: {st.scoreAwarded}
+                                {st.maxPoints > 0 ? `/${st.maxPoints}` : ''}
+                              </span>
+                            ))}
+                          </div>
+                          {sub.teacherOverride?.teacherComment && (
+                            <p
+                              className="text-[11px] text-purple-700 truncate max-w-[260px]"
+                              title={sub.teacherOverride.teacherComment}
+                            >
+                              ✏️ {sub.teacherOverride.teacherComment}
+                            </p>
+                          )}
                         </div>
                       ) : (
                         <span className="text-xs text-gray-400">-</span>
@@ -764,29 +1057,38 @@ const TaskGradingMatrixView = ({
                     </td>
                     <td className="py-3 px-4 text-right">
                       {isEditing ? (
-                        <div className="flex items-center justify-end gap-1">
+                        <div className="flex flex-col items-end gap-1">
+                          <div className="flex items-center justify-end gap-1">
+                            <input
+                              type="number"
+                              min="0"
+                              max={task.maxScore || 100}
+                              value={manualScoreInput}
+                              onChange={(e) => setManualScoreInput(e.target.value)}
+                              className="w-16 px-1.5 py-0.5 text-right font-bold text-sm border rounded bg-white text-gray-900 border-gray-300"
+                            />
+                            <button
+                              onClick={() => handleSaveOverride(sub.studentUid)}
+                              className="p-1 bg-green-600 text-white rounded text-xs"
+                              title="Save"
+                            >
+                              ✓
+                            </button>
+                            <button
+                              onClick={() => setEditingStudentUid(null)}
+                              className="p-1 bg-gray-400 text-white rounded text-xs"
+                              title="Cancel"
+                            >
+                              ×
+                            </button>
+                          </div>
                           <input
-                            type="number"
-                            min="0"
-                            max={task.maxScore || 100}
-                            value={manualScoreInput}
-                            onChange={(e) => setManualScoreInput(e.target.value)}
-                            className="w-16 px-1.5 py-0.5 text-right font-bold text-sm border rounded bg-white text-gray-900 border-gray-300"
+                            type="text"
+                            value={teacherCommentInput}
+                            onChange={(e) => setTeacherCommentInput(e.target.value)}
+                            placeholder="Teacher comment / rationale..."
+                            className="w-36 px-1.5 py-0.5 text-[11px] border rounded bg-white text-gray-800 border-gray-300"
                           />
-                          <button
-                            onClick={() => handleSaveOverride(sub.studentUid)}
-                            className="p-1 bg-green-600 text-white rounded text-xs"
-                            title="Save"
-                          >
-                            ✓
-                          </button>
-                          <button
-                            onClick={() => setEditingStudentUid(null)}
-                            className="p-1 bg-gray-400 text-white rounded text-xs"
-                            title="Cancel"
-                          >
-                            ×
-                          </button>
                         </div>
                       ) : (
                         <div className="group/score flex items-center justify-end gap-1.5">
@@ -843,7 +1145,7 @@ const TaskGradingMatrixView = ({
                         ) : (
                           <>
                             <button
-                              onClick={() => setSelectedSubmission(sub)}
+                              onClick={() => handleOpenInspectModal(sub)}
                               disabled={sub.status !== 'evaluated'}
                               className="px-2 py-1 text-xs font-semibold text-blue-600 hover:text-blue-800 hover:underline disabled:opacity-30 disabled:no-underline"
                             >
@@ -871,16 +1173,16 @@ const TaskGradingMatrixView = ({
       </div>
 
       {/* Submission Detail Modal */}
-      {selectedSubmission && (
+      {activeSelectedSubmission && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60 backdrop-blur-sm p-4 overflow-y-auto">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col border border-gray-200">
             <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center bg-gray-50 rounded-t-2xl">
               <div>
                 <h3 className="font-bold text-gray-900 flex items-center gap-2">
-                  <span>🧑‍🎓</span> {selectedSubmission.displayName} ({selectedSubmission.email})
+                  <span>🧑‍🎓</span> {activeSelectedSubmission.displayName} ({activeSelectedSubmission.email})
                 </h3>
                 <p className="text-xs text-gray-500">
-                  Attempt {selectedSubmission.attemptsCount} • Final Score: {selectedSubmission.effectiveScore} /{' '}
+                  Attempt {activeSelectedSubmission.attemptsCount} • Final Score: {activeSelectedSubmission.effectiveScore} /{' '}
                   {task.maxScore || 100}
                 </p>
               </div>
@@ -902,9 +1204,21 @@ const TaskGradingMatrixView = ({
                   AI Assessment Summary
                 </span>
                 <p className="text-sm text-blue-950 mt-1">
-                  {selectedSubmission.evaluation?.overallSummary || 'No summary available.'}
+                  {activeSelectedSubmission.evaluation?.overallSummary || 'No summary available.'}
                 </p>
               </div>
+
+              {/* Teacher Override Comment if present */}
+              {activeSelectedSubmission.teacherOverride?.teacherComment && !isEditingModalRubric && (
+                <div className="p-4 bg-purple-50 rounded-xl border border-purple-200">
+                  <span className="text-xs font-bold text-purple-900 uppercase">
+                    ✏️ Instructor Feedback / Override Rationale
+                  </span>
+                  <p className="text-sm text-purple-950 mt-1">
+                    {activeSelectedSubmission.teacherOverride.teacherComment}
+                  </p>
+                </div>
+              )}
 
               {/* Video & Google Drive Cloud Backup Status */}
               <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -912,12 +1226,12 @@ const TaskGradingMatrixView = ({
                   <span className="text-xs font-bold text-gray-700 uppercase flex items-center gap-1.5">
                     <span>🎬</span> Student Attempt Video
                   </span>
-                  {selectedSubmission.driveWebViewLink ? (
+                  {activeSelectedSubmission.driveWebViewLink ? (
                     <div className="text-xs text-green-700 mt-1 flex items-center gap-1">
                       <span>✅ Backed up to Google Drive:</span>
-                      <span className="font-mono text-[11px] text-gray-600 truncate max-w-xs">{selectedSubmission.driveFolderPath}</span>
+                      <span className="font-mono text-[11px] text-gray-600 truncate max-w-xs">{activeSelectedSubmission.driveFolderPath}</span>
                     </div>
-                  ) : selectedSubmission.hasVideo ? (
+                  ) : activeSelectedSubmission.hasVideo ? (
                     <div className="text-xs text-amber-700 mt-1">
                       ⚠️ Video compiled in Cloud Storage, not yet backed up to Drive
                     </div>
@@ -928,28 +1242,28 @@ const TaskGradingMatrixView = ({
                   )}
                 </div>
                 <div className="flex items-center gap-2">
-                  {selectedSubmission.hasVideo && (
+                  {activeSelectedSubmission.hasVideo && (
                     <button
                       type="button"
-                      onClick={() => handlePlayPreview(selectedSubmission)}
+                      onClick={() => handlePlayPreview(activeSelectedSubmission)}
                       className="px-3 py-1.5 bg-gray-800 hover:bg-gray-900 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors"
                     >
                       <span>▶️</span> Watch Screencast
                     </button>
                   )}
-                  {selectedSubmission.driveWebViewLink ? (
+                  {activeSelectedSubmission.driveWebViewLink ? (
                     <a
-                      href={selectedSubmission.driveWebViewLink}
+                      href={activeSelectedSubmission.driveWebViewLink}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5"
                     >
                       <span>📁</span> View in Drive ↗
                     </a>
-                  ) : selectedSubmission.hasVideo ? (
+                  ) : activeSelectedSubmission.hasVideo ? (
                     <button
                       type="button"
-                      onClick={() => handleBackupSingleVideo(selectedSubmission)}
+                      onClick={() => handleBackupSingleVideo(activeSelectedSubmission)}
                       className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5"
                     >
                       <span>☁️</span> Backup to Drive
@@ -958,47 +1272,194 @@ const TaskGradingMatrixView = ({
                 </div>
               </div>
 
-              {/* Step By Step Breakdown */}
-              <div className="space-y-3">
-                <h4 className="text-sm font-bold text-gray-800">
-                  Rubric Milestones Evaluation
-                </h4>
-                {(selectedSubmission.evaluation?.stepResults || []).map((step, idx) => (
-                  <div
-                    key={idx}
-                    className="p-3 bg-gray-50 border border-gray-200 rounded-xl flex items-start justify-between gap-3"
-                  >
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold text-gray-900">
-                          Step {step.stepNumber}: {step.title}
-                        </span>
-                        <span
-                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                            step.status === 'completed'
-                              ? 'bg-green-100 text-green-800'
-                              : step.status === 'partial'
-                              ? 'bg-amber-100 text-amber-800'
-                              : 'bg-red-100 text-red-800'
-                          }`}
-                        >
-                          {step.status}
-                        </span>
-                        {step.timestampInVideo && (
-                          <span className="text-[10px] text-gray-500 font-mono">
-                            ⏱️ {step.timestampInVideo}
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-xs text-gray-700">{step.feedback}</p>
-                    </div>
-                    <div className="text-right whitespace-nowrap">
-                      <span className="font-bold text-sm text-gray-900">
-                        {step.scoreAwarded} pts
+              {/* Strengths and Deviations / Errors */}
+              {(activeSelectedSubmission.evaluation?.strengths?.length > 0 ||
+                activeSelectedSubmission.evaluation?.deviationsOrErrors?.length > 0) && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {activeSelectedSubmission.evaluation?.strengths?.length > 0 && (
+                    <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl">
+                      <span className="text-xs font-bold text-emerald-900 uppercase block mb-1">
+                        ✨ Observed Strengths
                       </span>
+                      <ul className="list-disc list-inside text-xs text-emerald-900 space-y-1">
+                        {activeSelectedSubmission.evaluation.strengths.map((str, i) => (
+                          <li key={i}>{str}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {activeSelectedSubmission.evaluation?.deviationsOrErrors?.length > 0 && (
+                    <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl">
+                      <span className="text-xs font-bold text-amber-900 uppercase block mb-1">
+                        ⚠️ Deviations & Errors
+                      </span>
+                      <ul className="list-disc list-inside text-xs text-amber-900 space-y-1">
+                        {activeSelectedSubmission.evaluation.deviationsOrErrors.map((err, i) => (
+                          <li key={i}>{err}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Step By Step Rubric Mark Breakdown & Explanations */}
+              <div className="space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h4 className="text-sm font-bold text-gray-800">
+                    Rubric Milestones Evaluation
+                  </h4>
+                  {onSaveOverride && (
+                    <button
+                      type="button"
+                      onClick={() => setIsEditingModalRubric((prev) => !prev)}
+                      className="px-3 py-1 bg-purple-100 hover:bg-purple-200 text-purple-900 border border-purple-300 rounded-lg text-xs font-bold transition-colors"
+                    >
+                      {isEditingModalRubric ? 'Cancel Rubric Edit' : '✏️ Edit Rubric Marks & Explanations'}
+                    </button>
+                  )}
+                </div>
+
+                {resolveRubricSteps(activeSelectedSubmission).map((step, idx) => {
+                  const editState = modalStepEdits[step.stepNumber] || {};
+                  return (
+                    <div
+                      key={idx}
+                      className="p-3.5 bg-gray-50 border border-gray-200 rounded-xl space-y-2"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="space-y-1 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-xs font-bold text-gray-900">
+                              Step {step.stepNumber}: {step.title}
+                            </span>
+                            <span
+                              className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                step.status === 'completed'
+                                  ? 'bg-green-100 text-green-800'
+                                  : step.status === 'partial'
+                                  ? 'bg-amber-100 text-amber-800'
+                                  : 'bg-red-100 text-red-800'
+                              }`}
+                            >
+                              {step.status}
+                            </span>
+                            {step.timestampInVideo && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handlePlayPreview(
+                                    activeSelectedSubmission,
+                                    parseTimestampToSeconds(step.timestampInVideo)
+                                  )
+                                }
+                                className="text-[10px] text-blue-700 hover:text-blue-900 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-1.5 py-0.5 rounded font-mono"
+                                title="Watch video at this step's timestamp"
+                              >
+                                ⏱️ {step.timestampInVideo}
+                              </button>
+                            )}
+                          </div>
+
+                          {(step.description || step.expectedEvidence || step.gradingCriteria) && (
+                            <div className="text-[11px] text-gray-500 space-y-0.5">
+                              {step.description && <p>Rubric Requirement: {step.description}</p>}
+                              {step.expectedEvidence && (
+                                <p className="font-mono text-[10px] text-gray-600">
+                                  Expected Proof: {step.expectedEvidence}
+                                </p>
+                              )}
+                              {step.gradingCriteria && (
+                                <p className="text-[10px] text-gray-600">
+                                  Marking Criteria: {step.gradingCriteria}
+                                </p>
+                              )}
+                            </div>
+                          )}
+
+                          {step.evidenceObserved && (
+                            <p className="text-xs text-slate-700 bg-white px-2.5 py-1.5 rounded border border-slate-200">
+                              <span className="font-semibold text-slate-900">Observed Evidence: </span>
+                              {step.evidenceObserved}
+                            </p>
+                          )}
+
+                          <p className="text-xs text-gray-700">
+                            <span className="font-semibold text-gray-900">Explanation: </span>
+                            {step.feedback || 'No detailed explanation provided.'}
+                          </p>
+                        </div>
+
+                        <div className="text-right whitespace-nowrap">
+                          <span className="font-bold text-sm text-gray-900">
+                            {step.maxPoints > 0
+                              ? `${step.scoreAwarded} / ${step.maxPoints} pts`
+                              : `${step.scoreAwarded} pts`}
+                          </span>
+                        </div>
+                      </div>
+
+                      {isEditingModalRubric && (
+                        <div className="pt-2 mt-2 border-t border-gray-200 grid grid-cols-1 sm:grid-cols-4 gap-2 items-center bg-white p-2.5 rounded-lg">
+                          <div>
+                            <label className="block text-[10px] font-bold text-gray-600 uppercase">
+                              Step Marks {step.maxPoints > 0 ? `(/ ${step.maxPoints})` : ''}
+                            </label>
+                            <input
+                              type="number"
+                              min="0"
+                              max={step.maxPoints || task.maxScore || 100}
+                              value={editState.scoreAwarded ?? step.scoreAwarded}
+                              onChange={(e) =>
+                                handleModalStepChange(step.stepNumber, 'scoreAwarded', e.target.value)
+                              }
+                              className="w-full px-2 py-1 border border-gray-300 rounded text-xs font-bold text-gray-900 bg-white"
+                            />
+                          </div>
+                          <div className="sm:col-span-3">
+                            <label className="block text-[10px] font-bold text-gray-600 uppercase">
+                              Step Explanation / Feedback Override
+                            </label>
+                            <input
+                              type="text"
+                              value={editState.teacherFeedback ?? step.feedback ?? ''}
+                              onChange={(e) =>
+                                handleModalStepChange(step.stepNumber, 'teacherFeedback', e.target.value)
+                              }
+                              placeholder="Explain why marks were awarded or deducted for this step..."
+                              className="w-full px-2 py-1 border border-gray-300 rounded text-xs text-gray-900 bg-white"
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+
+                {isEditingModalRubric && (
+                  <div className="p-3.5 bg-purple-50 border border-purple-200 rounded-xl space-y-2">
+                    <label className="block text-xs font-bold text-purple-900">
+                      Overall Instructor Comment / Summary Rationale
+                    </label>
+                    <textarea
+                      rows={2}
+                      value={modalTeacherComment}
+                      onChange={(e) => setModalTeacherComment(e.target.value)}
+                      placeholder="Overall feedback for the student across all rubric steps..."
+                      className="w-full px-3 py-1.5 border border-purple-300 rounded-lg text-xs bg-white text-gray-900"
+                    />
+                    <div className="flex justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={handleSaveModalRubricOverride}
+                        disabled={isSavingModalOverride}
+                        className="px-4 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-bold shadow-sm disabled:opacity-50"
+                      >
+                        {isSavingModalOverride ? 'Saving...' : '💾 Save Rubric Breakdown & Score'}
+                      </button>
                     </div>
                   </div>
-                ))}
+                )}
               </div>
             </div>
 
@@ -1057,9 +1518,15 @@ const TaskGradingMatrixView = ({
             </div>
             <div className="py-4 bg-black rounded-xl overflow-hidden mt-2 flex items-center justify-center">
               <video
+                ref={previewVideoRef}
                 src={previewVideoUrl}
                 controls
                 autoPlay
+                onLoadedMetadata={() => {
+                  if (previewVideoSeekSeconds && previewVideoRef.current) {
+                    previewVideoRef.current.currentTime = previewVideoSeekSeconds;
+                  }
+                }}
                 className="max-h-[60vh] w-full object-contain"
               />
             </div>

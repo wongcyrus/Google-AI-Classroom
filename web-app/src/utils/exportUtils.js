@@ -176,6 +176,13 @@ export async function exportTaskGradingToExcel(task, submissions = [], filename)
   const cleanFilename = filename || `Task_${taskTitle}_Grading_Results.xlsx`;
   const rubricSteps = task?.rubricSteps || [];
 
+  const stepHeaders = [];
+  rubricSteps.forEach((step, idx) => {
+    const stepNum = step.stepNumber || idx + 1;
+    stepHeaders.push(`Step ${stepNum}: ${step.title || 'Milestone'}`);
+    stepHeaders.push(`Step ${stepNum} Explanation`);
+  });
+
   const headers = [
     'Student Display Name',
     'Student Email',
@@ -188,12 +195,14 @@ export async function exportTaskGradingToExcel(task, submissions = [], filename)
     'Max Score',
     'Teacher Override Score',
     'Teacher Remarks',
+    'AI Assessment Summary',
     'Google Drive Link',
-    ...rubricSteps.map((step, idx) => `Step ${step.stepNumber || idx + 1}: ${step.title || 'Milestone'}`)
+    ...stepHeaders,
   ];
 
   const rows = submissions.map(sub => {
     const evalData = sub.evaluation || {};
+    const stepOverrides = sub.teacherOverride?.stepOverrides || {};
     const effectiveScore = typeof sub.teacherOverride?.manualScore === 'number'
       ? sub.teacherOverride.manualScore
       : (typeof sub.effectiveScore === 'number' ? sub.effectiveScore : (evalData.finalScore ?? ''));
@@ -202,12 +211,39 @@ export async function exportTaskGradingToExcel(task, submissions = [], filename)
       ? Math.round((sub.durationSeconds / 60) * 10) / 10
       : '';
 
-    const stepScores = rubricSteps.map((step, idx) => {
-      const stepRes = (evalData.stepResults || []).find(r => r.stepNumber === (step.stepNumber || idx + 1));
-      if (!stepRes) return '-';
-      return typeof stepRes.scoreAwarded === 'number'
-        ? `${stepRes.scoreAwarded} pts (${stepRes.status})`
-        : stepRes.status || 'evaluated';
+    const stepColumns = [];
+    rubricSteps.forEach((step, idx) => {
+      const stepNum = step.stepNumber || idx + 1;
+      const stepRes = (evalData.stepResults || []).find(r => Number(r.stepNumber) === Number(stepNum)) || (evalData.stepResults || [])[idx];
+      const override = stepOverrides[stepNum] || stepOverrides[String(stepNum)] || null;
+
+      if (!stepRes && !override) {
+        stepColumns.push('-');
+        stepColumns.push('');
+        return;
+      }
+
+      const maxPts = Number(step.points ?? stepRes?.maxPoints ?? 0);
+      const scoreAwarded =
+        override?.scoreAwarded !== undefined && override?.scoreAwarded !== null
+          ? override.scoreAwarded
+          : stepRes?.scoreAwarded;
+      const status = override?.status || stepRes?.status || 'evaluated';
+      const explanation =
+        override?.teacherFeedback ||
+        stepRes?.feedback ||
+        stepRes?.evidenceObserved ||
+        '';
+
+      const scoreCell =
+        typeof scoreAwarded === 'number'
+          ? maxPts > 0
+            ? `${scoreAwarded} / ${maxPts} pts (${status})`
+            : `${scoreAwarded} pts (${status})`
+          : status;
+
+      stepColumns.push(scoreCell);
+      stepColumns.push(explanation);
     });
 
     const studentEmail = sub.email || sub.studentEmail || sub.userEmail || sub.studentMail || sub.profile?.email || sub.profile?.studentEmail || '';
@@ -227,8 +263,9 @@ export async function exportTaskGradingToExcel(task, submissions = [], filename)
       task?.maxScore ?? 100,
       sub.teacherOverride?.manualScore ?? '',
       sub.teacherOverride?.teacherComment || '',
+      evalData.overallSummary || '',
       sub.driveWebViewLink || '',
-      ...stepScores
+      ...stepColumns,
     ];
   });
 

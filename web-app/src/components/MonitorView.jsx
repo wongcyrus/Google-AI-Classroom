@@ -144,6 +144,7 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
 
   const [classSubjectDomain, setClassSubjectDomain] = useState('');
   const [classSubtitlePrompt, setClassSubtitlePrompt] = useState(null);
+  const [classTargetLanguages, setClassTargetLanguages] = useState(['zh-Hant', 'zh-Hans', 'en']);
   const [classDefaultLectureRecording, setClassDefaultLectureRecording] = useState(true);
   const [classSchedule, setClassSchedule] = useState(null);
   const [pendingBypassRequests, setPendingBypassRequests] = useState([]);
@@ -234,6 +235,7 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
     deviceId: selectedMicDeviceId,
     courseContext: classSubjectDomain || `Class ${classId}`,
     subtitlePrompt: classSubtitlePrompt || DEFAULT_LIVE_SUBTITLE_TRANSLATION_PROMPT,
+    targetLanguages: classTargetLanguages,
   });
 
   // Synchronized Screen & Voice Launch Handler to prevent out-of-sync A/V
@@ -420,11 +422,13 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
       onBroadcastStateChange({
         isBroadcasting: isScreenBroadcasting,
         viewersCount: broadcastViewers?.length || 0,
+        isPublicBroadcast,
+        publicPin,
         openStudio: () => setShowBroadcastModal(true),
         stopBroadcast: handleStopSynchronizedBroadcast,
       });
     }
-  }, [onBroadcastStateChange, isScreenBroadcasting, broadcastViewers?.length]);
+  }, [onBroadcastStateChange, isScreenBroadcasting, broadcastViewers?.length, isPublicBroadcast, publicPin]);
 
 
 
@@ -793,6 +797,11 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
         }
         if (data.subtitlePrompt !== undefined) {
           setClassSubtitlePrompt(data.subtitlePrompt);
+        }
+        if (Array.isArray(data.targetLanguages) && data.targetLanguages.length > 0) {
+          setClassTargetLanguages(data.targetLanguages);
+        } else if (Array.isArray(data.lectureTargetLanguages) && data.lectureTargetLanguages.length > 0) {
+          setClassTargetLanguages(data.lectureTargetLanguages);
         }
         if (data.defaultLectureRecording !== undefined) {
           setClassDefaultLectureRecording(Boolean(data.defaultLectureRecording));

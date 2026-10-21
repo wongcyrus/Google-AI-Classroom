@@ -118,8 +118,8 @@ const Layout = ({ children, banner, title, logoutButton, user }) => {
                 </div>
               )}
             </div>
-            <img src={logo} alt="Google AI Classroom Logo" style={{ height: '40px' }} />
-            <h1 style={{ fontSize: '1.2rem', margin: 0 }}>Google AI Classroom</h1>
+            <img src={logo} alt="HKIIT AI Classroom Logo" style={{ height: '40px' }} />
+            <h1 style={{ fontSize: '1.2rem', margin: 0 }}>HKIIT AI Classroom</h1>
             {logoutButton}
           </div>
         </div>

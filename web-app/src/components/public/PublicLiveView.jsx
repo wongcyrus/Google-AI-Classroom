@@ -226,12 +226,18 @@ export default function PublicLiveView() {
   // Compute available languages from subtitle translations
   const availableLangs = subtitleData?.translations
     ? Object.keys(subtitleData.translations)
-    : ['en', 'zh-Hans', 'zh-HK'];
+    : ['en', 'zh-Hant', 'zh-Hans', 'zh-HK'];
+  if (Array.isArray(subtitleData?.targetLanguages)) {
+    subtitleData.targetLanguages.forEach((lang) => {
+      if (!availableLangs.includes(lang)) availableLangs.push(lang);
+    });
+  }
+  if (!availableLangs.includes('zh-Hant')) availableLangs.push('zh-Hant');
   if (!availableLangs.includes('en')) availableLangs.push('en');
   if (!availableLangs.includes('zh-Hans')) availableLangs.push('zh-Hans');
 
   const currentTranslation = subtitleData?.translations?.[selectedLang] || '';
-  const originalTranscript = subtitleData?.text || '';
+  const originalTranscript = subtitleData?.text || subtitleData?.originalText || '';
 
   // Render Loading state
   if (authLoading) {

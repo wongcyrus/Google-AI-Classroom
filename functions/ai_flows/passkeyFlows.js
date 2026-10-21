@@ -15,7 +15,13 @@ const db = getFirestore();
 
 export const RP_NAME = 'Gemini AI Classroom Assistant';
 
+const ENV_CUSTOM_DOMAINS = (process.env.CUSTOM_DOMAINS || process.env.VITE_CUSTOM_DOMAINS || '')
+  .split(',')
+  .map((d) => d.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, ''))
+  .filter(Boolean);
+
 export const ALLOWED_RP_IDS = [
+  ...ENV_CUSTOM_DOMAINS,
   'it114115-2627.web.app',
   'it114115-2627.firebaseapp.com',
   'it114115-dev-2026.web.app',
@@ -25,6 +31,7 @@ export const ALLOWED_RP_IDS = [
 ];
 
 export const ALLOWED_ORIGINS = [
+  ...ENV_CUSTOM_DOMAINS.map((d) => `https://${d}`),
   'https://it114115-2627.web.app',
   'https://it114115-2627.firebaseapp.com',
   'https://it114115-dev-2026.web.app',
@@ -41,8 +48,23 @@ export const ALLOWED_ORIGINS = [
  * Resolves safe RP ID based on client request or runtime environment
  */
 export function resolveRpId(clientRpId) {
-  if (clientRpId && ALLOWED_RP_IDS.includes(clientRpId)) {
-    return clientRpId;
+  if (clientRpId) {
+    const normalized = clientRpId.trim().toLowerCase();
+    const dynamicCustom = (process.env.CUSTOM_DOMAINS || process.env.VITE_CUSTOM_DOMAINS || '')
+      .split(',')
+      .map((d) => d.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, ''))
+      .filter(Boolean);
+    const allowedSet = new Set([...ALLOWED_RP_IDS, ...dynamicCustom]);
+
+    if (normalized.startsWith('www.')) {
+      const apex = normalized.slice(4);
+      if (allowedSet.has(apex)) {
+        return apex;
+      }
+    }
+    if (allowedSet.has(normalized)) {
+      return normalized;
+    }
   }
   const projectId = process.env.GCLOUD_PROJECT || (() => {
     try { return JSON.parse(process.env.FIREBASE_CONFIG || '{}').projectId; } catch { return ''; }

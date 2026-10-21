@@ -564,7 +564,7 @@ describe('TeacherScreenBroadcastModal', () => {
     expect(mockTeacherSubtitles.setEngineMode).toHaveBeenCalledWith('client');
 
     // Toggle target languages
-    const jaLabel = screen.getByText('Japanese');
+    const jaLabel = screen.getByText('Japanese (日本語)');
     fireEvent.click(jaLabel);
     expect(mockTeacherSubtitles.setTargetLanguages).toHaveBeenCalled();
   });

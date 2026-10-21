@@ -369,7 +369,28 @@ export const processVideoJob = onDocumentCreated({ document: 'videoJobs/{jobId}'
     const querySnapshot = await q.get();
     if (querySnapshot.empty) {
       console.log('No screenshots found for the given criteria.');
-      await jobRef.update({ status: 'failed', finishedAt: new Date(), error: 'No screenshots found in the selected time range.' });
+      const emptyError = 'No screenshots found in the selected time range.';
+      await jobRef.update({ status: 'failed', finishedAt: new Date(), error: emptyError });
+      if (isTaskSubmission && taskId && studentUid) {
+        try {
+          const subRef = db.collection('classes').doc(classId)
+            .collection('tasks').doc(taskId)
+            .collection('submissions').doc(studentUid);
+          await subRef.set({
+            status: 'compilation_failed',
+            compilationError: emptyError,
+            updatedAt: new Date(),
+          }, { merge: true });
+          const attemptRef = subRef.collection('attempts').doc(String(attemptNumber));
+          await attemptRef.set({
+            status: 'compilation_failed',
+            compilationError: emptyError,
+            updatedAt: new Date(),
+          }, { merge: true });
+        } catch (subErr) {
+          console.warn('[processVideoJob] Failed to mark task submission as compilation_failed:', subErr);
+        }
+      }
       return;
     }
 
@@ -582,10 +603,10 @@ export const processVideoJob = onDocumentCreated({ document: 'videoJobs/{jobId}'
 
     if (isTaskSubmission && taskId) {
       try {
-        const attemptRef = db.collection('classes').doc(classId)
+        const subRef = db.collection('classes').doc(classId)
           .collection('tasks').doc(taskId)
-          .collection('submissions').doc(studentUid)
-          .collection('attempts').doc(String(attemptNumber));
+          .collection('submissions').doc(studentUid);
+        const attemptRef = subRef.collection('attempts').doc(String(attemptNumber));
 
         await attemptRef.set({
           status: 'compiling_complete',
@@ -594,6 +615,21 @@ export const processVideoJob = onDocumentCreated({ document: 'videoJobs/{jobId}'
           duration,
           size,
           compiledAt: new Date()
+        }, { merge: true });
+
+        await subRef.set({
+          status: 'compiling_complete',
+          compiledVideoPath: destinationPath,
+          durationSeconds: duration,
+          latestAttempt: {
+            status: 'compiling_complete',
+            compiledVideoPath: destinationPath,
+            attemptNumber,
+            duration,
+            size,
+            finishedAt: endTime || new Date(),
+          },
+          updatedAt: new Date()
         }, { merge: true });
       } catch (attErr) {
         console.warn(`[processVideoJob] Failed to update task attempt document:`, attErr);
@@ -722,5 +758,29 @@ export const processVideoJob = onDocumentCreated({ document: 'videoJobs/{jobId}'
       updatePayload.ffmpegError = 'No specific ffmpeg stderr was captured. The error may have occurred before the ffmpeg process started (e.g., during image download or processing). See the \'error\' and \'errorStack\' fields for more details.';
     }
     await jobRef.update(updatePayload);
+    if (Boolean(jobData?.isTaskSubmission) && jobData?.taskId && studentUid) {
+      try {
+        const subRef = db.collection('classes').doc(classId)
+          .collection('tasks').doc(jobData.taskId)
+          .collection('submissions').doc(studentUid);
+        if (typeof subRef?.set === 'function') {
+          await subRef.set({
+            status: 'compilation_failed',
+            compilationError: error.message,
+            updatedAt: new Date(),
+          }, { merge: true });
+        }
+        const attemptRef = subRef?.collection?.('attempts')?.doc?.(String(jobData.attemptNumber || 1));
+        if (typeof attemptRef?.set === 'function') {
+          await attemptRef.set({
+            status: 'compilation_failed',
+            compilationError: error.message,
+            updatedAt: new Date(),
+          }, { merge: true });
+        }
+      } catch (subErr) {
+        console.warn('[processVideoJob] Failed to mark task submission as compilation_failed on error:', subErr);
+      }
+    }
   }
 });

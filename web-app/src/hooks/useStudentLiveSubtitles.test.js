@@ -35,6 +35,7 @@ describe('useStudentLiveSubtitles Hook', () => {
     expect(result.current.availableLanguages).toEqual([
       { code: 'zh-Hans', label: '简体中文' },
       { code: 'en', label: 'English' },
+      { code: 'zh-Hant', label: '繁體中文' },
     ]);
     expect(result.current.displayMode).toBe('bilingual');
     expect(result.current.fontSize).toBe('medium');

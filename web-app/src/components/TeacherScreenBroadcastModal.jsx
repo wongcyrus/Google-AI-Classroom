@@ -3,7 +3,7 @@ import { acquireInputDeviceStream } from '../utils/mediaDeviceCapture';
 import { useTranslationPrompts } from '../hooks/useTranslationPrompts';
 import { DEFAULT_LIVE_SUBTITLE_TRANSLATION_PROMPT } from '../constants/promptRegistry';
 import { auth } from '../firebase-config';
-import PresentationQrModal from './broadcast/PresentationQrModal';
+import PresentationQrModal, { openProjectorQrPopup } from './broadcast/PresentationQrModal';
 import { isDemoClass } from '../utils/classRankingUtils';
 import './TeacherScreenBroadcastModal.css';
 
@@ -111,6 +111,34 @@ export default function TeacherScreenBroadcastModal({
   const [isPublicMode, setIsPublicMode] = useState(isPublicBroadcast !== undefined ? Boolean(isPublicBroadcast) : false);
   const [sessionPin, setSessionPin] = useState(() => publicPin || String(Math.floor(1000 + Math.random() * 9000)));
   const [showQrModal, setShowQrModal] = useState(false);
+  const qrPopupRef = useRef(null);
+
+  const handleOpenProjectorQr = () => {
+    const popupWin = openProjectorQrPopup({
+      classId,
+      className,
+      pin: sessionPin,
+      existingWin: qrPopupRef.current,
+    });
+    if (popupWin) {
+      qrPopupRef.current = popupWin;
+      setShowQrModal(false);
+    } else {
+      setShowQrModal(true);
+    }
+  };
+
+  useEffect(() => {
+    if (qrPopupRef.current && !qrPopupRef.current.closed) {
+      openProjectorQrPopup({
+        classId,
+        className,
+        pin: sessionPin,
+        existingWin: qrPopupRef.current,
+        onlyUpdateIfOpen: true,
+      });
+    }
+  }, [classId, className, sessionPin]);
 
   useEffect(() => {
     if (isPublicBroadcast !== undefined) {
@@ -865,7 +893,7 @@ export default function TeacherScreenBroadcastModal({
                                 }
                               }}
                             />
-                            <span>{label.split(' ')[0]}</span>
+                            <span>{label}</span>
                           </label>
                         );
                       })}
@@ -1226,7 +1254,8 @@ export default function TeacherScreenBroadcastModal({
                       <button
                         type="button"
                         className="secondary-btn"
-                        onClick={() => setShowQrModal(true)}
+                        onClick={handleOpenProjectorQr}
+                        title="Open Projector QR Code in a separate popup window so you can continue setup and session"
                         style={{
                           display: 'flex',
                           alignItems: 'center',
@@ -1239,7 +1268,7 @@ export default function TeacherScreenBroadcastModal({
                           color: '#059669',
                         }}
                       >
-                        <span>📱 Preview Projector QR Code</span>
+                        <span>📱 Preview Projector QR Code ↗</span>
                       </button>
                     </div>
                   )}
@@ -1323,6 +1352,7 @@ export default function TeacherScreenBroadcastModal({
           isOpen={showQrModal}
           onClose={() => setShowQrModal(false)}
           classId={classId}
+          className={className}
           pin={sessionPin}
         />
       </div>
@@ -1587,7 +1617,7 @@ export default function TeacherScreenBroadcastModal({
                   <button
                     type="button"
                     className="secondary-btn"
-                    onClick={() => setShowQrModal(true)}
+                    onClick={handleOpenProjectorQr}
                     style={{
                       padding: '3px 8px',
                       fontSize: '0.74rem',
@@ -1597,9 +1627,9 @@ export default function TeacherScreenBroadcastModal({
                       color: '#059669',
                       backgroundColor: '#ffffff',
                     }}
-                    title="Show Presentation QR Code on Projector"
+                    title="Open Presentation QR Code in a popup window"
                   >
-                    📱 Projector QR
+                    📱 Projector QR ↗
                   </button>
                 </div>
               )}
@@ -1790,6 +1820,7 @@ export default function TeacherScreenBroadcastModal({
         isOpen={showQrModal}
         onClose={() => setShowQrModal(false)}
         classId={classId}
+        className={className}
         pin={sessionPin}
       />
     </div>

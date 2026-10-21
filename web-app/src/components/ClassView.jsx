@@ -23,6 +23,7 @@ import ClassManagement from './ClassManagement';
 import BingoResultsView from './BingoResultsView';
 import LectureRecordingsView from './LectureRecordingsView';
 import TasksManagementView from './tasks/TasksManagementView';
+import { openProjectorQrPopup } from './broadcast/PresentationQrModal';
 
 import './ClassView.css';
 
@@ -257,7 +258,9 @@ const ClassView = ({ user }) => {
             className={classInfo?.name || classId}
             classSchedule={classInfo?.schedule}
             lessons={lessons}
-            enrolledStudents={Object.values(classInfo?.students || {})}
+            enrolledStudents={Object.entries(classInfo?.students || {}).map(([uid, val]) =>
+              typeof val === 'string' ? { uid, email: val } : { uid, ...(val || {}) }
+            )}
             studentProfiles={classInfo?.studentProfiles || {}}
           />
         );
@@ -305,6 +308,24 @@ const ClassView = ({ user }) => {
                 <span className="live-dot-broadcast">●</span>
                 <span>Live ({broadcastState.viewersCount ?? 0})</span>
               </button>
+              {broadcastState?.isPublicBroadcast && (
+                <button
+                  type="button"
+                  className="student-preview-launcher-btn"
+                  onClick={() =>
+                    openProjectorQrPopup({
+                      classId,
+                      className: classInfo?.name || classId,
+                      pin: broadcastState.publicPin || '',
+                    })
+                  }
+                  title="Open Projector QR Code in a popup window"
+                  style={{ borderColor: '#059669', color: '#059669' }}
+                >
+                  <span>📱</span>
+                  <span>Projector QR ↗</span>
+                </button>
+              )}
               <button
                 type="button"
                 className="broadcast-stop-btn"

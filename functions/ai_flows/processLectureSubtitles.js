@@ -266,7 +266,7 @@ ${chaptersBlock}
 Closed Captions (CC) Available in YouTube Player:
 ${langsList}
 
-Recorded with Google AI Classroom.`;
+Recorded with HKIIT AI Classroom.`;
 
   return { title: ytTitle, description };
 }
