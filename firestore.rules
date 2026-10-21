@@ -5,37 +5,39 @@ service cloud.firestore {
     
     function isTeacher() {
       return request.auth != null && (
-        request.auth.token.role == 'teacher' ||
-        (request.auth.token.email != null && request.auth.token.email.matches('.*@vtc\\.edu\\.hk') && !request.auth.token.email.matches('.*@stu\\.vtc\\.edu\\.hk'))
+        request.auth.token.get('role', '') == 'teacher' ||
+        (request.auth.token.get('email', '') != '' &&
+         request.auth.token.get('email', '').matches('.*@vtc\\.edu\\.hk') &&
+         !request.auth.token.get('email', '').matches('.*@stu\\.vtc\\.edu\\.hk'))
       );
     }
 
     function isTeacherInClass(classId) {
       let classData = get(/databases/$(database)/documents/classes/$(classId)).data;
-      let isTeacherByEmail = (classData.get('teacherEmails', null) != null && request.auth.token.email in classData.get('teacherEmails', [])) ||
-                             classData.get('teacherEmail', '') == request.auth.token.email;
-      let isTeacherByUid = (classData.get('teachers', null) != null && request.auth.uid in classData.get('teachers', {})) ||
-                           classData.get('teacherUid', '') == request.auth.uid ||
-                           classData.get('ownerUid', '') == request.auth.uid;
+      let userEmail = request.auth != null ? request.auth.token.get('email', '') : '';
+      let isTeacherByEmail = userEmail != '' && (
+        (classData.get('teacherEmails', null) != null && userEmail in classData.get('teacherEmails', [])) ||
+        classData.get('teacherEmail', '') == userEmail
+      );
+      let isTeacherByUid = request.auth != null && (
+        (classData.get('teachers', null) != null && request.auth.uid in classData.get('teachers', {})) ||
+        classData.get('teacherUid', '') == request.auth.uid ||
+        classData.get('ownerUid', '') == request.auth.uid
+      );
       return isTeacherByEmail || isTeacherByUid;
     }
 
     function isStudentInClass(classId) {
       let classData = get(/databases/$(database)/documents/classes/$(classId)).data;
-      let isStudentByEmail = classData.studentEmails != null && request.auth.token.email in classData.studentEmails;
-      let isStudentByUid = classData.students != null && request.auth.uid in classData.students;
+      let userEmail = request.auth != null ? request.auth.token.get('email', '') : '';
+      let isStudentByEmail = userEmail != '' && classData.get('studentEmails', null) != null && userEmail in classData.get('studentEmails', []);
+      let isStudentByUid = request.auth != null && classData.get('students', null) != null && request.auth.uid in classData.get('students', {});
       return isStudentByEmail || isStudentByUid;
     }
 
     function isPublicBroadcastActive(classId) {
       let session = get(/databases/$(database)/documents/classes/$(classId)/screenBroadcast/session).data;
       return session != null && session.isBroadcasting == true && session.isPublic == true;
-    }
-
-    function isAuthorizedPublicViewer(classId) {
-      return isPublicBroadcastActive(classId) &&
-             request.auth != null &&
-             exists(/databases/$(database)/documents/classes/$(classId)/screenBroadcastViewers/$(request.auth.uid));
     }
 
     match /studentProfiles/{userId} {
@@ -103,31 +105,26 @@ service cloud.firestore {
       }
 
       match /screenBroadcast/{docId} {
-        allow read: if isTeacher() || isTeacherInClass(classId) || isStudentInClass(classId) || isAuthorizedPublicViewer(classId);
+        allow read: if isPublicBroadcastActive(classId) || isTeacher() || isTeacherInClass(classId) || isStudentInClass(classId);
         allow write: if isTeacher() || isTeacherInClass(classId);
       }
 
       match /screenBroadcastViewers/{studentUid} {
         allow read: if isTeacher() || isTeacherInClass(classId) || (request.auth != null && request.auth.uid == studentUid);
-        allow create: if request.auth != null && request.auth.uid == studentUid &&
-          (
-            isTeacher() || isTeacherInClass(classId) || isStudentInClass(classId) ||
-            (
-              isPublicBroadcastActive(classId) &&
-              request.resource.data.pin != null &&
-              request.resource.data.pin == get(/databases/$(database)/documents/classes/$(classId)/screenBroadcast/session).data.publicPin
-            )
+        allow create, update: if (
+            isPublicBroadcastActive(classId) &&
+            request.resource.data.pin != null &&
+            request.resource.data.pin == get(/databases/$(database)/documents/classes/$(classId)/screenBroadcast/session).data.publicPin
+          ) || (
+            request.auth != null && request.auth.uid == studentUid &&
+            (isTeacher() || isTeacherInClass(classId) || isStudentInClass(classId))
           );
-        allow update: if request.auth != null && request.auth.uid == studentUid &&
-          (
-            isTeacher() || isTeacherInClass(classId) || isStudentInClass(classId) ||
-            isAuthorizedPublicViewer(classId)
-          );
-        allow delete: if request.auth != null && (request.auth.uid == studentUid || isTeacher() || isTeacherInClass(classId));
+        allow delete: if (resource != null && resource.data.get('isAnonymousSpectator', false) == true) ||
+                         (request.auth != null && (request.auth.uid == studentUid || isTeacher() || isTeacherInClass(classId)));
       }
 
       match /liveSubtitles/{docId} {
-        allow read: if isTeacher() || isTeacherInClass(classId) || isStudentInClass(classId) || isAuthorizedPublicViewer(classId);
+        allow read: if isPublicBroadcastActive(classId) || isTeacher() || isTeacherInClass(classId) || isStudentInClass(classId);
         allow write: if isTeacher() || isTeacherInClass(classId);
       }
 

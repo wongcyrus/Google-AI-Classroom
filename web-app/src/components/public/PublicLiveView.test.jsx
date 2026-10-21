@@ -51,14 +51,12 @@ describe('PublicLiveView Component', () => {
     vi.clearAllMocks();
     listenersMap.clear();
     mockAuth.currentUser = null;
-    mockSignInAnonymously.mockResolvedValue({
-      user: { uid: 'anon_spectator_123' },
-    });
+    sessionStorage.setItem('public_spectator_uid', 'anon_spectator_123');
     mockSetDoc.mockResolvedValue();
     mockDeleteDoc.mockResolvedValue();
   });
 
-  it('initializes anonymous authentication and renders PIN entry screen when no pin param', async () => {
+  it('initializes zero-auth spectator session without calling signInAnonymously and renders PIN entry screen when no pin param', async () => {
     render(
       <MemoryRouter initialEntries={['/live/CLASS_TALK_101']}>
         <Routes>
@@ -68,7 +66,7 @@ describe('PublicLiveView Component', () => {
     );
 
     await waitFor(() => {
-      expect(mockSignInAnonymously).toHaveBeenCalled();
+      expect(mockSignInAnonymously).not.toHaveBeenCalled();
       expect(screen.getByText('Join Live Presentation')).toBeInTheDocument();
       expect(screen.getByText('CLASS_TALK_101')).toBeInTheDocument();
     });
@@ -153,6 +151,7 @@ describe('PublicLiveView Component', () => {
           pin: '4321',
         })
       );
+      expect(listenersMap.get('classes/CLASS_TALK_101/screenBroadcast/liveFrame')).toBeDefined();
     });
 
     // Simulate incoming frame
@@ -205,6 +204,7 @@ describe('PublicLiveView Component', () => {
 
     await waitFor(() => {
       expect(mockSetDoc).toHaveBeenCalled();
+      expect(listenersMap.get('classes/CLASS_TALK_101/screenBroadcast/liveFrame')).toBeDefined();
     });
 
     unmount();

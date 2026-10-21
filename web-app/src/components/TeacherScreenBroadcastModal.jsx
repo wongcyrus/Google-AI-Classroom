@@ -1644,7 +1644,7 @@ export default function TeacherScreenBroadcastModal({
                 </div>
               ) : (
                 <div className="viewers-scroll-area">
-                  {viewers.map((v) => (
+                  {viewers.slice(0, 50).map((v) => (
                     <div key={v.studentUid} className="viewer-item">
                       <span className="viewer-email">{v.studentEmail}</span>
                       <span className="viewer-status-badge connected">
@@ -1652,6 +1652,14 @@ export default function TeacherScreenBroadcastModal({
                       </span>
                     </div>
                   ))}
+                  {viewers.length > 50 && (
+                    <div
+                      className="viewer-item"
+                      style={{ justifyContent: 'center', color: '#64748b', fontSize: '0.78rem', fontWeight: 600 }}
+                    >
+                      +{viewers.length - 50} more spectators watching
+                    </div>
+                  )}
                 </div>
               )}
             </div>

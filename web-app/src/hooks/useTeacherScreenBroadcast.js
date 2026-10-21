@@ -443,8 +443,8 @@ export default function useTeacherScreenBroadcast({ classId, teacherUid, teacher
           }
 
           const now = Date.now();
-          // Heartbeat emission every 2s even if visually static to keep student view updated
-          if (!hasChanged && now - frameStatsRef.current.lastEmittedTime > 2000) {
+          // Periodic refresh every 30s if visually static (Firestore onSnapshot already delivers the latest frame to new joiners immediately)
+          if (!hasChanged && now - frameStatsRef.current.lastEmittedTime > 30000) {
             hasChanged = true;
           }
 
@@ -598,24 +598,52 @@ export default function useTeacherScreenBroadcast({ classId, teacherUid, teacher
 
       setIsBroadcasting(true);
 
-      // Listen for student viewer presence in the collection
+      // Listen for student/spectator viewer presence in the collection (coalesced to prevent UI re-render storms during large QR scan waves)
       const viewersCollectionRef = collection(db, `classes/${classId}/screenBroadcastViewers`);
-      unsubscribeViewersCollectionRef.current = onSnapshot(viewersCollectionRef, (snapshot) => {
-        const currentViewers = [];
-        snapshot.forEach((docSnap) => {
-          const vData = docSnap.data();
-          const studentUid = docSnap.id;
-          currentViewers.push({
-            studentUid,
-            studentEmail: vData.studentEmail || 'Student',
-            status: 'watching',
-            connectionState: 'connected',
-            joinedAt: vData.joinedAt,
+      let lastViewerUpdateAt = 0;
+      let pendingViewerTimer = null;
+      const rawUnsubViewers = onSnapshot(viewersCollectionRef, (snapshot) => {
+        const parseSnapshot = () => {
+          const currentViewers = [];
+          snapshot.forEach((docSnap) => {
+            const vData = docSnap.data() || {};
+            const studentUid = docSnap.id;
+            const isAnon = Boolean(vData.isAnonymousSpectator);
+            currentViewers.push({
+              studentUid,
+              studentEmail: vData.studentEmail || (isAnon ? 'Public Spectator' : 'Student'),
+              isAnonymousSpectator: isAnon,
+              status: 'watching',
+              connectionState: 'connected',
+              joinedAt: vData.joinedAt,
+            });
           });
-        });
+          setViewers(currentViewers);
+          lastViewerUpdateAt = Date.now();
+        };
 
-        setViewers(currentViewers);
+        const elapsed = Date.now() - lastViewerUpdateAt;
+        if (lastViewerUpdateAt === 0 || elapsed >= 1000) {
+          if (pendingViewerTimer) {
+            clearTimeout(pendingViewerTimer);
+            pendingViewerTimer = null;
+          }
+          parseSnapshot();
+        } else {
+          if (pendingViewerTimer) clearTimeout(pendingViewerTimer);
+          pendingViewerTimer = setTimeout(() => {
+            pendingViewerTimer = null;
+            parseSnapshot();
+          }, 1000 - elapsed);
+        }
       });
+      unsubscribeViewersCollectionRef.current = () => {
+        if (pendingViewerTimer) {
+          clearTimeout(pendingViewerTimer);
+          pendingViewerTimer = null;
+        }
+        rawUnsubViewers();
+      };
     } catch (err) {
       console.error('[Teacher Screen Broadcast] Failed to start broadcast:', err);
       setError(err.message || 'Failed to start screen broadcast.');

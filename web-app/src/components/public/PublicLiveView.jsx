@@ -1,19 +1,35 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { db, auth } from '../../firebase-config';
-import { signInAnonymously } from 'firebase/auth';
 import { doc, setDoc, deleteDoc, onSnapshot, serverTimestamp } from 'firebase/firestore';
 import { LANGUAGE_LABELS, getLanguageLabel } from '../../hooks/useStudentLiveSubtitles';
 import './PublicLiveView.css';
+
+function getOrCreateSpectatorId() {
+  if (auth?.currentUser?.uid) return auth.currentUser.uid;
+  try {
+    const existing = sessionStorage.getItem('public_spectator_uid');
+    if (existing) return existing;
+    const rand =
+      typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID().replace(/-/g, '').slice(0, 12)
+        : `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+    const generated = `anon_spectator_${rand}`;
+    sessionStorage.setItem('public_spectator_uid', generated);
+    return generated;
+  } catch {
+    return `anon_spectator_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+  }
+}
 
 export default function PublicLiveView() {
   const { classId } = useParams();
   const [searchParams] = useSearchParams();
   const urlPin = searchParams.get('pin') || '';
 
-  // Auth state
-  const [authUid, setAuthUid] = useState(() => auth?.currentUser?.uid || null);
-  const [authLoading, setAuthLoading] = useState(true);
+  // Spectator identity (zero-auth client ID so large conference audiences never hit Firebase Auth IP limits)
+  const [authUid] = useState(() => getOrCreateSpectatorId());
+  const [authLoading] = useState(false);
 
   // PIN & verification state
   const [pinInput, setPinInput] = useState(urlPin);
@@ -43,41 +59,7 @@ export default function PublicLiveView() {
   const [zoomLevel, setZoomLevel] = useState(1); // 1 | 1.5 | 2
   const [isFullscreen, setIsFullscreen] = useState(false);
 
-  // 1. Ensure user has an anonymous or active auth session
-  useEffect(() => {
-    let isMounted = true;
-
-    const initAuth = async () => {
-      try {
-        if (!auth.currentUser) {
-          const userCred = await signInAnonymously(auth);
-          if (isMounted) {
-            setAuthUid(userCred.user.uid);
-            setAuthLoading(false);
-          }
-        } else {
-          if (isMounted) {
-            setAuthUid(auth.currentUser.uid);
-            setAuthLoading(false);
-          }
-        }
-      } catch (err) {
-        console.error('[PublicLiveView] Anonymous auth error:', err);
-        if (isMounted) {
-          setAuthLoading(false);
-          setPinError('Failed to initialize spectator connection. Please reload the page.');
-        }
-      }
-    };
-
-    initAuth();
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
-
-  // 2. PIN verification and viewer registration handler
+  // 1. PIN verification and viewer registration handler
   const handleVerifyPin = useCallback(async (pinToVerify) => {
     const trimmed = (pinToVerify || '').trim();
     if (!trimmed) {
@@ -90,7 +72,7 @@ export default function PublicLiveView() {
       return;
     }
 
-    const currentUid = auth.currentUser?.uid || authUid;
+    const currentUid = auth?.currentUser?.uid || authUid;
     if (!currentUid) {
       setPinError('Initializing connection, please try again in a moment...');
       return;
