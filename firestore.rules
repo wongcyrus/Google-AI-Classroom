@@ -36,8 +36,10 @@ service cloud.firestore {
     }
 
     function isPublicBroadcastActive(classId) {
-      let session = get(/databases/$(database)/documents/classes/$(classId)/screenBroadcast/session).data;
-      return session != null && session.isBroadcasting == true && session.isPublic == true;
+      let sessionPath = /databases/$(database)/documents/classes/$(classId)/screenBroadcast/session;
+      return exists(sessionPath) &&
+             get(sessionPath).data.get('isBroadcasting', false) == true &&
+             get(sessionPath).data.get('isPublic', false) == true;
     }
 
     match /studentProfiles/{userId} {
@@ -112,15 +114,15 @@ service cloud.firestore {
       match /screenBroadcastViewers/{studentUid} {
         allow read: if isTeacher() || isTeacherInClass(classId) || (request.auth != null && request.auth.uid == studentUid);
         allow create, update: if (
-            isPublicBroadcastActive(classId) &&
-            request.resource.data.pin != null &&
-            request.resource.data.pin == get(/databases/$(database)/documents/classes/$(classId)/screenBroadcast/session).data.publicPin
-          ) || (
             request.auth != null && request.auth.uid == studentUid &&
             (isTeacher() || isTeacherInClass(classId) || isStudentInClass(classId))
+          ) || (
+            isPublicBroadcastActive(classId) &&
+            request.resource.data.get('pin', '') != '' &&
+            request.resource.data.get('pin', '') == get(/databases/$(database)/documents/classes/$(classId)/screenBroadcast/session).data.get('publicPin', '')
           );
-        allow delete: if (resource != null && resource.data.get('isAnonymousSpectator', false) == true) ||
-                         (request.auth != null && (request.auth.uid == studentUid || isTeacher() || isTeacherInClass(classId)));
+        allow delete: if (request.auth != null && (request.auth.uid == studentUid || isTeacher() || isTeacherInClass(classId))) ||
+                         (resource != null && resource.data.get('isAnonymousSpectator', false) == true);
       }
 
       match /liveSubtitles/{docId} {
