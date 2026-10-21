@@ -368,12 +368,48 @@ The platform supports 8 academic disciplines plus custom definitions:
 - The hook [`useAudioPrompts.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/hooks/useAudioPrompts.js) queries prompts filtered by `Live Subtitles & Multilingual Captions` and makes them available in the dropdown.
 - Instructors can reset customized prompts back to the library default at any time using **`↺ Reset to Library Original`**.
 
-### 9.4 Public Presentation Spectator Subtitles & Standalone Projector QR Popup
+### 9.4 Public Presentation Spectator Subtitles, Standalone Projector QR Popup & Large-Show Scalability
 When the speaker activates **Public Presentation Mode** during a screen broadcast:
 - Clicking **`📱 Preview Projector QR Code ↗`** (in Step 2 setup) or **`📱 Projector QR ↗`** (in the live Broadcast Studio or top `ClassView` header) launches [`openProjectorQrPopup`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/broadcast/PresentationQrModal.jsx#L19-L295) in a standalone `580×760` browser popup window so the speaker can keep the QR code visible on the projector while continuing setup and running the session.
-- Public spectators scanning the session QR code or navigating to `/live/:classId?pin=XXXX` receive the live subtitle stream via [`PublicLiveView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/public/PublicLiveView.jsx).
+- Public spectators scanning the session QR code or navigating to `/live/:classId?pin=XXXX` receive the live screen and subtitle stream via [`PublicLiveView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/public/PublicLiveView.jsx).
+- **Zero-Auth High-Scale Fanout Architecture (1,000+ Conference Viewers on Shared Wi-Fi)**:
+  - Spectators generate a lightweight client-side spectator ID (`sessionStorage` `public_spectator_uid`) with **zero Firebase Auth (`signInAnonymously`) calls** and **zero Cloud Function blocking trigger invocations**, completely avoiding Firebase Auth's 100 sign-ups/IP/hour rate limit on shared conference venue Wi-Fi.
+  - [`firestore.rules`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/firestore.rules#L107-L130) evaluates `isPublicBroadcastActive(classId)` first on `screenBroadcast/{docId}` and `liveSubtitles/{docId}`, while enforcing the 4-digit `publicPin` check when spectators register in `screenBroadcastViewers/{spectatorId}`.
+  - [`useTeacherScreenBroadcast.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/hooks/useTeacherScreenBroadcast.js#L445-L449) uses a `32×18` pixel-diffing canvas and only re-uploads static slides once every 30s (cutting venue Wi-Fi bandwidth by >90%), while coalescing `screenBroadcastViewers` snapshot bursts to at most 1 UI update/sec.
 - Default target broadcast languages include **Traditional Chinese (`zh-Hant`)**, **Simplified Chinese (`zh-Hans`)**, and **English (`en`)**, and audience members can pick their preferred captioning language (`en`, `zh-Hant`, `zh-Hans`, `ja`, `ko`, `es`, `fr`, `de`, `vi`) from the floating toolbar on their mobile device.
-- Subtitle lines are rendered directly beneath the live instructor screen frames with high-contrast text outlines and responsive font scaling.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Speaker as 👨‍🏫 Speaker (Main Window)
+    participant Popup as 📱 Projector QR Popup<br/>(openProjectorQrPopup)
+    participant CF as ⚡ Cloud Function<br/>(translateTeacherSpeech)
+    participant FS as 🗄️ Cloud Firestore<br/>(Edge Fanout)
+    actor Audience as 👥 1,000+ Audience Phones<br/>(PublicLiveView - Zero Auth)
+
+    Speaker->>Popup: Click "📱 Preview Projector QR Code ↗"
+    Popup-->>Audience: Displays QR Code (/live/:classId?pin=XXXX) on Projector
+    Speaker->>FS: Start Broadcast -> setDoc(screenBroadcast/session, { isBroadcasting: true, isPublic: true, publicPin: "XXXX" })
+
+    par Audience QR Scan Wave (Shared Venue Wi-Fi)
+        Audience->>Audience: Generate sessionStorage spectatorId (0 Auth API calls)
+        Audience->>FS: setDoc(screenBroadcastViewers/{spectatorId}, { pin: "XXXX", isAnonymousSpectator: true })
+        Note over FS: Security Rule verifies:<br/>isPublicBroadcastActive && pin == session.publicPin
+        Audience->>FS: Subscribe onSnapshot(screenBroadcast/liveFrame & liveSubtitles/current)
+        FS-->>Speaker: Coalesced viewer count update (max 1 UI render/sec, top 50 DOM rows)
+    and Live Screen & Multilingual Subtitle Fanout
+        loop Every 3.0s (Only on 32x18 Pixel Diff or 30s Static Refresh)
+            Speaker->>FS: setDoc(screenBroadcast/liveFrame, { frameData: JPEG_Base64 })
+            FS-->>Audience: Push updated slide frame to all connected phones
+        end
+        loop Per Spoken Sentence (LiteRT Whisper VAD)
+            Speaker->>CF: translateTeacherSpeech(text, targetLangs: ["zh-Hant", "zh-Hans", "en"])
+            CF-->>Speaker: Returns translations map (1 AI call total regardless of audience size)
+            Speaker->>FS: setDoc(liveSubtitles/current, { originalText, translations })
+            FS-->>Audience: Push real-time multilingual subtitles to all connected phones
+        end
+    end
+```
 
 ---
 
@@ -381,7 +417,7 @@ When the speaker activates **Public Presentation Mode** during a screen broadcas
 
 | Component / Utility | File Path | Responsibility |
 | :--- | :--- | :--- |
-| **Public Audience Spectator** | [`web-app/src/components/public/PublicLiveView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/public/PublicLiveView.jsx) | Mobile spectator UI for anonymous audience members with PIN auth, screen zoom, and live multilingual subtitles. |
+| **Public Audience Spectator** | [`web-app/src/components/public/PublicLiveView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/public/PublicLiveView.jsx) | Zero-auth mobile spectator UI for large conference audiences with Firestore rule PIN verification, screen zoom, and live multilingual subtitles. |
 | **Presentation QR Popup & Modal** | [`web-app/src/components/broadcast/PresentationQrModal.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/broadcast/PresentationQrModal.jsx) | Standalone popup window (`openProjectorQrPopup`) and fallback modal displaying high-contrast QR code, live-synced 4-digit PIN, and fullscreen toggle. |
 | **Gemma LiteRT Loader** | [`web-app/src/utils/gemmaLiteRTLoader.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/utils/gemmaLiteRTLoader.js) | Pre-flight viability check (`precheckGemmaViability`), CacheStorage model download manager. |
 | **Gemma Web Worker** | [`web-app/src/workers/litertGemma.worker.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/workers/litertGemma.worker.js) | LiteRT WebGPU execution worker for exam proctoring and real-time multilingual captioning. |

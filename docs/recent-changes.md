@@ -36,6 +36,22 @@
    - Added a Show/Hide (`👁️` / `🙈`) password toggle button and automatic `password.trim()` retry on whitespace paste in [`AuthComponent.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/AuthComponent.jsx).
    - Configured `memory: '512MiB', cpu: 1` on `checkipaddress` (`beforeUserSignedIn`) in [`functions/auth_triggers/ipRestriction.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/auth_triggers/ipRestriction.js#L56) to prevent cold-start timeouts during Identity Platform sign-in.
 
+5. **Large-Show Public Broadcast Scalability & Zero-Auth Spectator Fanout**:
+   - Replaced `signInAnonymously(auth)` in [`PublicLiveView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/public/PublicLiveView.jsx#L8-L32) with a zero-auth client spectator ID (`sessionStorage` `public_spectator_uid`) so 1,000+ conference attendees on shared venue Wi-Fi never hit Firebase Auth per-IP rate limits (`100/hr/IP`) or `beforeusercreated` blocking trigger failures.
+   - Updated [`firestore.rules`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/firestore.rules#L6-L38) to make helper functions null-safe and evaluate `isPublicBroadcastActive(classId)` first on `screenBroadcast/{docId}` and `liveSubtitles/{docId}` while enforcing `request.resource.data.pin == session.publicPin` on `screenBroadcastViewers/{spectatorId}`.
+   - Reduced redundant static-slide frame re-uploads in [`useTeacherScreenBroadcast.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/hooks/useTeacherScreenBroadcast.js#L445-L449) from every `2s` to `30s` (>90% bandwidth savings on static slides), coalesced `screenBroadcastViewers` snapshot bursts to max 1 UI update/sec, and capped rendered sidebar DOM rows in [`TeacherScreenBroadcastModal.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/TeacherScreenBroadcastModal.jsx#L1647-L1661) at 50.
+
+```mermaid
+flowchart LR
+    Speaker["👨‍🏫 Speaker Laptop<br/>(Broadcast Studio + ClassView)"] -->|"1. Open & Live-Sync PIN"| Popup["📱 Projector QR Popup<br/>(openProjectorQrPopup 580x760)"]
+    Popup -.->|"2. Scan QR (?pin=XXXX)"| Audience["👥 1,000+ Audience Phones<br/>(PublicLiveView - Zero Auth)"]
+    Audience -->|"3. Verify PIN (0 Auth Calls)"| Rules["🛡️ Firestore Rules<br/>(pin == session.publicPin)"]
+    Speaker -->|"4. 32x18 Diffed JPEG Frames"| FS[("🗄️ Cloud Firestore<br/>liveFrame & liveSubtitles/current")]
+    Speaker -->|"5. 1 Call / Sentence"| CF["⚡ translateTeacherSpeech<br/>(zh-Hant, zh-Hans, en)"]
+    CF --> Speaker
+    FS ==>|"6. Real-Time Edge Fanout"| Audience
+```
+
 ---
 
 ## 0.0.0.0.0.0.0.0.0.0.2.6 Rubric-Driven Practical Task Mark Breakdown, Per-Student Explanations, Class Task Bug Fixes & Step-by-Step User Guide

@@ -519,11 +519,36 @@ When delivering a seminar, lightning talk, or public conference presentation, yo
    - Firestore security rules immediately revoke external access. Spectator devices display "Broadcast ended".
 
 #### Audience Spectator Experience (`/live/:classId`):
-- **Zero Login Friction**: When an attendee scans the QR code, the public viewer automatically logs them in anonymously (`signInAnonymously`).
-- **Automatic PIN Verification**: Because the QR code includes `?pin=XXXX`, attendees are validated instantly without needing to manually type the PIN. (If accessing directly via URL without parameters, a sleek 4-digit PIN pad is displayed).
-- **Responsive Screen Viewing**: Spectators see the live instructor screen with zoom controls (`1x`, `1.5x`, `2x`) optimized for mobile screens.
-- **Multilingual Subtitles Overlay**: Real-time subtitles appear at the bottom with a native multilingual captioning picker (English, Traditional Chinese, Simplified Chinese, Japanese, Korean, French, German, Spanish, Vietnamese).
+- **Zero Login & Zero Auth Rate Limits**: When an attendee scans the QR code, [`PublicLiveView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/public/PublicLiveView.jsx) generates a client-side spectator ID (`sessionStorage` `public_spectator_uid`) without calling Firebase Auth (`signInAnonymously`), ensuring 1,000+ attendees on shared conference venue Wi-Fi never hit per-IP authentication rate limits or blocking triggers.
+- **Automatic PIN Verification**: Because the QR code includes `?pin=XXXX`, attendees are validated instantly against Firestore Security Rules (`request.resource.data.pin == session.publicPin`) without needing to manually type the PIN. (If accessing directly via URL without parameters, a sleek 4-digit PIN pad is displayed).
+- **Responsive Screen Viewing**: Spectators see the live instructor screen with zoom controls (`1x`, `1.5x`, `2x`) optimized for mobile screens, backed by 32×18 pixel-diff frame suppression (>90% static slide bandwidth savings).
+- **Multilingual Subtitles Overlay**: Real-time subtitles appear at the bottom with a native multilingual captioning picker (Traditional Chinese `zh-Hant`, Simplified Chinese `zh-Hans`, English `en`, Japanese `ja`, Korean `ko`, French `fr`, German `de`, Spanish `es`, Vietnamese `vi`).
 - **Privacy & Isolation**: Attendees have **zero access** to any other classroom collections, student names, grades, submissions, or teacher administrative tools.
+
+```mermaid
+flowchart LR
+    subgraph SpeakerLaptop["👨‍🏫 Speaker Laptop"]
+        MainUI["Broadcast Studio / ClassView<br/>• 32x18 Pixel-Diff Screen Capture<br/>• LiteRT Whisper VAD Speech"]
+        PopupWin["📱 Standalone Projector QR Popup<br/>(openProjectorQrPopup 580x760)<br/>• Drag to Projector / Fullscreen<br/>• Live-Synced 4-Digit PIN"]
+    end
+
+    subgraph CloudBackend["☁️ Firebase & Gemini Cloud"]
+        TranslateCF["⚡ translateTeacherSpeech<br/>(1 Call per Sentence)"]
+        FirestoreDB[("🗄️ Cloud Firestore<br/>• screenBroadcast/session<br/>• screenBroadcast/liveFrame<br/>• liveSubtitles/current")]
+    end
+
+    subgraph ConferenceHall["👥 1,000+ Conference Audience (Shared Venue Wi-Fi)"]
+        Phones["📱 Audience Mobile Browsers<br/>(/live/:classId?pin=XXXX)<br/>• Zero-Auth Spectator ID<br/>• 1x / 1.5x / 2x Slide Zoom<br/>• 9-Language Subtitle Picker"]
+    end
+
+    MainUI -->|"Opens & Syncs PIN"| PopupWin
+    PopupWin -.->|"QR Scanned by Audience"| Phones
+    MainUI -->|"Diffed JPEG Frames"| FirestoreDB
+    MainUI -->|"Clean Speech Transcript"| TranslateCF
+    TranslateCF -->|"Multilingual Captions"| MainUI
+    MainUI -->|"Publish Subtitles"| FirestoreDB
+    FirestoreDB ==>|"Real-Time Edge Fanout"| Phones
+```
 
 ---
 
