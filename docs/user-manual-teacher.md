@@ -503,19 +503,20 @@ When delivering a seminar, lightning talk, or public conference presentation, yo
 #### Step-by-Step Speaker Workflow:
 1. **Open Broadcast Modal**: In any class (e.g., `it3101-ab` or a dedicated talk class like `open-talk`), click **`🎙️🖥️ Broadcast`**.
 2. **Enable Public Presentation Mode**: In **Step 2 (Screen & Recording Setup)**, click the **"🌐 Enable Public Presentation Mode (Audience QR Code & PIN)"** card to switch it **ON**.
-3. **Session PIN & Standalone Projector QR Popup Window**:
-   - The system automatically generates a secure 4-digit PIN (e.g., `8341`). You can also click **`🔄 New PIN`** or type a custom 4-digit number.
+3. **Session PIN, Pre-Session Link Sharing & Standalone Projector QR Popup Window**:
+   - The system automatically generates or loads a 4-digit PIN (e.g., `8341`), which is **persisted in and synced from Firestore DB** (`classes/{classId}/screenBroadcast/session` via `publicPin` and `savedPublicPin`).
+   - **Pre-Session Link Sharing & Waiting Room**: As soon as you enable Public Presentation Mode, the PIN is saved to Firestore DB—even **before** you click Start Broadcast. You can copy the broadcast link (`/live/:classId?pin=XXXX`) or screenshot the QR code days or hours before the event (e.g. from your office laptop) and later sign in on a different stage/podium computer at the venue with the exact same PIN preserved. Early attendees who open the link enter a live **Waiting Room** (`"Waiting for Speaker to Start..."`) and automatically transition into the live stream the instant you start broadcasting.
    - Click **`📱 Preview Projector QR Code ↗`** to launch a **standalone browser popup window** (`580×760`).
    - Because the QR code opens in a separate popup window, the main setup wizard remains completely unblocked—you can keep the QR code popup open on the projector screen (or click **`⛶ Fullscreen`** inside the popup) while immediately continuing your setup.
-   - If you change the PIN (`🔄 New PIN`) while the popup window is open, the QR code and PIN inside the popup automatically update in real time.
+   - If you change the PIN (`🔄 New PIN`) while the popup window is open, the QR code and PIN inside the popup automatically update in real time and sync to Firestore DB.
 4. **Start Broadcast**: Click **`🔴 Start Live Stream & Record`** (or **`🚀 Start Live Stream Only`**) in the main window to begin.
 5. **In-Flight Live Controls (Broadcast Studio & Top Classroom Header)**:
    - During the live talk, you can re-open or focus the Projector QR Code popup window at any time with 1 click:
      - Directly from the top classroom header bar via **`📱 Projector QR ↗`** (next to `● Live (N)` and `⏹ Stop`), without needing to open the Broadcast Studio modal.
      - Or from inside the Broadcast Studio sidebar via **`📱 Projector QR ↗`** next to `Public PIN: XXXX`.
-6. **Instant Automatic Teardown**:
+6. **Instant Automatic Teardown (While Preserving Pre-Shared PIN for Rehearsals)**:
    - Click **`⏹ Stop`** in the top classroom header (or **`⏹ Stop Screen Broadcast`** inside the studio) at the end of the talk.
-   - The session document in Firestore instantly resets `isBroadcasting: false`, `isPublic: false`, and `publicPin: null`.
+   - The session document in Firestore instantly resets `isBroadcasting: false`, `isPublic: false`, and `publicPin: null` while retaining `savedPublicPin` so that if you stop a pre-show rehearsal, re-opening the broadcast setup restores the exact same pre-shared PIN.
    - Firestore security rules immediately revoke external access. Spectator devices display "Broadcast ended".
 
 #### Audience Spectator Experience (`/live/:classId`):
