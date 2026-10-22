@@ -116,6 +116,45 @@ export default function useTeacherScreenBroadcast({ classId, teacherUid, teacher
   const isLocallyCreatedStreamRef = useRef(false);
   const stopBroadcastRef = useRef(null);
 
+  // Load & sync pre-configured public broadcast state and 4-digit PIN from Firestore DB
+  // so switching computers (e.g. from office laptop to stage podium PC) keeps the exact same PIN.
+  useEffect(() => {
+    if (!classId) return;
+    const sessionDocRef = doc(db, `classes/${classId}/screenBroadcast/session`);
+    const unsub = onSnapshot(
+      sessionDocRef,
+      (snap) => {
+        if (typeof snap?.exists === 'function' && snap.exists()) {
+          const data = snap.data() || {};
+          const dbPin = data.publicPin || data.savedPublicPin || null;
+          if (!isBroadcastingRef.current) {
+            if (typeof data.isPublic === 'boolean') {
+              setIsPublicBroadcast(data.isPublic);
+            }
+            if (dbPin) {
+              setPublicPin(String(dbPin));
+            }
+          }
+          if (dbPin || typeof data.isPublic === 'boolean') {
+            try {
+              localStorage.setItem(
+                `gemini_public_broadcast_${classId}`,
+                JSON.stringify({
+                  isPublic: Boolean(data.isPublic),
+                  publicPin: dbPin ? String(dbPin) : null,
+                })
+              );
+            } catch {}
+          }
+        }
+      },
+      () => {}
+    );
+    return () => {
+      if (typeof unsub === 'function') unsub();
+    };
+  }, [classId]);
+
   // Pre-configure public presentation mode & 4-digit PIN in Firestore before starting the live stream
   // so speakers can share the broadcast link / QR code in advance and let attendees wait in the lobby.
   const configurePublicAccess = useCallback(async ({ isPublic, publicPin: nextPin }) => {
@@ -136,6 +175,7 @@ export default function useTeacherScreenBroadcast({ classId, teacherUid, teacher
         await setDoc(sessionDocRef, {
           isPublic: enabled,
           publicPin: cleanPin,
+          ...(cleanPin ? { savedPublicPin: cleanPin } : {}),
           teacherUid: teacherUid || null,
           teacherEmail: teacherEmail || null,
         }, { merge: true });
@@ -396,6 +436,7 @@ export default function useTeacherScreenBroadcast({ classId, teacherUid, teacher
         intervalMs: activeInterval,
         isPublic,
         publicPin: isPublic ? publicPin : null,
+        ...(isPublic && publicPin ? { savedPublicPin: publicPin } : {}),
         teacherUid: teacherUid || null,
         teacherEmail: teacherEmail || null,
         startedAt: serverTimestamp(),

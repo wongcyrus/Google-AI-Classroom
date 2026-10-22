@@ -131,23 +131,26 @@ export default function TeacherScreenBroadcastModal({
   });
   const [showQrModal, setShowQrModal] = useState(false);
   const qrPopupRef = useRef(null);
+  const userChangedPinRef = useRef(false);
 
   // Sync pre-session public access & PIN to Firestore whenever enabled or PIN is updated while modal is open
   useEffect(() => {
     if (!isOpen) return;
-    if (isPublicMode && sessionPin) {
-      onConfigurePublicAccess?.({ isPublic: true, publicPin: sessionPin });
+    const pinToSync = (!userChangedPinRef.current && publicPin) ? String(publicPin) : sessionPin;
+    if (isPublicMode && pinToSync) {
+      onConfigurePublicAccess?.({ isPublic: true, publicPin: pinToSync });
     }
-  }, [isOpen, isPublicMode, sessionPin, onConfigurePublicAccess]);
+  }, [isOpen, isPublicMode, sessionPin, publicPin, onConfigurePublicAccess]);
 
   const handleOpenProjectorQr = () => {
-    if (isPublicMode && sessionPin) {
-      onConfigurePublicAccess?.({ isPublic: true, publicPin: sessionPin });
+    const pinToSync = (!userChangedPinRef.current && publicPin) ? String(publicPin) : sessionPin;
+    if (isPublicMode && pinToSync) {
+      onConfigurePublicAccess?.({ isPublic: true, publicPin: pinToSync });
     }
     const popupWin = openProjectorQrPopup({
       classId,
       className,
-      pin: sessionPin,
+      pin: pinToSync,
       existingWin: qrPopupRef.current,
     });
     if (popupWin) {
@@ -178,6 +181,7 @@ export default function TeacherScreenBroadcastModal({
 
   useEffect(() => {
     if (publicPin) {
+      userChangedPinRef.current = false;
       setSessionPin(String(publicPin));
     }
   }, [publicPin]);
@@ -1266,7 +1270,10 @@ export default function TeacherScreenBroadcastModal({
                           type="text"
                           maxLength={6}
                           value={sessionPin}
-                          onChange={(e) => setSessionPin(e.target.value.replace(/\D/g, ''))}
+                          onChange={(e) => {
+                            userChangedPinRef.current = true;
+                            setSessionPin(e.target.value.replace(/\D/g, ''));
+                          }}
                           style={{
                             width: '80px',
                             textAlign: 'center',
@@ -1285,7 +1292,10 @@ export default function TeacherScreenBroadcastModal({
                         <button
                           type="button"
                           className="secondary-btn"
-                          onClick={() => setSessionPin(String(Math.floor(1000 + Math.random() * 9000)))}
+                          onClick={() => {
+                            userChangedPinRef.current = true;
+                            setSessionPin(String(Math.floor(1000 + Math.random() * 9000)));
+                          }}
                           style={{ padding: '4px 8px', fontSize: '0.75rem' }}
                           title="Generate new random 4-digit PIN"
                         >

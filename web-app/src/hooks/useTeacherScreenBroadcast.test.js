@@ -398,5 +398,62 @@ describe('useTeacherScreenBroadcast Hook', () => {
       { merge: true }
     );
   });
+
+  it('saves pre-configured public PIN to Firestore DB and hydrates it from DB across different computers', async () => {
+    const { result } = renderHook(() =>
+      useTeacherScreenBroadcast({
+        classId: 'CLASS_CROSS_DEVICE',
+        teacherUid: 'teacher_123',
+        teacherEmail: 'teacher@test.com',
+      })
+    );
+
+    // 1. Pre-configure PIN before session starts
+    await act(async () => {
+      await result.current.configurePublicAccess({
+        isPublic: true,
+        publicPin: '4829',
+      });
+    });
+
+    expect(result.current.isPublicBroadcast).toBe(true);
+    expect(result.current.publicPin).toBe('4829');
+    expect(mockSetDoc).toHaveBeenCalledWith(
+      expect.objectContaining({ path: 'classes/CLASS_CROSS_DEVICE/screenBroadcast/session' }),
+      expect.objectContaining({
+        isPublic: true,
+        publicPin: '4829',
+        savedPublicPin: '4829',
+      }),
+      { merge: true }
+    );
+
+    // 2. Simulate opening on a second computer (empty localStorage) where Firestore DB returns saved session doc
+    localStorage.removeItem('gemini_public_broadcast_CLASS_SECOND_PC');
+    const { result: secondPcResult } = renderHook(() =>
+      useTeacherScreenBroadcast({
+        classId: 'CLASS_SECOND_PC',
+        teacherUid: 'teacher_123',
+        teacherEmail: 'teacher@test.com',
+      })
+    );
+
+    const sessionListener = docListeners.get('classes/CLASS_SECOND_PC/screenBroadcast/session');
+    expect(sessionListener).toBeDefined();
+
+    await act(async () => {
+      sessionListener({
+        exists: () => true,
+        data: () => ({
+          isPublic: true,
+          publicPin: null,
+          savedPublicPin: '7744',
+        }),
+      });
+    });
+
+    expect(secondPcResult.current.isPublicBroadcast).toBe(true);
+    expect(secondPcResult.current.publicPin).toBe('7744');
+  });
 });
 
