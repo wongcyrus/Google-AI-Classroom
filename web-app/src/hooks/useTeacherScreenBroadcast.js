@@ -93,6 +93,9 @@ export default function useTeacherScreenBroadcast({ classId, teacherUid, teacher
   const broadcastIntervalRef = useRef(broadcastInterval);
   broadcastIntervalRef.current = broadcastInterval;
 
+  const isBroadcastingRef = useRef(false);
+  isBroadcastingRef.current = isBroadcasting;
+
   const screenStreamRef = useRef(null);
   const unsubscribeViewersCollectionRef = useRef(null);
   const isStoppingRef = useRef(false);
@@ -112,6 +115,35 @@ export default function useTeacherScreenBroadcast({ classId, teacherUid, teacher
   const captureAndPublishFrameRef = useRef(null);
   const isLocallyCreatedStreamRef = useRef(false);
   const stopBroadcastRef = useRef(null);
+
+  // Pre-configure public presentation mode & 4-digit PIN in Firestore before starting the live stream
+  // so speakers can share the broadcast link / QR code in advance and let attendees wait in the lobby.
+  const configurePublicAccess = useCallback(async ({ isPublic, publicPin: nextPin }) => {
+    const enabled = Boolean(isPublic);
+    const cleanPin = enabled && nextPin ? String(nextPin).trim() : null;
+    setIsPublicBroadcast(enabled);
+    setPublicPin(cleanPin);
+
+    if (classId) {
+      try {
+        localStorage.setItem(
+          `gemini_public_broadcast_${classId}`,
+          JSON.stringify({ isPublic: enabled, publicPin: cleanPin })
+        );
+      } catch {}
+      try {
+        const sessionDocRef = doc(db, `classes/${classId}/screenBroadcast/session`);
+        await setDoc(sessionDocRef, {
+          isPublic: enabled,
+          publicPin: cleanPin,
+          teacherUid: teacherUid || null,
+          teacherEmail: teacherEmail || null,
+        }, { merge: true });
+      } catch (err) {
+        console.warn('[Teacher Screen Broadcast] Error pre-configuring public access:', err);
+      }
+    }
+  }, [classId, teacherUid, teacherEmail]);
 
   // Update resolution dynamically (persisted to localStorage, Firestore session, and triggers immediate frame)
   const setBroadcastResolution = useCallback(async (newRes) => {
@@ -655,10 +687,13 @@ export default function useTeacherScreenBroadcast({ classId, teacherUid, teacher
     stopBroadcastRef.current = stopBroadcast;
   });
 
-  // Clean up on unmount strictly (empty deps to avoid stopping broadcast on re-render / auth refresh)
+  // Clean up on unmount strictly only if a broadcast is actively running
+  // (preserves pre-configured public lobby PIN when teacher closes setup before starting stream)
   useEffect(() => {
     return () => {
-      stopBroadcastRef.current?.();
+      if (isBroadcastingRef.current || screenStreamRef.current) {
+        stopBroadcastRef.current?.();
+      }
     };
   }, []);
 
@@ -678,6 +713,7 @@ export default function useTeacherScreenBroadcast({ classId, teacherUid, teacher
     broadcastInterval,
     setBroadcastResolution,
     setBroadcastInterval,
+    configurePublicAccess,
     startBroadcast,
     stopBroadcast,
   };

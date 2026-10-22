@@ -38,8 +38,8 @@ service cloud.firestore {
     function isPublicBroadcastActive(classId) {
       let sessionPath = /databases/$(database)/documents/classes/$(classId)/screenBroadcast/session;
       return exists(sessionPath) &&
-             get(sessionPath).data.get('isBroadcasting', false) == true &&
-             get(sessionPath).data.get('isPublic', false) == true;
+             get(sessionPath).data.get('isPublic', false) == true &&
+             get(sessionPath).data.get('publicPin', '') != '';
     }
 
     match /studentProfiles/{userId} {

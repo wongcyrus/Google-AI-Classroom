@@ -365,7 +365,10 @@ export default function PublicLiveView() {
         ) : (
           <div style={{ textAlign: 'center', color: '#94a3b8', padding: '2rem' }}>
             <div className="setup-spinner" style={{ margin: '0 auto 12px' }} />
-            <p>Waiting for presenter's screen...</p>
+            <p style={{ margin: '0 0 6px 0', color: '#e2e8f0', fontWeight: 600 }}>Waiting for presenter's screen...</p>
+            <p style={{ margin: 0, fontSize: '0.82rem', color: '#94a3b8' }}>
+              You are in the waiting room — live slides and subtitles will appear automatically when the session begins.
+            </p>
           </div>
         )}
 

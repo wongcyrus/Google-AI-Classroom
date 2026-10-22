@@ -128,6 +128,7 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
     publicPin,
     setBroadcastResolution,
     setBroadcastInterval,
+    configurePublicAccess,
     startBroadcast: startScreenBroadcast,
     stopBroadcast: stopScreenBroadcast,
   } = useTeacherScreenBroadcast({ classId, teacherUid, teacherEmail });
@@ -2904,6 +2905,7 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
         onSwitchClass={onSwitchClass}
         isPublicBroadcast={isPublicBroadcast}
         publicPin={publicPin}
+        onConfigurePublicAccess={configurePublicAccess}
       />
 
       {/* Teacher Lecture Recordings & YouTube CC Modal */}

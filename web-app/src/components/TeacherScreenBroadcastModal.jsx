@@ -97,6 +97,7 @@ export default function TeacherScreenBroadcastModal({
   onSwitchClass = null,
   isPublicBroadcast = false,
   publicPin = null,
+  onConfigurePublicAccess = null,
 }) {
   const [step, setStep] = useState(initialStep);
   const [selectedRes, setSelectedRes] = useState(broadcastResolution || '720p');
@@ -107,13 +108,42 @@ export default function TeacherScreenBroadcastModal({
   const [lectureTopic, setLectureTopic] = useState('');
   const [isStarting, setIsStarting] = useState(false);
 
-  // Public presentation mode with 4-digit PIN
-  const [isPublicMode, setIsPublicMode] = useState(isPublicBroadcast !== undefined ? Boolean(isPublicBroadcast) : false);
-  const [sessionPin, setSessionPin] = useState(() => publicPin || String(Math.floor(1000 + Math.random() * 9000)));
+  // Public presentation mode with 4-digit PIN (persisted per class so pre-shared links keep the same PIN)
+  const [isPublicMode, setIsPublicMode] = useState(() => {
+    if (isPublicBroadcast) return true;
+    if (classId) {
+      try {
+        const saved = JSON.parse(localStorage.getItem(`gemini_public_broadcast_${classId}`) || 'null');
+        if (saved && typeof saved.isPublic === 'boolean') return saved.isPublic;
+      } catch {}
+    }
+    return Boolean(isPublicBroadcast);
+  });
+  const [sessionPin, setSessionPin] = useState(() => {
+    if (publicPin) return String(publicPin);
+    if (classId) {
+      try {
+        const saved = JSON.parse(localStorage.getItem(`gemini_public_broadcast_${classId}`) || 'null');
+        if (saved?.publicPin) return String(saved.publicPin);
+      } catch {}
+    }
+    return String(Math.floor(1000 + Math.random() * 9000));
+  });
   const [showQrModal, setShowQrModal] = useState(false);
   const qrPopupRef = useRef(null);
 
+  // Sync pre-session public access & PIN to Firestore whenever enabled or PIN is updated while modal is open
+  useEffect(() => {
+    if (!isOpen) return;
+    if (isPublicMode && sessionPin) {
+      onConfigurePublicAccess?.({ isPublic: true, publicPin: sessionPin });
+    }
+  }, [isOpen, isPublicMode, sessionPin, onConfigurePublicAccess]);
+
   const handleOpenProjectorQr = () => {
+    if (isPublicMode && sessionPin) {
+      onConfigurePublicAccess?.({ isPublic: true, publicPin: sessionPin });
+    }
     const popupWin = openProjectorQrPopup({
       classId,
       className,
@@ -1156,7 +1186,15 @@ export default function TeacherScreenBroadcastModal({
 
                   <div
                     className={`broadcast-mode-card ${isPublicMode ? 'selected-record' : ''}`}
-                    onClick={() => setIsPublicMode((prev) => !prev)}
+                    onClick={() => {
+                      setIsPublicMode((prev) => {
+                        const next = !prev;
+                        if (!next) {
+                          onConfigurePublicAccess?.({ isPublic: false, publicPin: null });
+                        }
+                        return next;
+                      });
+                    }}
                     tabIndex={0}
                     style={{
                       display: 'flex',
@@ -1175,7 +1213,11 @@ export default function TeacherScreenBroadcastModal({
                           type="checkbox"
                           checked={isPublicMode}
                           onChange={(e) => {
-                            setIsPublicMode(e.target.checked);
+                            const next = e.target.checked;
+                            setIsPublicMode(next);
+                            if (!next) {
+                              onConfigurePublicAccess?.({ isPublic: false, publicPin: null });
+                            }
                           }}
                           onClick={(e) => e.stopPropagation()}
                           style={{ cursor: 'pointer', transform: 'scale(1.15)' }}
