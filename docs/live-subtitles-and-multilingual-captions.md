@@ -370,16 +370,18 @@ The platform supports 8 academic disciplines plus custom definitions:
 
 ### 9.4 Public Presentation Spectator Subtitles, Standalone Projector QR Popup & Large-Show Scalability
 When the speaker activates **Public Presentation Mode** during a screen broadcast:
-- **Pre-Session Link Sharing, Waiting Room & Cross-Device Firestore DB PIN Sync**:
-  - Enabling Public Presentation Mode immediately invokes [`configurePublicAccess`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/hooks/useTeacherScreenBroadcast.js#L156-L185), which persists `isPublic: true`, `publicPin`, and `savedPublicPin` in Firestore (`classes/{classId}/screenBroadcast/session`) before the broadcast even starts.
-  - Because [`useTeacherScreenBroadcast.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/hooks/useTeacherScreenBroadcast.js#L119-L154) subscribes to `classes/{classId}/screenBroadcast/session` on mount, speakers can generate and share `/live/:classId?pin=XXXX` from one computer (e.g., office laptop) and later sign in on a different stage/podium computer at the venue with the exact same PIN hydrated from Firestore DB.
-  - Early attendees who open the link before the speaker clicks Start Broadcast enter a live **Waiting Room** (`"Waiting for Speaker to Start..."`) and automatically transition into the live stream as soon as `isBroadcasting` flips to `true`.
+- **Pre-Session Link Sharing, Rehearsal-Safe Waiting Room & Cross-Device Firestore DB PIN Sync**:
+  - Enabling Public Presentation Mode immediately invokes [`configurePublicAccess`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/hooks/useTeacherScreenBroadcast.js#L161-L186), which persists `isPublic: true`, `savedIsPublic: true`, `publicPin`, and `savedPublicPin` in Firestore (`classes/{classId}/screenBroadcast/session`) before the broadcast even starts.
+  - Because [`useTeacherScreenBroadcast.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/hooks/useTeacherScreenBroadcast.js#L119-L159) subscribes to `classes/{classId}/screenBroadcast/session` on mount, speakers can generate and share `/live/:classId?pin=XXXX` from one computer (e.g., office laptop) and later sign in on a different stage/podium computer at the venue with the exact same PIN and Public Mode toggle hydrated from Firestore DB.
+  - Early attendees who open the link before the speaker clicks Start Broadcast—or while the speaker briefly stops a rehearsal or switches windows—stay connected in a live **Waiting Room** (`"Waiting for Speaker to Start..."`) backed by `savedIsPublic` and `savedPublicPin` in [`firestore.rules`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/firestore.rules#L38-L46), automatically transitioning into the live stream as soon as `isBroadcasting` flips to `true`.
 - Clicking **`📱 Preview Projector QR Code ↗`** (in Step 2 setup) or **`📱 Projector QR ↗`** (in the live Broadcast Studio or top `ClassView` header) launches [`openProjectorQrPopup`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/broadcast/PresentationQrModal.jsx#L19-L295) in a standalone `580×760` browser popup window so the speaker can keep the QR code visible on the projector while continuing setup and running the session.
 - Public spectators scanning the session QR code or navigating to `/live/:classId?pin=XXXX` receive the live screen and subtitle stream via [`PublicLiveView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/public/PublicLiveView.jsx).
-- **Zero-Auth High-Scale Fanout Architecture (1,000+ Conference Viewers on Shared Wi-Fi)**:
+- **Zero-Auth & Zero-AppCheck High-Scale Fanout Architecture (1,000+ Conference Viewers on Shared Wi-Fi / Roaming SIMs)**:
   - Spectators generate a lightweight client-side spectator ID (`sessionStorage` `public_spectator_uid`) with **zero Firebase Auth (`signInAnonymously`) calls** and **zero Cloud Function blocking trigger invocations**, completely avoiding Firebase Auth's 100 sign-ups/IP/hour rate limit on shared conference venue Wi-Fi.
-  - [`firestore.rules`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/firestore.rules#L107-L130) evaluates `isPublicBroadcastActive(classId)` first on `screenBroadcast/{docId}` and `liveSubtitles/{docId}`, while enforcing the 4-digit `publicPin` check when spectators register in `screenBroadcastViewers/{spectatorId}`.
-  - [`useTeacherScreenBroadcast.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/hooks/useTeacherScreenBroadcast.js#L484-L488) uses a `32×18` pixel-diffing canvas and only re-uploads static slides once every 30s (cutting venue Wi-Fi bandwidth by >90%), while coalescing `screenBroadcastViewers` snapshot bursts to at most 1 UI update/sec.
+  - [`firebase-config.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/firebase-config.js#L39-L44) skips `initializeAppCheck` (`ReCaptchaEnterpriseProvider`) on `/live/:classId` routes so attendees on WeChat/in-app browsers, Mainland China roaming SIMs, or high-density NAT Wi-Fi connect to Firestore in `<100ms` without waiting on `www.google.com/recaptcha/enterprise.js` or hitting App Check token exchange rate limits.
+  - [`firestore.rules`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/firestore.rules#L107-L135) evaluates `isPublicBroadcastActive(classId)` first on `screenBroadcast/{docId}` and `liveSubtitles/{docId}`, while enforcing the 4-digit `publicPin` / `savedPublicPin` check when spectators register in `screenBroadcastViewers/{spectatorId}`.
+  - [`useTeacherScreenBroadcast.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/hooks/useTeacherScreenBroadcast.js#L450-L530) guarantees a continuous `2s` frame heartbeat, wraps `ImageCapture.grabFrame()` in a `1000ms` timeout (falling back to offscreen `<video>` frame capture when the teacher's browser tab is in the background) plus a `5000ms` concurrency watchdog so desktop capture never deadlocks, updates `lastDiffDataRef` only after `setDoc(liveFrameDocRef, ...)` succeeds, and coalesces `screenBroadcastViewers` snapshot bursts to at most 1 UI update/sec.
+  - Both [`PublicLiveView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/public/PublicLiveView.jsx#L111-L202) and [`useTeacherScreenBroadcastStudent.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/hooks/useTeacherScreenBroadcastStudent.js#L52-L162) automatically re-subscribe (`2000ms` retry) if any `onSnapshot` listener encounters a transient network or permission blip.
 - Default target broadcast languages include **Traditional Chinese (`zh-Hant`)**, **Simplified Chinese (`zh-Hans`)**, and **English (`en`)**, and audience members can pick their preferred captioning language (`en`, `zh-Hant`, `zh-Hans`, `ja`, `ko`, `es`, `fr`, `de`, `vi`) from the floating toolbar on their mobile device.
 
 ```mermaid
@@ -389,20 +391,20 @@ sequenceDiagram
     participant Popup as 📱 Projector QR Popup<br/>(openProjectorQrPopup)
     participant CF as ⚡ Cloud Function<br/>(translateTeacherSpeech)
     participant FS as 🗄️ Cloud Firestore<br/>(Edge Fanout)
-    actor Audience as 👥 1,000+ Audience Phones<br/>(PublicLiveView - Zero Auth)
+    actor Audience as 👥 1,000+ Audience Phones<br/>(PublicLiveView - Zero Auth / Zero AppCheck)
 
     Speaker->>Popup: Click "📱 Preview Projector QR Code ↗"
     Popup-->>Audience: Displays QR Code (/live/:classId?pin=XXXX) on Projector
-    Speaker->>FS: Start Broadcast -> setDoc(screenBroadcast/session, { isBroadcasting: true, isPublic: true, publicPin: "XXXX" })
+    Speaker->>FS: Start Broadcast -> setDoc(screenBroadcast/session, { isBroadcasting: true, isPublic: true, savedIsPublic: true, publicPin: "XXXX", savedPublicPin: "XXXX" })
 
-    par Audience QR Scan Wave (Shared Venue Wi-Fi)
-        Audience->>Audience: Generate sessionStorage spectatorId (0 Auth API calls)
+    par Audience QR Scan Wave (Shared Venue Wi-Fi / Roaming SIMs)
+        Audience->>Audience: Generate sessionStorage spectatorId (0 Auth & 0 reCAPTCHA calls)
         Audience->>FS: setDoc(screenBroadcastViewers/{spectatorId}, { pin: "XXXX", isAnonymousSpectator: true })
-        Note over FS: Security Rule verifies:<br/>isPublicBroadcastActive && pin == session.publicPin
-        Audience->>FS: Subscribe onSnapshot(screenBroadcast/liveFrame & liveSubtitles/current)
+        Note over FS: Security Rule verifies:<br/>isPublicBroadcastActive && pin == publicPin / savedPublicPin
+        Audience->>FS: Subscribe onSnapshot(screenBroadcast/liveFrame & liveSubtitles/current) (Auto-retry 2s)
         FS-->>Speaker: Coalesced viewer count update (max 1 UI render/sec, top 50 DOM rows)
     and Live Screen & Multilingual Subtitle Fanout
-        loop Every 3.0s (Only on 32x18 Pixel Diff or 30s Static Refresh)
+        loop Every 2.0s Heartbeat (1000ms grabFrame Timeout + Offscreen Video Fallback)
             Speaker->>FS: setDoc(screenBroadcast/liveFrame, { frameData: JPEG_Base64 })
             FS-->>Audience: Push updated slide frame to all connected phones
         end

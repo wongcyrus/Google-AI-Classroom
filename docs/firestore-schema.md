@@ -657,31 +657,32 @@ Stores information about each class.
             *   `broadcastMode`: (string) Broadcast transmission mode (`'frame'`). Pure frame architecture avoiding WebRTC mesh CPU exhaustion.
             *   `resolution`: (string) Broadcast target resolution preset (`'720p'`, `'1080p'`, `'1440p'`). Defaults to `'720p'`.
             *   `interval`: (number) Frame capture cadence in milliseconds (`3000`, `1500`, `800`, `500`). Defaults to `3000` (3.0s / 0.33 FPS).
-            *   `isPublic`: (boolean) Whether Public Presentation Mode is active. When `true`, spectators outside the class roster can watch via QR code/PIN. Automatically resets to `false` when the broadcast is stopped.
-            *   `publicPin`: (string | null) 4-digit session security PIN (e.g. `'4819'`) required for anonymous audience verification. Cleared to `null` when the broadcast stops.
-            *   `teacherUid`: (string) UID of the teacher who started the broadcast.
+            *   `isPublic`: (boolean) Whether Public Presentation Mode is active for the current session or lobby.
+            *   `savedIsPublic`: (boolean) Persisted Public Presentation Mode state across pre-event rehearsals and multi-device podium logins.
+            *   `publicPin`: (string | null) Active 4-digit session security PIN (e.g. `'4819'`) for anonymous audience verification.
+            *   `savedPublicPin`: (string | null) Persisted 4-digit session security PIN stored in Firestore DB so pre-shared links (`/live/:classId?pin=XXXX`) remain valid across devices and rehearsals.
+            *   `teacherUid`: (string) UID of the teacher who started or configured the broadcast.
             *   `teacherEmail`: (string) Email of the broadcasting teacher.
             *   `startedAt`: (timestamp) Server timestamp when the broadcast commenced.
             *   `endedAt`: (timestamp | null) Server timestamp when the broadcast ended.
         *   **Document `liveFrame`** (`classes/{classId}/screenBroadcast/liveFrame`):
-            *   `frameData`: (string) Base64 Data URL (`data:image/jpeg;base64,...`) of the latest captured screen frame (clamped to 720p at 0.65 JPEG quality, ~35–65 KB, <8% of Firestore doc limit).
+            *   `frameData`: (string) Base64 Data URL (`data:image/jpeg;base64,...`) of the latest captured screen frame (clamped to 720p/1080p/1440p at 0.65–0.75 JPEG quality, ~35–65 KB, <8% of Firestore doc limit).
             *   `frameSeq`: (number) Monotonically increasing sequence number for viewer synchronization.
-            *   `width`: (number) Frame width in pixels (clamped to max 1280).
-            *   `height`: (number) Frame height in pixels (clamped to max 720).
-            *   `timestamp`: (timestamp) Server timestamp of the emitted frame (emitted every 3.0s or on visual change, with 5s heartbeat if static).
+            *   `width`: (number) Frame width in pixels.
+            *   `height`: (number) Frame height in pixels.
+            *   `timestamp`: (timestamp) Server timestamp of the emitted frame (emitted on visual change or continuous `2s` heartbeat).
     *   **`screenBroadcastViewers`**: Real-time viewer presence tracker for students and public attendees tuned into the teacher's screen broadcast.
-        *   **Document ID**: `viewerUid` (string, student UID or anonymous attendee UID).
+        *   **Document ID**: `viewerUid` (string, student UID or client-generated zero-auth `spectator_...` ID).
         *   **Fields**:
             *   `studentEmail`: (string | null) Student email (or `'anonymous@public.live'` for public spectators).
             *   `pin`: (string | null) 4-digit PIN submitted by the spectator for verification.
+            *   `isAnonymousSpectator`: (boolean | optional) `true` for zero-auth public spectators.
             *   `joinedAt`: (timestamp) Timestamp when the viewer opened the stream.
             *   `status`: (string) Viewer status (`'watching'`).
             *   `connectionState`: (string) Viewer connection state (`'connected'`).
         *   **Security Rules & Public Gatekeeping**:
-            *   Helper `isPublicBroadcastActive(classId)`: Verifies `session.isBroadcasting == true && session.isPublic == true`.
-            *   Helper `isAuthorizedPublicViewer(classId)`: Verifies `isPublicBroadcastActive(classId)` AND `request.auth != null` AND `exists(.../screenBroadcastViewers/$(request.auth.uid))`.
-            *   Creating a viewer presence doc requires either being an enrolled student/teacher OR submitting `request.resource.data.pin == get(.../session).data.publicPin`.
-            *   This prevents unauthorized clients from discovering the PIN by reading the `session` doc directly; access to `screenBroadcast` and `liveSubtitles` is unlocked only after a valid PIN-verified viewer presence record is created.
+            *   Helper `isPublicBroadcastActive(classId)`: Verifies `(session.isPublic == true && session.publicPin != null) || (session.savedIsPublic == true && session.savedPublicPin != null)` so spectators can join the Waiting Room before the talk or stay connected during rehearsal/window switches.
+            *   Creating/updating a viewer presence doc requires either being an enrolled student/teacher OR submitting `request.resource.data.pin == session.publicPin || request.resource.data.pin == session.savedPublicPin` when `isPublicBroadcastActive(classId)` is true (with zero Firebase Auth calls required for public spectators).
     *   **`liveSubtitles`**: Real-time teacher lecture transcription and multilingual captioning stream.
         *   **Document `current`** (`classes/{classId}/liveSubtitles/current`):
             *   `active`: (boolean) Whether live subtitling is currently active for this class.

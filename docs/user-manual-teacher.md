@@ -504,8 +504,8 @@ When delivering a seminar, lightning talk, or public conference presentation, yo
 1. **Open Broadcast Modal**: In any class (e.g., `it3101-ab` or a dedicated talk class like `open-talk`), click **`🎙️🖥️ Broadcast`**.
 2. **Enable Public Presentation Mode**: In **Step 2 (Screen & Recording Setup)**, click the **"🌐 Enable Public Presentation Mode (Audience QR Code & PIN)"** card to switch it **ON**.
 3. **Session PIN, Pre-Session Link Sharing & Standalone Projector QR Popup Window**:
-   - The system automatically generates or loads a 4-digit PIN (e.g., `8341`), which is **persisted in and synced from Firestore DB** (`classes/{classId}/screenBroadcast/session` via `publicPin` and `savedPublicPin`).
-   - **Pre-Session Link Sharing & Waiting Room**: As soon as you enable Public Presentation Mode, the PIN is saved to Firestore DB—even **before** you click Start Broadcast. You can copy the broadcast link (`/live/:classId?pin=XXXX`) or screenshot the QR code days or hours before the event (e.g. from your office laptop) and later sign in on a different stage/podium computer at the venue with the exact same PIN preserved. Early attendees who open the link enter a live **Waiting Room** (`"Waiting for Speaker to Start..."`) and automatically transition into the live stream the instant you start broadcasting.
+   - The system automatically generates or loads a 4-digit PIN (e.g., `8341`), which is **persisted in and synced from Firestore DB** (`classes/{classId}/screenBroadcast/session` via `publicPin`, `savedPublicPin`, and `savedIsPublic`).
+   - **Pre-Session Link Sharing & Rehearsal-Safe Waiting Room**: As soon as you enable Public Presentation Mode, the PIN and public lobby state are saved to Firestore DB—even **before** you click Start Broadcast. You can copy the broadcast link (`/live/:classId?pin=XXXX`) or screenshot the QR code days or hours before the event (e.g. from your office laptop) and later sign in on a different stage/podium computer at the venue with the exact same PIN and Public Mode toggle preserved. Early attendees who open the link enter a live **Waiting Room** (`"Waiting for Speaker to Start..."`) and automatically transition into the live stream the instant you start broadcasting.
    - Click **`📱 Preview Projector QR Code ↗`** to launch a **standalone browser popup window** (`580×760`).
    - Because the QR code opens in a separate popup window, the main setup wizard remains completely unblocked—you can keep the QR code popup open on the projector screen (or click **`⛶ Fullscreen`** inside the popup) while immediately continuing your setup.
    - If you change the PIN (`🔄 New PIN`) while the popup window is open, the QR code and PIN inside the popup automatically update in real time and sync to Firestore DB.
@@ -514,22 +514,21 @@ When delivering a seminar, lightning talk, or public conference presentation, yo
    - During the live talk, you can re-open or focus the Projector QR Code popup window at any time with 1 click:
      - Directly from the top classroom header bar via **`📱 Projector QR ↗`** (next to `● Live (N)` and `⏹ Stop`), without needing to open the Broadcast Studio modal.
      - Or from inside the Broadcast Studio sidebar via **`📱 Projector QR ↗`** next to `Public PIN: XXXX`.
-6. **Instant Automatic Teardown (While Preserving Pre-Shared PIN for Rehearsals)**:
-   - Click **`⏹ Stop`** in the top classroom header (or **`⏹ Stop Screen Broadcast`** inside the studio) at the end of the talk.
-   - The session document in Firestore instantly resets `isBroadcasting: false`, `isPublic: false`, and `publicPin: null` while retaining `savedPublicPin` so that if you stop a pre-show rehearsal, re-opening the broadcast setup restores the exact same pre-shared PIN.
-   - Firestore security rules immediately revoke external access. Spectator devices display "Broadcast ended".
+6. **Stopping a Rehearsal vs. Revoking Public Access**:
+   - Clicking **`⏹ Stop`** at the end of a pre-show rehearsal or when switching shared windows stops the active video stream (`isBroadcasting: false`) while preserving `savedIsPublic: true` and `savedPublicPin` in Firestore DB. Any attendees already waiting in the `/live/:classId?pin=XXXX` lobby stay peacefully in `"Waiting for Speaker to Start..."` and automatically resume viewing when you start broadcasting again.
+   - To completely revoke external lobby access after your event, simply uncheck **"🌐 Enable Public Presentation Mode"** (or click **`🔄 New PIN`** to rotate the PIN).
 
 #### Audience Spectator Experience (`/live/:classId`):
-- **Zero Login & Zero Auth Rate Limits**: When an attendee scans the QR code, [`PublicLiveView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/public/PublicLiveView.jsx) generates a client-side spectator ID (`sessionStorage` `public_spectator_uid`) without calling Firebase Auth (`signInAnonymously`), ensuring 1,000+ attendees on shared conference venue Wi-Fi never hit per-IP authentication rate limits or blocking triggers.
-- **Automatic PIN Verification**: Because the QR code includes `?pin=XXXX`, attendees are validated instantly against Firestore Security Rules (`request.resource.data.pin == session.publicPin`) without needing to manually type the PIN. (If accessing directly via URL without parameters, a sleek 4-digit PIN pad is displayed).
-- **Responsive Screen Viewing**: Spectators see the live instructor screen with zoom controls (`1x`, `1.5x`, `2x`) optimized for mobile screens, backed by 32×18 pixel-diff frame suppression (>90% static slide bandwidth savings).
+- **Zero Login, Zero Auth Rate Limits & Zero reCAPTCHA Blocking**: When an attendee scans the QR code, [`PublicLiveView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/public/PublicLiveView.jsx) generates a client-side spectator ID (`sessionStorage` `public_spectator_uid`) without calling Firebase Auth (`signInAnonymously`) and skips `ReCaptchaEnterpriseProvider` App Check initialization on `/live/:classId`, ensuring 1,000+ attendees on shared conference venue Wi-Fi, WeChat in-app browsers, or Mainland China roaming SIMs connect in `<100ms` and never hit per-IP authentication or reCAPTCHA rate limits.
+- **Automatic PIN Verification & Auto-Recovery**: Because the QR code includes `?pin=XXXX`, attendees are validated instantly against Firestore Security Rules (`pin == publicPin || pin == savedPublicPin`) without needing to manually type the PIN (if accessing directly via URL without parameters, a sleek 4-digit PIN pad is displayed). Real-time `onSnapshot` listeners automatically reconnect within `2s` if a mobile device briefly switches between Wi-Fi and 5G.
+- **Responsive Screen Viewing with Background-Tab Capture Resilience**: Spectators see the live instructor screen with zoom controls (`1x`, `1.5x`, `2x`) optimized for mobile screens, backed by a continuous `2s` frame heartbeat and a `1000ms` `ImageCapture.grabFrame()` timeout that automatically falls back to offscreen `<video>` capture when the presenter switches to full-screen PowerPoint or a terminal window.
 - **Multilingual Subtitles Overlay**: Real-time subtitles appear at the bottom with a native multilingual captioning picker (Traditional Chinese `zh-Hant`, Simplified Chinese `zh-Hans`, English `en`, Japanese `ja`, Korean `ko`, French `fr`, German `de`, Spanish `es`, Vietnamese `vi`).
 - **Privacy & Isolation**: Attendees have **zero access** to any other classroom collections, student names, grades, submissions, or teacher administrative tools.
 
 ```mermaid
 flowchart LR
     subgraph SpeakerLaptop["👨‍🏫 Speaker Laptop"]
-        MainUI["Broadcast Studio / ClassView<br/>• 32x18 Pixel-Diff Screen Capture<br/>• LiteRT Whisper VAD Speech"]
+        MainUI["Broadcast Studio / ClassView<br/>• 2s Heartbeat + grabFrame Timeout Fallback<br/>• LiteRT Whisper VAD Speech"]
         PopupWin["📱 Standalone Projector QR Popup<br/>(openProjectorQrPopup 580x760)<br/>• Drag to Projector / Fullscreen<br/>• Live-Synced 4-Digit PIN"]
     end
 
@@ -538,13 +537,13 @@ flowchart LR
         FirestoreDB[("🗄️ Cloud Firestore<br/>• screenBroadcast/session<br/>• screenBroadcast/liveFrame<br/>• liveSubtitles/current")]
     end
 
-    subgraph ConferenceHall["👥 1,000+ Conference Audience (Shared Venue Wi-Fi)"]
-        Phones["📱 Audience Mobile Browsers<br/>(/live/:classId?pin=XXXX)<br/>• Zero-Auth Spectator ID<br/>• 1x / 1.5x / 2x Slide Zoom<br/>• 9-Language Subtitle Picker"]
+    subgraph ConferenceHall["👥 1,000+ Conference Audience (Shared Venue Wi-Fi / Roaming)"]
+        Phones["📱 Audience Mobile Browsers<br/>(/live/:classId?pin=XXXX)<br/>• Zero-Auth & Zero-AppCheck<br/>• 1x / 1.5x / 2x Slide Zoom<br/>• 9-Language Subtitle Picker"]
     end
 
     MainUI -->|"Opens & Syncs PIN"| PopupWin
     PopupWin -.->|"QR Scanned by Audience"| Phones
-    MainUI -->|"Diffed JPEG Frames"| FirestoreDB
+    MainUI -->|"2s Heartbeat JPEG Frames"| FirestoreDB
     MainUI -->|"Clean Speech Transcript"| TranslateCF
     TranslateCF -->|"Multilingual Captions"| MainUI
     MainUI -->|"Publish Subtitles"| FirestoreDB
