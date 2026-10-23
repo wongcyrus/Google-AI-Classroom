@@ -48,7 +48,7 @@ export default function useTeacherScreenBroadcastStudent({ classId, studentUid, 
     isViewingRef.current = isViewing;
   }, [isViewing]);
 
-  // 1. Listen to active broadcast session status in Firestore
+  // 1. Listen to active broadcast session status in Firestore (with automatic re-subscribe on stream error)
   useEffect(() => {
     if (!classId) {
       setIsBroadcastActive(false);
@@ -56,33 +56,47 @@ export default function useTeacherScreenBroadcastStudent({ classId, studentUid, 
       return;
     }
 
-    const sessionDocRef = doc(db, `classes/${classId}/screenBroadcast/session`);
-    const unsubscribeSession = onSnapshot(
-      sessionDocRef,
-      (snap) => {
-        if (snap.exists()) {
-          const data = snap.data();
-          const active = Boolean(data.isBroadcasting);
-          setIsBroadcastActive(active);
-          setBroadcastInfo(active ? data : null);
-          if (!active && isViewingRef.current) {
-            leaveBroadcast();
+    let cancelled = false;
+    let unsubscribeSession = null;
+    let retryTimer = null;
+
+    const subscribeSession = () => {
+      if (cancelled) return;
+      const sessionDocRef = doc(db, `classes/${classId}/screenBroadcast/session`);
+      unsubscribeSession = onSnapshot(
+        sessionDocRef,
+        (snap) => {
+          if (snap.exists()) {
+            const data = snap.data();
+            const active = Boolean(data.isBroadcasting);
+            setIsBroadcastActive(active);
+            setBroadcastInfo(active ? data : null);
+            if (!active && isViewingRef.current) {
+              leaveBroadcast();
+            }
+          } else {
+            setIsBroadcastActive(false);
+            setBroadcastInfo(null);
+            if (isViewingRef.current) {
+              leaveBroadcast();
+            }
           }
-        } else {
-          setIsBroadcastActive(false);
-          setBroadcastInfo(null);
-          if (isViewingRef.current) {
-            leaveBroadcast();
+        },
+        (err) => {
+          console.warn('[Student Screen Broadcast] Session status subscription error (retrying in 2s):', err);
+          if (!cancelled) {
+            retryTimer = setTimeout(subscribeSession, 2000);
           }
         }
-      },
-      (err) => {
-        console.warn('[Student Screen Broadcast] Session status subscription error:', err);
-      }
-    );
+      );
+    };
+
+    subscribeSession();
 
     return () => {
-      unsubscribeSession();
+      cancelled = true;
+      if (retryTimer) clearTimeout(retryTimer);
+      if (unsubscribeSession) unsubscribeSession();
     };
   }, [classId, leaveBroadcast]);
 
@@ -93,6 +107,7 @@ export default function useTeacherScreenBroadcastStudent({ classId, studentUid, 
     setError(null);
     setConnectionState('connecting');
     setIsViewing(true);
+    isViewingRef.current = true;
 
     try {
       // Register viewer presence so teacher sees who is watching (best effort)
@@ -114,24 +129,41 @@ export default function useTeacherScreenBroadcastStudent({ classId, studentUid, 
         unsubscribeLiveFrameRef.current = null;
       }
 
-      // Subscribe to live frame updates from Firestore
-      const liveFrameDocRef = doc(db, `classes/${classId}/screenBroadcast/liveFrame`);
-      unsubscribeLiveFrameRef.current = onSnapshot(
-        liveFrameDocRef,
-        (snap) => {
-          if (!snap.exists()) return;
-          const data = snap.data();
-          if (data && data.frameData) {
-            setLiveFrame(data.frameData);
-            setConnectionState('connected');
-            setError(null);
+      // Subscribe to live frame updates from Firestore (with automatic re-subscribe on stream error)
+      let frameRetryTimer = null;
+      let currentUnsub = null;
+      let stopped = false;
+
+      const subscribeFrame = () => {
+        if (stopped || !isViewingRef.current) return;
+        const liveFrameDocRef = doc(db, `classes/${classId}/screenBroadcast/liveFrame`);
+        currentUnsub = onSnapshot(
+          liveFrameDocRef,
+          (snap) => {
+            if (!snap.exists()) return;
+            const data = snap.data();
+            if (data && data.frameData) {
+              setLiveFrame(data.frameData);
+              setConnectionState('connected');
+              setError(null);
+            }
+          },
+          (frameErr) => {
+            console.warn('[Student Screen Broadcast] Frame listener subscription notice (reconnecting in 2s):', frameErr);
+            setConnectionState('connecting');
+            if (!stopped && isViewingRef.current) {
+              frameRetryTimer = setTimeout(subscribeFrame, 2000);
+            }
           }
-        },
-        (frameErr) => {
-          console.warn('[Student Screen Broadcast] Frame listener subscription notice (reconnecting):', frameErr);
-          setConnectionState('connecting');
-        }
-      );
+        );
+      };
+
+      subscribeFrame();
+      unsubscribeLiveFrameRef.current = () => {
+        stopped = true;
+        if (frameRetryTimer) clearTimeout(frameRetryTimer);
+        if (currentUnsub) currentUnsub();
+      };
     } catch (err) {
       console.error('[Student Screen Broadcast] Error subscribing to frame broadcast:', err);
       setError(err.message || 'Failed to connect to classroom screen broadcast.');

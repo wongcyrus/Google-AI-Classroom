@@ -455,5 +455,57 @@ describe('useTeacherScreenBroadcast Hook', () => {
     expect(secondPcResult.current.isPublicBroadcast).toBe(true);
     expect(secondPcResult.current.publicPin).toBe('7744');
   });
+
+  it('recovers when ImageCapture.grabFrame() hangs and continues emitting frames on 2s heartbeat', async () => {
+    vi.useFakeTimers();
+    let grabCallCount = 0;
+    class HangingImageCapture {
+      constructor(track) {
+        this.track = track;
+      }
+      grabFrame() {
+        grabCallCount += 1;
+        if (grabCallCount === 1) {
+          return Promise.resolve({ width: 1280, height: 720, close: vi.fn() });
+        }
+        // Simulate Chromium grabFrame() hanging forever on static desktop
+        return new Promise(() => {});
+      }
+    }
+
+    const originalImageCapture = window.ImageCapture;
+    window.ImageCapture = HangingImageCapture;
+
+    try {
+      const { result } = renderHook(() =>
+        useTeacherScreenBroadcast({
+          classId: 'CLASS_HANG_TEST',
+          teacherUid: 'teacher_123',
+          teacherEmail: 'teacher@test.com',
+        })
+      );
+
+      await act(async () => {
+        await result.current.startBroadcast({ interval: 3000 });
+      });
+
+      expect(result.current.isBroadcasting).toBe(true);
+      expect(result.current.frameStats.emittedFrames).toBe(1);
+
+      // Advance 3s to trigger second tick where grabFrame() hangs -> 1s timeout falls back to offscreenVideo and emits frame #2 via 2s heartbeat
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(4500);
+      });
+
+      expect(result.current.frameStats.emittedFrames).toBeGreaterThanOrEqual(2);
+
+      await act(async () => {
+        await result.current.stopBroadcast();
+      });
+    } finally {
+      window.ImageCapture = originalImageCapture;
+      vi.useRealTimers();
+    }
+  });
 });
 

@@ -443,17 +443,28 @@ export default function useTeacherScreenBroadcast({ classId, teacherUid, teacher
         endedAt: null,
       }, { merge: true });
 
+      // Reuse a single ImageCapture instance per track to avoid Chromium handle exhaustion / grabFrame() deadlock
+      let reusableImageCapture = null;
+      let reusableImageCaptureTrack = null;
+      let captureStartedAt = 0;
+
       // Frame capture and publishing function
       const captureAndPublishFrame = async (force = false) => {
         if (!captureCanvasRef.current || !diffCanvasRef.current || isStoppingRef.current) {
           return;
         }
 
-        // Concurrency guard: avoid overlapping capture/upload calls when browser is backgrounded
+        // Concurrency guard with 5s watchdog: avoid overlapping capture/upload calls while preventing permanent lockups
+        const entryNow = Date.now();
         if (isCapturingFrameRef.current) {
-          return;
+          if (captureStartedAt > 0 && entryNow - captureStartedAt < 5000) {
+            return;
+          }
+          console.warn('[Teacher Screen Broadcast] Watchdog reset stuck frame capture guard after 5s.');
+          isCapturingFrameRef.current = false;
         }
         isCapturingFrameRef.current = true;
+        captureStartedAt = entryNow;
 
         let frameSource = null;
         let isBitmap = false;
@@ -467,14 +478,27 @@ export default function useTeacherScreenBroadcast({ classId, teacherUid, teacher
 
         try {
           // 1. Prefer ImageCapture API directly from hardware track (immune to background tab throttling)
+          // Guard with a 1000ms timeout because Chromium's grabFrame() can hang indefinitely when desktop has no damage rects
           if (typeof window !== 'undefined' && 'ImageCapture' in window && track) {
+            let grabTimeoutId = null;
             try {
-              const imageCapture = new window.ImageCapture(track);
-              frameSource = await imageCapture.grabFrame();
+              if (!reusableImageCapture || reusableImageCaptureTrack !== track) {
+                reusableImageCapture = new window.ImageCapture(track);
+                reusableImageCaptureTrack = track;
+              }
+              const grabPromise = reusableImageCapture.grabFrame();
+              const grabTimeoutPromise = new Promise((_, reject) => {
+                grabTimeoutId = setTimeout(() => reject(new Error('grabFrame timeout')), 1000);
+              });
+              frameSource = await Promise.race([grabPromise, grabTimeoutPromise]);
+              if (grabTimeoutId) clearTimeout(grabTimeoutId);
               sourceWidth = frameSource.width || sourceWidth;
               sourceHeight = frameSource.height || sourceHeight;
               isBitmap = true;
             } catch {
+              if (grabTimeoutId) clearTimeout(grabTimeoutId);
+              reusableImageCapture = null;
+              reusableImageCaptureTrack = null;
               frameSource = null;
             }
           }
@@ -516,14 +540,12 @@ export default function useTeacherScreenBroadcast({ classId, teacherUid, teacher
           }
 
           const now = Date.now();
-          // Periodic refresh every 30s if visually static (Firestore onSnapshot already delivers the latest frame to new joiners immediately)
-          if (!hasChanged && now - frameStatsRef.current.lastEmittedTime > 30000) {
+          // Heartbeat emission every 2s even if 32x18 thumbnail appears static so terminal text, code edits, and student views never freeze
+          if (!hasChanged && now - frameStatsRef.current.lastEmittedTime > 2000) {
             hasChanged = true;
           }
 
           if (hasChanged) {
-            lastDiffDataRef.current = currentDiffData;
-
             // Render to capture canvas dynamically adapting to active resolution preset
             const currentRes = broadcastResolutionRef.current || '720p';
             const currentPreset = RESOLUTION_PRESETS[currentRes] || RESOLUTION_PRESETS['720p'];
@@ -587,10 +609,18 @@ export default function useTeacherScreenBroadcast({ classId, teacherUid, teacher
               resolution: currentRes,
               timestamp: serverTimestamp(),
             });
-            const timeoutPromise = new Promise((_, reject) =>
-              setTimeout(() => reject(new Error('Live frame publish timeout')), 2500)
-            );
-            await Promise.race([publishPromise, timeoutPromise]);
+            let publishTimeoutId = null;
+            const timeoutPromise = new Promise((_, reject) => {
+              publishTimeoutId = setTimeout(() => reject(new Error('Live frame publish timeout')), 2500);
+            });
+            try {
+              await Promise.race([publishPromise, timeoutPromise]);
+            } finally {
+              if (publishTimeoutId) clearTimeout(publishTimeoutId);
+            }
+
+            // Only mark diff data as emitted after Firestore write succeeds
+            lastDiffDataRef.current = currentDiffData;
 
             const stats = {
               emittedFrames: seq,
@@ -614,8 +644,10 @@ export default function useTeacherScreenBroadcast({ classId, teacherUid, teacher
 
       captureAndPublishFrameRef.current = captureAndPublishFrame;
 
-      // Emit first frame immediately
-      await captureAndPublishFrame(true);
+      // Emit first frame immediately (non-fatal if initial frame publish times out so broadcast loop still starts)
+      await captureAndPublishFrame(true).catch((firstErr) => {
+        console.warn('[Teacher Screen Broadcast] Initial frame publish notice (will retry on next tick):', firstErr);
+      });
 
       // Start periodic capture loop driven by inline Web Worker
       // (immune to Edge / Chromium background tab timer throttling)
