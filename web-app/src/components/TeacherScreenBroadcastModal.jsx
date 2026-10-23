@@ -174,8 +174,8 @@ export default function TeacherScreenBroadcastModal({
   }, [classId, className, sessionPin]);
 
   useEffect(() => {
-    if (isPublicBroadcast !== undefined) {
-      setIsPublicMode(Boolean(isPublicBroadcast));
+    if (isPublicBroadcast) {
+      setIsPublicMode(true);
     }
   }, [isPublicBroadcast]);
 

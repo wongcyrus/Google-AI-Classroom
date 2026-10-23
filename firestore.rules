@@ -37,9 +37,12 @@ service cloud.firestore {
 
     function isPublicBroadcastActive(classId) {
       let sessionPath = /databases/$(database)/documents/classes/$(classId)/screenBroadcast/session;
-      return exists(sessionPath) &&
-             get(sessionPath).data.get('isPublic', false) == true &&
-             get(sessionPath).data.get('publicPin', '') != '';
+      return exists(sessionPath) && (
+        (get(sessionPath).data.get('isPublic', false) == true &&
+         get(sessionPath).data.get('publicPin', '') != '') ||
+        (get(sessionPath).data.get('savedIsPublic', false) == true &&
+         get(sessionPath).data.get('savedPublicPin', '') != '')
+      );
     }
 
     match /studentProfiles/{userId} {
@@ -118,8 +121,10 @@ service cloud.firestore {
             (isTeacher() || isTeacherInClass(classId) || isStudentInClass(classId))
           ) || (
             isPublicBroadcastActive(classId) &&
-            request.resource.data.get('pin', '') != '' &&
-            request.resource.data.get('pin', '') == get(/databases/$(database)/documents/classes/$(classId)/screenBroadcast/session).data.get('publicPin', '')
+            request.resource.data.get('pin', '') != '' && (
+              request.resource.data.get('pin', '') == get(/databases/$(database)/documents/classes/$(classId)/screenBroadcast/session).data.get('publicPin', '') ||
+              request.resource.data.get('pin', '') == get(/databases/$(database)/documents/classes/$(classId)/screenBroadcast/session).data.get('savedPublicPin', '')
+            )
           );
         allow delete: if (request.auth != null && (request.auth.uid == studentUid || isTeacher() || isTeacherInClass(classId))) ||
                          (resource != null && resource.data.get('isAnonymousSpectator', false) == true);

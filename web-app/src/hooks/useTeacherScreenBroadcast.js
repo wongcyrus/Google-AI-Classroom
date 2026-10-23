@@ -127,20 +127,21 @@ export default function useTeacherScreenBroadcast({ classId, teacherUid, teacher
         if (typeof snap?.exists === 'function' && snap.exists()) {
           const data = snap.data() || {};
           const dbPin = data.publicPin || data.savedPublicPin || null;
+          const dbIsPublic = Boolean(data.isPublic || data.savedIsPublic || data.savedPublicPin);
           if (!isBroadcastingRef.current) {
-            if (typeof data.isPublic === 'boolean') {
-              setIsPublicBroadcast(data.isPublic);
+            if (typeof data.isPublic === 'boolean' || typeof data.savedIsPublic === 'boolean' || data.savedPublicPin) {
+              setIsPublicBroadcast(dbIsPublic);
             }
             if (dbPin) {
               setPublicPin(String(dbPin));
             }
           }
-          if (dbPin || typeof data.isPublic === 'boolean') {
+          if (dbPin || typeof data.isPublic === 'boolean' || typeof data.savedIsPublic === 'boolean') {
             try {
               localStorage.setItem(
                 `gemini_public_broadcast_${classId}`,
                 JSON.stringify({
-                  isPublic: Boolean(data.isPublic),
+                  isPublic: dbIsPublic,
                   publicPin: dbPin ? String(dbPin) : null,
                 })
               );
@@ -174,8 +175,9 @@ export default function useTeacherScreenBroadcast({ classId, teacherUid, teacher
         const sessionDocRef = doc(db, `classes/${classId}/screenBroadcast/session`);
         await setDoc(sessionDocRef, {
           isPublic: enabled,
+          savedIsPublic: enabled,
           publicPin: cleanPin,
-          ...(cleanPin ? { savedPublicPin: cleanPin } : {}),
+          savedPublicPin: cleanPin,
           teacherUid: teacherUid || null,
           teacherEmail: teacherEmail || null,
         }, { merge: true });
@@ -436,7 +438,7 @@ export default function useTeacherScreenBroadcast({ classId, teacherUid, teacher
         intervalMs: activeInterval,
         isPublic,
         publicPin: isPublic ? publicPin : null,
-        ...(isPublic && publicPin ? { savedPublicPin: publicPin } : {}),
+        ...(isPublic && publicPin ? { savedIsPublic: true, savedPublicPin: publicPin } : {}),
         teacherUid: teacherUid || null,
         teacherEmail: teacherEmail || null,
         startedAt: serverTimestamp(),

@@ -36,8 +36,11 @@ if (!getApps().length) {
 }
 
 // Initialize App Check with ReCaptchaEnterpriseProvider
+// Skip on zero-auth public spectator route (/live/:classId) so conference attendees on shared venue Wi-Fi,
+// WeChat/in-app browsers, or roaming SIMs never block Firestore connections waiting for google.com/recaptcha
 const recaptchaKey = import.meta.env.VITE_RECAPTCHA_SITE_KEY || import.meta.env.VITE_FIREBASE_RECAPTCHA_SITE_KEY;
-const enableAppCheck = import.meta.env.VITE_ENABLE_APP_CHECK !== 'false';
+const isPublicSpectatorRoute = typeof window !== 'undefined' && window.location?.pathname?.startsWith('/live/');
+const enableAppCheck = import.meta.env.VITE_ENABLE_APP_CHECK !== 'false' && !isPublicSpectatorRoute;
 const isPlaceholderKey = !recaptchaKey || recaptchaKey === '6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI';
 
 let appCheck = null;

@@ -108,65 +108,96 @@ export default function PublicLiveView() {
     }
   }, [authLoading, authUid, urlPin, isPinVerified, isVerifyingPin, handleVerifyPin]);
 
-  // 4. Subscriptions when PIN is verified
+  // 4. Subscriptions when PIN is verified (with automatic 2s re-subscription on network/Wi-Fi handoff errors)
   useEffect(() => {
     if (!isPinVerified || !classId) return;
 
-    // Listen to session status
-    const sessionDocRef = doc(db, `classes/${classId}/screenBroadcast/session`);
-    const unsubSession = onSnapshot(
-      sessionDocRef,
-      (snap) => {
-        if (snap.exists()) {
-          const data = snap.data();
-          const active = Boolean(data.isBroadcasting && data.isPublic);
-          setIsBroadcastActive(active);
-          setSessionData(data);
-        } else {
-          setIsBroadcastActive(false);
-        }
-      },
-      (err) => {
-        console.warn('[PublicLiveView] Session snapshot error:', err);
-      }
-    );
+    let cancelled = false;
+    let unsubSession = null;
+    let unsubFrame = null;
+    let unsubSubtitles = null;
+    let sessionRetryTimer = null;
+    let frameRetryTimer = null;
+    let subtitlesRetryTimer = null;
 
-    // Listen to live screen frame
-    const liveFrameDocRef = doc(db, `classes/${classId}/screenBroadcast/liveFrame`);
-    const unsubFrame = onSnapshot(
-      liveFrameDocRef,
-      (snap) => {
-        if (snap.exists()) {
-          const data = snap.data();
-          if (data.frameData) {
-            setFrameData(data.frameData);
-            setHasReceivedFrame(true);
+    const subscribeSession = () => {
+      if (cancelled) return;
+      const sessionDocRef = doc(db, `classes/${classId}/screenBroadcast/session`);
+      unsubSession = onSnapshot(
+        sessionDocRef,
+        (snap) => {
+          if (snap.exists()) {
+            const data = snap.data();
+            const active = Boolean(data.isBroadcasting && (data.isPublic || data.savedIsPublic));
+            setIsBroadcastActive(active);
+            setSessionData(data);
+          } else {
+            setIsBroadcastActive(false);
+          }
+        },
+        (err) => {
+          console.warn('[PublicLiveView] Session snapshot error (retrying in 2s):', err);
+          if (!cancelled) {
+            sessionRetryTimer = setTimeout(subscribeSession, 2000);
           }
         }
-      },
-      (err) => {
-        console.warn('[PublicLiveView] Frame snapshot error:', err);
-      }
-    );
+      );
+    };
 
-    // Listen to live subtitles
-    const subtitlesDocRef = doc(db, `classes/${classId}/liveSubtitles/current`);
-    const unsubSubtitles = onSnapshot(
-      subtitlesDocRef,
-      (snap) => {
-        if (snap.exists()) {
-          setSubtitleData(snap.data());
+    const subscribeFrame = () => {
+      if (cancelled) return;
+      const liveFrameDocRef = doc(db, `classes/${classId}/screenBroadcast/liveFrame`);
+      unsubFrame = onSnapshot(
+        liveFrameDocRef,
+        (snap) => {
+          if (snap.exists()) {
+            const data = snap.data();
+            if (data.frameData) {
+              setFrameData(data.frameData);
+              setHasReceivedFrame(true);
+            }
+          }
+        },
+        (err) => {
+          console.warn('[PublicLiveView] Frame snapshot error (retrying in 2s):', err);
+          if (!cancelled) {
+            frameRetryTimer = setTimeout(subscribeFrame, 2000);
+          }
         }
-      },
-      (err) => {
-        console.warn('[PublicLiveView] Subtitles snapshot error:', err);
-      }
-    );
+      );
+    };
+
+    const subscribeSubtitles = () => {
+      if (cancelled) return;
+      const subtitlesDocRef = doc(db, `classes/${classId}/liveSubtitles/current`);
+      unsubSubtitles = onSnapshot(
+        subtitlesDocRef,
+        (snap) => {
+          if (snap.exists()) {
+            setSubtitleData(snap.data());
+          }
+        },
+        (err) => {
+          console.warn('[PublicLiveView] Subtitles snapshot error (retrying in 2s):', err);
+          if (!cancelled) {
+            subtitlesRetryTimer = setTimeout(subscribeSubtitles, 2000);
+          }
+        }
+      );
+    };
+
+    subscribeSession();
+    subscribeFrame();
+    subscribeSubtitles();
 
     return () => {
-      unsubSession();
-      unsubFrame();
-      unsubSubtitles();
+      cancelled = true;
+      if (sessionRetryTimer) clearTimeout(sessionRetryTimer);
+      if (frameRetryTimer) clearTimeout(frameRetryTimer);
+      if (subtitlesRetryTimer) clearTimeout(subtitlesRetryTimer);
+      if (unsubSession) unsubSession();
+      if (unsubFrame) unsubFrame();
+      if (unsubSubtitles) unsubSubtitles();
     };
   }, [isPinVerified, classId]);
 
