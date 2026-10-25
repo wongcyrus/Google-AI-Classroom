@@ -94,7 +94,9 @@ export default function TeacherScreenBroadcastModal({
   classId = '',
   className = '',
   activeLiveClass = null,
+  teacherClasses = [],
   onSwitchClass = null,
+  onHandoverBroadcast = null,
   isPublicBroadcast = false,
   publicPin = null,
   onConfigurePublicAccess = null,
@@ -110,6 +112,53 @@ export default function TeacherScreenBroadcastModal({
   const [lectureTitle, setLectureTitle] = useState('');
   const [lectureTopic, setLectureTopic] = useState('');
   const [isStarting, setIsStarting] = useState(false);
+  const [isHandingOver, setIsHandingOver] = useState(false);
+  const [selectedHandoverClassId, setSelectedHandoverClassId] = useState('');
+  const [isAlertChimeMuted, setIsAlertChimeMuted] = useState(() => {
+    try {
+      return localStorage.getItem('teacher_broadcast_mute_alert_chime') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const otherTeacherClasses = useMemo(() => {
+    if (!Array.isArray(teacherClasses)) return [];
+    return teacherClasses.filter((c) => c && c.id && c.id !== classId && !isDemoClass(c));
+  }, [teacherClasses, classId]);
+
+  useEffect(() => {
+    if (activeLiveClass?.id && activeLiveClass.id !== classId) {
+      setSelectedHandoverClassId(activeLiveClass.id);
+    } else if (otherTeacherClasses.length > 0) {
+      setSelectedHandoverClassId((prev) =>
+        prev && otherTeacherClasses.some((c) => c.id === prev) ? prev : otherTeacherClasses[0].id
+      );
+    }
+  }, [activeLiveClass?.id, classId, otherTeacherClasses]);
+
+  const handleToggleAlertChime = () => {
+    const nextMuted = !isAlertChimeMuted;
+    setIsAlertChimeMuted(nextMuted);
+    try {
+      localStorage.setItem('teacher_broadcast_mute_alert_chime', nextMuted ? 'true' : 'false');
+    } catch {}
+  };
+
+  const handleTriggerHandover = async (targetClassId) => {
+    if (!targetClassId || targetClassId === classId || isHandingOver) return;
+    setIsHandingOver(true);
+    try {
+      if (onHandoverBroadcast) {
+        await onHandoverBroadcast(targetClassId, { openStudio: true });
+      } else if (onSwitchClass) {
+        onClose?.();
+        onSwitchClass(targetClassId);
+      }
+    } finally {
+      setIsHandingOver(false);
+    }
+  };
 
   // Public presentation mode with 4-digit PIN (persisted per class so pre-shared links keep the same PIN)
   const [isPublicMode, setIsPublicMode] = useState(() => {
@@ -1527,6 +1576,62 @@ export default function TeacherScreenBroadcastModal({
                     </span>
                   );
                 })()}
+                {otherTeacherClasses.length > 0 && (
+                  <span
+                    data-testid="quick-handover-controls"
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      backgroundColor: '#eff6ff',
+                      border: '1px solid #bfdbfe',
+                      padding: '2px 8px',
+                      borderRadius: '9999px',
+                      fontSize: '0.74rem',
+                    }}
+                    title="1-Click Handover: Stop current class recording/broadcast and immediately transition the same shared screen & mic stream into the selected class without re-prompting screen share."
+                  >
+                    <span style={{ fontWeight: 700, color: '#1d4ed8' }}>⏭️ Handover:</span>
+                    <select
+                      aria-label="Select Next Session Class for Handover"
+                      value={selectedHandoverClassId}
+                      onChange={(e) => setSelectedHandoverClassId(e.target.value)}
+                      style={{
+                        border: '1px solid #93c5fd',
+                        borderRadius: '4px',
+                        padding: '1px 6px',
+                        fontSize: '0.73rem',
+                        fontWeight: 600,
+                        backgroundColor: '#ffffff',
+                        color: '#1e3a8a',
+                      }}
+                    >
+                      {otherTeacherClasses.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name || c.id} ({c.id})
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      data-testid="quick-handover-btn"
+                      disabled={isHandingOver || !selectedHandoverClassId}
+                      onClick={() => handleTriggerHandover(selectedHandoverClassId)}
+                      style={{
+                        backgroundColor: '#2563eb',
+                        color: '#ffffff',
+                        border: 'none',
+                        borderRadius: '4px',
+                        padding: '2px 8px',
+                        fontSize: '0.72rem',
+                        fontWeight: 700,
+                        cursor: isHandingOver ? 'wait' : 'pointer',
+                      }}
+                    >
+                      {isHandingOver ? 'Switching...' : 'Switch Broadcast'}
+                    </button>
+                  </span>
+                )}
               </div>
             </div>
           </div>
@@ -1535,27 +1640,104 @@ export default function TeacherScreenBroadcastModal({
           </button>
         </div>
 
+        {/* Feature B: 1-Click Next Session Handover Banner for Back-to-Back Talks */}
         {activeLiveClass && activeLiveClass.id !== classId && !isDemoClass(activeLiveClass) && (
-          <div className="broadcast-schedule-warning-banner" role="alert" style={{ borderRadius: 0, margin: 0, borderLeft: 'none', borderRight: 'none', borderTop: 'none' }}>
-            <div className="broadcast-schedule-warning-icon">⚠️</div>
+          <div
+            data-testid="handover-broadcast-banner"
+            className="broadcast-schedule-warning-banner"
+            role="alert"
+            style={{ borderRadius: 0, margin: 0, borderLeft: 'none', borderRight: 'none', borderTop: 'none' }}
+          >
+            <div className="broadcast-schedule-warning-icon">⏭️</div>
             <div className="broadcast-schedule-warning-content">
-              <strong>Schedule Warning: Another class is live now!</strong>
+              <strong>Next Session Handover Ready: {activeLiveClass.name || activeLiveClass.id}</strong>
               <p>
-                Your timetable shows <strong>{activeLiveClass.name || activeLiveClass.id}</strong> ({activeLiveClass.id}) is live right now, but this broadcast is running under <strong>{className || classId}</strong> ({classId}).
+                <strong>{activeLiveClass.name || activeLiveClass.id}</strong> ({activeLiveClass.id}) is scheduled now ({activeLiveClass._scheduleStatus?.timeStr || 'Live Now'}), while your broadcast is running in <strong>{className || classId}</strong> ({classId}). Switch in 1 click to transition your shared screen &amp; microphone directly without re-prompting screen share.
               </p>
             </div>
-            {onSwitchClass && (
+            {(onHandoverBroadcast || onSwitchClass) && (
               <button
                 type="button"
+                data-testid="handover-broadcast-banner-btn"
                 className="broadcast-switch-class-btn"
-                onClick={() => {
-                  onClose?.();
-                  onSwitchClass(activeLiveClass.id);
-                }}
+                disabled={isHandingOver}
+                onClick={() => handleTriggerHandover(activeLiveClass.id)}
               >
-                Switch to {activeLiveClass.name || activeLiveClass.id}
+                {isHandingOver
+                  ? 'Switching Broadcast...'
+                  : `⏭️ Switch Broadcast to ${activeLiveClass.name || activeLiveClass.id}`}
               </button>
             )}
+          </div>
+        )}
+
+        {/* Feature C: Automatic Audio Silence / Mic-Mute Warning Banner (mirrored with Out-of-Tab OS Notification & Chime) */}
+        {effectiveSubtitlesEnabled && st.isMicSilentWarning && (
+          <div
+            data-testid="mic-silent-warning-banner"
+            role="alert"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '12px',
+              flexWrap: 'wrap',
+              padding: '10px 18px',
+              backgroundColor: '#fef2f2',
+              borderBottom: '2px solid #ef4444',
+              color: '#991b1b',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flex: 1, minWidth: '240px' }}>
+              <span style={{ fontSize: '1.35rem' }}>{st.isMicTrackMuted ? '🔇' : '⚠️'}</span>
+              <div>
+                <div style={{ fontWeight: 800, fontSize: '0.88rem', color: '#7f1d1d' }}>
+                  {st.isMicTrackMuted
+                    ? '⚠️ Mic appears muted or silent (Hardware / Browser Track Muted)'
+                    : `⚠️ Mic appears muted or silent (${st.silenceDurationSeconds || 45}s with 0 audio energy)`}
+                </div>
+                <div style={{ fontSize: '0.78rem', color: '#991b1b', marginTop: '2px' }}>
+                  Live Subtitles are enabled, but no voice activity is reaching the microphone. A desktop OS notification &amp; audio chime was also sent so you are alerted while lecturing in PowerPoint/Keynote.
+                </div>
+              </div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+              <button
+                type="button"
+                data-testid="toggle-silence-chime-btn"
+                onClick={handleToggleAlertChime}
+                style={{
+                  padding: '5px 10px',
+                  borderRadius: '6px',
+                  border: '1px solid #fca5a5',
+                  backgroundColor: '#ffffff',
+                  color: '#991b1b',
+                  fontSize: '0.76rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                }}
+                title="Toggle gentle Web Audio chime when microphone silence is detected while presenting outside the browser"
+              >
+                {isAlertChimeMuted ? '🔕 Alert Chime Muted' : '🔔 Alert Chime ON'}
+              </button>
+              <button
+                type="button"
+                data-testid="dismiss-mic-silent-btn"
+                onClick={() => st.dismissMicSilentWarning?.()}
+                style={{
+                  padding: '5px 12px',
+                  borderRadius: '6px',
+                  border: 'none',
+                  backgroundColor: '#dc2626',
+                  color: '#ffffff',
+                  fontSize: '0.78rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                }}
+              >
+                Dismiss (Snooze 45s)
+              </button>
+            </div>
           </div>
         )}
 

@@ -39,6 +39,13 @@ import {
 } from '../utils/studentCompliance';
 import { exportToExcel } from '../utils/exportUtils';
 import { getStudentVoiceStatus } from '../utils/studentVoiceStatus';
+import {
+  isMediaStreamLive,
+  setPendingBroadcastHandover,
+  consumePendingBroadcastHandover,
+  sendTeacherSystemNotification,
+  closeTeacherSystemNotification,
+} from '../utils/broadcastHandover';
 
 const parseAutoRollConfig = (value) => {
   if (!value || value === 'off') return null;
@@ -48,7 +55,7 @@ const parseAutoRollConfig = (value) => {
   return { stepRows, intervalMs: intervalSeconds * 1000 };
 };
 
-const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, startTime, endTime, handleLessonChange: originalHandleLessonChange, timezone, filterField, onBroadcastStateChange, activeLiveClass = null, onSwitchClass = null }) => {
+const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, startTime, endTime, handleLessonChange: originalHandleLessonChange, timezone, filterField, onBroadcastStateChange, activeLiveClass = null, teacherClasses = [], onSwitchClass = null }) => {
   const { prompts, filteredPrompts, promptFilter, setPromptFilter } = usePrompts('Per Image');
   const audioPrompts = useAudioPrompts(user);
   const { storageRatePerGibMonth } = useCloudPricing();
@@ -227,6 +234,7 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
   const activeBroadcastStreamsRef = useRef(null);
   const activeBroadcastSessionIdRef = useRef(null);
   const isStartingBroadcastRef = useRef(false);
+  const videoTrackEndedCleanupRef = useRef(null);
 
   const teacherSubtitles = useTeacherLiveSubtitles({
     classId,
@@ -258,126 +266,148 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
         recordOnStart = false,
         lectureTitle = '',
         lectureTopic = '',
+        existingScreenStream = null,
+        existingMicStream = null,
       } = options;
 
-    if (setBroadcastResolution) setBroadcastResolution(resolution);
-    if (setBroadcastInterval) setBroadcastInterval(interval);
+      // Opportunistically request OS Notification permission while in user gesture context
+      // so out-of-tab mic silence or next-session handover notifications can display over PowerPoint/Keynote.
+      if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
+        try {
+          Notification.requestPermission().catch(() => {});
+        } catch {}
+      }
 
-    // 1. Acquire screen media stream (with system audio if shared by user)
-    let screenStream = null;
-    if (navigator?.mediaDevices?.getDisplayMedia) {
+      if (setBroadcastResolution) setBroadcastResolution(resolution);
+      if (setBroadcastInterval) setBroadcastInterval(interval);
+
+      // 1. Acquire or reuse screen media stream (with system audio if shared by user)
+      let screenStream = isMediaStreamLive(existingScreenStream, 'video') ? existingScreenStream : null;
+      if (!screenStream && navigator?.mediaDevices?.getDisplayMedia) {
+        try {
+          const displayMediaOptions = {
+            video: {
+              displaySurface: 'monitor',
+              frameRate: { ideal: 10, max: 15 },
+            },
+            audio: true,
+          };
+          screenStream = await navigator.mediaDevices.getDisplayMedia(displayMediaOptions);
+        } catch (dispErr) {
+          console.warn('[MonitorView] Display media acquisition warning:', dispErr);
+          throw dispErr;
+        }
+      }
+
+      // 2. Acquire or reuse microphone audio stream
+      let micStream = isMediaStreamLive(existingMicStream, 'audio') ? existingMicStream : null;
+      if (!micStream) {
+        try {
+          micStream = await acquireInputDeviceStream('audio', micDeviceId, {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          });
+        } catch (micErr) {
+          console.warn('[MonitorView] Microphone acquisition fallback notice:', micErr);
+          if (navigator?.mediaDevices?.getUserMedia) {
+            micStream = await navigator.mediaDevices.getUserMedia({
+              audio: micDeviceId ? { deviceId: { exact: micDeviceId } } : true,
+            }).catch(() => null);
+          }
+        }
+      }
+
+      // 3. Hardware clock A/V synchronization & Web Audio mixing
+      const screenAudioTracks = screenStream ? screenStream.getAudioTracks() : [];
+      const micAudioTracks = micStream ? micStream.getAudioTracks() : [];
+      let synchronizedAudio = micStream;
+      let mixedAudioCtx = null;
+
+      if (
+        screenAudioTracks.length > 0 &&
+        micAudioTracks.length > 0 &&
+        typeof window !== 'undefined' &&
+        (window.AudioContext || window.webkitAudioContext)
+      ) {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        mixedAudioCtx = new AudioCtx();
+        const dest = mixedAudioCtx.createMediaStreamDestination();
+        const screenSource = mixedAudioCtx.createMediaStreamSource(new MediaStream(screenAudioTracks));
+        const micSource = mixedAudioCtx.createMediaStreamSource(new MediaStream(micAudioTracks));
+        screenSource.connect(dest);
+        micSource.connect(dest);
+        synchronizedAudio = dest.stream;
+      }
+
+      setSynchronizedAudioStream(synchronizedAudio);
+
+      // 4. Atomic concurrent launch of Screen Broadcast, Subtitles, and Recording
       try {
-        const displayMediaOptions = {
-          video: {
-            displaySurface: 'monitor',
-            frameRate: { ideal: 10, max: 15 },
-          },
-          audio: true,
-        };
-        screenStream = await navigator.mediaDevices.getDisplayMedia(displayMediaOptions);
-      } catch (dispErr) {
-        console.warn('[MonitorView] Display media acquisition warning:', dispErr);
-        throw dispErr;
+        await startScreenBroadcast(
+          screenStream
+            ? { resolution, interval, isPublic, publicPin, existingStream: screenStream }
+            : { resolution, interval, isPublic, publicPin }
+        );
+      } catch (screenErr) {
+        console.warn('[MonitorView] Screen broadcast skipped (audio/subtitles only):', screenErr);
       }
-    }
 
-    // 2. Acquire microphone audio stream
-    let micStream = null;
-    try {
-      micStream = await acquireInputDeviceStream('audio', micDeviceId, {
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true,
-      });
-    } catch (micErr) {
-      console.warn('[MonitorView] Microphone acquisition fallback notice:', micErr);
-      if (navigator?.mediaDevices?.getUserMedia) {
-        micStream = await navigator.mediaDevices.getUserMedia({
-          audio: micDeviceId ? { deviceId: { exact: micDeviceId } } : true,
-        }).catch(() => null);
+      if (enableSubtitles !== undefined) {
+        setIsSubtitleBroadcastEnabled(Boolean(enableSubtitles));
       }
-    }
 
-    // 3. Hardware clock A/V synchronization & Web Audio mixing
-    const screenAudioTracks = screenStream ? screenStream.getAudioTracks() : [];
-    const micAudioTracks = micStream ? micStream.getAudioTracks() : [];
-    let synchronizedAudio = micStream;
-    let mixedAudioCtx = null;
+      if (!activeBroadcastSessionIdRef.current) {
+        activeBroadcastSessionIdRef.current = `bcast_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+      }
+      const currentBroadcastSessionId = activeBroadcastSessionIdRef.current;
 
-    if (
-      screenAudioTracks.length > 0 &&
-      micAudioTracks.length > 0 &&
-      typeof window !== 'undefined' &&
-      (window.AudioContext || window.webkitAudioContext)
-    ) {
-      const AudioCtx = window.AudioContext || window.webkitAudioContext;
-      mixedAudioCtx = new AudioCtx();
-      const dest = mixedAudioCtx.createMediaStreamDestination();
-      const screenSource = mixedAudioCtx.createMediaStreamSource(new MediaStream(screenAudioTracks));
-      const micSource = mixedAudioCtx.createMediaStreamSource(new MediaStream(micAudioTracks));
-      screenSource.connect(dest);
-      micSource.connect(dest);
-      synchronizedAudio = dest.stream;
-    }
+      if (recordOnStart && lectureRecorder) {
+        await lectureRecorder.startRecording({
+          screenStream,
+          audioStream: synchronizedAudio,
+          title: lectureTitle,
+          topic: lectureTopic,
+          className,
+          broadcastSessionId: currentBroadcastSessionId,
+          schedule: classSchedule,
+        });
+      }
 
-    setSynchronizedAudioStream(synchronizedAudio);
-
-    // 4. Atomic concurrent launch of Screen Broadcast, Subtitles, and Recording
-    try {
-      await startScreenBroadcast(
-        screenStream
-          ? { resolution, interval, isPublic, publicPin, existingStream: screenStream }
-          : { resolution, interval, isPublic, publicPin }
-      );
-    } catch (screenErr) {
-      console.warn('[MonitorView] Screen broadcast skipped (audio/subtitles only):', screenErr);
-    }
-
-    if (enableSubtitles !== undefined) {
-      setIsSubtitleBroadcastEnabled(Boolean(enableSubtitles));
-    }
-
-    if (!activeBroadcastSessionIdRef.current) {
-      activeBroadcastSessionIdRef.current = `bcast_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-    }
-    const currentBroadcastSessionId = activeBroadcastSessionIdRef.current;
-
-    if (recordOnStart && lectureRecorder) {
-      await lectureRecorder.startRecording({
+      activeBroadcastStreamsRef.current = {
         screenStream,
-        audioStream: synchronizedAudio,
-        title: lectureTitle,
-        topic: lectureTopic,
-        className,
-        broadcastSessionId: currentBroadcastSessionId,
-        schedule: classSchedule,
-      });
-    }
-
-    activeBroadcastStreamsRef.current = {
-      screenStream,
-      micStream,
-      mixedAudioCtx,
-    };
-
-    // Auto cleanup when user clicks "Stop sharing" on browser chrome bar
-    const videoTrack = screenStream?.getVideoTracks?.()?.[0];
-    if (videoTrack) {
-      const handleEnded = () => {
-        handleStopSynchronizedBroadcast();
+        micStream,
+        mixedAudioCtx,
       };
-      if (typeof videoTrack.addEventListener === 'function') {
-        videoTrack.addEventListener('ended', handleEnded, { once: true });
-      } else {
-        const origEnded = videoTrack.onended;
-        videoTrack.onended = () => {
-          if (typeof origEnded === 'function') origEnded();
-          handleEnded();
-        };
-      }
-    }
 
-    return screenStream;
+      // Auto cleanup when user clicks "Stop sharing" on browser chrome bar
+      if (videoTrackEndedCleanupRef.current) {
+        try { videoTrackEndedCleanupRef.current(); } catch {}
+        videoTrackEndedCleanupRef.current = null;
+      }
+      const videoTrack = screenStream?.getVideoTracks?.()?.[0];
+      if (videoTrack) {
+        const handleEnded = () => {
+          handleStopSynchronizedBroadcast();
+        };
+        if (typeof videoTrack.addEventListener === 'function') {
+          videoTrack.addEventListener('ended', handleEnded, { once: true });
+          videoTrackEndedCleanupRef.current = () => {
+            try { videoTrack.removeEventListener('ended', handleEnded); } catch {}
+          };
+        } else {
+          const origEnded = videoTrack.onended;
+          videoTrack.onended = () => {
+            if (typeof origEnded === 'function') origEnded();
+            handleEnded();
+          };
+          videoTrackEndedCleanupRef.current = () => {
+            try { videoTrack.onended = origEnded || null; } catch {}
+          };
+        }
+      }
+
+      return screenStream;
     } finally {
       isStartingBroadcastRef.current = false;
     }
@@ -408,8 +438,14 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
 
   // Synchronized Stop Handler
   const handleStopSynchronizedBroadcast = async () => {
-    const broadcastSessionIdToMerge = activeBroadcastSessionIdRef.current;
     activeBroadcastSessionIdRef.current = null;
+
+    if (videoTrackEndedCleanupRef.current) {
+      try { videoTrackEndedCleanupRef.current(); } catch {}
+      videoTrackEndedCleanupRef.current = null;
+    }
+
+    closeTeacherSystemNotification('teacher-mic-silent-warning');
 
     await stopScreenBroadcast();
     setSynchronizedAudioStream(null);
@@ -449,6 +485,213 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
     }
   };
 
+  /**
+   * 1-Click "Next Session Handover" for Back-to-Back Talks:
+   * Cleanly stops the current class's recording & broadcast while preserving the
+   * live `screenStream` and `micStream` in memory, then switches to `targetClassId`
+   * and immediately starts the broadcast in the next class without re-prompting `getDisplayMedia`.
+   */
+  const handleHandoverBroadcastToClass = async (targetClassId, handoverOptions = {}) => {
+    if (!targetClassId || targetClassId === classId) return false;
+    if (!isScreenBroadcasting) {
+      onSwitchClass?.(targetClassId);
+      return false;
+    }
+
+    const currentStreams = activeBroadcastStreamsRef.current;
+    const liveScreenStream = isMediaStreamLive(currentStreams?.screenStream, 'video')
+      ? currentStreams.screenStream
+      : (isMediaStreamLive(broadcastScreenStream, 'video') ? broadcastScreenStream : null);
+    const liveMicStream = isMediaStreamLive(currentStreams?.micStream, 'audio')
+      ? currentStreams.micStream
+      : null;
+    const mixedAudioCtx = currentStreams?.mixedAudioCtx || null;
+    const wasRecording = Boolean(lectureRecorder && (lectureRecorder.isRecording || lectureRecorder.isPaused));
+
+    // Detach streams from current class BEFORE stopping so tracks remain live for the target class
+    activeBroadcastStreamsRef.current = null;
+    activeBroadcastSessionIdRef.current = null;
+    if (videoTrackEndedCleanupRef.current) {
+      try { videoTrackEndedCleanupRef.current(); } catch {}
+      videoTrackEndedCleanupRef.current = null;
+    }
+
+    closeTeacherSystemNotification('teacher-mic-silent-warning');
+    closeTeacherSystemNotification('teacher-next-session-handover');
+
+    await stopScreenBroadcast();
+    setSynchronizedAudioStream(null);
+
+    if (classId && !isCapturing) {
+      setClassOvertimeUntil(null);
+      updateDoc(doc(db, 'classes', classId), {
+        isBroadcasting: false,
+        overtimeUntil: null,
+      }).catch(() => {});
+    }
+
+    if (wasRecording) {
+      try {
+        await lectureRecorder.stopRecording();
+      } catch (err) {
+        console.warn('[MonitorView] Handover stop recording notice:', err?.message);
+      }
+    }
+
+    if (mixedAudioCtx && mixedAudioCtx.state !== 'closed') {
+      try { mixedAudioCtx.close(); } catch {}
+    }
+
+    setPendingBroadcastHandover({
+      fromClassId: classId,
+      targetClassId,
+      screenStream: liveScreenStream,
+      micStream: liveMicStream,
+      options: {
+        resolution: broadcastResolution || '720p',
+        interval: broadcastInterval || 3000,
+        isPublic: isPublicBroadcast,
+        publicPin,
+        micDeviceId: selectedMicDeviceId || '',
+        enableSubtitles: isSubtitleBroadcastEnabled,
+        recordOnStart: wasRecording || classDefaultLectureRecording,
+        openStudio: showBroadcastModal,
+        ...handoverOptions,
+      },
+    });
+
+    onSwitchClass?.(targetClassId);
+    return true;
+  };
+
+  // Auto-consume pending broadcast handover when switching into this class
+  useEffect(() => {
+    if (!classId) return;
+    const handover = consumePendingBroadcastHandover(classId);
+    if (!handover) return;
+
+    const { screenStream: handedOverScreen, micStream: handedOverMic, options = {} } = handover;
+    if (options.openStudio) {
+      setShowBroadcastModal(true);
+    }
+
+    handleStartSynchronizedBroadcast({
+      ...options,
+      existingScreenStream: handedOverScreen,
+      existingMicStream: handedOverMic,
+    }).catch((err) => {
+      console.warn('[MonitorView] Broadcast handover auto-start warning:', err);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [classId]);
+
+  // Out-of-Tab Teacher OS Desktop Notification + Web Audio Chime + Tab Title Flash
+  // when microphone is muted or 0 audio energy is detected for >45s during Live Subtitles broadcast.
+  useEffect(() => {
+    const isSilentAlertActive = Boolean(
+      isScreenBroadcasting &&
+      isSubtitleBroadcastEnabled &&
+      teacherSubtitles?.isMicSilentWarning
+    );
+
+    if (!isSilentAlertActive) {
+      closeTeacherSystemNotification('teacher-mic-silent-warning');
+      return undefined;
+    }
+
+    const isHardwareMuted = Boolean(teacherSubtitles?.isMicTrackMuted);
+    const silenceSec = teacherSubtitles?.silenceDurationSeconds || 45;
+    const notifTitle = isHardwareMuted
+      ? '🔇 Microphone is Muted (Live Broadcast)'
+      : '⚠️ Mic Appears Muted or Silent';
+    const notifBody = isHardwareMuted
+      ? `Your microphone track is muted while broadcasting "${className || classId}". Students are not receiving live subtitles or voice.`
+      : `No voice activity detected for ${silenceSec}s while broadcasting "${className || classId}". Check if your hardware mic switch is muted.`;
+
+    sendTeacherSystemNotification({
+      title: notifTitle,
+      body: notifBody,
+      tag: 'teacher-mic-silent-warning',
+      playChime: true,
+      chimeType: 'silence',
+      data: {
+        action: 'open-broadcast-studio',
+        classId,
+      },
+      onClick: () => setShowBroadcastModal(true),
+    });
+
+    // Re-chime / re-notify every 90s if still silent and not dismissed
+    const repeatInterval = setInterval(() => {
+      sendTeacherSystemNotification({
+        title: notifTitle,
+        body: notifBody,
+        tag: 'teacher-mic-silent-warning',
+        playChime: true,
+        chimeType: 'silence',
+        data: {
+          action: 'open-broadcast-studio',
+          classId,
+        },
+        onClick: () => setShowBroadcastModal(true),
+      });
+    }, 90000);
+
+    // Flash document.title so teachers who glance at their browser tab/taskbar see the alert immediately
+    const originalTitle = typeof document !== 'undefined' ? document.title : 'AI Classroom Assistant';
+    let toggle = false;
+    const titleInterval = setInterval(() => {
+      if (typeof document === 'undefined') return;
+      toggle = !toggle;
+      document.title = toggle
+        ? `⚠️ [MIC SILENT] ${className || classId}`
+        : `🔇 Check Microphone! — ${originalTitle}`;
+    }, 1200);
+
+    return () => {
+      clearInterval(repeatInterval);
+      clearInterval(titleInterval);
+      if (typeof document !== 'undefined') {
+        document.title = originalTitle;
+      }
+    };
+  }, [
+    isScreenBroadcasting,
+    isSubtitleBroadcastEnabled,
+    teacherSubtitles?.isMicSilentWarning,
+    teacherSubtitles?.isMicTrackMuted,
+    classId,
+    className,
+  ]);
+
+  // Listen for Service Worker notification clicks to focus Broadcast Studio or trigger handover
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return undefined;
+    const handleSwMessage = (event) => {
+      const payload = event?.data;
+      if (!payload || payload.type !== 'notification-clicked') return;
+      if (
+        payload.tag === 'teacher-mic-silent-warning' ||
+        payload.data?.action === 'open-broadcast-studio'
+      ) {
+        setShowBroadcastModal(true);
+      } else if (
+        payload.tag === 'teacher-next-session-handover' &&
+        payload.data?.targetClassId
+      ) {
+        if (isScreenBroadcasting) {
+          handleHandoverBroadcastToClass(payload.data.targetClassId, { openStudio: true });
+        } else {
+          onSwitchClass?.(payload.data.targetClassId);
+        }
+      }
+    };
+    navigator.serviceWorker.addEventListener?.('message', handleSwMessage);
+    return () => {
+      navigator.serviceWorker.removeEventListener?.('message', handleSwMessage);
+    };
+  });
+
   // Sync broadcast state with ClassHub header launcher
   useEffect(() => {
     if (onBroadcastStateChange) {
@@ -459,9 +702,10 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
         publicPin,
         openStudio: () => setShowBroadcastModal(true),
         stopBroadcast: handleStopSynchronizedBroadcast,
+        handoverBroadcast: handleHandoverBroadcastToClass,
       });
     }
-  }, [onBroadcastStateChange, isScreenBroadcasting, broadcastViewers?.length, isPublicBroadcast, publicPin]);
+  }, [onBroadcastStateChange, isScreenBroadcasting, broadcastViewers?.length, isPublicBroadcast, publicPin, classId]);
 
 
 
@@ -3005,7 +3249,9 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
         classId={classId}
         className={className}
         activeLiveClass={activeLiveClass}
+        teacherClasses={teacherClasses}
         onSwitchClass={onSwitchClass}
+        onHandoverBroadcast={handleHandoverBroadcastToClass}
         isPublicBroadcast={isPublicBroadcast}
         publicPin={publicPin}
         onConfigurePublicAccess={configurePublicAccess}

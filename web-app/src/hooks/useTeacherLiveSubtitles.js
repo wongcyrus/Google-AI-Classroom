@@ -114,11 +114,15 @@ export function useTeacherLiveSubtitles({
   const [gemmaUnavailableReason, setGemmaUnavailableReason] = useState('');
   const [micVolume, setMicVolume] = useState(0);
   const [activeAudioStream, setActiveAudioStream] = useState(null);
+  const [isMicTrackMuted, setIsMicTrackMuted] = useState(false);
+  const [silenceDurationSeconds, setSilenceDurationSeconds] = useState(0);
+  const [isMicSilentWarning, setIsMicSilentWarning] = useState(false);
 
   const seqCounterRef = useRef(0);
   const latestPublishedSeqRef = useRef(0);
   const lastPublishedTextRef = useRef('');
   const lastPublishedAtRef = useRef(0);
+  const lastVoiceActivityAtRef = useRef(Date.now());
   const historyBufferRef = useRef([]);
   const workerRef = useRef(null);
   const gemmaWorkerRef = useRef(null);
@@ -127,9 +131,44 @@ export function useTeacherLiveSubtitles({
   const reqIdCounterRef = useRef(0);
   const isWhisperReadyRef = useRef(false);
   const enabledRef = useRef(enabled);
+
+  const recordVoiceActivity = useCallback(() => {
+    lastVoiceActivityAtRef.current = Date.now();
+    setSilenceDurationSeconds((prev) => (prev !== 0 ? 0 : prev));
+    setIsMicSilentWarning((prev) => (prev ? false : prev));
+  }, []);
+
+  const dismissMicSilentWarning = useCallback(() => {
+    lastVoiceActivityAtRef.current = Date.now();
+    setSilenceDurationSeconds(0);
+    setIsMicSilentWarning(false);
+  }, []);
+
   useEffect(() => {
     enabledRef.current = enabled;
+    if (enabled) {
+      lastVoiceActivityAtRef.current = Date.now();
+      setSilenceDurationSeconds(0);
+      setIsMicSilentWarning(false);
+    } else {
+      setIsMicTrackMuted(false);
+      setSilenceDurationSeconds(0);
+      setIsMicSilentWarning(false);
+    }
   }, [enabled]);
+
+  // Periodic 2-second watchdog checking for prolonged microphone silence (>45s) or hardware track mute (>10s)
+  useEffect(() => {
+    if (!enabled) return;
+    const interval = setInterval(() => {
+      const elapsedSec = Math.floor((Date.now() - lastVoiceActivityAtRef.current) / 1000);
+      setSilenceDurationSeconds(elapsedSec);
+      if (elapsedSec >= 45 || (isMicTrackMuted && elapsedSec >= 10)) {
+        setIsMicSilentWarning(true);
+      }
+    }, 2000);
+    return () => clearInterval(interval);
+  }, [enabled, isMicTrackMuted]);
 
   useEffect(() => {
     let isMounted = true;
@@ -734,6 +773,35 @@ export function useTeacherLiveSubtitles({
           setActiveAudioStream(localStream);
         }
 
+        const primaryAudioTrack = localStream.getAudioTracks?.()?.[0] || null;
+        const updateTrackMuteState = () => {
+          if (!isMounted || !primaryAudioTrack) return;
+          const muted = Boolean(
+            primaryAudioTrack.muted ||
+            primaryAudioTrack.enabled === false ||
+            primaryAudioTrack.readyState === 'ended'
+          );
+          setIsMicTrackMuted(muted);
+          if (!muted) {
+            recordVoiceActivity();
+          }
+        };
+        if (primaryAudioTrack) {
+          updateTrackMuteState();
+          try {
+            primaryAudioTrack.addEventListener?.('mute', updateTrackMuteState);
+            primaryAudioTrack.addEventListener?.('unmute', updateTrackMuteState);
+            primaryAudioTrack.addEventListener?.('ended', updateTrackMuteState);
+          } catch {}
+          localStream.__cleanupTrackMuteListeners = () => {
+            try {
+              primaryAudioTrack.removeEventListener?.('mute', updateTrackMuteState);
+              primaryAudioTrack.removeEventListener?.('unmute', updateTrackMuteState);
+              primaryAudioTrack.removeEventListener?.('ended', updateTrackMuteState);
+            } catch {}
+          };
+        }
+
         let speechVolDecayTimeout = null;
         let lastReportedVol = 0;
 
@@ -782,6 +850,7 @@ export function useTeacherLiveSubtitles({
           // On-Device LiteRT Whisper VAD buffering
           if (rms > 0.015) {
             // Voice active
+            recordVoiceActivity();
             hasSpeechActivity = true;
             pcmBuffer.push(pcm16k);
             pcmBufferedSamples += pcm16k.length;
@@ -877,6 +946,7 @@ export function useTeacherLiveSubtitles({
                 }
                 const speechText = (final || interim || '').trim();
                 if (speechText && isMounted) {
+                  recordVoiceActivity();
                   setLatestTranscript(speechText);
                   pulseSpeechRecVolume(speechText);
                 }
@@ -923,6 +993,9 @@ export function useTeacherLiveSubtitles({
       isMounted = false;
       setMicVolume(0);
       setActiveAudioStream(null);
+      if (localStream?.__cleanupTrackMuteListeners) {
+        try { localStream.__cleanupTrackMuteListeners(); } catch {}
+      }
       if (silenceTimeout) clearTimeout(silenceTimeout);
       if (restartTimeout) clearTimeout(restartTimeout);
       if (recognition) {
@@ -950,7 +1023,7 @@ export function useTeacherLiveSubtitles({
         localStream.getTracks().forEach((t) => t.stop());
       }
     };
-  }, [enabled, audioStream, deviceId, speechLanguage, engineMode, classId, teacherUid, teacherEmail]);
+  }, [enabled, audioStream, deviceId, speechLanguage, engineMode, classId, teacherUid, teacherEmail, recordVoiceActivity]);
 
   // Manage subtitle active session status in Firestore
   useEffect(() => {
@@ -1008,6 +1081,10 @@ export function useTeacherLiveSubtitles({
     loadGemmaModel,
     micVolume,
     activeAudioStream,
+    isMicTrackMuted,
+    silenceDurationSeconds,
+    isMicSilentWarning,
+    dismissMicSilentWarning,
     publishSubtitle, // exposed for manual trigger or test injection
   };
 }

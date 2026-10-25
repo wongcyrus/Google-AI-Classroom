@@ -4,6 +4,31 @@
 **System**: HKIIT AI Classroom  
 **Production URL**: `https://it114115-2627.web.app`
 
+## 0.0.0.0.0.0.0.0.0.0.2.9 1-Click "Next Session Handover" for Back-to-Back Talks & Out-of-Tab Microphone Silence OS Notifications
+
+**Date**: October 25, 2026  
+**Status**: Implemented, Verified with Passing Unit Tests (`broadcastHandover.test.js` 6/6, `TeacherScreenBroadcastModal.test.jsx` 34/34, `useTeacherLiveSubtitles.test.js` 25/25), and Deployed to `it114115-dev-2026` & `it114115-2627` (Production)  
+**Primary Files**:
+- [`web-app/src/utils/broadcastHandover.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/utils/broadcastHandover.js) & [`web-app/src/utils/broadcastHandover.test.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/utils/broadcastHandover.test.js)
+- [`web-app/src/hooks/useTeacherLiveSubtitles.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/hooks/useTeacherLiveSubtitles.js) & [`web-app/src/hooks/useTeacherLiveSubtitles.test.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/hooks/useTeacherLiveSubtitles.test.js)
+- [`web-app/src/components/MonitorView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/MonitorView.jsx), [`web-app/src/components/ClassView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/ClassView.jsx), [`web-app/src/components/TeacherScreenBroadcastModal.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/TeacherScreenBroadcastModal.jsx), [`web-app/public/service-worker.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/public/service-worker.js)
+
+### Technical Analysis & Implementation Details:
+
+1. **1-Click "Next Session Handover" Without Re-Prompting `getDisplayMedia` (`broadcastHandover.js`, `MonitorView.jsx`, `ClassView.jsx`, `TeacherScreenBroadcastModal.jsx`)**:
+   - **Zero-Prompt `MediaStream` Bridge**: When a teacher is broadcasting in Class A and switches to Class B (either via the **`⏭️ Switch Broadcast to [Next Class Name]`** banner when the next scheduled session is starting/live, the **`⏭️ Handover:`** quick-selector in the Broadcast Studio header, or the `ClassView` class switcher), [`handleHandoverBroadcastToClass`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/MonitorView.jsx#L476-L547) detaches the live `screenStream` and `micStream` from Class A before stopping Class A's screen broadcast and finalizing Class A's lecture recording.
+   - **Automatic Stream Reuse on Route Transition**: The live `MediaStream` references and broadcast settings (`resolution`, `interval`, `isPublic`, `publicPin`, `enableSubtitles`, `recordOnStart`) are stored in the in-memory handover bridge ([`setPendingBroadcastHandover`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/utils/broadcastHandover.js#L45-L52)). When Class B's `MonitorView` mounts, it consumes the handover ([`consumePendingBroadcastHandover`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/utils/broadcastHandover.js#L75-L80)) and passes `existingScreenStream` and `existingMicStream` directly into [`handleStartSynchronizedBroadcast`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/MonitorView.jsx#L251-L391), seamlessly continuing the screen broadcast, live subtitles, and a new lecture recording in Class B **without any browser screen-share permission prompt**.
+   - **Overtime-Aware Next Session Detection & OS Notification**: Updated [`liveClassWarning`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/ClassView.jsx#L142-L185) in `ClassView.jsx` so that even when the current class has `tier === 1` due to `reason === 'overtime'`, any newly live scheduled class (or back-to-back class starting within 15 minutes during an active broadcast) surfaces immediately and dispatches an out-of-tab OS Desktop Notification (`⏭️ Next Session Live: [Class Name]`) with a gentle two-tone chime.
+
+2. **Automatic Audio Silence / Mic-Mute Warning with Out-of-Tab OS Desktop Notification & Web Audio Chime (`useTeacherLiveSubtitles.js`, `broadcastHandover.js`, `MonitorView.jsx`, `TeacherScreenBroadcastModal.jsx`)**:
+   - **Voice Activity & Hardware Mute Watchdog**: Added real-time voice activity tracking (`recordVoiceActivity` on RMS `> 0.015` and `SpeechRecognition` results) plus `MediaStreamTrack` `mute` / `unmute` / `ended` listeners in [`useTeacherLiveSubtitles.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/hooks/useTeacherLiveSubtitles.js#L117-L173). If `0` audio energy is detected for `>= 45s` (or the microphone track is hardware/browser-muted for `>= 10s`) while Live Subtitles are enabled, `isMicSilentWarning` activates.
+   - **Out-of-Tab Presentation Alerts (OS Notification + Web Audio Chime + Tab Title Flash)**: Because teachers lecture fullscreen in PowerPoint, Keynote, PDF slides, or terminal windows and do not look at the browser tab, [`MonitorView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/MonitorView.jsx#L569-L645) dispatches:
+     1. A **System/Desktop OS Notification** (`requireInteraction: true`, `renotify: true`) via Service Worker (`registration.showNotification`) and `window.Notification` fallback that appears on top of fullscreen presentation apps. Clicking the notification focuses the browser tab and opens the Broadcast Studio.
+     2. A **gentle two-tone Web Audio API chime** ([`playTeacherAlertChime('silence')`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/utils/broadcastHandover.js#L109-L160)) so the teacher hears a subtle alert even if OS Focus Assist suppresses visual toasts (with a `🔔 Alert Chime ON` / `🔕 Alert Chime Muted` toggle inside the studio).
+     3. **Browser Tab Title Flashing** (`⚠️ [MIC SILENT]`) and an in-studio red alert banner with a `Dismiss (Snooze 45s)` button. Speaking into the microphone automatically clears the warning and closes the OS desktop notification.
+
+---
+
 ## 0.0.0.0.0.0.0.0.0.0.2.8 Overtime / Post-Schedule Broadcast Continuity & Multi-Teacher Overlap Resolution
 
 **Date**: October 25, 2026  

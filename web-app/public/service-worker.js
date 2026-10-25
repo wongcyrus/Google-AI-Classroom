@@ -49,15 +49,26 @@ self.addEventListener('message', (event) => {
 
 self.addEventListener('notificationclick', (event) => {
   console.log('On notification click: ', event.notification.tag);
+  const tag = event.notification.tag;
+  const action = event.action || '';
+  const data = event.notification.data || {};
   event.notification.close();
 
-  // Find existing window client and focus it, preventing unwanted duplicate tabs
+  // Find existing window client, focus it, and notify the app of the clicked notification
   event.waitUntil(
     self.clients.matchAll({
       type: 'window',
       includeUncontrolled: true
     }).then((clientList) => {
       for (const client of clientList) {
+        try {
+          client.postMessage({
+            type: 'notification-clicked',
+            tag,
+            action,
+            data,
+          });
+        } catch {}
         if ('focus' in client) {
           return client.focus();
         }

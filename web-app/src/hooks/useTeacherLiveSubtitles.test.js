@@ -1203,5 +1203,81 @@ describe('useTeacherLiveSubtitles Hook', () => {
     expect(explicitInitCalls).toHaveLength(1);
     expect(result.current.isGemmaInitializing).toBe(true);
   });
+
+  it('triggers isMicSilentWarning after >45s of zero audio energy and clears immediately when speech resumes or dismissed', async () => {
+    vi.useFakeTimers();
+
+    const mockAudioTrack = {
+      muted: false,
+      enabled: true,
+      readyState: 'live',
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      stop: vi.fn(),
+    };
+    const mockAudioStream = {
+      getAudioTracks: vi.fn().mockReturnValue([mockAudioTrack]),
+      getTracks: vi.fn().mockReturnValue([mockAudioTrack]),
+    };
+
+    class MockAudioContext {
+      constructor() {
+        this.state = 'running';
+        this.createMediaStreamSource = vi.fn().mockReturnValue({ connect: vi.fn(), disconnect: vi.fn() });
+        this.destination = {};
+        this.close = vi.fn().mockResolvedValue();
+      }
+    }
+    window.AudioContext = MockAudioContext;
+
+    const { result, unmount } = renderHook(() =>
+      useTeacherLiveSubtitles({
+        classId: 'CLASS_TEST_101',
+        teacherUid: 'teacher_1',
+        teacherEmail: 'teacher@vtc.edu.hk',
+        enabled: true,
+        audioStream: mockAudioStream,
+      })
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(result.current.isMicSilentWarning).toBe(false);
+
+    // Advance 46 seconds with 0 voice activity
+    act(() => {
+      vi.advanceTimersByTime(46000);
+    });
+
+    expect(result.current.isMicSilentWarning).toBe(true);
+    expect(result.current.silenceDurationSeconds).toBeGreaterThanOrEqual(45);
+
+    // Speaking (RMS > 0.015) immediately clears the warning
+    const loudPcm = new Float32Array(1600).fill(0.08);
+    act(() => {
+      processorCallback(loudPcm);
+    });
+
+    expect(result.current.isMicSilentWarning).toBe(false);
+    expect(result.current.silenceDurationSeconds).toBe(0);
+
+    // Advance another 46 seconds -> warning re-appears, then dismissMicSilentWarning snoozes it
+    act(() => {
+      vi.advanceTimersByTime(46000);
+    });
+    expect(result.current.isMicSilentWarning).toBe(true);
+
+    act(() => {
+      result.current.dismissMicSilentWarning();
+    });
+    expect(result.current.isMicSilentWarning).toBe(false);
+
+    unmount();
+    vi.useRealTimers();
+    delete window.AudioContext;
+  });
 });
+
 

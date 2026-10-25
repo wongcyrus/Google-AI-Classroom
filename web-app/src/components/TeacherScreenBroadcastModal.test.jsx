@@ -1019,5 +1019,95 @@ describe('TeacherScreenBroadcastModal', () => {
     fireEvent.click(downloadBtn);
     expect(loadGemmaModel).toHaveBeenCalledTimes(1);
   });
+
+  it('renders 1-Click Next Session Handover banner and header quick-handover control when broadcasting, invoking onHandoverBroadcast without closing studio', async () => {
+    const onHandoverBroadcast = vi.fn().mockResolvedValue(true);
+    const onClose = vi.fn();
+
+    render(
+      <TeacherScreenBroadcastModal
+        isOpen={true}
+        onClose={onClose}
+        isBroadcasting={true}
+        classId="CLASS_SESSION_1"
+        className="Keynote Part 1"
+        activeLiveClass={{
+          id: 'CLASS_SESSION_2',
+          name: 'Keynote Part 2',
+          _scheduleStatus: { tier: 1, reason: 'scheduled', timeStr: '10:00 - 11:00' },
+        }}
+        teacherClasses={[
+          { id: 'CLASS_SESSION_1', name: 'Keynote Part 1' },
+          { id: 'CLASS_SESSION_2', name: 'Keynote Part 2' },
+          { id: 'CLASS_SESSION_3', name: 'Afternoon Workshop' },
+        ]}
+        onHandoverBroadcast={onHandoverBroadcast}
+      />
+    );
+
+    const handoverBanner = screen.getByTestId('handover-broadcast-banner');
+    expect(handoverBanner).toBeInTheDocument();
+    expect(handoverBanner.textContent).toContain('Next Session Handover Ready: Keynote Part 2');
+
+    const handoverBtn = screen.getByTestId('handover-broadcast-banner-btn');
+    expect(handoverBtn.textContent).toContain('⏭️ Switch Broadcast to Keynote Part 2');
+    fireEvent.click(handoverBtn);
+
+    await waitFor(() => {
+      expect(onHandoverBroadcast).toHaveBeenCalledWith('CLASS_SESSION_2', { openStudio: true });
+    });
+    expect(onClose).not.toHaveBeenCalled();
+
+    // Also test quick handover selector in the header for switching to Afternoon Workshop
+    const selectEl = screen.getByRole('combobox', { name: /Select Next Session Class for Handover/i });
+    fireEvent.change(selectEl, { target: { value: 'CLASS_SESSION_3' } });
+    fireEvent.click(screen.getByTestId('quick-handover-btn'));
+
+    await waitFor(() => {
+      expect(onHandoverBroadcast).toHaveBeenCalledWith('CLASS_SESSION_3', { openStudio: true });
+    });
+  });
+
+  it('renders Automatic Audio Silence / Mic-Mute Warning banner when isMicSilentWarning is true and supports snoozing and chime toggle', () => {
+    const dismissMicSilentWarning = vi.fn();
+
+    render(
+      <TeacherScreenBroadcastModal
+        isOpen={true}
+        onClose={vi.fn()}
+        isBroadcasting={true}
+        isSubtitlesEnabled={true}
+        classId="CLASS_101"
+        className="Cloud Architecture"
+        teacherSubtitles={{
+          status: 'listening',
+          isMicSilentWarning: true,
+          isMicTrackMuted: false,
+          silenceDurationSeconds: 52,
+          dismissMicSilentWarning,
+          latestTranscript: '',
+          latestTranslations: {},
+        }}
+      />
+    );
+
+    const warningBanner = screen.getByTestId('mic-silent-warning-banner');
+    expect(warningBanner).toBeInTheDocument();
+    expect(warningBanner.textContent).toContain('⚠️ Mic appears muted or silent (52s with 0 audio energy)');
+    expect(warningBanner.textContent).toContain('desktop OS notification & audio chime');
+
+    // Toggle alert chime
+    const chimeBtn = screen.getByTestId('toggle-silence-chime-btn');
+    expect(chimeBtn.textContent).toContain('🔔 Alert Chime ON');
+    fireEvent.click(chimeBtn);
+    expect(chimeBtn.textContent).toContain('🔕 Alert Chime Muted');
+    expect(localStorage.getItem('teacher_broadcast_mute_alert_chime')).toBe('true');
+
+    // Dismiss / Snooze 45s
+    const dismissBtn = screen.getByTestId('dismiss-mic-silent-btn');
+    fireEvent.click(dismissBtn);
+    expect(dismissMicSilentWarning).toHaveBeenCalledTimes(1);
+  });
 });
+
 

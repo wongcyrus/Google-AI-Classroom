@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { db } from '../firebase-config';
 import { collection, doc, getDoc, onSnapshot, query, where } from 'firebase/firestore';
@@ -6,6 +6,7 @@ import { collection, doc, getDoc, onSnapshot, query, where } from 'firebase/fire
 // Refactored Imports
 import { useClassSchedule } from '../hooks/useClassSchedule';
 import { compareClassesBySchedule, getClassScheduleStatus, isDemoClass } from '../utils/classRankingUtils';
+import { sendTeacherSystemNotification } from '../utils/broadcastHandover';
 import DateRangeFilter from './DateRangeFilter';
 
 // Component Imports
@@ -43,6 +44,7 @@ const ClassView = ({ user }) => {
   const [dismissedLiveClassId, setDismissedLiveClassId] = useState(null);
   const [filterField, setFilterField] = useState('startTime');
   const [broadcastState, setBroadcastState] = useState(null);
+  const notifiedHandoverClassIdRef = useRef(null);
 
   // Periodically refresh current time every 30s to detect lesson slot transitions
   useEffect(() => {
@@ -140,27 +142,161 @@ const ClassView = ({ user }) => {
     }).catch(err => console.error('Error fetching teacher classes:', err));
   }, [user, currentTime]);
 
-  // Alert when current open class is NOT live, but another enrolled class IS actively Live Now (excluding demo classes)
+  // Alert when another enrolled class is actively Live Now or starting within 10 minutes
+  // (including when the current class is in overtime so back-to-back teachers can 1-click handover)
   const liveClassWarning = useMemo(() => {
     if (!classId || teacherClasses.length <= 1) return null;
     const currentClass = teacherClasses.find((c) => c.id === classId);
-    const isCurrentLive = currentClass?._scheduleStatus?.tier === 1;
-    if (isCurrentLive) return null;
+    const currentStatus = currentClass?._scheduleStatus;
+    const isCurrentScheduledLive =
+      currentStatus?.tier === 1 && currentStatus?.reason === 'scheduled';
 
-    const liveOtherClass = teacherClasses.find(
-      (c) => c.id !== classId && c._scheduleStatus?.tier === 1 && !isDemoClass(c)
-    );
-    if (liveOtherClass && liveOtherClass.id !== dismissedLiveClassId) {
-      return liveOtherClass;
+    // 1. Check for another non-demo class whose scheduled slot is Live Now
+    //    (surfaces if current class is not in its scheduled slot, or if the other class's slot started more recently)
+    const scheduledLiveOther = teacherClasses.find((c) => {
+      if (c.id === classId || isDemoClass(c)) return false;
+      const st = c._scheduleStatus;
+      if (st?.tier !== 1 || st?.reason !== 'scheduled') return false;
+      if (!isCurrentScheduledLive) return true;
+      return (st.activeStartTime || 0) > (currentStatus?.activeStartTime || 0);
+    });
+    if (scheduledLiveOther && scheduledLiveOther.id !== dismissedLiveClassId) {
+      return scheduledLiveOther;
     }
+
+    // 2. If teacher is actively broadcasting, also surface a back-to-back class starting within 15 minutes
+    if (broadcastState?.isBroadcasting) {
+      const startingSoonOther = teacherClasses.find((c) => {
+        if (c.id === classId || isDemoClass(c)) return false;
+        const st = c._scheduleStatus;
+        return st?.tier === 2 && typeof st.diffMs === 'number' && st.diffMs <= 15 * 60 * 1000;
+      });
+      if (startingSoonOther && startingSoonOther.id !== dismissedLiveClassId) {
+        return startingSoonOther;
+      }
+    }
+
+    // 3. Fallback: if current class is not live at all (not even overtime), surface any live other class
+    if (currentStatus?.tier !== 1) {
+      const anyLiveOther = teacherClasses.find(
+        (c) => c.id !== classId && c._scheduleStatus?.tier === 1 && !isDemoClass(c)
+      );
+      if (anyLiveOther && anyLiveOther.id !== dismissedLiveClassId) {
+        return anyLiveOther;
+      }
+    }
+
     return null;
-  }, [classId, teacherClasses, dismissedLiveClassId]);
+  }, [classId, teacherClasses, dismissedLiveClassId, broadcastState?.isBroadcasting]);
+
+  const [isAutoHandoverEnabled, setIsAutoHandoverEnabled] = useState(() => {
+    try {
+      return localStorage.getItem('teacher_broadcast_auto_handover') !== 'false';
+    } catch {
+      return true;
+    }
+  });
+  const [autoHandoverCountdown, setAutoHandoverCountdown] = useState(null);
+
+  const handleToggleAutoHandover = () => {
+    setIsAutoHandoverEnabled((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('teacher_broadcast_auto_handover', next ? 'true' : 'false');
+      } catch {}
+      return next;
+    });
+  };
 
   const handleSwitchToClass = (targetClassId) => {
     if (targetClassId && targetClassId !== classId) {
       navigate(`/class/${targetClassId}?tab=${mainTab}${subTab ? `&sub=${subTab}` : ''}`);
     }
   };
+
+  const handleSmartClassTransition = (targetClassId) => {
+    if (!targetClassId || targetClassId === classId) return;
+    setAutoHandoverCountdown(null);
+    if (broadcastState?.isBroadcasting && typeof broadcastState?.handoverBroadcast === 'function') {
+      broadcastState.handoverBroadcast(targetClassId);
+    } else {
+      handleSwitchToClass(targetClassId);
+    }
+  };
+
+  // Out-of-tab OS Desktop Notification when a back-to-back next class becomes Live while broadcasting
+  useEffect(() => {
+    if (!broadcastState?.isBroadcasting || !liveClassWarning) return;
+    if (liveClassWarning._scheduleStatus?.tier !== 1) return;
+    if (notifiedHandoverClassIdRef.current === liveClassWarning.id) return;
+
+    notifiedHandoverClassIdRef.current = liveClassWarning.id;
+    const nextName = liveClassWarning.name || liveClassWarning.id;
+    sendTeacherSystemNotification({
+      title: isAutoHandoverEnabled
+        ? `⏭️ Auto-Switching Broadcast to ${nextName} (30s)`
+        : `⏭️ Next Session Live: ${nextName}`,
+      body: isAutoHandoverEnabled
+        ? `Next scheduled class "${nextName}" has started! Automatically switching your live screen & mic in 30s (or click to switch immediately).`
+        : `You are still broadcasting in "${classInfo?.name || classId}". Click to handover your live screen & mic directly to ${nextName} without re-sharing.`,
+      tag: 'teacher-next-session-handover',
+      playChime: true,
+      chimeType: 'handover',
+      data: {
+        action: 'handover-broadcast',
+        targetClassId: liveClassWarning.id,
+      },
+      onClick: () => {
+        if (typeof broadcastState?.handoverBroadcast === 'function') {
+          broadcastState.handoverBroadcast(liveClassWarning.id, { openStudio: true });
+        } else {
+          handleSwitchToClass(liveClassWarning.id);
+        }
+      },
+    });
+  }, [broadcastState, liveClassWarning, classInfo?.name, classId, isAutoHandoverEnabled]);
+
+  // Hands-free 30-second Auto-Handover Countdown when next scheduled class is Live Now
+  useEffect(() => {
+    const isNextClassLiveScheduled =
+      Boolean(broadcastState?.isBroadcasting) &&
+      Boolean(isAutoHandoverEnabled) &&
+      Boolean(liveClassWarning) &&
+      liveClassWarning._scheduleStatus?.tier === 1 &&
+      liveClassWarning._scheduleStatus?.reason === 'scheduled';
+
+    if (!isNextClassLiveScheduled) {
+      setAutoHandoverCountdown(null);
+      return undefined;
+    }
+
+    setAutoHandoverCountdown(30);
+    const timer = setInterval(() => {
+      setAutoHandoverCountdown((prev) => {
+        if (prev === null) return null;
+        if (prev <= 1) {
+          clearInterval(timer);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [
+    broadcastState?.isBroadcasting,
+    isAutoHandoverEnabled,
+    liveClassWarning?.id,
+    liveClassWarning?._scheduleStatus?.tier,
+    liveClassWarning?._scheduleStatus?.reason,
+  ]);
+
+  useEffect(() => {
+    if (autoHandoverCountdown === 0 && liveClassWarning?.id && broadcastState?.isBroadcasting) {
+      handleSmartClassTransition(liveClassWarning.id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoHandoverCountdown]);
 
   // Sync body class for monitor tab to prevent outer viewport double scrolling
   useEffect(() => {
@@ -201,7 +337,7 @@ const ClassView = ({ user }) => {
   const handleClassSwitch = (e) => {
     const targetClassId = e.target.value;
     if (targetClassId && targetClassId !== classId) {
-      navigate(`/class/${targetClassId}?tab=${mainTab}${subTab ? `&sub=${subTab}` : ''}`);
+      handleSmartClassTransition(targetClassId);
     }
   };
 
@@ -483,27 +619,71 @@ const ClassView = ({ user }) => {
       {liveClassWarning && (
         <div className="live-class-alert-banner" role="alert">
           <div className="live-class-alert-content">
-            <span className="live-class-alert-icon">⚠️</span>
+            <span className="live-class-alert-icon">{broadcastState?.isBroadcasting ? '⏭️' : '⚠️'}</span>
             <div className="live-class-alert-text">
-              <strong>Timetable Alert:</strong> You are currently in <em>{classInfo?.name || classId}</em> ({classId}).
-              Your scheduled timetable class right now ({liveClassWarning._scheduleStatus?.timeStr || 'Live Now'}) is <strong>{liveClassWarning.name || liveClassWarning.id}</strong>.
+              <strong>
+                {broadcastState?.isBroadcasting
+                  ? autoHandoverCountdown !== null
+                    ? `Hands-Free Auto-Handover in ${autoHandoverCountdown}s:`
+                    : 'Next Session Handover Ready:'
+                  : 'Timetable Alert:'}
+              </strong>{' '}
+              You are currently in <em>{classInfo?.name || classId}</em> ({classId}).
+              {' '}Your scheduled session ({liveClassWarning._scheduleStatus?.timeStr || 'Live Now'}) is <strong>{liveClassWarning.name || liveClassWarning.id}</strong>.
+              {broadcastState?.isBroadcasting && (
+                <span>
+                  {' '}
+                  {autoHandoverCountdown !== null
+                    ? `Automatically transitioning your live screen & mic stream into ${liveClassWarning.name || liveClassWarning.id} in ${autoHandoverCountdown}s without stopping screen share.`
+                    : 'Switch your live screen & mic stream directly into the next class without re-sharing.'}
+                </span>
+              )}
             </div>
           </div>
-          <div className="live-class-alert-actions">
+          <div className="live-class-alert-actions" style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+            {broadcastState?.isBroadcasting && (
+              <button
+                type="button"
+                onClick={handleToggleAutoHandover}
+                style={{
+                  padding: '6px 10px',
+                  borderRadius: '6px',
+                  border: '1px solid #f59e0b',
+                  backgroundColor: isAutoHandoverEnabled ? '#fef3c7' : '#ffffff',
+                  color: '#92400e',
+                  fontSize: '0.78rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                }}
+                title="Automatically switch your live broadcast & recording to the next scheduled class 30s after its timetable slot starts"
+              >
+                {isAutoHandoverEnabled ? '🔄 Auto-Handover: ON' : '⏸️ Auto-Handover: OFF'}
+              </button>
+            )}
             <button
               type="button"
               className="switch-live-class-btn"
-              onClick={() => handleSwitchToClass(liveClassWarning.id)}
+              onClick={() => handleSmartClassTransition(liveClassWarning.id)}
             >
-              👉 Switch to {liveClassWarning.name || liveClassWarning.id}
+              {broadcastState?.isBroadcasting
+                ? autoHandoverCountdown !== null
+                  ? `⏭️ Switch Broadcast Now (${autoHandoverCountdown}s)`
+                  : `⏭️ Switch Broadcast to ${liveClassWarning.name || liveClassWarning.id}`
+                : `👉 Switch to ${liveClassWarning.name || liveClassWarning.id}`}
             </button>
             <button
               type="button"
               className="dismiss-live-class-btn"
-              onClick={() => setDismissedLiveClassId(liveClassWarning.id)}
+              onClick={() => {
+                setAutoHandoverCountdown(null);
+                setDismissedLiveClassId(liveClassWarning.id);
+              }}
               aria-label="Dismiss warning"
+              title="Stay in current class (cancel auto-handover for this session)"
             >
-              ✕
+              {broadcastState?.isBroadcasting && autoHandoverCountdown !== null
+                ? `Stay in ${classInfo?.name || classId}`
+                : '✕'}
             </button>
           </div>
         </div>
@@ -618,6 +798,7 @@ const ClassView = ({ user }) => {
             filterField={filterField} 
             onBroadcastStateChange={setBroadcastState}
             activeLiveClass={liveClassWarning}
+            teacherClasses={teacherClasses}
             onSwitchClass={handleSwitchToClass}
           />
         </div>
