@@ -73,13 +73,39 @@ export const getClassScheduleStatus = (classObj, now = new Date()) => {
     nextLesson: null,
   };
 
-  if (!classObj || !classObj.schedule) {
+  if (!classObj) {
     return defaultStatus;
   }
 
   const evalDate = now instanceof Date ? now : new Date(now);
   const evalMs = evalDate.getTime();
   if (isNaN(evalMs)) return defaultStatus;
+
+  const overtimeUntilMs = classObj.overtimeUntil
+    ? (typeof classObj.overtimeUntil.toDate === 'function'
+        ? classObj.overtimeUntil.toDate().getTime()
+        : new Date(classObj.overtimeUntil).getTime())
+    : 0;
+  const hasActiveOvertime = !isNaN(overtimeUntilMs) && overtimeUntilMs > evalMs;
+  const isActivelyBroadcastingOrOvertime = Boolean(classObj.isBroadcasting || hasActiveOvertime);
+
+  if (!classObj.schedule) {
+    if (isActivelyBroadcastingOrOvertime) {
+      return {
+        tier: 1,
+        type: 'live',
+        isOvertime: true,
+        label: hasActiveOvertime
+          ? `Live Overtime (until ${formatTimeShort(new Date(overtimeUntilMs))})`
+          : 'Live Broadcast (Overtime)',
+        badge: '🟢 Live (Overtime)',
+        timeStr: hasActiveOvertime ? `Until ${formatTimeShort(new Date(overtimeUntilMs))}` : 'Live Broadcast',
+        activeLesson: null,
+        nextLesson: null,
+      };
+    }
+    return defaultStatus;
+  }
 
   let allLessons = [];
   try {
@@ -94,14 +120,12 @@ export const getClassScheduleStatus = (classObj, now = new Date()) => {
     return defaultStatus;
   }
 
-  if (!Array.isArray(allLessons) || allLessons.length === 0) {
-    return defaultStatus;
-  }
-
   // Sort chronologically ascending
-  const chronologicalLessons = [...allLessons].sort((a, b) => new Date(a.start) - new Date(b.start));
+  const chronologicalLessons = Array.isArray(allLessons)
+    ? [...allLessons].sort((a, b) => new Date(a.start) - new Date(b.start))
+    : [];
 
-  // 1. Check for Tier 1: Currently Live
+  // 1. Check for Tier 1: Currently Live inside scheduled slot
   for (const lesson of chronologicalLessons) {
     const startMs = new Date(lesson.start).getTime();
     const endMs = new Date(lesson.end).getTime();
@@ -118,6 +142,26 @@ export const getClassScheduleStatus = (classObj, now = new Date()) => {
         nextLesson: null,
       };
     }
+  }
+
+  // 1b. Check for Tier 1 Overtime / Post-Schedule Live Broadcast
+  if (isActivelyBroadcastingOrOvertime) {
+    const lastLesson = [...chronologicalLessons].reverse().find((l) => new Date(l.start).getTime() <= evalMs) || null;
+    const overtimeEndLabel = hasActiveOvertime ? formatTimeShort(new Date(overtimeUntilMs)) : '';
+    return {
+      tier: 1,
+      type: 'live',
+      isOvertime: true,
+      label: overtimeEndLabel ? `Live Overtime (until ${overtimeEndLabel})` : 'Live Broadcast (Overtime)',
+      badge: '🟢 Live (Overtime)',
+      timeStr: overtimeEndLabel ? `Overtime until ${overtimeEndLabel}` : 'Overtime Broadcast',
+      activeLesson: lastLesson,
+      nextLesson: null,
+    };
+  }
+
+  if (chronologicalLessons.length === 0) {
+    return defaultStatus;
   }
 
   // 2. Check for Tier 2: Starting Soon (starts within 45 minutes)

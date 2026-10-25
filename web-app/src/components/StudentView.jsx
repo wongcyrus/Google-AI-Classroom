@@ -112,6 +112,21 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
     }
   });
 
+  const [lastAutoScheduledClassId, setLastAutoScheduledClassId] = useState('');
+  const [stickyBroadcastClassId, setStickyBroadcastClassId] = useState(null);
+
+  useEffect(() => {
+    if (currentActiveClassId) {
+      setLastAutoScheduledClassId(currentActiveClassId);
+      if (!isManualScheduleOverride) {
+        setSelectedClassId(currentActiveClassId);
+        try {
+          localStorage.setItem('selectedStudentClassId', currentActiveClassId);
+        } catch {}
+      }
+    }
+  }, [currentActiveClassId, isManualScheduleOverride]);
+
   const activeClass = useMemo(() => {
     // If running in Teacher Preview Mode, force previewClassId directly
     if (previewClassId) return previewClassId;
@@ -119,8 +134,19 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
     if (isManualScheduleOverride && selectedClassId && userClasses?.some(c => (typeof c === 'string' ? c : c.id) === selectedClassId)) {
       return selectedClassId;
     }
-    // Otherwise follow schedule if active class is detected
+    // Follow schedule & overlap-safe priority from useStudentClassSchedule if active class is detected
     if (currentActiveClassId) return currentActiveClassId;
+    // If student is currently watching a live teacher broadcast on an unscheduled/just-ended class, keep it sticky
+    if (
+      stickyBroadcastClassId &&
+      userClasses?.some(c => (typeof c === 'string' ? c : c.id) === stickyBroadcastClassId)
+    ) {
+      return stickyBroadcastClassId;
+    }
+    // If a scheduled class just ended (over-run), stay on that class instead of jumping to userClasses[0]
+    if (lastAutoScheduledClassId && userClasses?.some(c => (typeof c === 'string' ? c : c.id) === lastAutoScheduledClassId)) {
+      return lastAutoScheduledClassId;
+    }
     // Fallback to selectedClassId if valid
     if (selectedClassId && userClasses?.some(c => (typeof c === 'string' ? c : c.id) === selectedClassId)) {
       return selectedClassId;
@@ -131,7 +157,7 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
       return typeof first === 'string' ? first : (first?.id || null);
     }
     return null;
-  }, [previewClassId, isManualScheduleOverride, selectedClassId, currentActiveClassId, userClasses]);
+  }, [previewClassId, isManualScheduleOverride, selectedClassId, stickyBroadcastClassId, currentActiveClassId, lastAutoScheduledClassId, userClasses]);
 
   // Target classes for multi-class background telemetry & screenshot ingestion during overlaps
   const targetClasses = useMemo(() => {
@@ -1023,9 +1049,11 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
   // Automatically open teacher broadcast viewer for student when teacher starts sharing
   useEffect(() => {
     if (isTeacherBroadcastActive && activeClass) {
+      setStickyBroadcastClassId(activeClass);
       setIsViewingTeacherScreen(true);
       joinTeacherBroadcast();
     } else if (!isTeacherBroadcastActive) {
+      setStickyBroadcastClassId(null);
       setIsViewingTeacherScreen(false);
     }
   }, [isTeacherBroadcastActive, activeClass, joinTeacherBroadcast]);
@@ -3725,6 +3753,9 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
         connectionState={teacherConnectionState}
         broadcastInfo={teacherBroadcastInfo}
         classId={activeClass}
+        activeClassIds={activeClassIds}
+        userClasses={userClasses}
+        onSelectClass={handleSelectClass}
         subtitleState={studentSubtitles}
       />
 

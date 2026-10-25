@@ -10,6 +10,9 @@ export default function TeacherScreenViewerModal({
   connectionState,
   broadcastInfo,
   classId,
+  activeClassIds = [],
+  userClasses = [],
+  onSelectClass = null,
   subtitleState: externalSubtitleState,
 }) {
   const [viewMode, setViewMode] = useState('docked'); // 'floating' | 'docked' | 'fullscreen' | 'minimized'
@@ -193,6 +196,40 @@ export default function TeacherScreenViewerModal({
               <span className="badge-pill" style={{ background: '#2563eb', color: '#fff', fontSize: '0.72rem', padding: '1px 7px', borderRadius: '9999px', fontWeight: 700 }}>
                 {broadcastInfo.resolution.toUpperCase()}
               </span>
+            )}
+            {onSelectClass && Array.isArray(userClasses) && userClasses.length > 1 && (
+              <select
+                aria-label="Switch Class in Broadcast Viewer"
+                value={classId || ''}
+                onChange={(e) => onSelectClass(e.target.value)}
+                style={{
+                  background: Array.isArray(activeClassIds) && activeClassIds.length > 1 ? '#fef3c7' : 'rgba(30, 41, 59, 0.85)',
+                  color: Array.isArray(activeClassIds) && activeClassIds.length > 1 ? '#92400e' : '#f8fafc',
+                  border: Array.isArray(activeClassIds) && activeClassIds.length > 1 ? '1px solid #f59e0b' : '1px solid #475569',
+                  borderRadius: '6px',
+                  padding: '2px 8px',
+                  fontSize: '0.75rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  marginLeft: '4px',
+                }}
+                title={
+                  Array.isArray(activeClassIds) && activeClassIds.length > 1
+                    ? 'Multiple classes are active right now (e.g. overrun + next scheduled class). Click to switch class.'
+                    : 'Switch active class'
+                }
+              >
+                {userClasses.map((cls) => {
+                  const id = typeof cls === 'string' ? cls : cls.id;
+                  const name = (typeof cls === 'object' ? cls.name : cls) || id;
+                  const isActive = Array.isArray(activeClassIds) && activeClassIds.includes(id);
+                  return (
+                    <option key={id} value={id} style={{ background: '#0f172a', color: '#f8fafc' }}>
+                      {name}{isActive ? ' 🟢 (Active)' : ''}
+                    </option>
+                  );
+                })}
+              </select>
             )}
           </div>
 

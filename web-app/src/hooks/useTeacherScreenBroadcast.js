@@ -313,6 +313,13 @@ export default function useTeacherScreenBroadcast({ classId, teacherUid, teacher
           frameData: null,
           endedAt: serverTimestamp(),
         }, { merge: true });
+
+        const classDocRef = doc(db, `classes/${classId}`);
+        await setDoc(classDocRef, {
+          isBroadcasting: false,
+          overtimeUntil: null,
+          broadcastEndedAt: serverTimestamp(),
+        }, { merge: true }).catch(() => {});
       } catch (err) {
         console.warn('[Teacher Screen Broadcast] Error updating session/liveFrame doc on stop:', err);
       }
@@ -444,6 +451,16 @@ export default function useTeacherScreenBroadcast({ classId, teacherUid, teacher
         startedAt: serverTimestamp(),
         endedAt: null,
       }, { merge: true });
+
+      // Mirror live broadcast status and 2-hour overtime protection window onto parent class document
+      // so student schedule hooks, class ranking, and scheduled tasks never prematurely cut off an over-running event
+      const classDocRef = doc(db, `classes/${classId}`);
+      const defaultOvertimeIso = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
+      await setDoc(classDocRef, {
+        isBroadcasting: true,
+        broadcastStartedAt: serverTimestamp(),
+        overtimeUntil: options.overtimeUntil || defaultOvertimeIso,
+      }, { merge: true }).catch(() => {});
 
       // Reuse a single ImageCapture instance per track to avoid Chromium handle exhaustion / grabFrame() deadlock
       let reusableImageCapture = null;

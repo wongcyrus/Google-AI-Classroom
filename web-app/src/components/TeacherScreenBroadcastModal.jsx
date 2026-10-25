@@ -98,6 +98,9 @@ export default function TeacherScreenBroadcastModal({
   isPublicBroadcast = false,
   publicPin = null,
   onConfigurePublicAccess = null,
+  overtimeUntil = null,
+  scheduledEndTime = '',
+  onExtendOvertime = null,
 }) {
   const [step, setStep] = useState(initialStep);
   const [selectedRes, setSelectedRes] = useState(broadcastResolution || '720p');
@@ -555,6 +558,55 @@ export default function TeacherScreenBroadcastModal({
                   <span className="broadcast-target-class-badge" title={`Broadcasting target: ${classId}`}>
                     🎯 Target: <strong>{className || classId}</strong>
                   </span>
+                  {(() => {
+                    const nowMs = Date.now();
+                    const endMs = scheduledEndTime ? new Date(scheduledEndTime).getTime() : 0;
+                    const overtimeMs = overtimeUntil ? new Date(overtimeUntil).getTime() : 0;
+                    const hasActiveOvertime = !Number.isNaN(overtimeMs) && overtimeMs > nowMs;
+                    const isPastSchedule = !scheduledEndTime || Number.isNaN(endMs) || nowMs > endMs;
+                    if (!isPastSchedule && !hasActiveOvertime) return null;
+                    return (
+                      <span
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          backgroundColor: '#fffbeb',
+                          border: '1px solid #f59e0b',
+                          color: '#b45309',
+                          padding: '2px 8px',
+                          borderRadius: '9999px',
+                          fontSize: '0.74rem',
+                          fontWeight: 700,
+                        }}
+                        title="You can broadcast anytime after a scheduled lesson ends without adding a new schedule. Students will automatically stay connected."
+                      >
+                        <span>
+                          ⏱️ {hasActiveOvertime
+                            ? `Overtime until ${new Date(overtimeMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                            : 'Overtime Ready (No New Schedule Needed)'}
+                        </span>
+                        {onExtendOvertime && (
+                          <button
+                            type="button"
+                            onClick={() => onExtendOvertime(30)}
+                            style={{
+                              backgroundColor: '#f59e0b',
+                              color: '#ffffff',
+                              border: 'none',
+                              borderRadius: '4px',
+                              padding: '1px 6px',
+                              fontSize: '0.7rem',
+                              fontWeight: 700,
+                              cursor: 'pointer',
+                            }}
+                          >
+                            +30m
+                          </button>
+                        )}
+                      </span>
+                    );
+                  })()}
                 </div>
                 <p className="setup-subtitle">
                   Configure microphone, live translations, and screen share for your classroom
@@ -1426,6 +1478,55 @@ export default function TeacherScreenBroadcastModal({
                 <span className="broadcast-target-class-badge" title={`Broadcasting target: ${classId}`}>
                   🎯 Target: <strong>{className || classId}</strong>
                 </span>
+                {(() => {
+                  const nowMs = Date.now();
+                  const endMs = scheduledEndTime ? new Date(scheduledEndTime).getTime() : 0;
+                  const overtimeMs = overtimeUntil ? new Date(overtimeUntil).getTime() : 0;
+                  const hasActiveOvertime = !Number.isNaN(overtimeMs) && overtimeMs > nowMs;
+                  const isPastOrNearEnd = !scheduledEndTime || Number.isNaN(endMs) || nowMs >= endMs - 15 * 60 * 1000;
+                  if (!isPastOrNearEnd && !hasActiveOvertime) return null;
+                  return (
+                    <span
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        backgroundColor: '#fffbeb',
+                        border: '1px solid #f59e0b',
+                        color: '#b45309',
+                        padding: '2px 8px',
+                        borderRadius: '9999px',
+                        fontSize: '0.74rem',
+                        fontWeight: 700,
+                      }}
+                      title="Overtime protection keeps your broadcast, student viewers, and recording active past the scheduled end time."
+                    >
+                      <span>
+                        ⏱️ {hasActiveOvertime
+                          ? `Overtime until ${new Date(overtimeMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                          : 'Overtime Protected'}
+                      </span>
+                      {onExtendOvertime && (
+                        <button
+                          type="button"
+                          onClick={() => onExtendOvertime(30)}
+                          style={{
+                            backgroundColor: '#f59e0b',
+                            color: '#ffffff',
+                            border: 'none',
+                            borderRadius: '4px',
+                            padding: '1px 6px',
+                            fontSize: '0.7rem',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          +30m
+                        </button>
+                      )}
+                    </span>
+                  );
+                })()}
               </div>
             </div>
           </div>

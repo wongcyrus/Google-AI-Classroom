@@ -76,12 +76,38 @@ export default function StudentMobileView({
     }
   });
 
+  const [lastAutoScheduledClassId, setLastAutoScheduledClassId] = useState('');
+  const [stickyBroadcastClassId, setStickyBroadcastClassId] = useState(null);
+
+  useEffect(() => {
+    if (currentActiveClassId) {
+      setLastAutoScheduledClassId(currentActiveClassId);
+      if (!isManualScheduleOverride) {
+        setSelectedClassId(currentActiveClassId);
+        try {
+          localStorage.setItem('selectedStudentClassId', currentActiveClassId);
+        } catch {
+          // ignore storage errors
+        }
+      }
+    }
+  }, [currentActiveClassId, isManualScheduleOverride]);
+
   const activeClass = useMemo(() => {
     if (previewClassId) return previewClassId;
     if (isManualScheduleOverride && selectedClassId && userClasses?.some(c => (typeof c === 'string' ? c : c.id) === selectedClassId)) {
       return selectedClassId;
     }
     if (currentActiveClassId) return currentActiveClassId;
+    if (
+      stickyBroadcastClassId &&
+      userClasses?.some(c => (typeof c === 'string' ? c : c.id) === stickyBroadcastClassId)
+    ) {
+      return stickyBroadcastClassId;
+    }
+    if (lastAutoScheduledClassId && userClasses?.some(c => (typeof c === 'string' ? c : c.id) === lastAutoScheduledClassId)) {
+      return lastAutoScheduledClassId;
+    }
     if (selectedClassId && userClasses?.some(c => (typeof c === 'string' ? c : c.id) === selectedClassId)) {
       return selectedClassId;
     }
@@ -90,7 +116,7 @@ export default function StudentMobileView({
       return typeof first === 'string' ? first : (first?.id || null);
     }
     return null;
-  }, [previewClassId, isManualScheduleOverride, selectedClassId, currentActiveClassId, userClasses]);
+  }, [previewClassId, isManualScheduleOverride, selectedClassId, stickyBroadcastClassId, currentActiveClassId, lastAutoScheduledClassId, userClasses]);
 
   const activeClassName = useMemo(() => {
     if (!activeClass || !userClasses) return 'HKIIT AI Classroom';
@@ -132,10 +158,15 @@ export default function StudentMobileView({
     studentEmail: user?.email,
   });
 
-  // Auto-join broadcast if active
+  // Auto-join broadcast if active & keep class sticky during overrun
   useEffect(() => {
-    if (isBroadcastActive && activeClass && user?.uid && connectionState === 'idle') {
-      joinBroadcast();
+    if (isBroadcastActive && activeClass) {
+      setStickyBroadcastClassId(activeClass);
+      if (user?.uid && connectionState === 'idle') {
+        joinBroadcast();
+      }
+    } else if (!isBroadcastActive) {
+      setStickyBroadcastClassId(null);
     }
   }, [isBroadcastActive, activeClass, user?.uid, connectionState, joinBroadcast]);
 

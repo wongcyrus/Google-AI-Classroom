@@ -1350,6 +1350,104 @@ describe('Scheduled Tasks & Auto-Capture Time Calculations (functions/scheduled_
       );
       vi.useRealTimers();
     });
+
+    it('defers lecture consolidation when slot ended 15m ago but teacher is still recording in overtime', async () => {
+      const fixedNow = new Date('2026-10-08T09:45:10Z'); // Slot 08:30 - 09:30 ended 15m ago
+      vi.useFakeTimers();
+      vi.setSystemTime(fixedNow);
+
+      const overrunClassDoc = {
+        id: 'itp4120-overrun',
+        data: () => ({
+          consolidateLessonVideo: true,
+          schedule: {
+            timeZone: 'UTC',
+            timeSlots: [{ days: ['Thu'], startTime: '08:30', endTime: '09:30' }],
+          },
+        }),
+      };
+
+      const clip1 = {
+        id: 'rec_seg_1',
+        data: () => ({
+          storagePath: 'recordings/itp4120-overrun/rec_seg_1/lecture.webm',
+          sessionGroupId: 'slot_0830_0930',
+          startedAt: { toMillis: () => new Date('2026-10-08T08:35:00Z').getTime() },
+          isRollingSegment: true,
+          status: 'ready',
+        }),
+      };
+      const clip2 = {
+        id: 'rec_seg_2',
+        data: () => ({
+          storagePath: 'recordings/itp4120-overrun/rec_seg_2/lecture.webm',
+          sessionGroupId: 'slot_0830_0930',
+          startedAt: { toMillis: () => new Date('2026-10-08T09:40:00Z').getTime() },
+          isRollingSegment: true,
+          status: 'ready',
+        }),
+      };
+      // Active recording segment in overtime!
+      const activeClip = {
+        id: 'rec_seg_3',
+        data: () => ({
+          sessionGroupId: 'slot_0830_0930',
+          startedAt: { toMillis: () => new Date('2026-10-08T09:44:30Z').getTime() },
+          isRollingSegment: true,
+          status: 'recording',
+        }),
+      };
+
+      mockDb.collection.mockReturnValue(mockCollection);
+      mockDoc.get.mockResolvedValue({ exists: false });
+
+      mockCollection.get
+        .mockResolvedValueOnce({
+          empty: false,
+          size: 1,
+          docs: [overrunClassDoc],
+        })
+        .mockResolvedValueOnce({
+          empty: false,
+          forEach: (cb) => {
+            cb(clip1);
+            cb(clip2);
+            cb(activeClip);
+          },
+        });
+
+      await handlePostLessonMediaConsolidation();
+
+      expect(mockDoc.set).not.toHaveBeenCalled();
+      vi.useRealTimers();
+    });
+
+    it('recognizes overtimeUntil and post-slot manual capture in isClassSessionActive', () => {
+      const afterSlot = new Date('2026-09-14T10:15:00Z'); // Monday 10:15 UTC (slot ended at 10:00)
+      const classWithOvertime = {
+        isCapturing: false,
+        overtimeUntil: '2026-09-14T11:00:00Z',
+        schedule: {
+          timeZone: 'UTC',
+          startDate: '2026-09-01',
+          endDate: '2026-12-31',
+          timeSlots: [{ days: ['Mon'], startTime: '09:00', endTime: '10:00' }],
+        },
+      };
+      expect(isClassSessionActive(classWithOvertime, afterSlot)).toBe(true);
+
+      const classWithPostSlotManualCapture = {
+        isCapturing: true,
+        captureStartedAt: { toMillis: () => new Date('2026-09-14T10:05:00Z').getTime() },
+        schedule: {
+          timeZone: 'UTC',
+          startDate: '2026-09-01',
+          endDate: '2026-12-31',
+          timeSlots: [{ days: ['Mon'], startTime: '09:00', endTime: '10:00' }],
+        },
+      };
+      expect(isClassSessionActive(classWithPostSlotManualCapture, afterSlot)).toBe(true);
+    });
   });
 });
 

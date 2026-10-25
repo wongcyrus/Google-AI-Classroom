@@ -4,6 +4,71 @@
 **System**: HKIIT AI Classroom  
 **Production URL**: `https://it114115-2627.web.app`
 
+## 0.0.0.0.0.0.0.0.0.0.2.8 Overtime / Post-Schedule Broadcast Continuity & Multi-Teacher Overlap Resolution
+
+**Date**: October 25, 2026  
+**Status**: Implemented, Verified with Passing Unit Tests (`scheduledTasks.test.js` 38/38, `useStudentClassSchedule.test.js` 18/18, `TeacherScreenBroadcastModal.test.jsx` 32/32, `useTeacherScreenBroadcast.test.js` 9/9), and Deployed to `it114115-dev-2026` & `it114115-2627` (Production)  
+**Primary Files**:
+- [`functions/scheduled_tasks/scheduledTasks.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/scheduled_tasks/scheduledTasks.js) & [`functions/scheduled_tasks/scheduledTasks.test.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/scheduled_tasks/scheduledTasks.test.js)
+- [`web-app/src/hooks/useTeacherScreenBroadcast.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/hooks/useTeacherScreenBroadcast.js), [`web-app/src/components/TeacherScreenBroadcastModal.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/TeacherScreenBroadcastModal.jsx), [`web-app/src/components/MonitorView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/MonitorView.jsx)
+- [`web-app/src/hooks/useStudentClassSchedule.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/hooks/useStudentClassSchedule.js) & [`web-app/src/hooks/useStudentClassSchedule.test.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/hooks/useStudentClassSchedule.test.js)
+- [`web-app/src/components/StudentView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/StudentView.jsx), [`web-app/src/components/student/StudentMobileView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/student/StudentMobileView.jsx), [`web-app/src/components/TeacherScreenViewerModal.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/TeacherScreenViewerModal.jsx), [`web-app/src/utils/classRankingUtils.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/utils/classRankingUtils.js)
+
+### Technical Analysis & Implementation Details:
+
+1. **Over-Run & Post-Schedule Broadcast Protection in Cloud Scheduler (`scheduledTasks.js`)**:
+   - **Root Cause**: Previously, when a scheduled lesson slot ended (plus the 5-minute buffer), [`handleAutomaticCapture`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/scheduled_tasks/scheduledTasks.js#L145-L220) unconditionally flipped `isCapturing: false` on `classes/{classId}`, and [`handlePostLessonMediaConsolidation`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/scheduled_tasks/scheduledTasks.js#L228-L555) immediately dispatched `lectureMergeJobs` even if the teacher was still actively broadcasting or recording in overtime.
+   - **Backend Safeguards**:
+     - Updated [`isClassSessionActive`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/scheduled_tasks/scheduledTasks.js#L72-L137) to honor an explicit `overtimeUntil` timestamp on `classes/{classId}`.
+     - Updated [`handleAutomaticCapture`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/scheduled_tasks/scheduledTasks.js#L145-L220) so that before auto-stopping a class (`shouldCapture === false && isCurrentlyCapturing`), it checks `classes/{classId}/screenBroadcast/session.isBroadcasting === true` (with a fresh `updatedAt` within 2 hours). If a live teacher broadcast is active, it skips setting `isCapturing: false` so student sessions and live streams continue uninterrupted.
+     - Updated [`handlePostLessonMediaConsolidation`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/scheduled_tasks/scheduledTasks.js#L228-L555) to defer post-lesson video/lecture consolidation while `isBroadcasting === true`, `overtimeUntil > now`, or any `lectureRecordings` document has `status in ['recording', 'uploading']`, and widened the lookback window from 30 minutes to 120 minutes so delayed overtime sessions are still consolidated automatically once the teacher stops broadcasting.
+
+2. **Ad-Hoc & Overtime Teacher Broadcast Lease (`useTeacherScreenBroadcast.js`, `MonitorView.jsx`, `TeacherScreenBroadcastModal.jsx`)**:
+   - When a teacher starts or resumes a screen broadcast ([`startBroadcast`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/hooks/useTeacherScreenBroadcast.js#L252-L265)) or manually starts class capture ([`MonitorView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/MonitorView.jsx#L1019-L1060)) outside a scheduled slot or near the end of a slot, the client writes `isBroadcasting: true` and a 2-hour `overtimeUntil` lease onto `classes/{classId}` without requiring the teacher to edit the timetable or add a new schedule slot.
+   - Added a **`⏱️ +30m Overtime`** quick-extend button in the live broadcast studio header ([`TeacherScreenBroadcastModal.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/TeacherScreenBroadcastModal.jsx#L964-L993)) and capture controls bar ([`MonitorView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/MonitorView.jsx#L1905-L1925)).
+   - When the teacher stops the broadcast ([`stopBroadcast`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/hooks/useTeacherScreenBroadcast.js#L317-L323)) or manually stops class capture, `isBroadcasting: false` and `overtimeUntil: null` are immediately cleared on `classes/{classId}` so the class releases students cleanly.
+
+3. **Overlap-Safe 4-Bucket Student Schedule Priority (`useStudentClassSchedule.js`, `StudentView.jsx`, `StudentMobileView.jsx`)**:
+   - Upgraded [`useStudentClassSchedule.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/hooks/useStudentClassSchedule.js#L101-L202) to subscribe to enrolled `classes/{classId}` documents in real time (`onSnapshot`) and evaluate classes across **4 priority buckets**:
+     1. **Bucket 1 (`inSlotBroadcastClasses`)**: Currently inside scheduled timetable slot **AND** teacher is actively broadcasting (`isBroadcasting === true`).
+     2. **Bucket 2 (`overrunBroadcastClasses`)**: Outside scheduled slot, **AND** teacher is actively broadcasting live right now (`isBroadcasting === true`).
+     3. **Bucket 3 (`inSlotScheduledClasses`)**: Currently inside scheduled timetable slot (no live broadcast yet).
+     4. **Bucket 4 (`overrunActiveClasses`)**: Outside scheduled slot, with `overtimeUntil > now` or `isCapturing === true` within 90 minutes.
+   - **Same Teacher vs. Different Teacher Back-to-Back Overlap**:
+     - **Background Monitoring (`targetClasses`)**: All 4 buckets are included in `activeClassIds`, so during any overlap, student screenshots, webcam frames, and presence telemetry are mirrored to **both** classes simultaneously.
+     - **Same Teacher**: When Teacher 1 finishes over-running Class A and stops broadcasting or switches to Class B, `isBroadcasting: false` and `overtimeUntil: null` are written to Class A, automatically transitioning students to Class B.
+     - **Different Teachers**:
+       - If Class A is only in Bucket 4 (forgot to stop capture, not broadcasting), **Bucket 3 (Class B)** immediately takes foreground priority at the scheduled start of Class B.
+       - If Teacher 1 is still broadcasting in Class A (Bucket 2) and Teacher 2 starts broadcasting in Class B (Bucket 1), **Bucket 1 (Class B)** immediately supersedes Bucket 2.
+       - If Teacher 1 is still broadcasting in Class A (Bucket 2) and Teacher 2 has not started broadcasting yet (Bucket 3), students stay on Teacher 1's live stream so it never cuts off mid-sentence, and a highlighted **1-Click Class Switcher (`🟢 Active`)** appears directly inside the fullscreen [`TeacherScreenViewerModal.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/TeacherScreenViewerModal.jsx#L199-L233) header (as well as [`StudentView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/StudentView.jsx#L130-L160) and [`StudentMobileView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/student/StudentMobileView.jsx#L96-L119)) so students who have already moved to Teacher 2's room can switch in one click.
+
+```mermaid
+flowchart TD
+    subgraph Teacher["👨‍🏫 Teacher Broadcast & Capture"]
+        StartB["Start Broadcast / Manual Capture"] -->|"Writes isBroadcasting: true<br/>+ overtimeUntil (+2h)"| ClassDoc[("🗄️ classes/{classId}")]
+        StopB["Stop Broadcast / Switch Class"] -->|"Clears isBroadcasting: false<br/>+ overtimeUntil: null"| ClassDoc
+    end
+
+    subgraph Backend["⏰ Cloud Scheduler (scheduledTasks.js)"]
+        ClassDoc --> HAC["handleAutomaticCapture"]
+        HAC -->|"Skips auto-stop if<br/>isBroadcasting or overtimeUntil > now"| ClassDoc
+        ClassDoc --> HPMC["handlePostLessonMediaConsolidation"]
+        HPMC -->|"Defers merge while broadcasting/recording<br/>(120m lookback window)"| Jobs["🎬 videoJobs & lectureMergeJobs"]
+    end
+
+    subgraph Student["🧑‍🎓 Student Schedule Evaluator (useStudentClassSchedule.js)"]
+        ClassDoc ==>|"Real-Time onSnapshot"| Eval{"4-Bucket Priority Resolution"}
+        Eval -->|"1. In-Slot + Broadcasting"| B1["Bucket 1 (Highest)"]
+        Eval -->|"2. Overtime + Broadcasting"| B2["Bucket 2 (Overrun Stream)"]
+        Eval -->|"3. In-Slot Scheduled"| B3["Bucket 3 (New Slot)"]
+        Eval -->|"4. Overtime Capture Only"| B4["Bucket 4 (Lowest)"]
+        B1 & B2 & B3 & B4 --> Target["📡 targetClasses: Dual Background Monitoring"]
+        B1 & B2 --> Viewer["🖥️ TeacherScreenViewerModal<br/>(with 1-Click Overlap Class Switcher)"]
+    end
+```
+
+---
+
 ## 0.0.0.0.0.0.0.0.0.0.2.7 Standalone Projector QR Code Popup Window, Traditional Chinese (`zh-Hant`) Broadcast Subtitles, `.env` Custom Domain Sync & Auth Reliability
 
 **Date**: October 23, 2026  

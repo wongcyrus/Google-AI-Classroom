@@ -148,6 +148,7 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
   const [classTargetLanguages, setClassTargetLanguages] = useState(['zh-Hant', 'zh-Hans', 'en']);
   const [classDefaultLectureRecording, setClassDefaultLectureRecording] = useState(true);
   const [classSchedule, setClassSchedule] = useState(null);
+  const [classOvertimeUntil, setClassOvertimeUntil] = useState(null);
   const [pendingBypassRequests, setPendingBypassRequests] = useState([]);
   const [classEmergencyPin, setClassEmergencyPin] = useState('');
   const [bypassTickerTime, setBypassTickerTime] = useState(() => Date.now());
@@ -382,6 +383,29 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
     }
   };
 
+  // 1-Click Overtime Extension (allows continuing or starting broadcast/capture after schedule ends without adding a new schedule)
+  const handleExtendOvertime = useCallback(async (minutes = 30) => {
+    if (!classId) return null;
+    const nowMs = Date.now();
+    const endMs = endTime ? new Date(endTime).getTime() : 0;
+    const existingOvertimeMs = classOvertimeUntil ? new Date(classOvertimeUntil).getTime() : 0;
+    const baseMs = Math.max(
+      nowMs,
+      !Number.isNaN(endMs) ? endMs : 0,
+      !Number.isNaN(existingOvertimeMs) ? existingOvertimeMs : 0
+    );
+    const nextOvertimeIso = new Date(baseMs + minutes * 60 * 1000).toISOString();
+    setClassOvertimeUntil(nextOvertimeIso);
+    try {
+      await updateDoc(doc(db, 'classes', classId), {
+        overtimeUntil: nextOvertimeIso,
+      });
+    } catch (err) {
+      console.warn('[MonitorView] Could not update overtimeUntil:', err);
+    }
+    return nextOvertimeIso;
+  }, [classId, endTime, classOvertimeUntil]);
+
   // Synchronized Stop Handler
   const handleStopSynchronizedBroadcast = async () => {
     const broadcastSessionIdToMerge = activeBroadcastSessionIdRef.current;
@@ -389,6 +413,14 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
 
     await stopScreenBroadcast();
     setSynchronizedAudioStream(null);
+
+    if (classId && !isCapturing) {
+      setClassOvertimeUntil(null);
+      updateDoc(doc(db, 'classes', classId), {
+        isBroadcasting: false,
+        overtimeUntil: null,
+      }).catch(() => {});
+    }
 
     if (lectureRecorder && (lectureRecorder.isRecording || lectureRecorder.isPaused)) {
       try {
@@ -739,6 +771,7 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
         if (data.schedule) {
           setClassSchedule(data.schedule);
         }
+        setClassOvertimeUntil(data.overtimeUntil || null);
 
         setFrameRate(prevRate => {
           const newRate = data.frameRate || 15;
@@ -1628,6 +1661,14 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
       };
       if (newIsCapturing) {
         updateData.sessionFrameRate = frameRate || 15;
+        // If teacher manually starts capture near (within 15m) or after scheduled endTime, activate 2h overtime protection
+        // so scheduledTasks.js does not auto-stop capture 5 minutes after the scheduled slot ends
+        const endMs = endTime ? new Date(endTime).getTime() : 0;
+        if (!endTime || Number.isNaN(endMs) || Date.now() >= endMs - 15 * 60 * 1000) {
+          const overtimeIso = new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
+          updateData.overtimeUntil = overtimeIso;
+          setClassOvertimeUntil(overtimeIso);
+        }
         try {
           const sessionRef = await addDoc(collection(db, 'classes', classId, 'captureSessions'), {
             classId,
@@ -1644,6 +1685,10 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
           console.warn('[MonitorView] Note: could not write captureSession start record:', sessErr);
         }
       } else {
+        if (!isScreenBroadcasting) {
+          updateData.overtimeUntil = null;
+          setClassOvertimeUntil(null);
+        }
         // Teacher stopped capture: close active session records
         try {
           const sessionsCol = collection(db, 'classes', classId, 'captureSessions');
@@ -2399,6 +2444,58 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
                     : now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                 </span>
               </div>
+
+              {/* Overtime / Post-Schedule Status & 1-Click +30m Extension */}
+              {(() => {
+                const nowMs = now.getTime();
+                const endMs = endTime ? new Date(endTime).getTime() : 0;
+                const overtimeMs = classOvertimeUntil ? new Date(classOvertimeUntil).getTime() : 0;
+                const hasActiveOvertime = !Number.isNaN(overtimeMs) && overtimeMs > nowMs;
+                const isPastOrNearEnd = !endTime || Number.isNaN(endMs) || nowMs >= endMs - 15 * 60 * 1000;
+                const isPastEnd = !endTime || Number.isNaN(endMs) || nowMs > endMs;
+
+                if (!isPastOrNearEnd && !hasActiveOvertime && !isScreenBroadcasting) return null;
+
+                return (
+                  <div
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      background: isPastEnd && (isScreenBroadcasting || isCapturing || hasActiveOvertime) ? '#fffbeb' : '#f8fafc',
+                      border: isPastEnd && (isScreenBroadcasting || isCapturing || hasActiveOvertime) ? '1px solid #f59e0b' : '1px solid #cbd5e1',
+                      borderRadius: '8px',
+                      padding: '3px 8px',
+                      fontSize: '0.76rem',
+                    }}
+                    title="Overtime protection keeps student connections, live broadcast, and recordings active after the scheduled slot ends without needing to add a new schedule."
+                  >
+                    {isPastEnd && (isScreenBroadcasting || isCapturing || hasActiveOvertime) && (
+                      <span style={{ fontWeight: 700, color: '#b45309', whiteSpace: 'nowrap' }}>
+                        ⏱️ Overtime{hasActiveOvertime ? ` (until ${new Date(overtimeMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})` : ' Active'}
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => handleExtendOvertime(30)}
+                      style={{
+                        background: '#f59e0b',
+                        color: '#ffffff',
+                        border: 'none',
+                        borderRadius: '6px',
+                        padding: '3px 8px',
+                        fontSize: '0.74rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap',
+                      }}
+                      title="Extend live session & broadcast overtime by 30 minutes without adding a new schedule"
+                    >
+                      +30m Overtime
+                    </button>
+                  </div>
+                );
+              })()}
             </div>
 
             {/* Center Segment: Recording Badges (Broadcast Studio launcher is in Class Hub header) */}
@@ -2509,7 +2606,13 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
             <div className="monitor-slider-row">
               <TimelineSlider
                 min={new Date(startTime).getTime()}
-                max={new Date(endTime).getTime()}
+                max={Math.max(
+                  new Date(endTime).getTime(),
+                  classOvertimeUntil && !Number.isNaN(new Date(classOvertimeUntil).getTime())
+                    ? new Date(classOvertimeUntil).getTime()
+                    : 0,
+                  (isCapturing || isScreenBroadcasting) ? now.getTime() : 0
+                )}
                 value={displayTime}
                 onChange={handleTimelineChange}
                 bufferedRanges={[]}
@@ -2906,6 +3009,9 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
         isPublicBroadcast={isPublicBroadcast}
         publicPin={publicPin}
         onConfigurePublicAccess={configurePublicAccess}
+        overtimeUntil={classOvertimeUntil}
+        scheduledEndTime={endTime}
+        onExtendOvertime={handleExtendOvertime}
       />
 
       {/* Teacher Lecture Recordings & YouTube CC Modal */}

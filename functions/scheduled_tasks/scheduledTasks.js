@@ -72,28 +72,52 @@ export function getLocalTimeInfo(date, timeZone) {
 export function isClassSessionActive(classData, now = new Date()) {
   if (!classData) return false;
 
-  const { schedule, captureStartedAt, isCapturing } = classData;
+  const { schedule, captureStartedAt, isCapturing, overtimeUntil } = classData;
+
+  // Explicit overtime extension set by teacher or active broadcast
+  if (overtimeUntil) {
+    const overtimeMs = parsePeriodDateMs(overtimeUntil, schedule?.timeZone || 'UTC');
+    if (!isNaN(overtimeMs) && overtimeMs > now.getTime()) {
+      return true;
+    }
+  }
 
   // Case 1: Scheduled class (session active within scheduled start and end time)
   if (schedule && schedule.timeZone && Array.isArray(schedule.timeSlots) && schedule.timeSlots.length > 0) {
     try {
       const { localTime, localDay, localDate } = getLocalTimeAndDay(now, schedule.timeZone);
 
-      if (schedule.startDate && schedule.endDate) {
-        if (localDate < schedule.startDate || localDate > schedule.endDate) {
-          return false;
+      const isWithinDates = !schedule.startDate || !schedule.endDate || (localDate >= schedule.startDate && localDate <= schedule.endDate);
+
+      if (isWithinDates) {
+        const activeSlot = schedule.timeSlots.find(slot => {
+          if (!slot.days || !slot.days.includes(localDay)) return false;
+          if (slot.startTime > slot.endTime) {
+            return localTime >= slot.startTime || localTime <= slot.endTime;
+          }
+          return localTime >= slot.startTime && localTime <= slot.endTime;
+        });
+
+        if (activeSlot) return true;
+      }
+
+      // If outside scheduled slot, allow manual / ad-hoc capture if explicitly started after the scheduled slot (within 3 hours)
+      if (isCapturing && captureStartedAt) {
+        const startedMillis = captureStartedAt.toMillis ? captureStartedAt.toMillis() : new Date(captureStartedAt).getTime();
+        if (!isNaN(startedMillis) && (now.getTime() - startedMillis) <= 3 * 60 * 60 * 1000) {
+          const startedInfo = getLocalTimeAndDay(new Date(startedMillis), schedule.timeZone);
+          const wasStartedForScheduledSlot = isWithinDates && schedule.timeSlots.some(slot => {
+            if (!slot.days || !slot.days.includes(startedInfo.localDay)) return false;
+            // Auto-capture starts 5 mins before slot.startTime
+            return startedInfo.localTime <= slot.endTime;
+          });
+          if (!wasStartedForScheduledSlot) {
+            return true;
+          }
         }
       }
 
-      const activeSlot = schedule.timeSlots.find(slot => {
-        if (!slot.days || !slot.days.includes(localDay)) return false;
-        if (slot.startTime > slot.endTime) {
-          return localTime >= slot.startTime || localTime <= slot.endTime;
-        }
-        return localTime >= slot.startTime && localTime <= slot.endTime;
-      });
-
-      return Boolean(activeSlot);
+      return false;
     } catch {
       return false;
     }
@@ -168,8 +192,30 @@ export const handleAutomaticCapture = onSchedule(scheduleOptions, async () => {
         const { localTime: targetLocalTime } = getLocalTimeInfo(targetEnd, schedule.timeZone);
 
         if (slot.endTime === targetLocalTime && classData.isCapturing) {
-          logger.info(`Stopping capture for class ${classId} at ${localTime} (${schedule.timeZone})`);
-          promises.push(doc.ref.update({ isCapturing: false, captureStartedAt: null }));
+          const stopCheckPromise = (async () => {
+            // Do NOT auto-stop capture if teacher extended overtime or is actively broadcasting screen
+            if (classData.overtimeUntil) {
+              const overtimeMs = parsePeriodDateMs(classData.overtimeUntil, schedule.timeZone);
+              if (!isNaN(overtimeMs) && overtimeMs > now.getTime()) {
+                logger.info(`Skipping auto-stop for class ${classId}: overtime active until ${new Date(overtimeMs).toISOString()}`);
+                return;
+              }
+            }
+            try {
+              const sessionSnap = await db.doc(`classes/${classId}/screenBroadcast/session`).get();
+              const sessionData = sessionSnap?.exists ? (sessionSnap.data() || {}) : {};
+              if (sessionData.isBroadcasting === true && (sessionData.startedAt || sessionData.broadcastMode)) {
+                logger.info(`Skipping auto-stop for class ${classId}: teacher screen broadcast is still active in overtime.`);
+                return;
+              }
+            } catch (err) {
+              logger.warn(`Could not check broadcast session for class ${classId} during auto-stop:`, err);
+            }
+
+            logger.info(`Stopping capture for class ${classId} at ${localTime} (${schedule.timeZone})`);
+            await doc.ref.update({ isCapturing: false, captureStartedAt: null });
+          })();
+          promises.push(stopCheckPromise);
         }
       }
     });
@@ -208,10 +254,25 @@ export const handlePostLessonMediaConsolidation = onSchedule(videoCombinationOpt
     const studentUids = Object.keys(students || {});
     const teacherUids = Object.keys(teachers || {});
 
+    // Check if class is currently in active overtime or teacher is still actively broadcasting
+    const overtimeMs = classData.overtimeUntil ? parsePeriodDateMs(classData.overtimeUntil, schedule?.timeZone || 'UTC') : NaN;
+    let isOvertimeOrBroadcasting = !isNaN(overtimeMs) && overtimeMs > now.getTime();
+    if (!isOvertimeOrBroadcasting) {
+      try {
+        const sessionSnap = await db.doc(`classes/${classId}/screenBroadcast/session`).get();
+        const sessionData = sessionSnap?.exists ? (sessionSnap.data() || {}) : {};
+        if (sessionData.isBroadcasting === true && (sessionData.startedAt || sessionData.broadcastMode)) {
+          isOvertimeOrBroadcasting = true;
+        }
+      } catch {
+        // Ignore session check errors
+      }
+    }
+
     // 1. STUDENT SCREEN VIDEO COMBINATION:
     // Automatically enabled across ALL classes with a schedule and students (zero special settings required)
     // Only skips if explicitly disabled with automaticCombine === false (for backward compatibility)
-    if (classData.automaticCombine !== false && schedule?.timeZone && Array.isArray(schedule.timeSlots) && studentUids.length > 0) {
+    if (!isOvertimeOrBroadcasting && classData.automaticCombine !== false && schedule?.timeZone && Array.isArray(schedule.timeSlots) && studentUids.length > 0) {
       const { timeZone } = schedule;
       const { localDay, localTime } = getLocalTimeInfo(now, timeZone);
       const todayStr = format(now, 'yyyy-MM-dd', { timeZone });
@@ -387,9 +448,14 @@ export const handlePostLessonMediaConsolidation = onSchedule(videoCombinationOpt
 
         const unmergedClips = [];
         const existingCombinedClips = [];
+        let hasActiveRecording = false;
         lectureSnap.forEach((recDoc) => {
           const r = recDoc.data() || {};
-          if (r.isSegmentDeleted || r.status === 'discarded' || r.status === 'recording' || r.status === 'uploading') return;
+          if (r.status === 'recording' || r.status === 'uploading') {
+            hasActiveRecording = true;
+            return;
+          }
+          if (r.isSegmentDeleted || r.status === 'discarded') return;
           if (!r.storagePath && !r.videoUrl) return;
 
           const rStartMs = r.startedAt?.toMillis ? r.startedAt.toMillis() : (r.startedAt ? new Date(r.startedAt).getTime() : 0);
@@ -413,7 +479,7 @@ export const handlePostLessonMediaConsolidation = onSchedule(videoCombinationOpt
 
         // Check if a timetable slot is active, ongoing, or recently ended for this class (if timetable exists)
         let activeSlot = null;
-        let isSlotOngoing = false;
+        let isSlotOngoing = Boolean(isOvertimeOrBroadcasting || hasActiveRecording);
         let todayStr = new Date().toISOString().slice(0, 10);
         let slotStartMs = 0;
         let slotEndMs = 0;
@@ -422,15 +488,17 @@ export const handlePostLessonMediaConsolidation = onSchedule(videoCombinationOpt
           const { timeZone, timeSlots } = schedule;
           const { localDay } = getLocalTimeInfo(now, timeZone);
           todayStr = format(now, 'yyyy-MM-dd', { timeZone });
-          const thirtyMinutesAgo = new Date(now.getTime() - 30 * 60 * 1000);
+          const ninetyMinutesAgo = new Date(now.getTime() - 90 * 60 * 1000);
 
           for (const slot of timeSlots) {
             if (!slot.days.includes(localDay)) continue;
             const offset = format(now, 'XXX', { timeZone });
             const sStart = new Date(`${todayStr}T${slot.startTime}:00${offset}`);
             const sEnd = new Date(`${todayStr}T${slot.endTime}:00${offset}`);
-            if (sEnd > thirtyMinutesAgo && sEnd <= now) {
-              activeSlot = slot;
+            if (sEnd > ninetyMinutesAgo && sEnd <= now) {
+              if (!isSlotOngoing) {
+                activeSlot = slot;
+              }
               slotStartMs = sStart.getTime();
               slotEndMs = sEnd.getTime();
               break;
@@ -443,22 +511,27 @@ export const handlePostLessonMediaConsolidation = onSchedule(videoCombinationOpt
           }
         }
 
+        if (isOvertimeOrBroadcasting || hasActiveRecording) {
+          logger.info(`Deferring post-lesson lecture merge for class '${classId}': session is actively broadcasting or recording in overtime.`);
+        }
+
         // Handle Consolidation for Scheduled Active Slot:
         // When a scheduled lesson slot has concluded and consolidateLessonVideo !== false,
         // gather all unmerged segments AND any existing partial combined recordings belonging to that slot
         // into a single unified master merge job.
-        if (activeSlot && consolidateLessonVideo) {
+        if (activeSlot && consolidateLessonVideo && !isSlotOngoing) {
           const cleanStart = (activeSlot.startTime || '').replace(':', '');
           const cleanEnd = (activeSlot.endTime || '').replace(':', '');
           const mergeJobId = `merge_${classId}_${cleanStart}_${cleanEnd}_${todayStr}`;
 
-          // Find all unmerged clips and existing combined clips that fall within this lesson slot (with a 15-minute buffer)
-          const bufferMs = 15 * 60 * 1000;
+          // Find all unmerged clips and existing combined clips that fall within this lesson slot (15-min early buffer, 90-min overrun buffer)
+          const earlyBufferMs = 15 * 60 * 1000;
+          const overrunBufferMs = 90 * 60 * 1000;
           const slotClips = unmergedClips.filter(
-            (c) => c.rStartMs >= (slotStartMs - bufferMs) && c.rStartMs <= (slotEndMs + bufferMs)
+            (c) => c.rStartMs >= (slotStartMs - earlyBufferMs) && c.rStartMs <= (slotEndMs + overrunBufferMs)
           );
           const slotCombined = existingCombinedClips.filter(
-            (c) => c.rStartMs >= (slotStartMs - bufferMs) && c.rStartMs <= (slotEndMs + bufferMs)
+            (c) => c.rStartMs >= (slotStartMs - earlyBufferMs) && c.rStartMs <= (slotEndMs + overrunBufferMs)
           );
 
           const itemsToConsolidate = [...slotCombined, ...slotClips];

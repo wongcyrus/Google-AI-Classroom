@@ -56,15 +56,14 @@ This hook is the brain of the operation and works in three stages:
 
 1.  **Fetch Student's Class List:** The hook subscribes to the logged-in student's profile document at `studentProfiles/{user.uid}`. It maintains a real-time list of all classes the student is enrolled in. When instructors create a school-wide or special class using the **"🎓 Input All Students"** button in Class Management, all system student accounts are populated into the roster; the `onClassUpdate` cloud function automatically syncs the new class into every student's `studentProfiles/{uid}` record, immediately exposing the class to all students without manual enrollment codes.
 
-2.  **Fetch All Schedules:** Whenever the student's list of classes changes, the hook fetches the `schedule` object from each corresponding class document (`classes/{classId}`). This object contains the `timeSlots` and, crucially, the `timeZone` for that class.
+2.  **Subscribe to Class Schedules & Live States (`onSnapshot`):** Whenever the student's list of classes changes, the hook subscribes in real time (`onSnapshot`) to each corresponding class document (`classes/{classId}`). This captures both the static `schedule` (`timeSlots`, `timeZone`) and live operational signals (`isBroadcasting`, `overtimeUntil`, `isCapturing`, `captureStartedAt`).
 
-3.  **Determine the Active Class:** Every 30 seconds, the hook performs the following check:
-    *   It gets the current time.
-    *   It iterates through each of the student's class schedules.
-    *   For each schedule, it converts the current time into that class's specific timezone.
-    *   It checks if the current, timezone-adjusted time falls within any of the defined `timeSlots` for the current day.
-    *   The first class that matches becomes the `currentActiveClassId`.
-    *   If no class is currently scheduled, `currentActiveClassId` is `null`.
+3.  **4-Bucket Priority Evaluation:** Every 30 seconds (and immediately on any Firestore snapshot update), the hook evaluates all enrolled classes into **4 priority buckets**:
+    *   **Bucket 1 (`inSlotBroadcastClasses`)**: Currently inside a scheduled `timeSlot` (including 5-minute buffer) **AND** `isBroadcasting === true`.
+    *   **Bucket 2 (`overrunBroadcastClasses`)**: Outside scheduled `timeSlot`, **AND** teacher is actively broadcasting right now (`isBroadcasting === true`).
+    *   **Bucket 3 (`inSlotScheduledClasses`)**: Currently inside a scheduled `timeSlot` (no live broadcast yet).
+    *   **Bucket 4 (`overrunActiveClasses`)**: Outside scheduled `timeSlot`, with `overtimeUntil > now` or `isCapturing === true` (within 90 minutes).
+    *   `activeClassIds` combines `[...Bucket1, ...Bucket2, ...Bucket3, ...Bucket4]`, and `currentActiveClassId` is `activeClassIds[0] || null`.
 
 ### 2. `StudentView.jsx` Integration
 
@@ -85,15 +84,15 @@ To handle edge cases or provide user flexibility, a manual override system is in
 
 #### UI Indicators
 
-- The class dropdown now visually indicates which class is currently **"(Live)"** according to the schedule, guiding the user to the correct class without requiring them to think about it.
+- The class dropdown visually indicates which class is currently **`🟢 Live (Now)`** or **`🟢 Live (Overtime)`** according to `classRankingUtils.js`, guiding the user to the active session.
 
 ## Handling Overlap in Back-to-Back Classes & Concurrent Class Enrollment
 
-When a student is enrolled in classes that have concurrent or overlapping scheduled slots (or during the 10-minute back-to-back buffer period where `handleAutomaticCapture` sets `isCapturing: true` with a 5-minute look-ahead/look-behind), the system handles ingestion across **all** overlapping classes simultaneously:
+When a student is enrolled in classes that have concurrent or overlapping scheduled slots (or when a previous class over-runs into the next scheduled slot), the system handles both **background invigilation** and **foreground broadcast continuity** cleanly across **Same Teacher** and **Different Teacher** scenarios:
 
 ### 1. Multi-Class Schedule Detection (`activeClassIds`)
-- The hook `useStudentClassSchedule` examines all enrolled class schedules concurrently without terminating early.
-- It returns both `currentActiveClassId` (the primary active class) and `activeClassIds: string[]` (an array of all classes whose schedule is active right now).
+- The hook `useStudentClassSchedule` examines all enrolled class schedules and live broadcast/overtime states concurrently without terminating early.
+- It returns both `currentActiveClassId` (the highest-priority foreground class from the 4-bucket model) and `activeClassIds: string[]` (all classes active across Buckets 1–4).
 
 ### 2. Multi-Class Media Ingestion (Screen, Webcam, Video, Voice)
 - **Zero-Waste Single Storage Upload**: When capturing screen or webcam frames, the image blob is uploaded **once** to Cloud Storage (`screenshots/{primaryClass}/{studentUid}/{channel}_{timestamp}.jpg`).
@@ -101,12 +100,14 @@ When a student is enrolled in classes that have concurrent or overlapping schedu
 - **Asynchronous Video Generation**: In the backend, `processVideoJob` compiles MP4 videos from the `screenshots` collection where `classId == job.classId`. Because screenshots exist with valid metadata for all overlapping classes, video compilation succeeds cleanly for both classes without any redundant video encoding on the client.
 - **Audio Presence & Live Transcripts**: Real-time microphone status (`isSpeaking`, `audioLevel`) and Whisper transcripts are mirrored to `classes/{classId}/status/{studentUid}` across all overlapping classes.
 
-### 3. Student Dropdown Manual Override Precedence
-To ensure students can switch between teachers (e.g. to view **Teacher Live Screen Broadcast** or read **Live Subtitles** from a specific teacher):
-- When a student picks a class from the dropdown, `isManualScheduleOverride` is set to `true` (and persisted to `localStorage`).
-- Manual student choice takes **strict precedence** over schedule-driven `currentActiveClassId`, eliminating the previous bug where the dropdown would immediately snap back to the scheduled class.
-- A **"↩ Follow Schedule"** button appears next to the dropdown whenever an override is active, allowing the student to revert to automated scheduling with a single click.
-- An **Active Session HUD Class Switcher** is also present in the streaming top bar (`isSharing: true`), enabling seamless switching between teacher feeds during active streaming sessions without stopping screen or webcam capture.
+### 3. Same Teacher vs. Different Teacher Overlap & 1-Click Broadcast Switcher
+- **Same Teacher (Class A over-runs into Class B)**: While the teacher continues broadcasting in Class A past the scheduled end time, students remain connected to Class A's live stream (Bucket 2). The instant the teacher stops Class A's broadcast or switches their active class to Class B, `useTeacherScreenBroadcast` clears `isBroadcasting: false` and `overtimeUntil: null` on Class A, automatically transitioning students to Class B without page reloads.
+- **Different Teachers (Teacher 1 in Class A over-runs while Teacher 2 in Class B starts on time)**:
+  - If Teacher 1 is **not** broadcasting (only forgot to stop capture, Bucket 4), Class B (Bucket 3) immediately takes foreground priority at Class B's scheduled start time.
+  - If Teacher 1 **is** broadcasting in overtime (Bucket 2) and Teacher 2 **also starts broadcasting** in Class B (Bucket 1), Class B immediately supersedes Class A in the foreground.
+  - If Teacher 1 **is** broadcasting in overtime (Bucket 2) and Teacher 2 has **not** started broadcasting yet (Bucket 3), students stay on Teacher 1's live broadcast so it never cuts off mid-sentence, AND a highlighted **1-Click Class Switcher (`🟢 Active`)** appears directly inside the fullscreen `TeacherScreenViewerModal.jsx` top bar (as well as the `StudentView.jsx` and `StudentMobileView.jsx` headers).
+- **Manual Override Precedence**:
+  - When a student picks a class from any switcher dropdown, `userManuallySelectedClass` (`isManualScheduleOverride`) is set to `true` (and persisted to `localStorage`), locking their view to the chosen class until they click **"↩ Follow Schedule"**.
 
 ---
 
