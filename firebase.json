@@ -52,6 +52,10 @@
   },
   "hosting": {
     "public": "web-app/dist",
+    "predeploy": [
+      "grep -q \"${GCLOUD_PROJECT}.firebaseapp.com\" web-app/dist/assets/index-*.js 2>/dev/null || (echo \"⚠️ [Hosting Guard] Rebuilding web-app/dist for ${GCLOUD_PROJECT}...\" && ./switch-env.sh \"${GCLOUD_PROJECT}\" && npm --prefix web-app run build)",
+      "grep -q \"${GCLOUD_PROJECT}.firebaseapp.com\" web-app/dist/assets/index-*.js && echo \"✅ [Hosting Guard] Verified web-app/dist matches ${GCLOUD_PROJECT}.\""
+    ],
     "ignore": [
       "firebase.json",
       "**/.*",

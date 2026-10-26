@@ -39,6 +39,16 @@ fi
 
 echo "🚀 Target Project for deployment: $TARGET_PROJECT"
 
+# Always synchronize .env, .env.development, and .env.production to TARGET_PROJECT
+# even when TARGET_PROJECT was passed via --project or inferred from firebase use
+if [ "$TARGET_PROJECT" = "it114115-dev-2026" ]; then
+    ./switch-env.sh dev
+elif [ "$TARGET_PROJECT" = "it114115-2627" ]; then
+    ./switch-env.sh prod
+else
+    ./switch-env.sh "$TARGET_PROJECT"
+fi
+
 # Export subshell environment variables to strictly bind GCP operations without altering global gcloud config
 export CLOUDSDK_CORE_PROJECT="$TARGET_PROJECT"
 export GOOGLE_CLOUD_PROJECT="$TARGET_PROJECT"

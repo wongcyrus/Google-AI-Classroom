@@ -8,14 +8,14 @@ set -e
 ENV_TARGET="${1:-dev}"
 
 case "$ENV_TARGET" in
-  dev|development)
+  dev|development|it114115-dev-2026)
     PROJECT_ID="it114115-dev-2026"
     ENV_FILE="web-app/.env.dev"
     ENV_NAME="Development"
     FIREBASE_ALIAS="dev"
     DEFAULT_STUDENT_DOMAINS="stu.vtc.edu.hk,gmail.com"
     ;;
-  prod|production)
+  prod|production|it114115-2627)
     PROJECT_ID="it114115-2627"
     ENV_FILE="web-app/.env.prod"
     ENV_NAME="Production"
@@ -52,17 +52,16 @@ export GOOGLE_CLOUD_PROJECT="$PROJECT_ID"
 export GCLOUD_PROJECT="$PROJECT_ID"
 
 # 2. Copy the active web-app/.env and mode-specific files
-if [ -f "$ENV_FILE" ]; then
-    cp "$ENV_FILE" web-app/.env
-    if [ "$FIREBASE_ALIAS" = "prod" ]; then
-        cp "$ENV_FILE" web-app/.env.production
-        echo "📄 Updated web-app/.env and web-app/.env.production"
-    elif [ "$FIREBASE_ALIAS" = "dev" ]; then
-        cp "$ENV_FILE" web-app/.env.development
-        echo "📄 Updated web-app/.env and web-app/.env.development"
-    else
-        echo "📄 Updated web-app/.env"
-    fi
+# Always overwrite both .env.development and .env.production so that `vite build`
+# (which defaults to --mode production) can never read a stale .env.production when switched to dev.
+if [ ! -f "$ENV_FILE" ]; then
+    echo "🚨 CRITICAL ERROR: Environment file '$ENV_FILE' not found! Aborting switch."
+    exit 1
+fi
+cp "$ENV_FILE" web-app/.env
+cp "$ENV_FILE" web-app/.env.development
+cp "$ENV_FILE" web-app/.env.production
+echo "📄 Synchronized $ENV_FILE -> web-app/.env, .env.development, and .env.production"
 
     # 2b. Check Google Drive OAuth Client ID configuration
     if ! grep -q "^VITE_GOOGLE_CLIENT_ID=[a-zA-Z0-9]" "$ENV_FILE" 2>/dev/null; then
@@ -91,7 +90,6 @@ if [ -f "$ENV_FILE" ]; then
     if [ -n "$CUSTOM_DOMAINS_RAW" ]; then
         echo "✅ Custom domain(s) configured for Identity Platform & Passkeys: $CUSTOM_DOMAINS_RAW"
     fi
-fi
 
 # 3. Generate functions/config.js
 cat << CONFIG_EOF > functions/config.js
