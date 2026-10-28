@@ -116,13 +116,13 @@ const PresentationView = () => {
               <ul>
                 <li><strong>01 | The Real-Time Invigilation & Assessment Challenge:</strong> Privacy-preserving edge AI vs. spyware.</li>
                 <li><strong>02 | 4-Tier Hybrid Cloud Architecture:</strong> Google Cloud Run, Firestore single-stream, GCIP blocking functions.</li>
-                <li><strong>03 | Gemini Enterprise Agent Platform:</strong> 100% Gemini 3 family routing, Genkit self-healing, prompt management studio.</li>
-                <li><strong>04 | On-Device Edge Vision & Speech AI:</strong> MediaPipe 468-point mesh, LiteRT Whisper & Gemma Web Workers.</li>
-                <li><strong>05 | Zero-Trust Assessment Security & Passkeys:</strong> Live exam mode, WebAuthn FIDO2 1-phone hardware lock, dynamic rotating QRs.</li>
-                <li><strong>06 | Real-Time Media & Student Hub:</strong> Pure frame classroom broadcaster, YouTube-style dual captions, readiness wizard.</li>
-                <li><strong>07 | Serverless Map-Reduce-Map Video Intelligence:</strong> Async fan-out video analysis, automated rubric synthesis.</li>
-                <li><strong>08 | Green AI & Cloud FinOps:</strong> 99.8% cost reduction ($0.85/exam vs $750 SaaS), incident dossier generator.</li>
-                <li><strong>09 | DevSecOps & Production Reliability:</strong> 1,580+ automated tests across 4 pyramid tiers, strict zero-trust Firestore rules.</li>
+                <li><strong>03 | Gemini Enterprise Agent Platform:</strong> Gemini 4 &amp; 3 family routing, Genkit self-healing, prompt management studio.</li>
+                <li><strong>04 | On-Device Edge Vision &amp; Speech AI:</strong> MediaPipe 468-point mesh, LiteRT Whisper &amp; Gemma 4 Web Workers.</li>
+                <li><strong>05 | Zero-Trust Assessment Security &amp; Passkeys:</strong> Live exam mode, WebAuthn FIDO2 1-phone hardware lock, dynamic rotating QRs.</li>
+                <li><strong>06 | Real-Time Media &amp; Student Hub:</strong> Pure frame broadcaster, Zero-Auth Public Presentation Mode, 1-click session handover, 9-language subtitles.</li>
+                <li><strong>07 | Serverless Map-Reduce-Map Video Intelligence:</strong> Async fan-out video analysis, rubric-driven practical task mark breakdowns.</li>
+                <li><strong>08 | Green AI &amp; Cloud FinOps:</strong> 99.8% cost reduction ($0.85/exam vs $750 SaaS), incident dossier generator.</li>
+                <li><strong>09 | DevSecOps &amp; Production Reliability:</strong> 2,380+ automated tests across 4 pyramid tiers, strict zero-trust Firestore rules &amp; hosting bundle guard.</li>
                 <li><strong>10 | Open Source & Empowering Education:</strong> Live demonstration, hands-on student/teacher portal.</li>
               </ul>
             </div>

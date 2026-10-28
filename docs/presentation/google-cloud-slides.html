@@ -952,7 +952,7 @@ footer, header {
 <ol>
 <li><strong>Student Browser Edge:</strong> MediaPipe FaceLandmarker, LiteRT Whisper Speech Engine, LiteRT Gemma 4 E2B Web Workers.</li>
 <li><strong>Realtime Signaling &amp; Data:</strong> Firestore single-stream status channel + Cloud Storage chunks.</li>
-<li><strong>Cloud Intelligence &amp; Serverless:</strong> Cloud Run Functions Gen 2, Gemini Enterprise Agent Platform (Gemini 3.8 &amp; 3.5).</li>
+<li><strong>Cloud Intelligence &amp; Serverless:</strong> Cloud Run Functions Gen 2, Gemini Enterprise Agent Platform (Gemini 4 Argon, 3.8 Flash &amp; 3.5 Flash-Lite).</li>
 <li><strong>Teacher Command Center:</strong> Live compliance matrix, WebRTC live peek, and broadcast nudges.</li>
 </ol>
 <footer>Google Developer Expert (GCP &amp; AI/ML) | HKIIT, VTC Hong Kong | github.com/wongcyrus/Gemini-Multimodal-Classroom-Agent</footer>
@@ -1503,7 +1503,7 @@ footer, header {
 <ul>
 <li><strong>The Enterprise Security &amp; FinOps Trilemma:</strong>
 <ul>
-<li>Teachers trigger high-quota Gemini 3 reasoning; students only stream telemetry.</li>
+<li>Teachers trigger high-quota Gemini 4 &amp; 3 reasoning; students only stream telemetry.</li>
 <li>On shared school domains (<code>@school.edu</code>), accidental teacher grant risks budget drain and exam leaks.</li>
 </ul>
 </li>
@@ -2006,36 +2006,36 @@ footer, header {
 }
 ;--marpit-advanced-background-split:60%;" data-marpit-pagination-total="41" data-marpit-advanced-background="content" data-marpit-advanced-background-split="right">
 <header>Google Cloud Tech Talk | Google AI Classroom | Cyrus Wong (GDE)</header>
-<h2 id="03--gemini-enterprise-agent-platform-gemini-3-constellation--model-routing">03 | Gemini Enterprise Agent Platform: Gemini 3 Constellation &amp; Model Routing</h2>
-<h3 id="matching-model-capabilities-latency-profiles-and-cost-parameters-100-gemini-3">Matching Model Capabilities, Latency Profiles, and Cost Parameters (100% Gemini 3)</h3>
+<h2 id="03--gemini-enterprise-agent-platform-gemini-4--3-constellation">03 | Gemini Enterprise Agent Platform: Gemini 4 &amp; 3 Constellation</h2>
+<h3 id="matching-model-capabilities-latency-profiles-and-cost-parameters-gemini-4--3--gemma-4">Matching Model Capabilities, Latency Profiles, and Cost Parameters (Gemini 4 + 3 + Gemma 4)</h3>
 
 <ul>
-<li><strong><code>gemini-3.8-flash</code> (Deep Multimodal Reasoning &amp; Full Lectures):</strong>
+<li><strong><code>gemini-4-argon</code> (Flagship Frontier Reasoning &amp; 1M Unified Context — $2.00 / $10.00 per 1M):</strong>
+<ul>
+<li>Complex coding &amp; lab rubric evaluation, deep lecture synthesis, and long-decode reasoning up to 1M tokens.</li>
+</ul>
+</li>
+<li><strong><code>gemini-3.8-flash</code> (High-Precision Multimodal &amp; Full Lectures — $0.75 / $3.75 per 1M):</strong>
 <ul>
 <li>High-throughput cross-student rubric synthesis, whole-class lecture subtitles &amp; chapter markers.</li>
 </ul>
 </li>
-<li><strong><code>gemini-3.5-flash-lite</code> (Ultra-Low Latency Workhorse &amp; Fallback):</strong>
+<li><strong><code>gemini-3.5-flash-lite</code> (Ultra-Low Latency Workhorse &amp; Fallback — $0.30 / $2.50 per 1M):</strong>
 <ul>
 <li>Rapid single-frame inspection, serverless subtitle multilingual captioning, resilient fallback target.</li>
 </ul>
 </li>
-<li><strong><code>gemini-3.1-flash-live-preview</code> (Live Bidirectional Audio Streaming):</strong>
-<ul>
-<li>WebSocket streaming via regional endpoint (<code>us-central1</code>), debounced 350ms HUD sync.</li>
-</ul>
-</li>
-<li><strong><code>gemini-3.5-transcribe-preview</code> (Long Audio Reasoning &amp; Diarization):</strong>
+<li><strong><code>gemini-3.5-transcribe-preview</code> (Long Audio Reasoning &amp; Diarization — $0.50 / $2.50 per 1M):</strong>
 <ul>
 <li>Native multi-speaker separation, ambient noise suppression, word-level timestamps.</li>
 </ul>
 </li>
-<li><strong><code>LiteRT Gemma 4 E2B &amp; Whisper</code> (On-Device Edge Proctors):</strong>
+<li><strong><code>LiteRT Gemma 4 E2B &amp; Whisper</code> (On-Device Edge Proctors &amp; Subtitles — $0.00):</strong>
 <ul>
-<li>WebGPU/WASM in browser Web Workers at <strong>$0 cloud cost</strong> and zero cloud egress.</li>
+<li>WebGPU/WASM in browser Web Workers with explicit desktop download guard and zero cloud egress.</li>
 </ul>
 </li>
-<li><span class="highlight-green"><strong>100% Gemini 3 Standardized:</strong> Pure modern constellation; zero legacy model dependencies.</span></li>
+<li><span class="highlight-green"><strong>Gemini 4 &amp; 3 Standardized:</strong> Pure modern frontier constellation; zero legacy model dependencies.</span></li>
 </ul>
 <footer>Google Developer Expert (GCP &amp; AI/ML) | HKIIT, VTC Hong Kong | github.com/wongcyrus/Gemini-Multimodal-Classroom-Agent</footer>
 </section>
@@ -2269,16 +2269,13 @@ footer, header {
 <h2 id="google-genkit-resilience--autonomous-tool-calling">Google Genkit Resilience &amp; Autonomous Tool Calling</h2>
 <h3 id="self-healing-failover-exponential-backoff-and-deterministic-zod-validation">Self-Healing Failover, Exponential Backoff, and Deterministic Zod Validation</h3>
 <pre is="marp-pre" data-auto-scaling="downscale-only"><code class="language-javascript"><span class="hljs-comment">// functions/ai_flows/analysisFlows.js: Resilience Interceptor</span>
-<span class="hljs-keyword">async</span> <span class="hljs-keyword">function</span> <span class="hljs-title function_">generateWithResilience</span>(<span class="hljs-params">prompt, context, retryCount = <span class="hljs-number">0</span></span>) {
+<span class="hljs-keyword">async</span> <span class="hljs-keyword">function</span> <span class="hljs-title function_">generateWithResilience</span>(<span class="hljs-params">generateConfig, preferredModel = <span class="hljs-string">&#x27;gemini-3.8-flash&#x27;</span></span>) {
   <span class="hljs-keyword">try</span> {
-    <span class="hljs-keyword">return</span> <span class="hljs-keyword">await</span> ai.<span class="hljs-title function_">generate</span>({ <span class="hljs-attr">model</span>: <span class="hljs-string">&#x27;gemini-3.8-flash&#x27;</span>, prompt });
+    <span class="hljs-comment">// Automatically strips legacy sampling params when calling gemini-4-argon</span>
+    <span class="hljs-keyword">return</span> <span class="hljs-keyword">await</span> ai.<span class="hljs-title function_">generate</span>({ ...generateConfig, <span class="hljs-attr">model</span>: vertexAI.<span class="hljs-title function_">model</span>(preferredModel) });
   } <span class="hljs-keyword">catch</span> (err) {
-    <span class="hljs-keyword">if</span> ((err.<span class="hljs-property">status</span> === <span class="hljs-number">503</span> || err.<span class="hljs-property">status</span> === <span class="hljs-number">429</span>) &amp;&amp; retryCount &lt; <span class="hljs-number">3</span>) {
-      <span class="hljs-keyword">await</span> <span class="hljs-title function_">sleep</span>(<span class="hljs-title class_">Math</span>.<span class="hljs-title function_">pow</span>(<span class="hljs-number">2</span>, retryCount) * <span class="hljs-number">1000</span> + <span class="hljs-title class_">Math</span>.<span class="hljs-title function_">random</span>() * <span class="hljs-number">500</span>);
-      <span class="hljs-keyword">return</span> <span class="hljs-title function_">generateWithResilience</span>(prompt, context, retryCount + <span class="hljs-number">1</span>);
-    }
-    <span class="hljs-comment">// Dynamic fallback to lightweight model</span>
-    <span class="hljs-keyword">return</span> <span class="hljs-keyword">await</span> ai.<span class="hljs-title function_">generate</span>({ <span class="hljs-attr">model</span>: <span class="hljs-string">&#x27;gemini-3.5-flash-lite&#x27;</span>, prompt });
+    <span class="hljs-comment">// Automatic exponential backoff with jitter + fallback to gemini-3.5-flash-lite</span>
+    <span class="hljs-keyword">return</span> <span class="hljs-keyword">await</span> ai.<span class="hljs-title function_">generate</span>({ ...generateConfig, <span class="hljs-attr">model</span>: vertexAI.<span class="hljs-title function_">model</span>(<span class="hljs-string">&#x27;gemini-3.5-flash-lite&#x27;</span>) });
   }
 }
 </code></pre>
@@ -3247,16 +3244,19 @@ footer, header {
 ;--marpit-advanced-background-split:60%;" data-marpit-pagination-total="41" data-marpit-advanced-background="content" data-marpit-advanced-background-split="right">
 <header>Google Cloud Tech Talk | Google AI Classroom | Cyrus Wong (GDE)</header>
 <h2 id="browser-native-edge-speech-ai-litert-whisper--gemma-4">Browser-Native Edge Speech AI: LiteRT Whisper &amp; Gemma 4</h2>
-<h3 id="bilingual-cantonese--english-code-switching-with-zero-cloud-egress">Bilingual Cantonese &amp; English Code-Switching with Zero Cloud Egress</h3>
+<h3 id="bilingual-cantonese--english-code-switching-lab-pc-pre-warming--live-telemetry">Bilingual Cantonese &amp; English Code-Switching, Lab PC Pre-Warming &amp; Live Telemetry</h3>
 
 <ul>
 <li><strong>16kHz Float32 Audio Stream:</strong> Captured via Web Audio API.</li>
-<li><strong>LiteRT Whisper Speech Engine Worker:</strong> Real-time bilingual transcription.</li>
-<li><strong>LiteRT Gemma 4 E2B Worker:</strong> Real-time intent classification.</li>
-<li><strong>Browser Cache Storage Persistence:</strong>
+<li><strong>LiteRT Whisper Speech Engine &amp; Gemma 4 E2B Workers:</strong> Real-time bilingual transcription &amp; intent classification.</li>
+<li><strong>Step-1 Readiness Pre-Warming &amp; Cache Persistence (<code>litert-gemma-cache-v1</code>):</strong>
 <ul>
-<li><code>caches.open('litert-gemma-cache-v1')</code> caches ~1.5 GB model locally.</li>
-<li><code>navigator.storage.persist()</code> prevents browser disk eviction.</li>
+<li>Pre-downloads <strong>Whisper Base (~140 MB)</strong> &amp; <strong>Gemma 4 E2B (~1.3 GB)</strong> during Step 1 hardware testing on wiped/DeepFreeze lab PCs; <code>navigator.storage.persist()</code> prevents eviction.</li>
+</ul>
+</li>
+<li><strong>Graceful Fallback, Hot-Swap &amp; Live Teacher Telemetry (<code>StudentScreen.jsx</code>):</strong>
+<ul>
+<li>Runs via <code>browser_speech</code> / <code>cloud_gemini</code> while downloading and <strong>auto-promotes to <code>client_whisper_gemma</code></strong> once ready; teacher tiles show live <code><img class="emoji" draggable="false" alt="🧠" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@17.0.3/assets/svg/1f9e0.svg" data-marp-twemoji=""/> Edge AI</code>, <code><img class="emoji" draggable="false" alt="⏳" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@17.0.3/assets/svg/23f3.svg" data-marp-twemoji=""/> AI X%</code>, or <code>☁ Cloud Fallback</code> badges.</li>
 </ul>
 </li>
 <li><strong>Sub-$0.00 Cloud Incurrence:</strong> Total privacy-by-design.</li>
@@ -4757,21 +4757,24 @@ footer, header {
 ;--marpit-advanced-background-split:60%;" data-marpit-pagination-total="41" data-marpit-advanced-background="content" data-marpit-advanced-background-split="right">
 <header>Google Cloud Tech Talk | Google AI Classroom | Cyrus Wong (GDE)</header>
 <h2 id="06--real-time-classroom-media-pipelines">06 | Real-Time Classroom Media Pipelines</h2>
-<h3 id="1-to-1-webrtc-live-peek--pure-frame-classroom-broadcaster">1-to-1 WebRTC Live Peek &amp; Pure Frame Classroom Broadcaster</h3>
+<h3 id="1-to-1-webrtc-live-peek-pure-frame-broadcaster--1-click-session-handover">1-to-1 WebRTC Live Peek, Pure Frame Broadcaster &amp; 1-Click Session Handover</h3>
 
 <ul>
 <li><strong>1-to-1 WebRTC Live Peek &amp; Talkback:</strong>
 <ul>
-<li>Direct P2P connection between teacher and student via Firestore signaling.</li>
-<li>30 FPS smooth video verification &amp; two-way talkback without loading cloud storage.</li>
+<li>Direct P2P connection between teacher and student via Firestore signaling (30 FPS video &amp; Opus talkback).</li>
 </ul>
 </li>
-<li><strong>1-to-Many Classroom Frame Broadcaster (Scales to 50+ Students):</strong>
+<li><strong>1-to-Many Classroom Frame Broadcaster (Scales to 50–1,000+ Viewers):</strong>
 <ul>
-<li>Eliminates the 6-peer limit &amp; CPU exhaustion of WebRTC star-mesh networks.</li>
-<li>Screen captured into offscreen canvas, clamped to <strong>720p</strong>, and diffed via <strong>32x18 thumbnail pixel delta engine</strong>.</li>
-<li>Emits compressed JPEG (~35–65 KB, &lt;8% doc limit) to Firestore <code>screenBroadcast/liveFrame</code>.</li>
-<li>Keeps teacher CPU &lt;2% and renders in student Picture-in-Picture (PiP) window.</li>
+<li>Eliminates the 6-peer limit &amp; CPU exhaustion of WebRTC star-mesh networks (teacher CPU &lt;2%).</li>
+<li>Captured in <strong>720p/1080p/1440p</strong> with <strong>32x18 pixel delta engine</strong>, continuous <strong>2s frame heartbeat</strong>, and <strong>1000ms <code>ImageCapture.grabFrame()</code> timeout</strong> (falling back to offscreen <code>&lt;video&gt;</code> when tab is backgrounded).</li>
+</ul>
+</li>
+<li><strong>1-Click &quot;Next Session Handover&quot; &amp; Overtime Continuity (<code>broadcastHandover.js</code>):</strong>
+<ul>
+<li><strong>Zero-Prompt <code>MediaStream</code> Bridge:</strong> Reuses live <code>screenStream</code> &amp; <code>micStream</code> across back-to-back classes without re-prompting <code>getDisplayMedia()</code>.</li>
+<li><strong>Overtime Protection (<code>overtimeUntil</code>):</strong> Starting a broadcast grants a 2-hour lease (<code>⏱ +30m Overtime</code> button) that shields live sessions from Cloud Scheduler auto-stop &amp; premature video merges.</li>
 </ul>
 </li>
 </ul>
@@ -5004,29 +5007,25 @@ footer, header {
 }
 ;--marpit-advanced-background-split:60%;" data-marpit-pagination-total="41" data-marpit-advanced-background="content" data-marpit-advanced-background-split="right">
 <header>Google Cloud Tech Talk | Google AI Classroom | Cyrus Wong (GDE)</header>
-<h2 id="anonymous-public-presentation-mode-projector-qr--4-digit-pin">Anonymous Public Presentation Mode: Projector QR &amp; 4-Digit PIN</h2>
-<h3 id="zero-friction-conference-spectator-viewing-instant-teardown--hard-firestore-rules">Zero-Friction Conference Spectator Viewing, Instant Teardown &amp; Hard Firestore Rules</h3>
+<h2 id="zero-auth-public-presentation-mode-projector-qr--4-digit-pin">Zero-Auth Public Presentation Mode: Projector QR &amp; 4-Digit PIN</h2>
+<h3 id="1000-conference-spectator-fanout-standalone-qr-popup--rehearsal-safe-waiting-room">1,000+ Conference Spectator Fanout, Standalone QR Popup &amp; Rehearsal-Safe Waiting Room</h3>
 
 <ul>
-<li><strong>Instant Audience Access via Projector QR Code:</strong>
+<li><strong>Standalone Projector QR Popup Window (<code>openProjectorQrPopup</code> <code>580×760</code>):</strong>
 <ul>
-<li>High-contrast SVG QR code on the auditorium projector screen pointing to <code>/live/:classId?pin=XXXX</code>.</li>
-<li>Attendees scan with any mobile browser; auto-authenticates via Firebase Anonymous Auth (<code>signInAnonymously</code>).</li>
-<li>Seamless mobile viewing with <strong>1x, 1.5x, 2x zoom</strong> and real-time dual-line multilingual subtitles.</li>
+<li><strong><code><img class="emoji" draggable="false" alt="📱" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@17.0.3/assets/svg/1f4f1.svg" data-marp-twemoji=""/> Preview Projector QR Code ↗</code></strong> launches an unblocked popup window for the auditorium projector while the speaker continues setup; live-syncs PIN rotations (<code><img class="emoji" draggable="false" alt="🔄" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@17.0.3/assets/svg/1f504.svg" data-marp-twemoji=""/> New PIN</code>).</li>
 </ul>
 </li>
-<li><strong>Strict Server-Side PIN Guardrails (<code>firestore.rules</code>):</strong>
+<li><strong>Pre-Session Link Sharing, Waiting Room &amp; Cross-Device DB PIN Sync:</strong>
 <ul>
-<li>Session document hides PIN from unauthenticated snooping; access to <code>screenBroadcast</code> and <code>liveSubtitles</code> is locked.</li>
-<li>Spectator must write to <code>screenBroadcastViewers/{uid}</code> with matching <code>request.resource.data.pin == session.publicPin</code>.</li>
-<li>Only valid PIN writes unlock real-time streaming reads (<code>isAuthorizedPublicViewer</code>).</li>
+<li>Persists <code>savedPublicPin</code> &amp; <code>savedIsPublic</code> in Firestore (<code>screenBroadcast/session</code>) before broadcast starts—share <code>/live/:classId?pin=XXXX</code> days ahead from an office laptop and hydrate on the stage podium PC.</li>
+<li>Early attendees enter a rehearsal-safe <strong>Waiting Room</strong> (<code>&quot;Waiting for Speaker to Start...&quot;</code>) and auto-join live.</li>
 </ul>
 </li>
-<li><strong>Hybrid Classroom &amp; Ephemeral Lifecycle:</strong>
+<li><strong>Zero-Auth &amp; Zero-AppCheck High-Scale Fanout (1,000+ Shared Wi-Fi / Roaming Viewers):</strong>
 <ul>
-<li>Works with existing classes with enrolled students—students watch via their normal portal, guests watch via QR.</li>
-<li>Controlled directly in the Screen Broadcast modal (Step 2) &amp; Live HUD, <strong>not</strong> Class Management.</li>
-<li>Clicking <strong>&quot;Stop Sharing&quot;</strong> immediately revokes all public tokens (<code>isPublic: false</code>, <code>publicPin: null</code>), restoring complete classroom privacy.</li>
+<li>Uses client <code>sessionStorage</code> <code>public_spectator_uid</code> (<strong>0 Firebase Auth calls</strong>, avoiding 100/hr/IP rate limits) and skips <code>ReCaptchaEnterpriseProvider</code> on <code>/live/:classId</code> for <code>&lt;100ms</code> connection on WeChat/roaming SIMs.</li>
+<li>Hardened <code>firestore.rules</code> enforce <code>pin == publicPin || pin == savedPublicPin</code> with 2s <code>onSnapshot</code> auto-recovery.</li>
 </ul>
 </li>
 </ul>
@@ -5260,28 +5259,24 @@ footer, header {
 ;--marpit-advanced-background-split:60%;" data-marpit-pagination-total="41" data-marpit-advanced-background="content" data-marpit-advanced-background-split="right">
 <header>Google Cloud Tech Talk | Google AI Classroom | Cyrus Wong (GDE)</header>
 <h2 id="real-time-live-subtitles--multilingual-captions-engine">Real-Time Live Subtitles &amp; Multilingual Captions Engine</h2>
-<h3 id="3-tier-multi-engine-edge-gemini-nano-serverless-genkit--live-websockets">3-Tier Multi-Engine: Edge Gemini Nano, Serverless Genkit &amp; Live WebSockets</h3>
+<h3 id="dual-engine-architecture-serverless-genkit-gemini-3538--edge-litert-gemma-4-e2b">Dual-Engine Architecture: Serverless Genkit (Gemini 3.5/3.8) &amp; Edge LiteRT Gemma 4 E2B</h3>
 
 <ul>
-<li><strong>Tier 1: On-Device Client AI ($0.00 Cloud Cost):</strong>
+<li><strong>Mode 1: <img class="emoji" draggable="false" alt="🟣" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@17.0.3/assets/svg/1f7e3.svg" data-marp-twemoji=""/> Server Model (Recommended · 100% Cross-Platform Reliable):</strong>
 <ul>
-<li>LiteRT Whisper Web Worker (WebGPU/WASM) for local real-time Speech Recognition.</li>
-<li>Chrome Built-in AI (<code>window.LanguageModel</code> powered by Gemini Nano).</li>
-<li>100% privacy-compliant, zero cloud egress, and zero token billing.</li>
+<li>Local LiteRT Whisper (<code>openai/whisper-tiny</code>) + Cloud Function <code>translateTeacherSpeech</code>.</li>
+<li>Powered by <strong>Gemini 3.5 Flash-Lite / 3.8 Flash</strong> generating subtitles in <strong>9 languages</strong> (<code>zh-Hant</code>, <code>zh-Hans</code>, <code>en</code>, <code>ja</code>, <code>ko</code>, <code>es</code>, <code>fr</code>, <code>de</code>, <code>vi</code> — ~$0.01/lecture).</li>
+<li>Preserves Cantonese-English technical code-switching (<code>useState</code>, <code>Docker</code>) with 350ms debounced Firestore sync.</li>
 </ul>
 </li>
-<li><strong>Tier 2: Serverless Batch Multilingual Subtitling (High Precision):</strong>
+<li><strong>Mode 2: <img class="emoji" draggable="false" alt="⚪" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@17.0.3/assets/svg/26aa.svg" data-marp-twemoji=""/> Client Model (LiteRT.js + Gemma 4 E2B · $0.00 Cloud Cost):</strong>
 <ul>
-<li>Local LiteRT Whisper + Cloud Function <code>processTeacherSpeechSubtitles</code>.</li>
-<li>Powered by <strong>Gemini 3.5 Flash-Lite</strong> (with 3.8 Flash fallback) generating subtitles in <strong>7 languages</strong>.</li>
-<li>Preserves Cantonese-English technical code-switching (<code>useState</code>, <code>Docker</code>).</li>
+<li>Local LiteRT Whisper STT paired with on-device <strong>LiteRT-LM Gemma 4 E2B (~1.9 GB)</strong> in WebGPU/WASM Web Workers, with explicit desktop opt-in download &amp; iOS/mobile OOM guard.</li>
 </ul>
 </li>
-<li><strong>Tier 3: Gemini 3.1 Flash Live (Bidirectional WebSocket):</strong>
+<li><strong>Out-of-Tab Microphone Silence &amp; Hardware Mute Watchdog:</strong>
 <ul>
-<li>Regional streaming endpoint (<code>us-central1</code>) via Firebase AI Logic WebSocket.</li>
-<li>350ms debounced Firestore synchronization buffer.</li>
-<li>Responsive docked bottom-bar &amp; floating draggable HUD overlay for students.</li>
+<li>Fires a <strong>System OS Desktop Notification (<code>requireInteraction: true</code>)</strong> on top of fullscreen PowerPoint/Keynote + <strong>two-tone Web Audio API chime</strong> if <code>0</code> audio energy is detected for <mjx-container class="MathJax" jax="SVG"><svg style="vertical-align: -0.312ex;" xmlns="http://www.w3.org/2000/svg" width="5.542ex" height="1.844ex" role="img" focusable="false" viewBox="0 -677 2449.8 815"><g stroke="currentColor" fill="currentColor" stroke-width="0" transform="scale(1,-1)"><g data-mml-node="math"><g data-mml-node="mo"><path data-c="2265" d="M83 616Q83 624 89 630T99 636Q107 636 253 568T543 431T687 361Q694 356 694 346T687 331Q685 329 395 192L107 56H101Q83 58 83 76Q83 77 83 79Q82 86 98 95Q117 105 248 167Q326 204 378 228L626 346L360 472Q291 505 200 548Q112 589 98 597T83 616ZM84 -118Q84 -108 99 -98H678Q694 -104 694 -118Q694 -130 679 -138H98Q84 -131 84 -118Z"></path></g><g data-mml-node="mn" transform="translate(1055.8,0)"><path data-c="34" d="M462 0Q444 3 333 3Q217 3 199 0H190V46H221Q241 46 248 46T265 48T279 53T286 61Q287 63 287 115V165H28V211L179 442Q332 674 334 675Q336 677 355 677H373L379 671V211H471V165H379V114Q379 73 379 66T385 54Q393 47 442 46H471V0H462ZM293 211V545L74 212L183 211H293Z"></path><path data-c="35" d="M164 157Q164 133 148 117T109 101H102Q148 22 224 22Q294 22 326 82Q345 115 345 210Q345 313 318 349Q292 382 260 382H254Q176 382 136 314Q132 307 129 306T114 304Q97 304 95 310Q93 314 93 485V614Q93 664 98 664Q100 666 102 666Q103 666 123 658T178 642T253 634Q324 634 389 662Q397 666 402 666Q410 666 410 648V635Q328 538 205 538Q174 538 149 544L139 546V374Q158 388 169 396T205 412T256 420Q337 420 393 355T449 201Q449 109 385 44T229 -22Q148 -22 99 32T50 154Q50 178 61 192T84 210T107 214Q132 214 148 197T164 157Z" transform="translate(500,0)"></path></g><g data-mml-node="mtext" transform="translate(2055.8,0)"><path data-c="73" d="M295 316Q295 356 268 385T190 414Q154 414 128 401Q98 382 98 349Q97 344 98 336T114 312T157 287Q175 282 201 278T245 269T277 256Q294 248 310 236T342 195T359 133Q359 71 321 31T198 -10H190Q138 -10 94 26L86 19L77 10Q71 4 65 -1L54 -11H46H42Q39 -11 33 -5V74V132Q33 153 35 157T45 162H54Q66 162 70 158T75 146T82 119T101 77Q136 26 198 26Q295 26 295 104Q295 133 277 151Q257 175 194 187T111 210Q75 227 54 256T33 318Q33 357 50 384T93 424T143 442T187 447H198Q238 447 268 432L283 424L292 431Q302 440 314 448H322H326Q329 448 335 442V310L329 304H301Q295 310 295 316Z"></path></g></g></g></svg></mjx-container> or mic is muted <mjx-container class="MathJax" jax="SVG"><svg style="vertical-align: -0.312ex;" xmlns="http://www.w3.org/2000/svg" width="5.542ex" height="1.819ex" role="img" focusable="false" viewBox="0 -666 2449.8 804"><g stroke="currentColor" fill="currentColor" stroke-width="0" transform="scale(1,-1)"><g data-mml-node="math"><g data-mml-node="mo"><path data-c="2265" d="M83 616Q83 624 89 630T99 636Q107 636 253 568T543 431T687 361Q694 356 694 346T687 331Q685 329 395 192L107 56H101Q83 58 83 76Q83 77 83 79Q82 86 98 95Q117 105 248 167Q326 204 378 228L626 346L360 472Q291 505 200 548Q112 589 98 597T83 616ZM84 -118Q84 -108 99 -98H678Q694 -104 694 -118Q694 -130 679 -138H98Q84 -131 84 -118Z"></path></g><g data-mml-node="mn" transform="translate(1055.8,0)"><path data-c="31" d="M213 578L200 573Q186 568 160 563T102 556H83V602H102Q149 604 189 617T245 641T273 663Q275 666 285 666Q294 666 302 660V361L303 61Q310 54 315 52T339 48T401 46H427V0H416Q395 3 257 3Q121 3 100 0H88V46H114Q136 46 152 46T177 47T193 50T201 52T207 57T213 61V578Z"></path><path data-c="30" d="M96 585Q152 666 249 666Q297 666 345 640T423 548Q460 465 460 320Q460 165 417 83Q397 41 362 16T301 -15T250 -22Q224 -22 198 -16T137 16T82 83Q39 165 39 320Q39 494 96 585ZM321 597Q291 629 250 629Q208 629 178 597Q153 571 145 525T137 333Q137 175 145 125T181 46Q209 16 250 16Q290 16 318 46Q347 76 354 130T362 333Q362 478 354 524T321 597Z" transform="translate(500,0)"></path></g><g data-mml-node="mtext" transform="translate(2055.8,0)"><path data-c="73" d="M295 316Q295 356 268 385T190 414Q154 414 128 401Q98 382 98 349Q97 344 98 336T114 312T157 287Q175 282 201 278T245 269T277 256Q294 248 310 236T342 195T359 133Q359 71 321 31T198 -10H190Q138 -10 94 26L86 19L77 10Q71 4 65 -1L54 -11H46H42Q39 -11 33 -5V74V132Q33 153 35 157T45 162H54Q66 162 70 158T75 146T82 119T101 77Q136 26 198 26Q295 26 295 104Q295 133 277 151Q257 175 194 187T111 210Q75 227 54 256T33 318Q33 357 50 384T93 424T143 442T187 447H198Q238 447 268 432L283 424L292 431Q302 440 314 448H322H326Q329 448 335 442V310L329 304H301Q295 310 295 316Z"></path></g></g></g></svg></mjx-container>.</li>
 </ul>
 </li>
 </ul>
@@ -5786,7 +5781,7 @@ footer, header {
 <li>Eliminates VAD cutoffs and fragmentation; uploaded via resumable Cloud Storage chunks.</li>
 </ul>
 </li>
-<li><strong>Whole-Class Voice Ingestion in Gemini 3.8 Flash:</strong>
+<li><strong>Whole-Class Voice Ingestion in Gemini 4 Argon / 3.8 Flash / 3.5 Flash-Lite:</strong>
 <ul>
 <li>Passes entire 60–90 minute audio stream into 1M context window in Cloud Function <code>processLectureSubtitles</code>.</li>
 <li>Automatically structures lecture chapters (<code>00:00 - Intro</code>, <code>14:20 - Kubernetes Architecture</code>).</li>
@@ -6564,36 +6559,25 @@ footer, header {
 ;--marpit-advanced-background-split:60%;" data-marpit-pagination-total="41" data-marpit-advanced-background="content" data-marpit-advanced-background-split="right">
 <header>Google Cloud Tech Talk | Google AI Classroom | Cyrus Wong (GDE)</header>
 <h2 id="3-step-exam-readiness-wizard--schedule-automation">3-Step Exam Readiness Wizard &amp; Schedule Automation</h2>
-<h3 id="guided-pre-flight-diagnostics-timezone-scheduling--multi-class-buffers">Guided Pre-Flight Diagnostics, Timezone Scheduling &amp; Multi-Class Buffers</h3>
+<h3 id="guided-pre-flight-diagnostics-4-bucket-overlap-priority--stream-drop-resilience">Guided Pre-Flight Diagnostics, 4-Bucket Overlap Priority &amp; Stream-Drop Resilience</h3>
 
 <ul>
-<li><strong>3-Step Exam Readiness Wizard (<code>ExamReadinessWizard.jsx</code>):</strong>
+<li><strong>3-Step Exam Readiness Wizard &amp; Dynamic <code><img class="emoji" draggable="false" alt="⚡" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@17.0.3/assets/svg/26a1.svg" data-marp-twemoji=""/> Quick Start (Screen + Mic)</code>:</strong>
 <ul>
-<li><strong>Step 1: <img class="emoji" draggable="false" alt="🎙️" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@17.0.3/assets/svg/1f399.svg" data-marp-twemoji=""/> Microphone Test:</strong> VU volume bar (15%–65%), spoken challenge, 3s loopback playback.</li>
-<li><strong>Step 2: <img class="emoji" draggable="false" alt="📷" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@17.0.3/assets/svg/1f4f7.svg" data-marp-twemoji=""/> Camera &amp; Gaze:</strong> Oval alignment guide, 1-click neutral baseline pitch/yaw calibration.</li>
-<li><strong>Step 3: <img class="emoji" draggable="false" alt="🖥️" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@17.0.3/assets/svg/1f5a5.svg" data-marp-twemoji=""/> Display Surface:</strong> Mandatory entire-screen sharing; window/tab sharing rejected.</li>
+<li><strong>Step 1: <img class="emoji" draggable="false" alt="🎙️" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@17.0.3/assets/svg/1f399.svg" data-marp-twemoji=""/> Microphone Test:</strong> VU volume bar (15%–65%), spoken challenge, 3s loopback playback, plus automatic <strong>Whisper &amp; Gemma Edge AI Pre-Warming</strong>.</li>
+<li><strong>Step 2 &amp; 3:</strong> <img class="emoji" draggable="false" alt="📷" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@17.0.3/assets/svg/1f4f7.svg" data-marp-twemoji=""/> Camera &amp; Gaze calibration + <img class="emoji" draggable="false" alt="🖥️" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@17.0.3/assets/svg/1f5a5.svg" data-marp-twemoji=""/> Mandatory entire-screen sharing (<code>displaySurface === 'monitor'</code>).</li>
+<li><strong>Stream-Drop Resilience:</strong> Idempotent offline upload retries (<code>useAudioRecorder</code>, <code>useScreenshotCapture</code>, <code>useLectureRecorder</code>) ensure transient storage/network errors never drop active student streams.</li>
 </ul>
 </li>
-<li><strong>Schedule-Driven Engine (<code>useStudentClassSchedule.js</code>):</strong>
+<li><strong>Real-Time 4-Bucket Overlap-Safe Schedule Engine (<code>useStudentClassSchedule.js</code>):</strong>
 <ul>
-<li>Poller evaluates enrolled class timetables every 30s with automatic timezone adjustment.</li>
-<li>Auto-selects active course with visual <strong>&quot;(Live)&quot;</strong> tag; manual override with 1-click <strong>&quot;Follow Schedule&quot;</strong> restore.</li>
+<li>Real-time <code>onSnapshot</code> prioritizes: <strong>(1) In-Slot + Live Broadcast</strong> <mjx-container class="MathJax" jax="SVG"><svg style="vertical-align: -0.025ex;" xmlns="http://www.w3.org/2000/svg" width="2.262ex" height="1.181ex" role="img" focusable="false" viewBox="0 -511 1000 522"><g stroke="currentColor" fill="currentColor" stroke-width="0" transform="scale(1,-1)"><g data-mml-node="math"><g data-mml-node="mo"><path data-c="2192" d="M56 237T56 250T70 270H835Q719 357 692 493Q692 494 692 496T691 499Q691 511 708 511H711Q720 511 723 510T729 506T732 497T735 481T743 456Q765 389 816 336T935 261Q944 258 944 250Q944 244 939 241T915 231T877 212Q836 186 806 152T761 85T740 35T732 4Q730 -6 727 -8T711 -11Q691 -11 691 0Q691 7 696 25Q728 151 835 230H70Q56 237 56 250Z"></path></g></g></g></svg></mjx-container> <strong>(2) Overtime + Live Broadcast</strong> <mjx-container class="MathJax" jax="SVG"><svg style="vertical-align: -0.025ex;" xmlns="http://www.w3.org/2000/svg" width="2.262ex" height="1.181ex" role="img" focusable="false" viewBox="0 -511 1000 522"><g stroke="currentColor" fill="currentColor" stroke-width="0" transform="scale(1,-1)"><g data-mml-node="math"><g data-mml-node="mo"><path data-c="2192" d="M56 237T56 250T70 270H835Q719 357 692 493Q692 494 692 496T691 499Q691 511 708 511H711Q720 511 723 510T729 506T732 497T735 481T743 456Q765 389 816 336T935 261Q944 258 944 250Q944 244 939 241T915 231T877 212Q836 186 806 152T761 85T740 35T732 4Q730 -6 727 -8T711 -11Q691 -11 691 0Q691 7 696 25Q728 151 835 230H70Q56 237 56 250Z"></path></g></g></g></svg></mjx-container> <strong>(3) In-Slot Scheduled</strong> <mjx-container class="MathJax" jax="SVG"><svg style="vertical-align: -0.025ex;" xmlns="http://www.w3.org/2000/svg" width="2.262ex" height="1.181ex" role="img" focusable="false" viewBox="0 -511 1000 522"><g stroke="currentColor" fill="currentColor" stroke-width="0" transform="scale(1,-1)"><g data-mml-node="math"><g data-mml-node="mo"><path data-c="2192" d="M56 237T56 250T70 270H835Q719 357 692 493Q692 494 692 496T691 499Q691 511 708 511H711Q720 511 723 510T729 506T732 497T735 481T743 456Q765 389 816 336T935 261Q944 258 944 250Q944 244 939 241T915 231T877 212Q836 186 806 152T761 85T740 35T732 4Q730 -6 727 -8T711 -11Q691 -11 691 0Q691 7 696 25Q728 151 835 230H70Q56 237 56 250Z"></path></g></g></g></svg></mjx-container> <strong>(4) Overtime Capture Only</strong> (<code>overtimeUntil &gt; now</code>).</li>
+<li><strong>1-Click Overlap Class Switcher (<code><img class="emoji" draggable="false" alt="🟢" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@17.0.3/assets/svg/1f7e2.svg" data-marp-twemoji=""/> Active</code>)</strong> inside fullscreen <code>TeacherScreenViewerModal</code> + <strong>Zero-Waste Single Storage Upload</strong> mirrored across overlapping <code>targetClasses</code>.</li>
 </ul>
 </li>
-<li><strong>Concurrent Classes &amp; 10-Minute Back-to-Back Buffer:</strong>
+<li><strong>Schedule Segments &amp; Student Self-Service Records Portal (<code>StudentRecordsView.jsx</code>):</strong>
 <ul>
-<li>Automated Live Capture (5m before/after) &amp; Session Video Compilation default checked.</li>
-<li><strong>Zero-Waste Single Storage Upload:</strong> One image blob upload mapped to multi-class Firestore records (<code>targetClasses</code>).</li>
-</ul>
-</li>
-<li><strong>Schedule Segments &amp; Past Lesson Preservation (<code>scheduleHistory</code>):</strong>
-<ul>
-<li>Timetable changes preserve historical lesson segments, maintaining continuous chronological lesson numbering (<code>Lesson 1..N</code>) for past attendance and recordings without data loss.</li>
-</ul>
-</li>
-<li><strong>Student Self-Service Records Portal (<code>StudentRecordsView.jsx</code>):</strong>
-<ul>
-<li>5 tabbed views (Videos, Attendance, Tasks, Irregularities, Audio) with exam confidentiality shields.</li>
+<li>Preserves historical lesson segments (<code>scheduleHistory</code>) &amp; 5 tabbed student views with exam confidentiality shields.</li>
 </ul>
 </li>
 </ul>
@@ -6827,14 +6811,18 @@ footer, header {
 ;--marpit-advanced-background-split:60%;" data-marpit-pagination-total="41" data-marpit-advanced-background="content" data-marpit-advanced-background-split="right">
 <header>Google Cloud Tech Talk | Google AI Classroom | Cyrus Wong (GDE)</header>
 <h2 id="teacher-command-center-solving-cognitive-overload">Teacher Command Center: Solving Cognitive Overload</h2>
-<h3 id="zero-space-compliance-filtering--1-click-targeted-nudge-n">Zero-Space Compliance Filtering &amp; 1-Click Targeted Nudge ('N')</h3>
+<h3 id="multi-stream-quick-filters-screen-cam-mic-cammic--1-click-targeted-nudge">Multi-Stream Quick Filters (Screen, Cam, Mic, Cam+Mic) &amp; 1-Click Targeted Nudge</h3>
 
 <ul>
-<li><strong>Zero-Space Compliance Filter:</strong> Instantly isolate students flagged with <code>Problems</code> or <code>Critical Alerts</code>.</li>
-<li><strong>1-Click Targeted Nudge:</strong> Press <code>N</code> keyboard shortcut to display a gentle focus alert on the student's screen.</li>
-<li><strong>Offline Resilience:</strong> If a student disconnects, their tile caches the last known frame and displays <code>(Offline)</code>.</li>
-<li><strong>Integrated Video Peek:</strong> Instant one-click jump to full-screen peer-to-peer live stream.</li>
-<li><strong>Concept Templates &amp; 1-Click Filter Tags:</strong> 1-click class setup (<strong><img class="emoji" draggable="false" alt="🏛️" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@17.0.3/assets/svg/1f3db.svg" data-marp-twemoji=""/> Lecture</strong>, <strong><img class="emoji" draggable="false" alt="💻" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@17.0.3/assets/svg/1f4bb.svg" data-marp-twemoji=""/> Lab</strong>, <strong><img class="emoji" draggable="false" alt="🖥️" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@17.0.3/assets/svg/1f5a5.svg" data-marp-twemoji=""/><img class="emoji" draggable="false" alt="🎧" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@17.0.3/assets/svg/1f3a7.svg" data-marp-twemoji=""/> Lecture in Lab</strong>) with sensible defaults, collapsible advanced overrides, and auto-syncing tags for 1-click dashboard filtering.</li>
+<li><strong>Multi-Stream Compliance Quick Filters (<code>MonitorView.jsx</code> &amp; <code>ControlsPanel.jsx</code>):</strong>
+<ul>
+<li>Instant toolbar &amp; sidebar quick filters for <code>🖥 No Screen</code>, <code><img class="emoji" draggable="false" alt="📷" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@17.0.3/assets/svg/1f4f7.svg" data-marp-twemoji=""/> No Webcam</code>, <code>🎙 No Mic</code>, <code><img class="emoji" draggable="false" alt="📷" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@17.0.3/assets/svg/1f4f7.svg" data-marp-twemoji=""/>🎙 No Cam &amp; Mic</code>, <code>⚠ Problems</code>, and <code><img class="emoji" draggable="false" alt="🚨" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@17.0.3/assets/svg/1f6a8.svg" data-marp-twemoji=""/> AI Alerts</code>.</li>
+<li>Multi-tab <strong>&quot;Students Not Sharing&quot;</strong> modal with <code><img class="emoji" draggable="false" alt="🔍" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@17.0.3/assets/svg/1f50d.svg" data-marp-twemoji=""/> Filter Grid</code> action and per-student <code>🖥 ON/OFF</code>, <code><img class="emoji" draggable="false" alt="📷" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@17.0.3/assets/svg/1f4f7.svg" data-marp-twemoji=""/> ON/OFF</code>, <code>🎙 ON/OFF</code> stream pills.</li>
+</ul>
+</li>
+<li><strong>1-Click Targeted Nudge (<code><img class="emoji" draggable="false" alt="📣" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@17.0.3/assets/svg/1f4e3.svg" data-marp-twemoji=""/> Nudge Filtered</code> / <code>N</code>):</strong> Sends stream-specific compliance reminders (e.g., <em>&quot;enable both your webcam and microphone&quot;</em>) to all filtered students.</li>
+<li><strong>Offline Resilience &amp; Integrated Video Peek:</strong> Caches last known frame (<code>(Offline)</code>) + 1-click jump to 30 FPS WebRTC Live Peek.</li>
+<li><strong>Concept Templates &amp; 1-Click Filter Tags:</strong> 1-click class setup (<strong><img class="emoji" draggable="false" alt="🏛️" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@17.0.3/assets/svg/1f3db.svg" data-marp-twemoji=""/> Lecture</strong>, <strong><img class="emoji" draggable="false" alt="💻" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@17.0.3/assets/svg/1f4bb.svg" data-marp-twemoji=""/> Lab</strong>, <strong><img class="emoji" draggable="false" alt="🖥️" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@17.0.3/assets/svg/1f5a5.svg" data-marp-twemoji=""/><img class="emoji" draggable="false" alt="🎧" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@17.0.3/assets/svg/1f3a7.svg" data-marp-twemoji=""/> Lecture in Lab</strong>) with auto-syncing dashboard filter tags.</li>
 </ul>
 <footer>Google Developer Expert (GCP &amp; AI/ML) | HKIIT, VTC Hong Kong | github.com/wongcyrus/Gemini-Multimodal-Classroom-Agent</footer>
 </section>
@@ -7593,7 +7581,7 @@ footer, header {
 <li><strong>Phase 2: Reduce (Coursework Rubric Synthesis &amp; Atomic Reducer):</strong>
 <ul>
 <li>Atomic transactions update master progress (<code>processedCount</code>, <code>totalVideos</code>).</li>
-<li>Cross-student aggregator combines findings into Gemini 3.8 Flash, generating a unified coursework rubric.</li>
+<li>Cross-student aggregator combines findings into <strong>Gemini 4 Argon / Gemini 3.8 Flash</strong>, generating a unified coursework rubric.</li>
 <li>UI displays real-time progress counters (<code>Progress: X / Y</code>) and an animated multi-stage progress stepper.</li>
 </ul>
 </li>
@@ -7603,11 +7591,11 @@ footer, header {
 <li>Color-coded heatmap duration badges with RFC 4180 CSV export and <code>JobResultModal</code> featuring default word wrapping (<code>Wrap: ON/OFF</code>).</li>
 </ul>
 </li>
-<li><strong>Dynamic AI Lab Task Generator &amp; Practical Tasks System:</strong>
+<li><strong>Dynamic AI Lab Task Generator &amp; Rubric-Driven Practical Tasks System:</strong>
 <ul>
-<li><strong><code>extractTaskDemoSteps</code>:</strong> Analyzes instructor lab demo video with Gemini 3.8 Flash, extracting milestone steps, durations, and structured grading rubrics.</li>
-<li><strong><code>evaluateTaskSubmission</code>:</strong> Cloud Tasks worker automatically scores student hands-on screen recordings against rubrics with structured step feedback.</li>
-<li>Integrated with <strong><code>TasksManagementView.jsx</code></strong>, <strong><code>StudentTaskWorkspaceModal.jsx</code></strong>, and <strong><code>TaskGradingMatrixView.jsx</code></strong>.</li>
+<li><strong><code>extractTaskDemoSteps</code>:</strong> Synthesizes structured <code>steps[]</code> (<code>points</code>, <code>gradingCriteria</code>, <code>timestampRange</code>) from a demo video, Assessment Prompt template, or task guidelines with <strong><code>⚖ Auto-Balance to {maxScore} pts</code></strong>.</li>
+<li><strong><code>evaluateTaskSubmission</code> &amp; <code>normalizeRubricEvaluation</code>:</strong> Deterministic rubric reconciliation guaranteeing per-step mark breakdowns (<code>scoreAwarded / maxPoints</code>), clickable <code>[MM:SS]</code> video seek, and per-step explanations.</li>
+<li><strong><code>TaskGradingMatrixView.jsx</code>:</strong> Displays per-step mark pills (<code>S1: 30/30</code>), interactive <strong><code>✏ Edit Step Marks</code></strong> (<code>stepOverrides</code>), post-class retroactive session slicing, and rich <code>.xlsx</code> mark breakdown exports.</li>
 </ul>
 </li>
 </ul>
@@ -7886,7 +7874,7 @@ footer, header {
 </tbody>
 </table>
 <ul>
-<li><strong>Live Google Cloud Billing Catalog API:</strong> Ingests dynamic SKU rates into <code>system_config/pricing</code>.</li>
+<li><strong>Live Google Cloud Billing Catalog API:</strong> Ingests dynamic SKU rates into <code>system_config/pricing</code> across Gemini 4 Argon (<code>$2.00 / $10.00</code>), 3.8 Flash (<code>$0.75 / $3.75</code>), and 3.5 Flash-Lite (<code>$0.30 / $2.50</code>).</li>
 <li><strong>Bingo FinOps:</strong> $0.00 local Question Bank mode vs $0.000075/check 1-to-many Teacher Broadcast.</li>
 </ul>
 <footer>Google Developer Expert (GCP &amp; AI/ML) | HKIIT, VTC Hong Kong | github.com/wongcyrus/Gemini-Multimodal-Classroom-Agent</footer>
@@ -8621,11 +8609,11 @@ footer, header {
 <li>Dedicated admin creation utility (<code>createAdminUser.js</code>) with deterministic claims.</li>
 </ul>
 </li>
-<li><strong>Cloud Governance &amp; Resource Controls:</strong>
+<li><strong>Cloud Governance, Custom Domains &amp; Resource Controls:</strong>
 <ul>
-<li>Per-class Cloud Storage quota overrides preventing resource abuse.</li>
-<li>Daily AI FinOps budget caps &amp; automated Gemini model pricing sync.</li>
-<li>Dual-environment switcher (<code>./switch-env.sh dev</code> / <code>prod</code>) syncing configuration across 7 function codebases.</li>
+<li>Per-class Cloud Storage quota overrides, daily AI FinOps budget caps &amp; automated Gemini SKU pricing sync.</li>
+<li>Dual-environment switcher (<code>./switch-env.sh dev</code> / <code>prod</code>) syncing <code>.env</code>, <code>VITE_CUSTOM_DOMAINS</code> (Identity Platform <code>authorizedDomains</code> &amp; WebAuthn Passkey RP IDs), and all 7 Cloud Run Functions codebases.</li>
+<li><strong><code>firebase.json</code> Hosting <code>predeploy</code> Project-Match Guard</strong> &amp; Identity Platform Auth Action API key auto-recovery.</li>
 </ul>
 </li>
 <li><strong>Automated Prompt Governance &amp; Maintenance:</strong>
@@ -9119,25 +9107,25 @@ footer, header {
 ;--marpit-advanced-background-split:60%;" data-marpit-pagination-total="41" data-marpit-advanced-background="content" data-marpit-advanced-background-split="right">
 <header>Google Cloud Tech Talk | Google AI Classroom | Cyrus Wong (GDE)</header>
 <h2 id="09--devsecops--production-reliability-engineering">09 | DevSecOps &amp; Production Reliability Engineering</h2>
-<h3 id="multi-tier-automated-testing-pyramid-1580-tests--100-gemini-3-standard">Multi-Tier Automated Testing Pyramid (&gt;1,580 Tests) &amp; 100% Gemini 3 Standard</h3>
+<h3 id="multi-tier-automated-testing-pyramid-2380-tests--gemini-4--3-frontier-standard">Multi-Tier Automated Testing Pyramid (&gt;2,380 Tests) &amp; Gemini 4 &amp; 3 Frontier Standard</h3>
 
 <ul>
-<li><strong>1,580+ Automated Tests &amp; Assertions (Zero Flaky Tests):</strong>
+<li><strong>2,380+ Automated Tests &amp; Assertions (Zero Flaky Tests):</strong>
 <ul>
-<li><strong>Level 1 (Frontend):</strong> 1,246 unit tests across 133 suites in Vitest (81.66% line coverage across all core modules).</li>
-<li><strong>Level 2 (Backend Cloud Functions):</strong> 267+ tests in <code>ai_flows</code> + 6 other isolated codebases (attendance, auth, media, scheduled, storage).</li>
-<li><strong>Level 3 (Security Rules):</strong> 42 real-token isolation test scenarios (student self-read, exam shielding &amp; attendance adjustment isolation).</li>
+<li><strong>Level 1 (Frontend):</strong> 1,750+ unit tests across 152+ suites in Vitest (~90% line coverage across all core modules).</li>
+<li><strong>Level 2 (Backend Cloud Functions):</strong> 600+ tests across <code>ai_flows</code> + 6 other isolated codebases (attendance, auth, media, scheduled, storage).</li>
+<li><strong>Level 3 (Security Rules):</strong> 42 real-token isolation test scenarios (student self-read, exam shielding, zero-auth public spectator PIN gate &amp; attendance adjustment isolation).</li>
 <li><strong>Level 4 (Live Smoke Tests):</strong> 28 live end-to-end cloud assertions.</li>
 </ul>
 </li>
-<li><strong>100% Gemini 3 Family Standardization:</strong>
+<li><strong>Gemini 4 &amp; 3 Frontier Family Standardization:</strong>
 <ul>
-<li>100% standardized on Gemini 3 architecture in compliance with Google Cloud 2026 platform standards.</li>
+<li>Standardized on <strong>Gemini 4 Argon</strong>, <strong>Gemini 3.8 Flash</strong>, <strong>Gemini 3.5 Flash-Lite</strong>, and <strong>Gemma 4 E2B</strong> in compliance with Google Cloud 2026 platform standards.</li>
 </ul>
 </li>
-<li><strong>Automated Dual-Environment CI/CD:</strong>
+<li><strong>Automated Dual-Environment CI/CD &amp; Hosting Bundle Guard:</strong>
 <ul>
-<li>Development (<code>it114115-dev-2026</code>) &amp; Production (<code>it114115-2627</code>) via <code>./deploy.sh [dev|prod]</code>.</li>
+<li>Development (<code>it114115-dev-2026</code>) &amp; Production (<code>it114115-2627</code>) via <code>./deploy.sh [dev|prod]</code>, protected by <code>firebase.json</code> <code>hosting.predeploy</code> bundle verification.</li>
 </ul>
 </li>
 </ul>
@@ -9623,7 +9611,7 @@ footer, header {
 <li><code>cywong@vtc.edu.hk</code></li>
 </ul>
 </li>
-<li><strong>Questions &amp; Discussion:</strong> Edge AI, Google Genkit &amp; Gemini 3 Architecture</li>
+<li><strong>Questions &amp; Discussion:</strong> Edge AI, Google Genkit &amp; Gemini 4 / 3 Architecture</li>
 </ul>
 <footer>Google Developer Expert (GCP &amp; AI/ML) | HKIIT, VTC Hong Kong | github.com/wongcyrus/Gemini-Multimodal-Classroom-Agent</footer>
 </section>

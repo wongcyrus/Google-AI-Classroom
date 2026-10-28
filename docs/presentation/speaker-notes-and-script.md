@@ -373,32 +373,32 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocation
 *Visual: `slide_realtime_media_pipelines.png`*
 
 > **Cyrus Wong:**  
-> "For live classroom interaction, we engineered two distinct real-time pipelines:
+> "For live classroom interaction, we engineered three real-time media capabilities:
 >
 > 1. **1-to-1 WebRTC Live Peek & Talkback:** When an alert fires, the teacher clicks 'Peek'. A direct peer-to-peer WebRTC connection is negotiated over Firestore signaling, delivering 30 FPS crystal-clear video and two-way Opus audio without touching cloud storage.
-> 2. **1-to-Many Classroom Pure Frame Broadcaster:** Traditional WebRTC star-mesh crashes teacher browser CPU when broadcasting to 50 students. Instead:
->    - The teacher screen is captured to an offscreen canvas and clamped to 720p.
->    - A **32x18 thumbnail pixel delta engine** diffs frames and emits lightweight compressed JPEG updates (~35–65 KB) to Firestore `screenBroadcast/liveFrame`.
->    - Students receive the stream in a floating Picture-in-Picture window while teacher CPU remains <2%!"
+> 2. **1-to-Many Classroom Pure Frame Broadcaster:** Traditional WebRTC star-mesh crashes teacher browser CPU when broadcasting to 50–1,000+ viewers. Instead:
+>    - The teacher screen is captured to an offscreen canvas (`720p`, `1080p`, or `1440p`) with a **1000ms `ImageCapture.grabFrame()` timeout** that automatically falls back to offscreen `<video>` capture when the presenter's browser tab is in the background, plus a **5000ms concurrency watchdog**.
+>    - A **32x18 thumbnail pixel delta engine** with a continuous **2-second frame heartbeat** emits lightweight compressed JPEG updates (~35–65 KB) to Firestore `screenBroadcast/liveFrame`, keeping teacher CPU <2%.
+> 3. **1-Click 'Next Session Handover' & Overtime Continuity (`broadcastHandover.js`):**
+>    - When teaching back-to-back sessions, clicking **`⏭️ Switch Broadcast to [Next Class]`** reuses the live `screenStream` and `micStream` across classes with **zero browser screen-share permission re-prompts**.
+>    - Starting a broadcast grants an automatic 2-hour `overtimeUntil` lease (`⏱️ +30m Overtime` quick-extend button) that protects over-running lectures from Cloud Scheduler auto-stop and premature post-lesson video merges."
 
 ---
 
-### 38:30 – 39:30 | Slide 21: Anonymous Public Presentation Mode: Projector QR & 4-Digit PIN
+### 38:30 – 39:30 | Slide 21: Zero-Auth Public Presentation Mode: Projector QR & 4-Digit PIN
 *Visual: `slide_public_presentation_mode.png`*
 
 > **Cyrus Wong:**  
-> "When presenting at tech conferences, open seminars, or lightning talks, audience members often struggle to see small terminal fonts on distant stage projectors or speak different native languages. We solved this with **Anonymous Public Presentation Mode**:
+> "When presenting at large tech conferences, open seminars, or lightning talks with 1,000+ attendees on shared venue Wi-Fi or roaming SIMs, audience members need instant mobile access without login friction or rate limits. We engineered **Zero-Auth Public Presentation Mode**:
 >
-> 1. **Zero-Friction Audience Access via Projector QR Code:**
->    - In Step 2 of screen broadcasting, the speaker toggles 'Public Presentation Mode', generating a high-contrast SVG QR code modal.
->    - When projected onto the auditorium screen, audience members scan the QR code (`/live/:classId?pin=XXXX`) on their smartphones.
->    - Firebase automatically logs them in anonymously (`signInAnonymously`), unlocking the live screen stream with 1x/1.5x/2x zoom and real-time multilingual subtitles.
-> 2. **Strict Server-Side Firestore Security Rules (`firestore.rules`):**
->    - The PIN is never exposed in readable session metadata.
->    - Attendees write a viewer presence record with their PIN, which Firestore security rules validate against `session.publicPin`. Only valid writes unlock read access to `screenBroadcast` and `liveSubtitles`.
-> 3. **Hybrid Classroom & Ephemeral Teardown:**
->    - Teachers can use an existing class with enrolled students without exposing any student rosters or grades.
->    - As soon as the speaker clicks 'Stop Sharing', `isPublic` and `publicPin` are wiped, immediately terminating public access and keeping normal classroom data 100% private!"
+> 1. **Standalone Projector QR Popup Window (`openProjectorQrPopup` `580×760`):**
+>    - Clicking **`📱 Preview Projector QR Code ↗`** in Step 2 setup or the top classroom bar launches a dedicated standalone popup window that can be dragged to the auditorium projector in fullscreen while the speaker continues setup in the main window.
+> 2. **Pre-Session Link Sharing, Rehearsal-Safe Waiting Room & Cross-Device Firestore DB PIN Sync:**
+>    - Enabling Public Presentation Mode immediately persists `savedPublicPin` and `savedIsPublic` in Firestore (`screenBroadcast/session`) before the broadcast even starts.
+>    - Speakers can share `/live/:classId?pin=XXXX` days before the event from an office laptop and later sign in on a stage podium PC with the exact same PIN hydrated from Firestore DB. Early attendees enter a live **Waiting Room** (`'Waiting for Speaker to Start...'`) that survives pre-show rehearsal stops and automatically transitions into the live stream.
+> 3. **Zero-Auth & Zero-AppCheck High-Scale Fanout (1,000+ Viewers):**
+>    - Instead of calling `signInAnonymously` (which hits Firebase Auth's 100 sign-ups/hour/IP limit on shared conference NAT Wi-Fi), `PublicLiveView.jsx` generates a lightweight client `sessionStorage` `public_spectator_uid` (**0 Auth calls**) and skips `ReCaptchaEnterpriseProvider` on `/live/:classId` so attendees on WeChat browsers or Mainland China roaming SIMs connect in `<100ms`.
+>    - Firestore security rules validate `pin == session.publicPin || pin == session.savedPublicPin` on `screenBroadcastViewers/{spectatorId}` with automatic 2-second `onSnapshot` error recovery."
 
 ---
 
@@ -410,12 +410,13 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocation
 >
 > - **Mode 1: Server Model (High Precision Cloud — Default):**
 >   - Edge Whisper Speech Engine or Web Speech API streams transcribed sentences to Cloud Run Function `translateTeacherSpeech`.
->   - Powered by **Gemini 3.5 Flash-Lite** (with **Gemini 3.8 Flash** fallback), delivering high-precision subtitles into **7 languages** (`en`, `zh-Hant`, `zh-Hans`, `ja`, `ko`, `es`, `fr`).
+>   - Powered by **Gemini 3.5 Flash-Lite** (with **Gemini 3.8 Flash** fallback), delivering high-precision subtitles into **9 languages** (`zh-Hant`, `zh-Hans`, `en`, `ja`, `ko`, `es`, `fr`, `de`, `vi`).
 >   - Preserves Cantonese-English technical code-switching (e.g. keeping terms like `useState` or `Docker` intact).
 > - **Mode 2: Client Model (On-Device Edge AI — $0.00 Cloud Cost):**
 >   - LiteRT Whisper Web Worker processes the teacher's microphone locally at 16kHz, and **LiteRT Gemma 4 E2B WebGPU** (`useLocalGemmaTranslator.js`) translates speech directly inside the browser.
->   - **Explicit Download & Mobile Memory Guard:** To prevent browser Out-Of-Memory (OOM) crashes on mobile devices (such as iOS Chrome/Safari ~1.5GB tab limits), the ~1.5GB Gemma 4 E2B weights never auto-download on page load—users click an explicit `'⬇️ Load Local AI Model (~1.5 GB)'` button, with automatic cloud fallback on mobile/iOS.
->   - Students toggle between a docked bottom bar, a YouTube-style player overlay, and a live scrolling transcript sidebar with optional browser TTS audio readout."
+>   - **Explicit Download & Mobile Memory Guard:** To prevent browser Out-Of-Memory (OOM) crashes on mobile devices (such as iOS Chrome/Safari ~1.5GB tab limits), the ~1.9GB Gemma 4 E2B weights never auto-download on page load—users click an explicit `'⬇️ Download & Load Gemma 4 (~1.9 GB)'` button, with automatic cloud fallback on mobile/iOS.
+> - **Out-of-Tab Microphone Silence & Hardware Mute Watchdog:**
+>   - Because teachers lecture in fullscreen PowerPoint, Keynote, or terminal windows, if `0` microphone audio energy is detected for $\ge 45\text{s}$ (or the mic track is hardware-muted for $\ge 10\text{s}$), the system fires an **OS Desktop Notification (`requireInteraction: true`)** on top of fullscreen slides plus a gentle **two-tone Web Audio API chime**!"
 
 ---
 
@@ -533,10 +534,10 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocation
 >    - **Step 2: 📷 Camera & Gaze Calibration:** Aligns the student's face inside an oval guide and records a 1-click neutral baseline pitch/yaw calibration (`🎯 Set Center Pose`).
 >    - **Step 3: 🖥️ Display Surface Verification:** Enforces mandatory full-screen display sharing, rejecting window or single-tab shares during exam mode.
 >    - **Dynamic `⚡ Quick Start` Awareness:** Outside strict exam mode, the Quick Start button dynamically shows `⚡ Quick Start (Screen + Mic)` or `⚡ Quick Start (Screen Only)` based on class audio policies, displays live `🟢 Streaming Active (Screen + Mic)` or `🟡 Streaming Active (Screen Only — Mic Blocked)` badges, and automatically launches the `MicSetupModal` recovery dialog if microphone permissions are blocked.
-> 2. **Schedule-Driven Engine (`useStudentClassSchedule.js`):**
->    - Evaluates enrolled course schedules every 30 seconds with automatic timezone adjustment.
->    - Automatically binds the student to the active class with a visual **'(Live)'** tag.
->    - Supports manual class selection with a 1-click **'Follow Schedule'** restore button.
+> 2. **Real-Time 4-Bucket Overlap-Safe Schedule Engine (`useStudentClassSchedule.js`) & Stream-Drop Resilience:**
+>    - Subscribes to enrolled `classes/{classId}` documents via real-time `onSnapshot` and resolves active courses across **4 priority buckets**: **(1) In-Slot + Live Broadcast** $\to$ **(2) Overtime + Live Broadcast** $\to$ **(3) In-Slot Scheduled** $\to$ **(4) Overtime Capture Only** (`overtimeUntil > now`).
+>    - When an earlier teacher overruns in Bucket 2 while the next scheduled class enters Bucket 3, students stay uninterrupted on the live stream and see a **1-Click Overlap Class Switcher (`🟢 Active`)** directly inside the fullscreen `TeacherScreenViewerModal`.
+>    - **Idempotent Offline Retries:** Transient storage or Wi-Fi drops in `useAudioRecorder`, `useScreenshotCapture`, and `useLectureRecorder` retry with exponential backoff without ever terminating active student screen/cam/mic streams.
 > 3. **Concurrent Classes & 10-Minute Back-to-Back Buffer:**
 >    - Automatically starts capture 5 minutes before scheduled start and ends 5 minutes after class conclusion.
 >    - **Zero-Waste Single Storage Upload:** One image blob is uploaded to Cloud Storage, while Firestore records metadata for all overlapping courses (`targetClasses`). Neither instructor misses student telemetry!
@@ -613,7 +614,7 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocation
 > - **Phase 1: Map (Parallel Video Discovery):** The master dispatcher initializes progress counters and enqueues individual tasks to **Google Cloud Tasks** (`analyzeSingleVideoTask`) in ~2 seconds. Tasks are throttled to 4 concurrent workers (`maxDispatchesPerSecond: 2`) with dedicated 300s/2GiB containers, eliminating Cloud Function timeout walls and Gemini 429 rate limit spikes.
 > - **Phase 2: Reduce (Coursework Rubric Synthesis):** A cross-student aggregator feeds all student discovery summaries into **Gemini 4 Argon** or **Gemini 3.8 Flash**, which synthesizes a unified coursework rubric and objective milestone prompt. An animated UI stepper tracks this multi-stage synthesis in real time.
 > - **Phase 3: Map (Milestone Evaluation & Matrix):** Mapped AI jobs evaluate each student video against the rubric. Autonomous tool calling logs milestone durations into the **Student Milestone Matrix** (`StudentMilestoneMatrix.jsx`), featuring interactive sortable heatmaps (<20m green, 20-40m amber, >40m red) and 1-click RFC 4180 CSV export.
-> - **Dynamic AI Lab Task Generator & Practical Tasks System:** Beyond passive evaluation, teachers can author hands-on coursework using **Gemini 4 Argon** or **Gemini 3.8 Flash**. With `extractTaskDemoSteps`, the model analyzes the instructor's demonstration screen recording and extracts milestone steps, duration bounds, and structured rubrics. Student practical video submissions are automatically scored via `evaluateTaskSubmission` in Cloud Tasks, updating `TasksManagementView.jsx` and the student workspace modal with granular step feedback."
+> - **Dynamic AI Lab Task Generator & Rubric-Driven Practical Tasks System:** Beyond passive evaluation, teachers can author hands-on coursework using **Gemini 4 Argon** or **Gemini 3.8 Flash**. With `extractTaskDemoSteps`, Gemini synthesizes structured `steps[]` (`points`, `gradingCriteria`, `timestampRange`) from a demo video, an Assessment Prompt template, or task guidelines with **`⚖️ Auto-Balance to {maxScore} pts`**. Student practical video submissions are scored via `evaluateTaskSubmission` and reconciled deterministically by `normalizeRubricEvaluation` to guarantee per-step mark breakdowns (`scoreAwarded / maxPoints`), clickable `[MM:SS]` video seek, per-step explanations, interactive **`✏️ Edit Step Marks`** (`stepOverrides`) in `TaskGradingMatrixView.jsx`, and rich `.xlsx` exports."
 
 ---
 
@@ -699,13 +700,13 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocation
 > **Cyrus Wong:**  
 > "Quality assurance is critical when deploying assessment software. We built a 4-tier automated testing pyramid:
 >
-> - **1,580+ Automated Tests & Assertions with Zero Flaky Tests:**
->   - **Level 1 (Frontend):** 1,246+ tests across 133 suites achieving **81.66% line coverage** in Vitest.
->   - **Level 2 (Backend Cloud Functions):** 267+ tests in `ai_flows` + 6 other isolated codebases (attendance, auth, media, scheduled, storage).
->   - **Level 3 (Security Rules):** 42 real-token isolation test scenarios verifying student self-read, exam shielding, and `attendanceAdjustments` privacy.
+> - **2,380+ Automated Tests & Assertions with Zero Flaky Tests:**
+>   - **Level 1 (Frontend):** 1,750+ tests across 152+ suites achieving **~90% line coverage** in Vitest.
+>   - **Level 2 (Backend Cloud Functions):** 600+ tests across `ai_flows` + 6 other isolated codebases (attendance, auth, media, scheduled, storage).
+>   - **Level 3 (Security Rules):** 42 real-token isolation test scenarios verifying student self-read, exam shielding, zero-auth public spectator PIN gate, and `attendanceAdjustments` privacy.
 >   - **Level 4 (Live Smoke Tests):** 28 live end-to-end cloud assertions.
 > - **100% Gemini 4 & 3 Family Standardization:** Standardized entirely on the Gemini 4 & 3 family (`gemini-4-argon`, `gemini-3.8-flash`, `gemini-3.5-flash-lite`) in compliance with Google Cloud 2026 platform standards.
-> - **Automated Dual-Environment CI/CD:** We maintain isolated Development (`it114115-dev-2026`) and Production (`it114115-2627`) projects via `./deploy.sh [dev|prod]`, with pre-bundling validation in `vite.config.js` to prevent credential cross-contamination."
+> - **Automated Dual-Environment CI/CD & Hosting Bundle Guard:** We maintain isolated Development (`it114115-dev-2026`) and Production (`it114115-2627`) projects via `./deploy.sh [dev|prod]`, protected by a `firebase.json` `hosting.predeploy` bundle verification guard that prevents cross-environment credential contamination."
 
 ---
 
