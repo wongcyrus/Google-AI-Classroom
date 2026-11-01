@@ -33,13 +33,29 @@ function isMobileOrIosBrowser() {
 }
 
 /**
- * Detects common Whisper silence/background-noise hallucination tokens so they
- * do not suppress the Cloud AI transcription fallback or publish bogus subtitles.
+ * Detects common Whisper silence/background-noise hallucination tokens or LLM refusal phrases
+ * so they do not suppress the Cloud AI transcription fallback or publish bogus subtitles.
  */
-export function isWhisperNoiseArtifact(text) {
+export function isWhisperNoiseArtifact(text, speechLanguage = 'zh-HK') {
   const trimmed = (text || '').trim();
   if (!trimmed) return true;
-  return /^(\[.*\]|\(.*\)|♪+.*♪*|thank you\.?|thanks for watching\.?|you\.?)$/i.test(trimmed);
+  if (/^(\[.*\]|\(.*\)|♪+.*♪*|thank you\.?|thanks for watching\.?|you\.?)$/i.test(trimmed)) {
+    return true;
+  }
+  if (
+    /please provide the audio|audio recording or transcript|no speech detected|no clear speech|inaudible|ambient room noise|nothing to transcribe|blank_audio|^transcription\s*:/i.test(
+      trimmed
+    )
+  ) {
+    return true;
+  }
+  const normalizedLang = String(speechLanguage || 'zh-HK').toLowerCase();
+  if (normalizedLang.startsWith('zh') || normalizedLang.startsWith('en')) {
+    if (/[\uAC00-\uD7AF\u1100-\u11FF\u0600-\u06FF\u3040-\u30FF\u0E00-\u0E7F\u0400-\u04FF]/.test(trimmed)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 export function useTeacherLiveSubtitles({
@@ -503,6 +519,7 @@ export function useTeacherLiveSubtitles({
     if (!classId || !originalText || !originalText.trim()) return;
 
     const trimmed = originalText.trim();
+    if (!customTranslations && isWhisperNoiseArtifact(trimmed, speechLanguage)) return;
     const now = Date.now();
 
     // Guard against duplicate consecutive final subtitles emitted by parallel STT streams
@@ -619,6 +636,8 @@ export function useTeacherLiveSubtitles({
     let isRecognitionActive = false;
     let restartTimeout = null;
     let lastSpeechRecInterimAt = 0;
+    let lastSpeechRecFinalAt = 0;
+    let lastInterimPublishAt = 0;
 
     const clearPendingVadBuffer = () => {
       pcmBuffer = [];
@@ -648,6 +667,13 @@ export function useTeacherLiveSubtitles({
 
     const flushBufferToWhisper = async () => {
       if (!isMounted || pcmBuffer.length === 0) return;
+
+      // If Web Speech API just finalized an utterance within the last 2.5s, discard trailing VAD audio
+      // so slow WASM Whisper / Cloud Gemini does not re-transcribe and overwrite it 6 seconds later.
+      if (lastSpeechRecFinalAt > 0 && Date.now() - lastSpeechRecFinalAt < 2500) {
+        clearPendingVadBuffer();
+        return;
+      }
 
       let totalSamples = 0;
       for (const chunk of pcmBuffer) totalSamples += chunk.length;
@@ -685,7 +711,7 @@ export function useTeacherLiveSubtitles({
         }).then(async (result) => {
           if (!isMounted) return;
           const rawTranscript = (result?.transcript || '').trim();
-          let text = isWhisperNoiseArtifact(rawTranscript) ? '' : rawTranscript;
+          let text = isWhisperNoiseArtifact(rawTranscript, speechLanguage) ? '' : rawTranscript;
 
           if (!text && mergedPcm && mergedPcm.length >= 8000) {
             try {
@@ -695,7 +721,7 @@ export function useTeacherLiveSubtitles({
                 speechLanguage,
                 { courseContext, customPrompt: customPromptText }
               );
-              if (aiTranscript && aiTranscript.trim()) {
+              if (aiTranscript && aiTranscript.trim() && !isWhisperNoiseArtifact(aiTranscript, speechLanguage)) {
                 text = aiTranscript.trim();
               }
             } catch (aiErr) {
@@ -716,7 +742,7 @@ export function useTeacherLiveSubtitles({
                 speechLanguage,
                 { courseContext, customPrompt: customPromptText }
               );
-              if (isMounted && aiTranscript && aiTranscript.trim()) {
+              if (isMounted && aiTranscript && aiTranscript.trim() && !isWhisperNoiseArtifact(aiTranscript, speechLanguage)) {
                 publishSubtitleRef.current?.(aiTranscript.trim());
               }
             } catch (aiErr) {
@@ -917,8 +943,12 @@ export function useTeacherLiveSubtitles({
           }, 650);
         };
 
-        // Web Speech recognition live fallback for teacher speech (runs on Chrome / Edge / Windows / Mac / iOS)
-        if (typeof window !== 'undefined') {
+        // Web Speech recognition live fallback for teacher speech (runs on Desktop Chrome / Edge / Mac / iOS).
+        // Skipped on Android because Android's system SpeechRecognizer seizes the hardware mic from
+        // getUserMedia and repeatedly opens/closes the mic with system audio beeps every few seconds.
+        const isAndroidBrowser =
+          typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent || '');
+        if (typeof window !== 'undefined' && !isAndroidBrowser) {
           const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
           if (SpeechRec) {
             try {
@@ -941,8 +971,12 @@ export function useTeacherLiveSubtitles({
                     interim += event.results[i][0].transcript;
                   }
                 }
+                const nowMs = Date.now();
                 if (interim && interim.trim()) {
-                  lastSpeechRecInterimAt = Date.now();
+                  lastSpeechRecInterimAt = nowMs;
+                  if (lastInterimPublishAt === 0) {
+                    lastInterimPublishAt = nowMs;
+                  }
                 }
                 const speechText = (final || interim || '').trim();
                 if (speechText && isMounted) {
@@ -952,10 +986,21 @@ export function useTeacherLiveSubtitles({
                 }
                 if (final && final.trim() && isMounted) {
                   lastSpeechRecInterimAt = 0;
+                  lastSpeechRecFinalAt = nowMs;
+                  lastInterimPublishAt = nowMs;
                   // Clear the parallel VAD buffer so Whisper does not re-transcribe and overwrite
                   // the utterance that SpeechRecognition just finalized.
                   clearPendingVadBuffer();
-                  publishSubtitleRef.current?.(final.trim());
+                  publishSubtitleRef.current?.(final.trim(), null, true);
+                } else if (
+                  interim &&
+                  interim.trim().length >= 10 &&
+                  isMounted &&
+                  nowMs - lastInterimPublishAt >= 3500
+                ) {
+                  lastInterimPublishAt = nowMs;
+                  clearPendingVadBuffer();
+                  publishSubtitleRef.current?.(interim.trim(), null, false);
                 }
               };
 

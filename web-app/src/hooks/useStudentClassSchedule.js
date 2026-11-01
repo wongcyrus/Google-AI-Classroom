@@ -78,6 +78,8 @@ export const useStudentClassSchedule = (user) => {
               isBroadcasting: Boolean(data.isBroadcasting),
               isCapturing: Boolean(data.isCapturing),
               overtimeUntil: data.overtimeUntil || null,
+              broadcastStartedAt: data.broadcastStartedAt || null,
+              captureStartedAt: data.captureStartedAt || null,
             };
           } else {
             console.log(`useStudentClassSchedule: Class document ${classId} does not exist.`);
@@ -124,6 +126,17 @@ export const useStudentClassSchedule = (user) => {
               : new Date(meta.overtimeUntil).getTime())
           : 0;
         const hasActiveOvertime = !Number.isNaN(overtimeUntilMs) && overtimeUntilMs > nowMs;
+        const hasExpiredOvertime = !Number.isNaN(overtimeUntilMs) && overtimeUntilMs > 0 && overtimeUntilMs <= nowMs;
+
+        const broadcastStartedMs = meta.broadcastStartedAt
+          ? (typeof meta.broadcastStartedAt.toDate === 'function'
+              ? meta.broadcastStartedAt.toDate().getTime()
+              : new Date(meta.broadcastStartedAt).getTime())
+          : 0;
+        const hasFreshBroadcastStart =
+          !Number.isNaN(broadcastStartedMs) &&
+          broadcastStartedMs > 0 &&
+          nowMs - broadcastStartedMs <= 3 * 60 * 60 * 1000;
 
         const schedule = currentSchedules?.[classId];
         let matchesScheduledSlot = false;
@@ -172,7 +185,7 @@ export const useStudentClassSchedule = (user) => {
                       if (currentTime >= startTime && currentTime < endTime) {
                         matchesScheduledSlot = true;
                         break;
-                      } else if (meta.isCapturing && currentMins >= 0) {
+                      } else if (meta.isCapturing && !hasExpiredOvertime && currentMins >= 0) {
                         const endMins = timeStringToMinutes(endTime);
                         if (endMins >= 0 && currentMins >= endMins && currentMins <= endMins + 90) {
                           matchesCaptureOverrun = true;
@@ -188,13 +201,20 @@ export const useStudentClassSchedule = (user) => {
           }
         }
 
+        // Only treat out-of-slot isBroadcasting as an active overrun if overtimeUntil is still active,
+        // or the broadcast was started within the last 3 hours, or it is within today's 90m post-slot window.
+        // This prevents stale zombie isBroadcasting flags from previous days from hijacking today's classes.
+        const isActiveBroadcastOverrun =
+          Boolean(meta.isBroadcasting) &&
+          (hasActiveOvertime || (!hasExpiredOvertime && (hasFreshBroadcastStart || matchesCaptureOverrun)));
+
         if (matchesScheduledSlot) {
           if (meta.isBroadcasting) {
             inSlotBroadcastClasses.push(classId);
           } else {
             inSlotScheduledClasses.push(classId);
           }
-        } else if (meta.isBroadcasting) {
+        } else if (isActiveBroadcastOverrun) {
           overrunBroadcastClasses.push(classId);
         } else if (hasActiveOvertime || matchesCaptureOverrun) {
           overrunActiveClasses.push(classId);
@@ -203,8 +223,8 @@ export const useStudentClassSchedule = (user) => {
 
       const matchedClasses = [
         ...inSlotBroadcastClasses,
-        ...overrunBroadcastClasses,
         ...inSlotScheduledClasses,
+        ...overrunBroadcastClasses,
         ...overrunActiveClasses,
       ];
       setActiveClassIds(matchedClasses);
@@ -238,12 +258,15 @@ export const useStudentClassSchedule = (user) => {
                   isBroadcasting: Boolean(data.isBroadcasting),
                   isCapturing: Boolean(data.isCapturing),
                   overtimeUntil: data.overtimeUntil || null,
+                  broadcastStartedAt: data.broadcastStartedAt || null,
+                  captureStartedAt: data.captureStartedAt || null,
                 };
                 const prevMeta = nextMeta[classId] || {};
                 if (
                   prevMeta.isBroadcasting !== newMeta.isBroadcasting ||
                   prevMeta.isCapturing !== newMeta.isCapturing ||
-                  prevMeta.overtimeUntil !== newMeta.overtimeUntil
+                  prevMeta.overtimeUntil !== newMeta.overtimeUntil ||
+                  prevMeta.broadcastStartedAt !== newMeta.broadcastStartedAt
                 ) {
                   nextMeta[classId] = newMeta;
                   hasChanges = true;

@@ -33,6 +33,22 @@ export const SUPPORTED_SUBTITLE_LANGUAGES = {
  * NOTE: Server audio slicing is intentionally omitted. This endpoint receives clean,
  * continuous transcripts decoded by on-device LiteRT Whisper.
  */
+export function isSubtitleNoiseOrRefusal(text) {
+  const trimmed = (text || '').trim();
+  if (!trimmed) return true;
+  if (/^(\[.*\]|\(.*\)|♪+.*♪*|thank you\.?|thanks for watching\.?)$/i.test(trimmed)) {
+    return true;
+  }
+  if (
+    /please provide the audio|audio recording or transcript|no speech detected|no clear speech|inaudible|ambient room noise|nothing to transcribe|blank_audio|^transcription\s*:/i.test(
+      trimmed
+    )
+  ) {
+    return true;
+  }
+  return false;
+}
+
 export async function translateTeacherSpeech({
   classId,
   teacherUid,
@@ -45,7 +61,7 @@ export async function translateTeacherSpeech({
   historyText = null,
 }) {
   const trimmedText = (text || '').trim();
-  if (!trimmedText) {
+  if (!trimmedText || isSubtitleNoiseOrRefusal(trimmedText)) {
     return {
       originalText: '',
       sourceLang,
@@ -123,6 +139,10 @@ Guidelines:
 
   const { response, modelUsed } = await generateWithResilience({
     prompt,
+    config: {
+      temperature: 0.1,
+      thinkingConfig: { thinkingBudget: 0 },
+    },
     output: {
       schema: z.object({
         detectedSourceLang: z.string().optional().describe('Detected source language code'),

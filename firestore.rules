@@ -222,6 +222,51 @@ service cloud.firestore {
           }
         }
       }
+
+      match /projectGroups/{groupId} {
+        allow read: if isTeacherInClass(classId) || isTeacher() || isStudentInClass(classId);
+        allow create, update, delete: if isTeacherInClass(classId) || isTeacher();
+      }
+
+      match /projectStudentProfiles/{studentId} {
+        allow read: if isTeacherInClass(classId) || isTeacher() || isStudentInClass(classId);
+        allow create, update, delete: if isTeacherInClass(classId) || isTeacher();
+      }
+
+      match /projectMeetings/{meetingId} {
+        allow read: if isTeacherInClass(classId) || isTeacher() || isStudentInClass(classId);
+        allow create, delete: if isTeacherInClass(classId) || isTeacher();
+        allow update: if isTeacherInClass(classId) || isTeacher() || (
+          isStudentInClass(classId) &&
+          request.auth != null &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'screenClips',
+            'hasVideo',
+            'videoDownloadUrl',
+            'videoStoragePath',
+            'updatedAt'
+          ]) &&
+          exists(/databases/$(database)/documents/classes/$(classId)/activeMeetingCaptures/$(request.auth.uid)) &&
+          get(/databases/$(database)/documents/classes/$(classId)/activeMeetingCaptures/$(request.auth.uid)).data.get('meetingId', '') == meetingId
+        );
+      }
+
+      match /activeMeetingCaptures/{studentUid} {
+        allow read: if isTeacherInClass(classId) || isTeacher() || (isStudentInClass(classId) && request.auth != null && request.auth.uid == studentUid);
+        allow create, delete: if isTeacherInClass(classId) || isTeacher();
+        allow update: if isTeacherInClass(classId) || isTeacher() || (
+          isStudentInClass(classId) &&
+          request.auth != null &&
+          request.auth.uid == studentUid &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'studentPcState',
+            'lastScreenClipUrl',
+            'lastScreenStoragePath',
+            'errorMessage',
+            'updatedAt'
+          ])
+        );
+      }
     }
 
     match /screenshots/{screenshotId} {

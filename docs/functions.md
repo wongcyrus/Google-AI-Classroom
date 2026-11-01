@@ -53,6 +53,7 @@ flowchart TD
         T_Call -->|processLectureSubtitles| PLS[processLectureSubtitles: Whole-Class Audio & VTT/SRT]
         T_Call -->|extractTaskDemoSteps| ETD[extractTaskDemoSteps: Practical Task AI Rubric Extractor]
         T_Call -->|evaluateTaskSubmission| ETS[evaluateTaskSubmission: Practical Task AI Auto-Grading]
+        T_Call -->|analyzeProjectMeeting / prepareProjectMeetingLogQuestions| APM[projectMeetingFlows: 2-Stage Meeting Diarization & Fake Log Challenge Engine]
         T_Call -->|passkeyFlows| PKF[WebAuthn Passkeys: 15 FIDO2 Callables]
         T_Doc -->|videoAnalysisJobs created| PJA[processVideoAnalysisJob Flow]
     end
@@ -227,6 +228,16 @@ This directory contains all the Cloud Functions related to AI-powered analysis, 
     -   **Trigger**: Callable `onCall` (`functions/ai_flows/index.mjs`).
     -   **Authentication & Authorization**: Requires teacher authorization.
     -   **Description**: Audits and reconciles physical Cloud Storage lecture recording media files (`recordings/{classId}/`) against Firestore `classes/{classId}/lectureRecordings` documents. Automatically discovers orphaned recordings, repairs missing metadata (durations, resolutions, file sizes), recovers interrupted sessions, and synchronizes status flags. If a recording is stuck in `recording` or `uploading` for $>2$ hours with zero media in Cloud Storage, it cleanly marks it as `status: 'interrupted'` with the interruption reason. When media is successfully recovered, it automatically triggers `handleProcessLectureSubtitles` in the background so AI transcription and chapters continue without manual teacher action.
+-   **`analyzeProjectMeeting`**:
+    -   **Trigger**: Callable `onCall` (`functions/ai_flows/projectMeetingFlows.js`, `memory: 2GiB`, `timeoutSeconds: 540`).
+    -   **Authentication & Authorization**: Requires teacher authorization (`isTeacherInClass(classId)`).
+    -   **Description**: Executes a Two-Stage multimodal pipeline for Project Group Meetings:
+        1. **Stage 1 (`gemini-3.5-transcribe-preview`)**: Transcribes all grouped teacher mobile voice clips (`audioClips[]`) in chronological order with acoustic speaker diarization (`[MM:SS] Speaker 1..N`) and cumulative multi-clip timestamp shifting.
+        2. **Stage 2 (`gemini-3.8-flash` / `gemini-4-argon`)**: Combines the Stage 1 diarized transcript, 1-tap mobile `"🗣️ Speaking Now"` voice anchors (`voiceAnchors[]`), student PC screen demo recordings (`screenClips[]`), prior week action items, and students' submitted **Weekly Logs** (`weeklyLogs[]`) to produce structured JSON (`attendanceRecord[]`, `keyInsights`, `studentContributions[]` with `logQualityAssessment`, `logQualityScore`, `realWorkScore`, `challengeQuestions[]`, and `weeklyFeedback`, plus `transcriptSegments[]`). Reconciles results across 100% of the group roster (`reconcileMeetingRosterResults`) and logs FinOps AI cost.
+-   **`prepareProjectMeetingLogQuestions`**:
+    -   **Trigger**: Callable `onCall` (`functions/ai_flows/projectMeetingFlows.js`, `memory: 512MiB`, `timeoutSeconds: 120`).
+    -   **Authentication & Authorization**: Requires teacher authorization.
+    -   **Description**: Pre-meeting Weekly Log Auditor powered by `gemini-3.8-flash` (`thinkingBudget: 0`). Audits each group member's submitted weekly log against their prior week's plan, classifies log authenticity (`genuine`, `vague_useless`, `suspected_ai_fake`, `inactive_no`), scores log quality (`1–10`), and generates 2–3 pointed technical **Challenge Questions** per student so the supervisor can verify real work and expose AI-generated/fake logs during the live consultation.
 
 #### Task Queue Workers (`firebase-functions/v2/tasks`)
 
@@ -292,6 +303,14 @@ This directory contains all the Cloud Functions related to AI-powered analysis, 
     -   **Authentication & Security**: Authenticated student or teacher role; checks enrolled class boundaries.
     -   **Description**: Automated AI grading worker for student practical task video submissions. Resolves the submission video blob from Cloud Storage, fetches task rubrics, and invokes Gemini 3.8 Flash to evaluate whether each required demonstration step was successfully completed. Updates the submission attempt document in `classes/{classId}/tasks/{taskId}/submissions/{studentUid}/attempts/{attemptId}` with step-by-step scoring, completion percentages, feedback summaries, and writes duration heatmaps to the grading matrix (`TaskGradingMatrixView.jsx`).
     -   **Worker Configuration**: Dedicated `2GiB` RAM, `300s` timeout, rate-limited Cloud Tasks push queue preventing Gemini quota exhaustion.
+- **`analyzeProjectMeeting`**:
+    -   **Trigger**: `onCall` (`functions/ai_flows/projectMeetingFlows.js`, `2GiB` RAM, `540s` timeout, region `asia-east2`).
+    -   **Authentication & Security**: Requires teacher authentication and enrollment in `classes/{classId}`. Checks class AI financial quota (`isQuotaExceeded`) before execution.
+    -   **Description**: Executes a **Two-Stage Dual-Device AI Pipeline** to analyze weekly project group meetings recorded with voice on the teacher's mobile phone (`audioClips[]`) and screen on a student's PC (`screenClips[]`):
+        1.  **Stage 1 (`gemini-3.5-transcribe-preview` Acoustic Speaker Diarization)**: Iterates through all grouped audio segments (`audioClips[]`) for the meeting, passing each `gs://` audio URI to `AI_TRANSCRIBE_MODEL` (`gemini-3.5-transcribe-preview`, fallback `gemini-3.8-flash`) to produce a verbatim multilingual transcript (Cantonese/English/Mandarin code-switching) with acoustic speaker turn tags (`[MM:SS] Speaker 1: ...`) and cumulative multi-clip timestamp shifting (`offsetTranscriptTimestamps`).
+        2.  **Stage 2 (`gemini-3.8-flash` Roster Attribution, Screen Synthesis & Action Item Tracking)**: Combines the Stage 1 diarized transcript, the group's enrolled student roster (`projectGroups/{groupId}.members`), optional 1-tap mobile speaker anchors (`voiceAnchors[]`), up to 2 student PC screen recordings (`screenClips[]`), and the prior week's `actionItemsNextWeek[]`. Resolves `Speaker 1..N` to real student UIDs and outputs structured JSON (`attendanceRecord[]`, `keyInsights`, `studentContributions[]`, and `transcriptSegments[]`), enforced with 100% roster coverage via `reconcileMeetingRosterResults`.
+    -   **Input Schema**: `{ classId: string, meetingId: string, customPromptText?: string, preferredModel?: string }`.
+    -   **Output Schema**: `{ success: boolean, meetingId: string, modelUsed: string, transcribeModelUsed: string, analysis: object }`.
 
 
 #### Genkit AI Tools (`aiTools.js`)

@@ -62,7 +62,7 @@ flowchart TD
 | :--- | :--- | :--- |
 | **Speech Recognition Engine** | On-device LiteRT Whisper (`litertWhisper.worker.js`) + Web Speech API | On-device LiteRT Whisper (`litertWhisper.worker.js`) + Web Speech API |
 | **Multilingual Captioning Engine** | Cloud Function (`translateTeacherSpeech` - Gemini 3.5 Flash-Lite / 3.8 Flash) | On-device LiteRT-LM Gemma 4 E2B WebGPU (`litertGemma.worker.js`) with transparent cloud fallback |
-| **Streaming Latency** | ~800ms - 1.5s (Sentence-level at pause) | ~1s - 2s (Local WebGPU generation) |
+| **Streaming Latency** | **~350ms - 800ms** (`thinkingBudget: 0`, `220ms` early first-clause trigger, `80ms` Firestore debounce) | ~1s - 2s (Local WebGPU generation) |
 | **Cloud Cost & Quota** | ~$0.01 per lecture (Pay-per-sentence prompt tokens) | **$0.00 (Zero cloud translation API cost once loaded)** |
 | **Model Loading Behavior** | Zero download required (0 MB) | **Explicit user-triggered download button (`⬇️ Download & Load Gemma 4 (~1.9 GB)`)**; never auto-downloads |
 | **Mobile / iOS Protection** | 100% compatible on Desktop & Mobile (iOS Chrome/Safari) | Automatically uses cloud fallback on mobile/iOS to prevent 1.5GB WebKit tab OOM refreshes |
@@ -120,7 +120,10 @@ To prevent transmitting continuous background noise or silence:
 
 ### 4.1 Mode 1: Server Model (Universal Compatibility & High Precision — Default)
 - **Speech Recognition**: Uses on-device LiteRT Whisper (`openai/whisper-tiny`, supporting Cantonese `zh-HK`, Mandarin `zh-CN`, English `en-US`, and Japanese `ja` in a single multilingual model) or native browser `SpeechRecognition`, with `transcribeAudioWithFirebaseAI` fallback.
-- **Multilingual Captioning**: Completed sentences are sent to Cloud Function `translateTeacherSpeech` / `processTeacherSpeechSubtitles` via Firebase `httpsCallable`.
+- **Sub-Second Early Clause Streaming & Zero-Thinking Fast Path**:
+  - `useTeacherLiveSubtitles.js` dispatches the first interim spoken clause after just **`220ms`** (`>= 4 chars`, throttled to `550ms` for subsequent interim updates) and debounces Firestore `liveSubtitles/current` writes at **`80ms`**.
+  - When a spoken sentence reaches `isFinal`, `lastTranslatedSourceTextRef` checks whether that exact phrase was already translated during the interim pass and reuses the cached translation immediately without a duplicate Cloud Function round-trip.
+  - `translateTeacherSpeechFlow` in [`functions/ai_flows/speechSubtitleFlows.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/speechSubtitleFlows.js) enforces `thinkingConfig: { thinkingBudget: 0 }` and `maxOutputTokens: 512`, eliminating 2–5s of hidden reasoning latency on live classroom captions.
 - **Backend Model**: Powered by **Gemini 3.5 Flash-Lite / 3.8 Flash** using structured system instructions that enforce preservation of domain keywords based on the configured classroom discipline:
   ```text
   You are an expert technical subtitle engine specialized in classroom education.

@@ -240,7 +240,10 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
     classId,
     teacherUid,
     teacherEmail,
-    enabled: isSubtitleBroadcastEnabled,
+    enabled: Boolean(
+      isSubtitleBroadcastEnabled &&
+      (isScreenBroadcasting || showBroadcastModal || showSubtitleModal)
+    ),
     audioStream: synchronizedAudioStream,
     deviceId: selectedMicDeviceId,
     courseContext: classSubjectDomain || `Class ${classId}`,
@@ -980,6 +983,9 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
   useEffect(() => {
     if (!classId) return;
 
+    let cachedDirProfiles = null;
+    let isLoadingDirProfiles = false;
+
     const classRef = doc(db, "classes", classId);
     const unsubscribeClass = onSnapshot(classRef, (docSnap) => {
       if (docSnap.exists()) {
@@ -997,17 +1003,27 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
         setUidToEmailMap(newMap);
         
         const baseProfiles = data.studentProfiles || {};
-        getDocs(collection(db, 'studentDirectory')).then(dirSnap => {
-          const dirProfiles = {};
-          if (dirSnap && typeof dirSnap.forEach === 'function') {
-            dirSnap.forEach(d => {
-              dirProfiles[d.id.trim().toLowerCase()] = d.data();
-            });
-          }
-          setStudentProfiles({ ...dirProfiles, ...baseProfiles });
-        }).catch(() => {
+        if (cachedDirProfiles) {
+          setStudentProfiles({ ...cachedDirProfiles, ...baseProfiles });
+        } else if (!isLoadingDirProfiles) {
+          isLoadingDirProfiles = true;
+          getDocs(collection(db, 'studentDirectory')).then(dirSnap => {
+            const dirProfiles = {};
+            if (dirSnap && typeof dirSnap.forEach === 'function') {
+              dirSnap.forEach(d => {
+                dirProfiles[d.id.trim().toLowerCase()] = d.data();
+              });
+            }
+            cachedDirProfiles = dirProfiles;
+            setStudentProfiles({ ...dirProfiles, ...baseProfiles });
+          }).catch(() => {
+            setStudentProfiles(baseProfiles);
+          }).finally(() => {
+            isLoadingDirProfiles = false;
+          });
+        } else {
           setStudentProfiles(baseProfiles);
-        });
+        }
 
         if (data.aiModel) {
           setSelectedAiModel(data.aiModel);

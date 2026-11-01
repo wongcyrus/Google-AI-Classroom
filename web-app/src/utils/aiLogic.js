@@ -177,6 +177,33 @@ export function pcmFloat32ToWavBase64(float32Array, sampleRate = 16000) {
 }
 
 /**
+ * Detects LLM audio transcription refusals, silence notices, or non-target script hallucinations
+ * caused by short ambient noise clips so they are never published as classroom subtitles.
+ */
+export function isTranscriptionHallucinationOrRefusal(text, speechLanguage = 'zh-HK') {
+  const trimmed = (text || '').trim();
+  if (!trimmed) return true;
+  if (/^(\[.*\]|\(.*\)|♪+.*♪*|thank you\.?|thanks for watching\.?|you\.?)$/i.test(trimmed)) {
+    return true;
+  }
+  if (
+    /please provide the audio|audio recording or transcript|no speech detected|no clear speech|inaudible|ambient room noise|nothing to transcribe|blank_audio|^transcription\s*:/i.test(
+      trimmed
+    )
+  ) {
+    return true;
+  }
+  const normalizedLang = String(speechLanguage || 'zh-HK').toLowerCase();
+  if (normalizedLang.startsWith('zh') || normalizedLang.startsWith('en')) {
+    // Reject hallucinated Korean Hangul, Arabic/Persian, Japanese Kana, Thai, or Cyrillic on Cantonese/English audio noise
+    if (/[\uAC00-\uD7AF\u1100-\u11FF\u0600-\u06FF\u3040-\u30FF\u0E00-\u0E7F\u0400-\u04FF]/.test(trimmed)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
  * Transcribe classroom speech using Firebase AI Logic (Gemini Developer API).
  * Leverages GoogleAIBackend and App Check as documented in Firebase AI Logic get-started.
  *
@@ -213,7 +240,8 @@ The spoken language is ${spokenLangDesc}.
 Rules:
 1. Transcribe the audio verbatim.
 2. Keep discipline-specific terms, proper nouns, and technical vocabulary accurate for ${domainContext}.
-3. Output ONLY the transcribed text. Do NOT add notes, explanations, or quotes.${customInstructions}`;
+3. Output ONLY the transcribed text. Do NOT add notes, explanations, or quotes.
+4. If the audio contains only silence, breathing, coughing, or ambient noise with no clear human speech, output nothing (empty string). Never ask for audio or state that no speech was detected.${customInstructions}`;
 
   if (typeof customPrompt === 'string' && customPrompt.includes('{{courseContext}}')) {
     systemInstruction = customPrompt
@@ -235,6 +263,10 @@ Rules:
       const model = getGenerativeModel(ai, {
         model: modelName,
         systemInstruction,
+        generationConfig: {
+          temperature: 0.1,
+          thinkingConfig: { thinkingBudget: 0 },
+        },
       });
 
       const result = await model.generateContent([
@@ -248,7 +280,12 @@ Rules:
       ]);
 
       const text = (result?.response?.text?.() || '').trim();
-      if (text) return text;
+      if (text && !isTranscriptionHallucinationOrRefusal(text, speechLanguage)) {
+        return text;
+      }
+      if (text) {
+        return '';
+      }
     } catch (err) {
       const errMsg = String(err?.message || err || '');
       const isQuotaOrDepleted =

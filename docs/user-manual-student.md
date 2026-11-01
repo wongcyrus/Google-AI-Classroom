@@ -485,7 +485,21 @@ Once evaluation completes (and feedback is released per your instructor's policy
 
 ---
 
-## 12. Troubleshooting & Frequently Asked Questions
+## 12. Sharing Your PC Screen During Weekly Project Group Meetings
+**Dedicated Step-by-Step Guide:** 👥 **[Project Group Meetings & Weekly Log User Guide](./project-group-meetings-and-weekly-log-user-guide.md)**
+
+During weekly or ad-hoc project group consultations with your main supervisor or co-supervisor, your supervisor records the meeting conversation on their **mobile phone**, reviews your submitted **Weekly Log**, and may designate one group member to share their **PC screen** (for live code walkthroughs, UI demos, or architecture slides).
+
+### How Dual-Device Project Meeting Screen Capture Works
+1. **Works at Any Period & Matches Your `@stu.vtc.edu.hk` Account**: You do **not** need to wait for a scheduled lecture bell. Simply log in to the Student Portal (`/student`) on your PC with your `{studentId}@stu.vtc.edu.hk` account.
+2. **Live Capture Only (No Manual File Uploads)**: To ensure authenticity, manual video/file uploads are disabled. When your supervisor starts a meeting for your project group and selects you as the **Presenting Student** ([`useStudentProjectMeetingScreenRecorder.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/hooks/useStudentProjectMeetingScreenRecorder.js) listening on both `activeMeetingCaptures/{studentUid}` and `activeMeetingCaptures/{studentEmail}`), a purple **Project Group Meeting Banner** ([`StudentView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/StudentView.jsx#L2495-L2547)) appears at the top of your screen:
+   - **If you are already sharing your PC screen**: Your screen recording starts automatically (`🔴 Recording PC Screen (MM:SS)`) with zero extra prompts.
+   - **If you are not yet sharing your PC screen**: Click **`🖥️ Share My PC Screen for Meeting Demo`** in the banner and select your screen/window to begin recording your live demonstration.
+3. **Automatic Upload & Synchronization**: When your supervisor stops the meeting on their phone (or if you click **`⏹️ Stop Screen Share`**), your PC screen recording automatically uploads and attaches to your group's weekly meeting dossier alongside your supervisor's voice recording and post-meeting weekly feedback.
+
+---
+
+## 13. Troubleshooting & Frequently Asked Questions
 
 ### Q: Why does the app say "Google Chrome Required"?
 **A:** Other browsers (Safari, Firefox, Edge) do not support the exact WebRTC display surface verification or MediaPipe WebAssembly threading required by the system. Install the latest version of **Google Chrome** to resolve this.

@@ -1130,7 +1130,64 @@ The **Practical Task & Lab Exam System** ([`TasksManagementView.jsx`](file:///ho
 
 ---
 
-## 19. Troubleshooting & Best Practices
+## 19. Project Group Meeting Management & Individual Student Contribution Profiles
+**Primary Tab:** `👥 Project Meetings` (`/class/:classId?tab=meetings`) or `🎬 Recordings & Sessions` $\to$ `👥 Project Group Meetings`  
+**Dedicated Step-by-Step Guide:** 👥 **[Project Group Meetings, Weekly Log Auditing & Student Contribution Profiles User Guide](./project-group-meetings-and-weekly-log-user-guide.md)**
+
+In project-based courses where multiple supervisor and co-supervisor teachers meet weekly with student project groups in parallel and at any period (scheduled labs, consultation hours, or ad-hoc slots), the **Project Group Meeting Management & Student Contribution Profile Module** ([`ProjectMeetingsView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/meetings/ProjectMeetingsView.jsx), [`projectGroupUtils.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/utils/projectGroupUtils.js)):
+1. Ingests each class's **Public Weekly Log Google Sheet** (`Form Responses 2`) **on-demand before class** (with initial full backfill + smart incremental delta sync, even if 0 weekly meetings have been recorded yet).
+2. Audits weekly log quality (`🟢 Genuine`, `🔴 Vague / Useless`, `🟠 Suspected AI / Fake`, `⚪ Inactive ("No")`) and prepares **AI Challenge Questions** to verify real work during the meeting.
+3. Records the live meeting voice on the **teacher's mobile phone** (with 20+ minute Screen Wake Lock protection) alongside the **presenting student's PC screen** (strictly live capture only — manual file uploads are disabled for both teachers and students to prevent unverified file uploads).
+4. Runs a Two-Stage **Gemini 3.5 Transcribe + Gemini 3.8 Flash** pipeline to extract **attendance**, **key insights**, **verified real-work scores**, and **post-meeting weekly feedback**.
+
+### 19.1 Importing & Managing Persistent Project Groups
+1. **1-Click Sync from Weekly Log Google Sheet**:
+   - Once you sync your class's Weekly Log Google Sheet, click **`👥 Sync N Groups from Sheet`** to automatically create or merge all project groups (`A01`, `A11`, etc.), supervisors, and student rosters (`{studentId}@stu.vtc.edu.hk`).
+2. **Batch Import via Excel / CSV**:
+   - Click **`👥 Manage / Import Groups`** to open [`ProjectGroupEditorModal.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/meetings/ProjectGroupEditorModal.jsx), paste CSV/TSV rows (`GroupName, ProjectTopic, SupervisorEmail, StudentEmail, StudentName, Role`), or use **`⚖️ Auto-Divide`** to split unassigned students into groups of `N`.
+
+### 19.2 On-Demand Weekly Log Google Sheet Ingestion, Class Schedule Weeks & Holiday Resilience
+1. **Per-Class Sheet URL & On-Demand Smart Incremental Sync (No Cron Job)**:
+   - Paste your class's public Google Sheet link in the **📋 Weekly Log Google Sheet** bar and click **`🔄 Sync & Ingest New Logs`** before class.
+   - The URL is saved per-class on `classes/{classId}.projectLogSheetUrl`.
+   - **1st Run (Full Historical Backfill)**: Ingests all historical weekly logs (`Week 1` → `Current`) across all students into `classes/{classId}/projectStudentProfiles/{email}` even when 0 meetings have been recorded.
+   - **2nd+ Run (Incremental Delta Only)**: Writes **only** newly submitted weekly logs or changed student profiles (`deltaProfiles`), skipping unchanged profiles (`0` redundant Firestore writes). Click **`🔁 Full`** anytime to force a full re-ingestion.
+2. **Canonical `@stu.vtc.edu.hk` Mapping & 1-Digit ID Typo Healing**:
+   - Student IDs from the Google Sheet (e.g. `250105348`) are normalized to `{studentId}@stu.vtc.edu.hk` and automatically synced into the class roster (`studentEmails` & `studentProfiles`).
+   - If a student makes a 1-digit typo in their Student ID on the Google Form (e.g. `20231955` instead of `250231955`), the parser automatically heals the ID to their canonical `@stu.vtc.edu.hk` profile and adds a `✏️ Healed Student ID Typo` audit badge.
+3. **Class Schedule Week Definition (`Week 1` → `Week N`) & Public Holiday Resilience**:
+   - **Class Schedule Anchor**: `Week 1` is automatically anchored to the Monday (`00:00`) of your class schedule's `startDate` (`classInfo.schedule.startDate`), displaying calendar ranges such as `Week 1 (Sep 7 – Sep 13)` in the **📅 Week #** selector and Student Dossier timeline.
+   - **Public Holiday / Skipped Weeks**: Weeks where no logs and no meetings occur (e.g., public holidays or reading weeks) are automatically skipped and **never** penalize `missingWeeksCount` or `submissionRatePct`. Post-holiday logs automatically verify continuity against the last active pre-holiday plan.
+
+### 19.3 Individual Student Contribution Profiles, Fake/AI Log Audit & Challenge Questions
+Switch to **`👤 Student Profiles & Log Audit`** (or review the **Pre-Meeting Weekly Log Briefing** inside the Recording Studio):
+1. **4-Tier Weekly Log Quality Classification**:
+   - **`🟢 Genuine High-Quality Log` (`7–10/10`)**: Names specific modules, concrete technical findings, and follows through on the prior week's plan.
+   - **`🔴 Vague / Useless Log` (`1–4/10`)**: Ultra-short filler such as `"done"`, `"thinking"`, `"do website"`, or `<20` characters.
+   - **`🟠 Suspected AI / Fake Log` (`3–5/10`)**: Sudden multi-tier buzzword explosion after weeks of `"done"`, LLM markdown boilerplate, or claims disconnected from the prior week's plan.
+   - **`⚪ Inactive ("No")` (`2/10`)**: Student reported `"No"` work done that week.
+2. **Pre-Meeting AI Challenge Questions**:
+   - Click **`🤖 AI Prepare Log Questions`** before or during the meeting to invoke [`prepareProjectMeetingLogQuestions`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/projectMeetingFlows.js) (`gemini-3.8-flash`), generating 2–3 pointed technical verification questions per student to test whether they genuinely built what their log claims.
+3. **Export Student Contribution Profiles (`.xlsx`)**:
+   - Click **`📥 Export Student Profiles (.xlsx)`** to download a 2-sheet Excel workbook (**Sheet 1: Student Contribution Summary**, **Sheet 2: Weekly Logs & Challenge Audit**).
+
+### 19.4 Recording a Weekly Meeting (Teacher Mobile Voice + Student PC Screen & Co-Supervisors)
+Supervisors and co-supervisors can host meetings at **any period** without enabling class-wide `Start Capture`:
+1. Open **`👥 Project Meetings`** on your **Mobile Phone** (or desktop/tablet), select the **Project Group**, choose **`📅 Week #`**, and optionally select a **💻 Presenter Student PC Screen** (`{studentId}@stu.vtc.edu.hk`).
+2. **Multiple Meetings per Week (Main Supervisor + Co-Supervisor)**:
+   - When a **Co-Supervisor** records a meeting for the same group in the same week, the Studio automatically creates a **separate meeting entry** attributed to that Co-Supervisor (`👨‍🏫 {supervisorName}`) without overwriting the main supervisor's recording.
+   - Both **Student Contribution Profiles** and the **Weekly Matrix** automatically aggregate all supervisor and co-supervisor meetings held in the same week (`Meetings (2): PRESENT • Dr. Wong, Ir. CoSup`).
+3. Tap **`🔴 Start Voice Recording`**:
+   - **Teacher's Mobile Phone**: Records the room conversation (`audio/webm` or `audio/mp4`) with **Screen Wake Lock** and accidental-reload protection (`beforeunload`) for 20+ minute meetings.
+   - **Student's PC**: Receives a real-time signal on `activeMeetingCaptures/{studentUid}` and `activeMeetingCaptures/{studentEmail}`. Clicking **`🖥️ Share My PC Screen for Meeting Demo`** on the student's PC records and uploads their live screen demonstration directly into the meeting dossier.
+   - **1-Tap `"🗣️ Speaking Now"` Voice Anchors**: Tap a student's chip when they begin speaking to log a timestamp anchor (`voiceAnchors[]`) for speaker diarization.
+4. Tap **`⏹️ Stop & Save Clip`**, then click **`🤖 Run 2-Stage AI Analysis`**:
+   - **Stage 1 (`gemini-3.5-transcribe-preview`)**: Verbatim multilingual speaker diarization across all audio clips.
+   - **Stage 2 (`gemini-3.8-flash`)**: Synthesizes attendance, key insights, per-student completed work, **Log Quality Score (`1–10`)**, **Real Work Score (`1–10`)**, and **Post-Meeting Weekly Feedback** (`weeklyFeedback`), which can also be edited inline by the supervisor (`✏️ Edit Work / Feedback`).
+
+---
+
+## 20. Troubleshooting & Best Practices
 
 | Symptom | Cause | Solution |
 | :--- | :--- | :--- |

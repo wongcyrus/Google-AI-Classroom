@@ -1,8 +1,123 @@
 # Recent Changes & Architectural Enhancements
 
-**Date**: October 2026  
-**System**: HKIIT AI Classroom  
+**Date**: November 2026  
+**System**: Google AI Classroom  
 **Production URL**: `https://it114115-2627.web.app`
+
+## 0.0.0.0.0.0.0.0.0.0.3.1 Individual Student Contribution Profiles, On-Demand Weekly Log Sheet Ingestion, Fake/AI Log Challenge Engine, Holiday/Co-Supervisor Resilience & Sub-Second Live Captions
+
+**Date**: November 1, 2026  
+**Status**: Implemented, Verified with Passing Unit Tests (`ProjectMeetingsView.test.jsx` 6/6, `projectMeetingFlows.test.js` 4/4, `useTeacherLiveSubtitles.test.js` 25/25), and Deployed to `it114115-2627` (Production) & `it114115-dev-2026` (Development)  
+**Primary Files**:
+- [`web-app/src/utils/projectGroupUtils.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/utils/projectGroupUtils.js), [`web-app/src/components/meetings/ProjectMeetingsView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/meetings/ProjectMeetingsView.jsx), [`web-app/src/components/meetings/ProjectMeetingsView.test.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/meetings/ProjectMeetingsView.test.jsx)
+- [`functions/ai_flows/projectMeetingFlows.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/projectMeetingFlows.js) & [`functions/ai_flows/projectMeetingFlows.test.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/projectMeetingFlows.test.js)
+- [`web-app/src/hooks/useStudentProjectMeetingScreenRecorder.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/hooks/useStudentProjectMeetingScreenRecorder.js)
+- [`functions/ai_flows/speechSubtitleFlows.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/speechSubtitleFlows.js), [`web-app/src/hooks/useTeacherLiveSubtitles.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/hooks/useTeacherLiveSubtitles.js), [`web-app/src/hooks/useTeacherScreenBroadcast.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/hooks/useTeacherScreenBroadcast.js), [`web-app/src/components/MonitorView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/MonitorView.jsx)
+
+### Technical Analysis & Implementation Details:
+
+1. **Per-Class Public Weekly Log Google Sheet URL & On-Demand Smart Incremental Ingestion (`ProjectMeetingsView.jsx`, `projectGroupUtils.js`)**:
+   - **Per-Class Sheet Configuration (No Global Hardcoding, No Cron Job)**: Each class stores its own Google Form responses sheet URL in `classes/{classId}.projectLogSheetUrl`. Syncing is performed **strictly on-demand before class** via the **`🔄 Sync & Ingest New Logs`** button (or **`🔁 Full Re-Ingest`**).
+   - **Full Historical Backfill + Incremental Delta Sync (Works with 0 Recorded Meetings)**:
+     - **First Run (Initial Backfill)**: When `classes/{classId}/projectStudentProfiles` is empty, [`mergeIncrementalStudentProfiles`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/utils/projectGroupUtils.js#L1697-L1764) ingests all historical rows (`Week 1` → `Current`) across every student and persists their longitudinal profiles to Firestore even if 0 weekly meetings have been recorded.
+     - **Subsequent Runs (Incremental Delta Only)**: Compares incoming student profiles against `persistedProfiles` in Firestore (`classes/{classId}/projectStudentProfiles/{email}`), writing **only** profiles with newly submitted weekly logs or updated meeting evaluations (`deltaProfiles`) and skipping unchanged student profiles (`0` unnecessary Firestore writes).
+     - **Instant Offline/Reload Rehydration**: [`rehydrateWeeklyLogDataFromPersistedProfiles`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/utils/projectGroupUtils.js#L1120-L1208) reconstructs `weeklyLogData` directly from persisted Firestore `projectStudentProfiles` on page load before any CSV fetch is needed.
+
+2. **Canonical `@stu.vtc.edu.hk` Student Identity Mapping & 1-Digit ID Typo Healing (`projectGroupUtils.js`, `useStudentProjectMeetingScreenRecorder.js`)**:
+   - **Institutional Email Standardization**: [`toVtcStudentEmail`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/utils/projectGroupUtils.js#L631-L645) and [`extractVtcStudentId`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/utils/projectGroupUtils.js#L647-L658) normalize all 8–9 digit VTC Student IDs (e.g. `250105348`) to `{studentId}@stu.vtc.edu.hk` across `projectStudentProfiles/{email}`, `projectGroups.members`, `classes/{classId}.studentEmails`, and `classes/{classId}.studentProfiles`.
+   - **Automatic 1-Digit Student ID Typo Healing**: [`isWithinOneDigitTypo`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/utils/projectGroupUtils.js#L661-L693) detects and heals 1-digit insertion/deletion/substitution or adjacent transposition typos in Google Form submissions (e.g. `20231955` → `250231955` when the student name matches), preventing duplicate split profiles and flagging `✏️ Healed Student ID Typo`.
+   - **Dual-Key Student PC Screen Capture Signal**: [`useStudentProjectMeetingScreenRecorder.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/hooks/useStudentProjectMeetingScreenRecorder.js) subscribes to both `activeMeetingCaptures/{studentUid}` and `activeMeetingCaptures/{studentEmail}` (`@stu.vtc.edu.hk`), ensuring student PC demo recording triggers reliably even for students imported from the Weekly Log Sheet prior to their first login.
+
+3. **Weekly Log Quality Audit, Fake/AI Log Detection & Pre/Post-Meeting Workflow (`projectGroupUtils.js`, `projectMeetingFlows.js`)**:
+   - **4-Tier Heuristic + Gemini Log Quality Classifier ([`evaluateWeeklyLogQuality`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/utils/projectGroupUtils.js#L696-L881))**:
+     1. **`🟢 Genuine High-Quality Log` (`7–10/10`)**: Specific modules, concrete technical artifacts, and continuity with the prior week's plan.
+     2. **`🔴 Vague / Useless Log` (`1–4/10`)**: Ultra-short or generic filler (e.g., `"done"`, `"thinking"`, `"same as last week"`, `<20 chars`).
+     3. **`🟠 Suspected AI / Fake Log` (`3–5/10`)**: Sudden multi-tier buzzword explosion after weeks of `"done"`, LLM markdown/bullet boilerplate, or unverified claims disconnected from the prior week's plan.
+     4. **`⚪ Inactive ("No")` (`2/10`)**: Student selected `"No"` for `"I am doing something this week"`.
+   - **Pre-Meeting AI Challenge Questions & Post-Meeting Weekly Feedback**:
+     - Before or during the meeting, clicking **`🤖 AI Prepare Log Questions`** invokes [`prepareProjectMeetingLogQuestions`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/projectMeetingFlows.js) (`gemini-3.8-flash`) to generate 2–3 pointed technical verification questions per student designed to expose fake/AI-generated logs or probe vague logs.
+     - During Stage 2 meeting analysis ([`analyzeProjectMeeting`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/projectMeetingFlows.js)), Gemini cross-examines each student's spoken transcript and PC screen demo against their submitted weekly log to compute `logQualityScore` (`1–10`), `realWorkScore` (`1–10`), and individualized `weeklyFeedback`.
+   - **Live Capture Only Policy**: Removed manual audio and video file upload buttons for both teachers and students so all meeting voice tracks and student PC screen demos are guaranteed to be captured live.
+
+4. **Class Schedule Week Definition, Holiday Resilience & Co-Supervisor Multi-Meeting Aggregation (`projectGroupUtils.js`, `ProjectMeetingsView.jsx`)**:
+   - **Class Schedule → Monday-to-Sunday Week Definition**: [`resolveSemesterStartMondayFromClass`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/utils/projectGroupUtils.js#L896-L928) reads `classInfo.schedule.startDate` (or earliest `classInfo.scheduleHistory[].startDate`), snaps it to the Monday of Week 1, and [`formatWeekDateRange`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/utils/projectGroupUtils.js#L930-L950) renders calendar ranges (`Week 1 (Sep 7 – Sep 13)`) in the Recording Studio and Student Dossier timeline.
+   - **Public Holiday / Skipped Week Resilience**: [`buildStudentContributionProfiles`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/utils/projectGroupUtils.js#L1345-L1694) evaluates only **Active Weeks** (`union(logWeeks, meetingWeeks)`), so skipped holiday weeks with 0 logs and 0 meetings never penalize `missingWeeksCount` or `submissionRatePct`. Post-holiday logs automatically verify against the most recent active pre-holiday plan.
+   - **Multiple Meetings per Week (Main Supervisor + Co-Supervisor)**:
+     - [`existingTargetMeeting`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/meetings/ProjectMeetingsView.jsx#L317-L329) scopes automatic clip grouping by `normalizeStudentEmail(m.supervisorEmail) === currentUserEmail`, so a Co-Supervisor recording a meeting in the same week automatically creates a separate meeting entry attributed to that Co-Supervisor (`👨‍🏫 {supervisorName}`) without overwriting the Primary Supervisor's meeting.
+     - [`buildStudentContributionProfiles`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/utils/projectGroupUtils.js#L1514-L1605), the Weekly Matrix table in [`ProjectMeetingsView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/meetings/ProjectMeetingsView.jsx#L2459-L2487), and [`exportProjectMeetingsMatrixExcel`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/utils/projectGroupUtils.js#L400-L433) aggregate all meetings held in the same week (`weekMeetings`), combining attendance, verified tasks, and `[Supervisor Name]`-prefixed weekly feedback.
+
+5. **Low-Latency Live Class & Live Multilingual Caption Optimizations (`speechSubtitleFlows.js`, `useTeacherLiveSubtitles.js`, `MonitorView.jsx`, `useTeacherScreenBroadcast.js`)**:
+   - **Zero-Thinking Fast Subtitle Generation**: Configured `thinkingConfig: { thinkingBudget: 0 }` and `maxOutputTokens: 512` on `translateTeacherSpeechFlow` in [`functions/ai_flows/speechSubtitleFlows.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/speechSubtitleFlows.js), eliminating 2–5 seconds of hidden reasoning latency per spoken sentence.
+   - **Early First-Clause Streaming & Deduplicated Finalization**: Lowered the initial interim translation trigger in [`useTeacherLiveSubtitles.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/hooks/useTeacherLiveSubtitles.js) to `220ms` (`>= 4 chars`), reduced Firestore subtitle write debounce from `350ms` to `80ms`, and added `lastTranslatedSourceTextRef` deduplication so finalizing a sentence whose interim text was already translated skips a redundant Cloud Function round-trip.
+   - **Main-Thread `requestAnimationFrame` Snapshot Coalescing**: Coalesced high-frequency Firestore snapshot updates on `classes/{classId}/students` in [`MonitorView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/MonitorView.jsx) and `screenBroadcastViewers` in [`useTeacherScreenBroadcast.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/hooks/useTeacherScreenBroadcast.js) via `requestAnimationFrame` to prevent React render thrashing during live classes.
+
+---
+
+## 0.0.0.0.0.0.0.0.0.0.3.0 Project Group Meeting Management Module (Dual-Device Mobile Voice + Student PC Screen & Two-Stage Gemini 3.5 Transcribe Diarization)
+
+**Date**: October 29, 2026  
+**Status**: Implemented & Verified with Passing Unit Tests (`projectMeetingFlows.test.js` 4/4, `ProjectMeetingsView.test.jsx` 4/4, `ClassView.test.jsx` 19/19, `StudentView.test.jsx` 53/53)  
+**Primary Files**:
+- [`functions/ai_flows/projectMeetingFlows.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/projectMeetingFlows.js) & [`functions/ai_flows/projectMeetingFlows.test.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/projectMeetingFlows.test.js)
+- [`admin/prompts/audios/Project Group Meeting Analyzer.md`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/admin/prompts/audios/Project%20Group%20Meeting%20Analyzer.md)
+- [`web-app/src/components/meetings/ProjectMeetingsView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/meetings/ProjectMeetingsView.jsx) & [`web-app/src/components/meetings/ProjectMeetingsView.test.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/meetings/ProjectMeetingsView.test.jsx)
+- [`web-app/src/components/meetings/ProjectGroupEditorModal.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/meetings/ProjectGroupEditorModal.jsx), [`web-app/src/components/meetings/meetings.css`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/meetings/meetings.css), [`web-app/src/utils/projectGroupUtils.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/utils/projectGroupUtils.js)
+- [`web-app/src/hooks/useStudentProjectMeetingScreenRecorder.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/hooks/useStudentProjectMeetingScreenRecorder.js), [`web-app/src/components/StudentView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/StudentView.jsx), [`web-app/src/components/ClassView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/ClassView.jsx)
+- [`firestore.rules`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/firestore.rules), [`storage.rules`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/storage.rules)
+
+### Technical Analysis & Implementation Details:
+
+1. **Persistent Project Group Management & Batch Excel/CSV Import (`ProjectGroupEditorModal.jsx`, `projectGroupUtils.js`, `ProjectMeetingsView.jsx`)**:
+   - **Persistent Group Entities**: Added `classes/{classId}/projectGroups/{groupId}` storing `groupName`, `projectTopic`, `supervisorUid`, `supervisorEmail`, `supervisorName`, and `members[]` (`uid`, `email`, `name`, `studentId`, `role`).
+   - **3-Pathway Group Creation & Management**:
+     1. **📥 Import Groups (.xlsx / .csv)**: Teachers can download a pre-populated Excel template (`📥 Template (.xlsx)`) containing all enrolled students, assign `Group Name`, `Project Topic`, `Supervisor Email`, and `Role`, and upload it back (`parseProjectGroupsRows`, `commitImportedProjectGroups`). Automatically resolves student UIDs and supervisor UIDs by email and upserts groups by normalized group name.
+     2. **⚖️ Auto-Divide Unassigned**: 1-click balanced division of unassigned students into `N` groups (`autoDivideStudentsIntoGroups`).
+     3. **➕ Manual Modal Editor**: Full search-and-toggle roster modal with per-member role tags (`Leader`, `Member`, `Backend`, `Frontend`, `UI/UX`, `AI/Data`, `DevOps/QA`).
+
+2. **Parallel Multi-Supervisor & Any-Period Recording with Dual-Device Sync (`ProjectMeetingsView.jsx`, `useStudentProjectMeetingScreenRecorder.js`, `StudentView.jsx`)**:
+   - **Zero Timetable / Class-Lock Dependency**: Supervisors can host and record project group meetings at **any period** (scheduled lab, consultation hour, or ad-hoc slot) without turning on class-wide `isCapturing`. Multiple supervisors can record different groups in parallel (`Supervisor Filter: My Supervised Groups | All Class Groups`).
+   - **Hierarchical Recording Grouping**: Every meeting is bound to `groupId` (`projectGroups/{groupId}`) and `sessionGroupId` (`mtg_${groupId}_W${weekNumber}`). Multiple audio clips (`audioClips[]`) and student PC screen clips (`screenClips[]`) recorded in the same meeting are grouped together under a single `classes/{classId}/projectMeetings/{meetingId}` dossier.
+   - **Dual-Device Recording (Voice on Teacher's Mobile Phone + Screen on Student's PC)**:
+     - **Teacher's Mobile Phone**: Records meeting voice via `MediaRecorder` (`audio/webm;codecs=opus` or `audio/mp4` on iOS Safari) with Wake Lock protection and **1-Tap `"🗣️ Speaking Now"` Roster Pills** that log `voiceAnchors[]` (`{ offsetSec, studentUid, name, email }`) to anchor student voice identities in a single shared room microphone.
+     - **Student's PC**: When the supervisor selects a **Presenting Student (PC Screen)**, `ProjectMeetingsView` writes a real-time signal document to `classes/{classId}/activeMeetingCaptures/{studentUid}`. [`useStudentProjectMeetingScreenRecorder.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/hooks/useStudentProjectMeetingScreenRecorder.js) listens across all enrolled classes (supporting off-schedule periods), automatically records the student's shared PC screen (`screenStreamRef.current`, or prompts a 1-click **`🖥️ Share PC Screen for Meeting`** banner in [`StudentView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/StudentView.jsx#L2495-L2547)), uploads the `.webm` screencast to `/projectMeetings/{classId}/{groupId}/{meetingId}/`, and appends metadata to `projectMeetings/{meetingId}.screenClips[]`.
+
+3. **Two-Stage `gemini-3.5-transcribe-preview` Diarization + `gemini-3.8-flash` Meeting Intelligence (`projectMeetingFlows.js`)**:
+   - **Stage 1 (`gemini-3.5-transcribe-preview` Acoustic Speaker Diarization)**:
+     - Iterates through all `audioClips[]` in chronological order, invoking `AI_TRANSCRIBE_MODEL` (`gemini-3.5-transcribe-preview`) to produce verbatim multilingual transcripts (Cantonese / English / Mandarin code-switching) with acoustic speaker labels (`[MM:SS] Speaker 1: ...`) and cumulative multi-clip timestamp shifting (`offsetTranscriptTimestamps`).
+   - **Stage 2 (`gemini-3.8-flash` Roster Identity Resolution, Screen Synthesis & Action Tracking)**:
+     - Combines the Stage 1 diarized transcript, `group.members` roster, `voiceAnchors[]` (1-tap mobile speaker anchors), `screenClips[]` (up to 2 student PC screen recordings passed as multimodal `gs://` media parts), and `previousActionItems[]` from the group's prior meeting.
+     - Resolves `Speaker 1..N` to real students and outputs structured JSON (`reconcileMeetingRosterResults` guarantees 100% roster coverage):
+       - **`attendanceRecord[]`**: `present` (`Spoke & Verified` / `Present`), `silent_present`, or `absent` with `speakingCount`, `firstSpokeAt`, and `evidenceQuote`.
+       - **`keyInsights`**: `executiveSummary`, `decisionsMade[]`, `risksAndBlockers[]`, `supervisorFeedback[]`, `screenDemoSummary`, and `nextMeetingFocus`.
+       - **`studentContributions[]`**: Per-student `workDone[]`, `demonstratedOnScreen[]`, `blockers[]`, `actionItemsNextWeek[]`, `previousActionStatus`, and `contributionSummary`.
+       - **`transcriptSegments[]`**: Timestamped dialogue turns mapped to `studentUid` and `speakerRole`.
+   - **Editable Review & `.xlsx` Matrix Export**: Teachers can manually override any student's attendance status (`present` / `late` / `absent`), edit `supervisorNotes`, and export a 2-sheet OpenXML `.xlsx` report (**Sheet 1: Group Attendance Matrix**, **Sheet 2: Work Done & Insights**).
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Sup as 👨‍🏫 Supervisor (Mobile Phone)
+    actor Stu as 🧑‍🎓 Presenter Student (PC)
+    participant FS as 🗄️ Firestore & Cloud Storage
+    participant CF as ⚡ analyzeProjectMeeting (ai_flows)
+    participant S1 as 🎙️ Stage 1: gemini-3.5-transcribe-preview
+    participant S2 as 🧠 Stage 2: gemini-3.8-flash
+
+    Sup->>FS: Start Meeting on Mobile (Select Group + Presenter Student)
+    FS-->>Stu: Snapshot on activeMeetingCaptures/{studentUid}
+    Stu->>Stu: Auto-Record PC Screen (or 1-Click Share PC Screen Banner)
+    Sup->>Sup: Record Mobile Voice + Optional 1-Tap "🗣️ Speaking Now" Anchors
+    Sup->>FS: Stop Meeting -> Upload Audio Clip & Set status = 'stopping'
+    Stu->>FS: Stop Screen Recorder -> Upload WebM & Append to screenClips[]
+    Sup->>CF: Invoke analyzeProjectMeeting({ classId, meetingId })
+    CF->>S1: Pass audioClips[] (gs:// URIs) for Acoustic Speaker Diarization
+    S1-->>CF: Verbatim Diarized Transcript ([MM:SS] Speaker 1..N)
+    CF->>S2: Pass Diarized Transcript + voiceAnchors[] + screenClips[] + Roster + Prior Actions
+    S2-->>CF: Structured JSON (Attendance, Key Insights, Work Done per Student)
+    CF->>FS: Save analysis & status = 'ready' + Log FinOps AI Cost
+```
+
+---
 
 ## 0.0.0.0.0.0.0.0.0.0.2.9 1-Click "Next Session Handover" for Back-to-Back Talks & Out-of-Tab Microphone Silence OS Notifications
 

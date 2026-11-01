@@ -378,6 +378,66 @@ describe('useStudentClassSchedule Hook', () => {
     expect(result.current.currentActiveClassId).toBe('CLASS_B');
     expect(result.current.activeClassIds).toEqual(['CLASS_B', 'CLASS_A']);
   });
+
+  it('ignores stale zombie isBroadcasting/isCapturing flags from a previous day when overtimeUntil has expired', async () => {
+    // Thursday 2026-10-29 06:30:00 UTC (14:30 HKT):
+    // CLASS_MON (Monday 15:30-17:30) still has stale isBroadcasting: true and expired overtimeUntil from Monday Oct 26
+    // CLASS_THU (Thursday 05:30-07:30 UTC) is in its scheduled slot right now
+    const mockNow = new Date('2026-10-29T06:30:00Z');
+    vi.setSystemTime(mockNow);
+
+    let profileCb;
+    onSnapshot.mockImplementation((ref, cb) => {
+      profileCb = cb;
+      return unsubMock;
+    });
+
+    getDoc
+      .mockResolvedValueOnce({
+        exists: () => true,
+        data: () => ({
+          isCapturing: true,
+          isBroadcasting: true,
+          overtimeUntil: '2026-10-26T12:00:00Z',
+          broadcastStartedAt: '2026-10-26T08:00:00Z',
+          schedule: {
+            timeZone: 'UTC',
+            startDate: '2026-09-01',
+            endDate: '2026-12-31',
+            timeSlots: [{ days: ['Mon'], startTime: '07:30', endTime: '09:30' }],
+          },
+        }),
+      })
+      .mockResolvedValueOnce({
+        exists: () => true,
+        data: () => ({
+          isCapturing: true,
+          isBroadcasting: false,
+          schedule: {
+            timeZone: 'UTC',
+            startDate: '2026-09-01',
+            endDate: '2026-12-31',
+            timeSlots: [{ days: ['Thu'], startTime: '05:30', endTime: '07:30' }],
+          },
+        }),
+      });
+
+    const { result } = renderHook(() => useStudentClassSchedule({ uid: 'student_no_zombie_hijack' }));
+
+    await act(async () => {
+      profileCb({
+        exists: () => true,
+        data: () => ({ classes: ['CLASS_MON', 'CLASS_THU'] }),
+      });
+    });
+
+    act(() => {
+      vi.advanceTimersByTime(100);
+    });
+
+    expect(result.current.currentActiveClassId).toBe('CLASS_THU');
+    expect(result.current.activeClassIds).toEqual(['CLASS_THU']);
+  });
 });
 
 

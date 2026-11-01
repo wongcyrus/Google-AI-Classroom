@@ -14,6 +14,7 @@ import useAudioRecorder from '../hooks/useAudioRecorder';
 import { useClientLiteRTWhisper } from '../hooks/useClientLiteRTWhisper';
 import { useClientLiteRTGemma } from '../hooks/useClientLiteRTGemma';
 import useWebRTCPeekStudent from '../hooks/useWebRTCPeekStudent';
+import useStudentProjectMeetingScreenRecorder from '../hooks/useStudentProjectMeetingScreenRecorder';
 import useTeacherScreenBroadcastStudent from '../hooks/useTeacherScreenBroadcastStudent';
 import TeacherScreenViewerModal from './TeacherScreenViewerModal';
 import LiveSubtitleOverlay from './subtitles/LiveSubtitleOverlay';
@@ -1026,6 +1027,21 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
     screenStreamRef,
     webcamStreamRef,
     audioStreamRef,
+  });
+
+  // Dual-Device Project Group Meeting Screen Recorder (Teacher Mobile Voice + Student PC Screen)
+  const {
+    activeMeetingCapture,
+    meetingScreenState,
+    uploadProgress: meetingScreenUploadProgress,
+  } = useStudentProjectMeetingScreenRecorder({
+    activeClass,
+    userClasses,
+    studentUid: user?.uid,
+    studentEmail: user?.email,
+    studentName: user?.displayName || user?.email,
+    screenStreamRef,
+    isScreenSharing,
   });
 
   // Receiver Hook for Teacher Screen Broadcast (Classroom Frame Stream)
@@ -2474,6 +2490,59 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
               ✕ Close Window
             </button>
           </div>
+        </div>
+      )}
+      {/* Dual-Device Project Group Meeting PC Screen Recording Banner */}
+      {activeMeetingCapture && (
+        <div
+          className="project-meeting-pc-capture-banner"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: '12px',
+            padding: '10px 18px',
+            background: meetingScreenState === 'waiting_for_screen_share' ? '#fffbeb' : '#fef2f2',
+            borderBottom: `2px solid ${meetingScreenState === 'waiting_for_screen_share' ? '#f59e0b' : '#ef4444'}`,
+            color: meetingScreenState === 'waiting_for_screen_share' ? '#92400e' : '#991b1b',
+            fontSize: '0.9rem',
+            fontWeight: 600,
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <span style={{ fontSize: '1.2rem' }}>
+              {meetingScreenState === 'waiting_for_screen_share'
+                ? '🖥️'
+                : meetingScreenState === 'uploading'
+                ? '☁️'
+                : '🔴'}
+            </span>
+            <span>
+              {meetingScreenState === 'waiting_for_screen_share'
+                ? `Project Meeting (${activeMeetingCapture.groupName || 'Group'}): Supervisor ${activeMeetingCapture.supervisorEmail || ''} requested your PC screen recording. Please click "Share PC Screen Now".`
+                : meetingScreenState === 'uploading'
+                ? `Uploading your PC screen recording for ${activeMeetingCapture.groupName || 'Project Meeting'} (${meetingScreenUploadProgress}%)...`
+                : `Recording your PC Screen for Project Group Meeting "${activeMeetingCapture.groupName || ''}" (Voice recorded on Supervisor's Mobile)`}
+            </span>
+          </div>
+          {meetingScreenState === 'waiting_for_screen_share' && (
+            <button
+              type="button"
+              onClick={() => startScreen()}
+              style={{
+                background: '#d97706',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '6px',
+                padding: '6px 14px',
+                fontWeight: 700,
+                cursor: 'pointer',
+              }}
+            >
+              🖥️ Share PC Screen Now
+            </button>
+          )}
         </div>
       )}
       {/* Quick Switch to Mobile View button for students on mobile devices or tablets */}

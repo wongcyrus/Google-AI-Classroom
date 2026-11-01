@@ -107,6 +107,8 @@ async function seedPrompts() {
         applyTo = ['Lecture STT & Chapters'];
       } else if (name.includes('Gemma')) {
         applyTo = ['On-Device Gemma Voice Intent'];
+      } else if (name.includes('Project Group Meeting')) {
+        applyTo = ['Project Group Meetings', 'Session Audio Summary'];
       } else if (name.includes('Discussion') || name.includes('Long Audio')) {
         applyTo = ['Session Audio Summary'];
       } else {

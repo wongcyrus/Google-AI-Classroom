@@ -198,15 +198,14 @@
 .class-hub-nav-bar {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: 0.35rem;
   background-color: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   padding: 0.25rem 0.4rem;
   margin-bottom: 0.75rem;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
-  overflow-x: auto;
-  scrollbar-width: thin;
+  overflow: hidden;
 }
 
 .class-hub-mode-selector {
@@ -224,15 +223,15 @@
 .hub-mode-btn {
   background: none;
   border: none;
-  padding: 0.35rem 0.75rem;
+  padding: 0.32rem 0.65rem;
   border-radius: 4px;
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   font-weight: 700;
   color: var(--color-text-muted);
   cursor: pointer;
   display: flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: 0.35rem;
   transition: all 0.15s ease;
   white-space: nowrap;
 }
@@ -272,39 +271,36 @@
   height: 22px;
   background-color: var(--color-border);
   flex-shrink: 0;
-  margin: 0 0.25rem;
+  margin: 0 0.15rem;
 }
 
 /* Primary Tab Navigation inside Unified Ribbon */
 .class-hub-nav-bar .tab-nav {
   display: flex;
   align-items: center;
-  gap: 0.25rem;
+  gap: 0.2rem;
   background: transparent;
   border: none;
   padding: 0;
   margin: 0;
-  overflow-x: auto;
+  flex: 1 1 auto;
+  min-width: 0;
+  flex-wrap: wrap;
   box-shadow: none;
-  scrollbar-width: none;
-}
-
-.class-hub-nav-bar .tab-nav::-webkit-scrollbar {
-  display: none;
 }
 
 .class-hub-nav-bar .tab-button {
   background: none;
   border: 1px solid transparent;
-  padding: 0.35rem 0.65rem;
+  padding: 0.32rem 0.52rem;
   border-radius: var(--radius-sm);
-  font-size: 0.82rem;
+  font-size: 0.79rem;
   font-weight: 500;
   color: var(--color-text-muted);
   cursor: pointer;
   display: flex;
   align-items: center;
-  gap: 0.35rem;
+  gap: 0.3rem;
   transition: all 0.15s ease;
   white-space: nowrap;
 }
@@ -319,6 +315,60 @@
   background-color: var(--color-primary-light);
   font-weight: 600;
   border-color: rgba(79, 70, 229, 0.2);
+}
+
+@media (max-width: 900px) {
+  .class-view {
+    padding: 0.5rem 0.65rem 1.5rem 0.65rem;
+  }
+
+  .class-hub-nav-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.45rem;
+    padding: 0.45rem;
+    overflow-x: visible;
+  }
+
+  .class-hub-mode-selector {
+    display: flex;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .hub-mode-btn {
+    flex: 1 1 50%;
+    justify-content: center;
+    padding: 0.45rem 0.5rem;
+    font-size: 0.78rem;
+  }
+
+  .nav-bar-divider {
+    display: none;
+  }
+
+  .class-hub-nav-bar .tab-nav {
+    display: flex;
+    flex-wrap: wrap;
+    width: 100%;
+    gap: 0.35rem;
+    padding-top: 0.25rem;
+    border-top: 1px solid var(--color-border);
+  }
+
+  .class-hub-nav-bar .tab-button {
+    flex: 1 1 calc(50% - 0.35rem);
+    justify-content: flex-start;
+    background-color: var(--color-surface-hover);
+    border: 1px solid var(--color-border);
+    padding: 0.45rem 0.6rem;
+    font-size: 0.78rem;
+  }
+
+  .class-view .sub-tab-nav {
+    flex-wrap: wrap;
+    overflow-x: visible;
+  }
 }
 
 /* Secondary Sub-tab Navigation */

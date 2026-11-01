@@ -171,6 +171,7 @@ export const handleAutomaticCapture = onSchedule(scheduleOptions, async () => {
     }
 
     const { localTime, localDay } = getLocalTimeInfo(now, schedule.timeZone);
+    let matchedSlotStop = false;
 
     schedule.timeSlots.forEach(slot => {
       if (!slot.days || !slot.days.includes(localDay)) {
@@ -192,6 +193,7 @@ export const handleAutomaticCapture = onSchedule(scheduleOptions, async () => {
         const { localTime: targetLocalTime } = getLocalTimeInfo(targetEnd, schedule.timeZone);
 
         if (slot.endTime === targetLocalTime && classData.isCapturing) {
+          matchedSlotStop = true;
           const stopCheckPromise = (async () => {
             // Do NOT auto-stop capture if teacher extended overtime or is actively broadcasting screen
             if (classData.overtimeUntil) {
@@ -219,6 +221,47 @@ export const handleAutomaticCapture = onSchedule(scheduleOptions, async () => {
         }
       }
     });
+
+    // Sweep stale post-overtime capture or zombie broadcast flags on classes that are no longer in an active session
+    if (isStopTime && !matchedSlotStop && (classData.isCapturing || classData.isBroadcasting)) {
+      if (!isClassSessionActive(classData, now)) {
+        const staleSweepPromise = (async () => {
+          try {
+            const frameSnap = await db.doc(`classes/${classId}/screenBroadcast/liveFrame`).get();
+            const frameData = frameSnap?.exists ? (frameSnap.data() || {}) : {};
+            const frameTs = frameData.timestamp;
+            const frameMs = frameTs
+              ? (typeof frameTs.toMillis === 'function' ? frameTs.toMillis() : new Date(frameTs).getTime())
+              : 0;
+            if (!isNaN(frameMs) && frameMs > 0 && now.getTime() - frameMs < 15 * 60 * 1000) {
+              logger.info(`Skipping stale sweep for class ${classId}: live broadcast frame emitted recently.`);
+              return;
+            }
+          } catch (err) {
+            logger.warn(`Could not check liveFrame for class ${classId} during stale sweep:`, err);
+          }
+
+          logger.info(`Sweeping expired overtime/zombie capture & broadcast state for class ${classId}`);
+          await doc.ref.update({
+            isCapturing: false,
+            isBroadcasting: false,
+            captureStartedAt: null,
+            overtimeUntil: null,
+          });
+          try {
+            await db.doc(`classes/${classId}/screenBroadcast/session`).set(
+              { isBroadcasting: false, endedAt: FieldValue.serverTimestamp() },
+              { merge: true }
+            );
+            await db.doc(`classes/${classId}/liveSubtitles/current`).set(
+              { active: false },
+              { merge: true }
+            );
+          } catch {}
+        })();
+        promises.push(staleSweepPromise);
+      }
+    }
   });
 
   await Promise.all(promises);
@@ -848,3 +891,4 @@ export const handleAutomaticBingo = onSchedule(bingoScheduleOptions, async () =>
 
   await Promise.all(batchJobs);
 });
+

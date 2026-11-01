@@ -24,6 +24,7 @@ import ClassManagement from './ClassManagement';
 import BingoResultsView from './BingoResultsView';
 import LectureRecordingsView from './LectureRecordingsView';
 import TasksManagementView from './tasks/TasksManagementView';
+import ProjectMeetingsView from './meetings/ProjectMeetingsView';
 import { openProjectorQrPopup } from './broadcast/PresentationQrModal';
 
 import './ClassView.css';
@@ -359,10 +360,13 @@ const ClassView = ({ user }) => {
       case 'video':
         switch (subTab) {
           case 'recordings': return <LectureRecordingsView classId={classId} user={user} lessons={lessons} selectedLesson={selectedLesson} timezone={timezone} className={classInfo?.name || classId} />;
+          case 'meetings': return <ProjectMeetingsView classId={classId} classInfo={classInfo} user={user} />;
           case 'library': return <VideoLibrary {...props} lessons={lessons} />;
           case 'jobs': return <VideoAnalysisJobs {...props} />;
           default: return <LectureRecordingsView classId={classId} user={user} lessons={lessons} selectedLesson={selectedLesson} timezone={timezone} className={classInfo?.name || classId} />;
         }
+      case 'meetings':
+        return <ProjectMeetingsView classId={classId} classInfo={classInfo} user={user} />;
       case 'analytics':
         switch (subTab) {
           case 'irregularities': return <IrregularitiesView {...props} />;
@@ -411,7 +415,7 @@ const ClassView = ({ user }) => {
     }
   };
 
-  const isRecordingsTab = mainTab === 'video' && (!subTab || subTab === 'recordings' || subTab === 'default');
+  const isRecordingsTab = mainTab === 'video' && (!subTab || subTab === 'recordings' || subTab === 'meetings' || subTab === 'default');
   const showDateFilter = ['video', 'analytics', 'data'].includes(mainTab) && !isRecordingsTab;
 
   return (
@@ -579,27 +583,39 @@ const ClassView = ({ user }) => {
             <button
               className={`tab-button ${mainTab === 'tasks' ? 'active' : ''}`}
               onClick={() => setTab('tasks')}
+              aria-label="Practical Tasks & Homework"
             >
-              <span>📋</span> Practical Tasks & Homework
+              <span>📋</span> Tasks & Homework
+            </button>
+
+            <button
+              className={`tab-button ${mainTab === 'meetings' ? 'active' : ''}`}
+              onClick={() => setTab('meetings')}
+              aria-label="Project Meetings"
+            >
+              <span>👥</span> Project Meetings
             </button>
 
             <button
               className={`tab-button ${mainTab === 'video' ? 'active' : ''}`}
               onClick={() => setTab('video', 'recordings')}
+              aria-label="Recordings & Sessions"
             >
-              <span>🎬</span> Recordings & Sessions
+              <span>🎬</span> Recordings
             </button>
 
             <button
               className={`tab-button ${mainTab === 'analytics' ? 'active' : ''}`}
               onClick={() => setTab('analytics', 'irregularities')}
+              aria-label="AI Analytics & Insights"
             >
-              <span>📊</span> AI Analytics & Insights
+              <span>📊</span> AI Analytics
             </button>
 
             <button
               className={`tab-button ${mainTab === 'data' ? 'active' : ''}`}
               onClick={() => setTab('data')}
+              aria-label="Data & Archives"
             >
               <span>🗄️</span> Data & Archives
             </button>
@@ -607,8 +623,9 @@ const ClassView = ({ user }) => {
             <button
               className={`tab-button ${mainTab === 'settings' ? 'active' : ''}`}
               onClick={() => setTab('settings')}
+              aria-label="Class Settings & Roster"
             >
-              <span>⚙️</span> Class Settings & Roster
+              <span>⚙️</span> Settings & Roster
             </button>
           </>
         )}
@@ -697,6 +714,12 @@ const ClassView = ({ user }) => {
             onClick={() => setSub('recordings')}
           >
             <span>🎥</span> Teacher Lecture Recordings
+          </button>
+          <button
+            className={`tab-button ${subTab === 'meetings' ? 'active' : ''}`}
+            onClick={() => setSub('meetings')}
+          >
+            <span>👥</span> Project Group Meetings
           </button>
           <button
             className={`tab-button ${subTab === 'library' ? 'active' : ''}`}
