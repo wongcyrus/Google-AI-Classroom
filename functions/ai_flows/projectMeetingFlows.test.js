@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const mockDocGet = vi.fn();
 const mockDocUpdate = vi.fn().mockResolvedValue(true);
+const mockDocSet = vi.fn().mockResolvedValue(true);
 const mockCollectionWhereGet = vi.fn().mockResolvedValue({ docs: [] });
 
 vi.mock('./firebase.js', () => ({}));
@@ -13,6 +14,7 @@ vi.mock('firebase-admin/firestore', () => ({
       path,
       get: () => mockDocGet(path),
       update: (data) => mockDocUpdate(path, data),
+      set: (data, opts) => mockDocSet(path, data, opts),
     }),
     collection: (path) => ({
       where: () => ({
@@ -48,7 +50,9 @@ import {
   isLongClipTranscriptTruncated,
   resolveAudioMimeType,
   reconcileMeetingRosterResults,
+  handlePrepareProjectLogQuestions,
   handleAnalyzeProjectMeeting,
+  analyzeProjectMeeting,
 } from './projectMeetingFlows.js';
 
 describe('projectMeetingFlows', () => {
@@ -349,5 +353,209 @@ describe('projectMeetingFlows', () => {
     expect(res.preMeetingLogAudit).toHaveLength(1);
     expect(res.preMeetingLogAudit[0].logQualityStatus).toBe('suspected_ai_fake');
     expect(res.preMeetingLogAudit[0].challengeQuestions).toHaveLength(2);
+  });
+
+  it('handles edge cases in timestamp parsing, offsetting, truncation detection, and audio MIME types', () => {
+    expect(parseTimestampToSeconds(95.8)).toBe(95);
+    expect(parseTimestampToSeconds(null)).toBe(0);
+    expect(parseTimestampToSeconds('invalid:ts')).toBe(0);
+    expect(parseTimestampToSeconds('[01:02:05]')).toBe(3725);
+    expect(parseTimestampToSeconds('45')).toBe(45);
+
+    expect(offsetTranscriptTimestamps('', 100)).toBe('');
+    expect(offsetTranscriptTimestamps('[00:10] Hello', 0)).toBe('[00:10] Hello');
+
+    expect(isLongClipTranscriptTruncated('Too short', 600)).toBe(true);
+    expect(isLongClipTranscriptTruncated('A'.repeat(150), 600)).toBe(false);
+
+    expect(resolveAudioMimeType('clip.wav')).toBe('audio/wav');
+    expect(resolveAudioMimeType('clip.ogg')).toBe('audio/ogg');
+    expect(resolveAudioMimeType('clip.opus')).toBe('audio/ogg');
+    expect(resolveAudioMimeType('clip.mp4')).toBe('audio/mp4');
+  });
+
+  it('validates arguments, markdown fences, JSON fallback, and meetingId persistence in handlePrepareProjectLogQuestions', async () => {
+    await expect(handlePrepareProjectLogQuestions({ classId: '' })).rejects.toThrow(/classId/);
+    await expect(handlePrepareProjectLogQuestions({ classId: 'c1', weeklyLogs: [] })).rejects.toThrow(/weeklyLogs/);
+
+    mockGenerateWithResilience.mockResolvedValueOnce({
+      response: {
+        text: '```json\n{"preMeetingLogAudit":[{"studentId":"1","logQualityStatus":"genuine","logQualityScore":9}]}\n```',
+        usage: { promptTokenCount: 100, candidatesTokenCount: 50 },
+      },
+      modelUsed: 'gemini-3.8-flash',
+    });
+
+    const res1 = await handlePrepareProjectLogQuestions({
+      classId: 'c1',
+      meetingId: 'm1',
+      weeklyLogs: [{ studentName: 'Alice', isDoingSomething: false, submitted: false, inactiveReason: 'Holiday' }],
+    });
+    expect(res1.preMeetingLogAudit).toHaveLength(1);
+    expect(mockDocSet).toHaveBeenCalledWith(
+      'classes/c1/projectMeetings/m1',
+      expect.objectContaining({ preMeetingLogAudit: res1.preMeetingLogAudit }),
+      { merge: true }
+    );
+
+    mockGenerateWithResilience.mockResolvedValueOnce({
+      response: {
+        text: '```\nNOT_VALID_JSON\n```',
+        usage: {},
+      },
+      modelUsed: 'gemini-3.8-flash',
+    });
+
+    const res2 = await handlePrepareProjectLogQuestions({
+      classId: 'c1',
+      weeklyLogs: [{ studentName: 'Bob', isDoingSomething: true, workDone: 'API' }],
+    });
+    expect(res2.preMeetingLogAudit).toEqual([]);
+  });
+
+  it('handles prior week context, long-clip truncation fallback, JSON parse fallback, and error recovery in handleAnalyzeProjectMeeting', async () => {
+    await expect(handleAnalyzeProjectMeeting({ classId: 'c1', meetingId: '' })).rejects.toThrow(/required/);
+
+    mockDocGet.mockResolvedValueOnce({ exists: false });
+    await expect(handleAnalyzeProjectMeeting({ classId: 'c1', meetingId: 'missing' })).rejects.toThrow(/not found/);
+
+    mockDocGet.mockResolvedValueOnce({ exists: true, data: () => ({ groupId: '' }) });
+    await expect(handleAnalyzeProjectMeeting({ classId: 'c1', meetingId: 'no_audio' })).rejects.toThrow(
+      /No voice recording clips/
+    );
+
+    // Full run with legacy audioStoragePath, prior week meetings, long-clip fallback, and non-JSON Stage 2 response
+    mockDocGet.mockImplementation(async (path) => {
+      if (path === 'classes/c1/projectMeetings/m_long') {
+        return {
+          exists: true,
+          data: () => ({
+            groupId: 'g1',
+            weekNumber: 6,
+            audioStoragePath: 'gs://test-bucket/clip_long.webm',
+            durationSeconds: 1200,
+            weeklyLogs: [
+              {
+                studentName: 'Alice',
+                email: 'alice@stu.vtc.edu.hk',
+                isDoingSomething: true,
+                workDone: 'Built UI',
+                priorHistory: [{ weekNumber: 5, workDone: 'Setup' }],
+              },
+            ],
+          }),
+        };
+      }
+      if (path === 'classes/c1/projectGroups/g1') {
+        return {
+          exists: true,
+          data: () => ({
+            name: 'Group 1',
+            members: [{ uid: 'u1', email: 'alice@stu.vtc.edu.hk', name: 'Alice' }],
+          }),
+        };
+      }
+      return { exists: false };
+    });
+
+    mockCollectionWhereGet.mockResolvedValueOnce({
+      docs: [
+        {
+          id: 'm_prev',
+          data: () => ({
+            weekNumber: 5,
+            status: 'ready',
+            studentContributions: [
+              { name: 'Alice', email: 'alice@stu.vtc.edu.hk', actionItemsNextWeek: ['Finish login page'] },
+            ],
+          }),
+        },
+      ],
+    });
+
+    // Stage 1 initial truncated transcript on 1200s clip
+    mockGenerateWithResilience.mockResolvedValueOnce({
+      response: {
+        message: { content: [{ text: '[00:05] Speaker 1: Short cut off.' }] },
+        usage: { promptTokenCount: 100, candidatesTokenCount: 20 },
+      },
+      modelUsed: 'gemini-3.5-transcribe-preview',
+    });
+
+    // Stage 1 long-clip recovery via gemini-3.8-flash
+    mockGenerateWithResilience.mockResolvedValueOnce({
+      response: {
+        text: '[00:05] Speaker 1: Full recovered transcript from start to [19:30] end of meeting.',
+        usage: { promptTokenCount: 200, candidatesTokenCount: 100 },
+      },
+      modelUsed: 'gemini-3.8-flash',
+    });
+
+    // Stage 2 returns non-JSON text inside code fence to exercise fallback wrapper
+    mockGenerateWithResilience.mockResolvedValueOnce({
+      response: {
+        text: '```\nNon-JSON summary text from reasoning model\n```',
+        usage: { promptTokenCount: 300, candidatesTokenCount: 80 },
+      },
+      modelUsed: 'gemini-3.8-flash',
+    });
+
+    const res = await handleAnalyzeProjectMeeting({
+      classId: 'c1',
+      meetingId: 'm_long',
+      auth: { uid: 't1', token: { email: 't1@vtc.edu.hk', role: 'teacher' } },
+    });
+    expect(res.success).toBe(true);
+    expect(res.keyInsights.executiveSummary).toContain('Non-JSON summary text');
+
+    // Pipeline error handling branch
+    mockGenerateWithResilience.mockRejectedValueOnce(new Error('Vertex quota exceeded'));
+    await expect(
+      handleAnalyzeProjectMeeting({
+        classId: 'c1',
+        meetingId: 'm_long',
+        auth: { uid: 't1', token: { email: 't1@vtc.edu.hk', role: 'teacher' } },
+      })
+    ).rejects.toThrow(/Vertex quota exceeded/);
+  });
+
+  it('enforces authentication and teacher/supervisor authorization in analyzeProjectMeeting callable', async () => {
+    await expect(analyzeProjectMeeting.run({ auth: null, data: {} })).rejects.toThrow(/Authentication is required/);
+
+    mockDocGet.mockResolvedValueOnce({
+      exists: true,
+      data: () => ({ teacherEmails: ['other@vtc.edu.hk'], ownerUid: 'owner_1' }),
+    });
+    await expect(
+      analyzeProjectMeeting.run({
+        auth: { uid: 'stu_1', token: { email: 'stu@stu.vtc.edu.hk', role: 'student' } },
+        data: { classId: 'c1', meetingId: 'm1' },
+      })
+    ).rejects.toThrow(/Only class teachers and project supervisors/);
+
+    // Authorized via class teacherEmails
+    mockDocGet.mockImplementation(async (path) => {
+      if (path === 'classes/c1') {
+        return {
+          exists: true,
+          data: () => ({ teacherEmails: ['cosup@vtc.edu.hk'] }),
+        };
+      }
+      return { exists: false };
+    });
+    mockGenerateWithResilience.mockResolvedValueOnce({
+      response: { text: JSON.stringify({ preMeetingLogAudit: [] }), usage: {} },
+      modelUsed: 'gemini-3.8-flash',
+    });
+
+    const okRes = await analyzeProjectMeeting.run({
+      auth: { uid: 'cosup_1', token: { email: 'cosup@vtc.edu.hk', role: 'student' } },
+      data: {
+        classId: 'c1',
+        mode: 'prepare_log_questions',
+        weeklyLogs: [{ studentName: 'Alice', isDoingSomething: true, workDone: 'Done API' }],
+      },
+    });
+    expect(okRes.success).toBe(true);
   });
 });

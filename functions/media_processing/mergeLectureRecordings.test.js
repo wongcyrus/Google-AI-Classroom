@@ -973,6 +973,106 @@ describe('mergeLectureRecordings Cloud Function', () => {
     it('detects audio stream using spawnSync result', () => {
       expect(hasAudioStream('/non/existent/file.webm')).toBe(false);
     });
+
+    it('handles concat fallback, nested actualRecordingSegments/sourceRecordingIds, audioStoragePath deletion, and integrity gates', async () => {
+      const recordings = [
+        {
+          id: 'rec_nested_1',
+          storagePath: 'recordings/CLASS-1/rec_nested_1/lecture.webm',
+          audioStoragePath: 'recordings/CLASS-1/rec_nested_1/audio.webm',
+          startedAt: { toMillis: () => 1700000000000 },
+          actualRecordingSegments: [{ segmentId: 's1', segmentIndex: 1, durationSeconds: 60 }],
+          status: 'ready',
+        },
+        {
+          id: 'rec_nested_2',
+          storagePath: 'recordings/CLASS-1/rec_nested_2/lecture.webm',
+          audioStoragePath: 'recordings/CLASS-1/rec_nested_2/audio.webm',
+          startedAt: { toMillis: () => 1700000060000 },
+          sourceRecordingIds: ['src_a', 'src_b'],
+          status: 'ready',
+        },
+      ];
+
+      const db = createMockDb({ recordings });
+      const deleteSpy = vi.fn().mockResolvedValue();
+      const storage = {
+        bucket: () => ({
+          name: 'test-bucket',
+          upload: vi.fn().mockResolvedValue([{}]),
+          file: () => ({
+            download: vi.fn().mockResolvedValue(),
+            exists: vi.fn().mockResolvedValue([true]),
+            getMetadata: vi.fn().mockResolvedValue([{ size: 50000 }]),
+            delete: deleteSpy,
+          }),
+        }),
+      };
+
+      let callIdx = 0;
+      const ffmpegRunner = vi.fn().mockImplementation(async () => {
+        callIdx += 1;
+        // Fail first concat call to trigger re-encoding fallback
+        if (callIdx === 1) throw new Error('stream copy failed');
+      });
+      const durationProber = vi.fn().mockResolvedValue(180);
+
+      const res = await executeMergeLectureRecordings(
+        {
+          classId: 'CLASS-1',
+          recordingIds: ['rec_nested_1', 'rec_nested_2'],
+          auth: { uid: 'teacher-1', token: { email: 'teacher@vtc.edu.hk' } },
+        },
+        { db, storage, durationProber, ffmpegRunner }
+      );
+      expect(res.success).toBe(true);
+      expect(deleteSpy).toHaveBeenCalled();
+
+      // Integrity gate: destExists = false
+      const badStorageMissing = {
+        bucket: () => ({
+          name: 'test-bucket',
+          upload: vi.fn().mockResolvedValue([{}]),
+          file: (p) => ({
+            download: vi.fn().mockResolvedValue(),
+            exists: vi.fn().mockResolvedValue([!p.includes('rec_combined_')]),
+          }),
+        }),
+      };
+      await expect(
+        executeMergeLectureRecordings(
+          {
+            classId: 'CLASS-1',
+            recordingIds: ['rec_nested_1', 'rec_nested_2'],
+            auth: { uid: 'teacher-1', token: { email: 'teacher@vtc.edu.hk' } },
+          },
+          { db, storage: badStorageMissing, durationProber, ffmpegRunner: vi.fn().mockResolvedValue() }
+        )
+      ).rejects.toThrow(/Integrity check failed/);
+
+      // Integrity gate: remoteSize < 1024
+      const badStorageSmall = {
+        bucket: () => ({
+          name: 'test-bucket',
+          upload: vi.fn().mockResolvedValue([{}]),
+          file: () => ({
+            download: vi.fn().mockResolvedValue(),
+            exists: vi.fn().mockResolvedValue([true]),
+            getMetadata: vi.fn().mockResolvedValue([{ size: 512 }]),
+          }),
+        }),
+      };
+      await expect(
+        executeMergeLectureRecordings(
+          {
+            classId: 'CLASS-1',
+            recordingIds: ['rec_nested_1', 'rec_nested_2'],
+            auth: { uid: 'teacher-1', token: { email: 'teacher@vtc.edu.hk' } },
+          },
+          { db, storage: badStorageSmall, durationProber, ffmpegRunner: vi.fn().mockResolvedValue() }
+        )
+      ).rejects.toThrow(/suspiciously small/);
+    });
   });
 });
 

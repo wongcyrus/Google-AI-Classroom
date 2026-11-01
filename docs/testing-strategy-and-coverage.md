@@ -30,12 +30,12 @@ The project uses a four-tier automated testing pyramid designed to ensure bullet
 
 ```mermaid
 flowchart TD
-    subgraph Pyramid [Multi-Tier Automated Test Pyramid - >2,430 Passing Tests & Assertions]
+    subgraph Pyramid [Multi-Tier Automated Test Pyramid - >2,575 Passing Tests & Assertions]
         direction TB
         L4[Level 4: Live E2E & System Smoke Suite - 35 Assertions]
         L3[Level 3: Real-Token Security Rules Verification - 75 Assertions]
-        L2[Level 2: Backend Cloud Functions Logic - 651 Tests across 6 Codebases]
-        L1[Level 1: Frontend React Component & Hook Unit Tests - 1,673 Tests across 149 Suites]
+        L2[Level 2: Backend Cloud Functions Logic - 708 Tests across 6 Codebases]
+        L1[Level 1: Frontend React Component & Hook Unit Tests - 1,757 Tests across 154 Suites]
         
         L4 --> L3 --> L2 --> L1
     end
@@ -43,8 +43,8 @@ flowchart TD
     subgraph Details [Verification Scope]
         L4 -.->|Validates| D4[Class Lifecycle, Ingestion, Moving Window Audio, Dynamic Pricing & Cascading Deletions]
         L3 -.->|Validates| D3[Anonymous vs Student vs Teacher Data Isolation, Exam Confidentiality & Bingo Privacy]
-        L2 -.->|Validates| D2[DOCX Dossiers, AI Pricing Math, Dynamic QR Validation, Passkey Assertions & Quotas]
-        L1 -.->|Validates| D1[Roster Modals, Lecture QR Projector, Biometric Verification, FaceLandmarker & UI]
+        L2 -.->|Validates| D2[DOCX Dossiers, AI Pricing Math, Dynamic QR Validation, Passkey Assertions, Project Meeting Diarization & Quotas]
+        L1 -.->|Validates| D1[Roster Modals, Project Meetings & Weekly Log Audit, Lecture QR Projector, Biometric Verification, FaceLandmarker & UI]
     end
 ```
 
@@ -67,8 +67,10 @@ flowchart TD
 ## 🔬 Test Suite Breakdown
 
 ### 1. Frontend Component & Hook Suite (`web-app/src/`)
-* **Framework**: `vitest` + `@testing-library/react` + `@testing-library/jest-dom` + `jsdom` (149 Test Files / 1,673 Tests).
+* **Framework**: `vitest` + `@testing-library/react` + `@testing-library/jest-dom` + `jsdom` (154 Test Files / 1,757 Tests).
 * **Covered Modules**:
+  * `web-app/src/components/meetings/ProjectMeetingsView.test.jsx` & `web-app/src/utils/projectGroupUtils.test.js`: 17 comprehensive tests validating **95.28% Lines** on `projectGroupUtils.js`, **92.52% Lines** on `ProjectGroupEditorModal.jsx`, and **90.89% Lines** on `ProjectMeetingsView.jsx` (VTC `@stu.vtc.edu.hk` email normalization, 1-digit Student ID typo self-healing, class schedule Monday Week 1 anchoring, holiday week skipping without penalty, multi-supervisor same-week meeting aggregation, on-demand Google Sheet CSV backfill & incremental profile ingestion, Gemini pre-meeting fake/AI log challenge questions, dual-device voice + student PC recording, and Excel/Markdown exports).
+  * `web-app/src/hooks/useStudentProjectMeetingScreenRecorder.test.js`: Validates **91.72% Lines** on student PC screen capture signaling via `activeMeetingCaptures`, `getDisplayMedia` prompt modal, WebM duration header injection, Cloud Storage upload, and appending to `projectMeetings/{meetingId}.screenClips`.
   * `web-app/src/utils/examPeriodUtils.test.js`: 6 tests validating 100% lines/stmts/branch/funcs for exam period date boundaries, active exam period detection, and policy lookups (`disabled`, `delayed_release`).
   * `web-app/src/utils/qrCodeDecoder.test.js`: 12 tests validating 100% lines/stmts/funcs for image-based QR decoding (`decodeQrFromImageFile`), canvas resizing, ImageData pixel conversion, and jsQR integration.
   * `web-app/src/utils/gemmaLiteRTLoader.test.js` & `web-app/src/utils/webAiLiteRTLoader.test.js`: 20 tests validating LiteRT and Gemma model loading, WebGPU hardware acceleration checks, tokenizer loading, and cache-fallback mechanisms.
@@ -128,8 +130,9 @@ flowchart TD
   * `web-app/src/components/BingoQuestionBankModal.test.jsx`: Tests AI Question Drafter tab calling `generateQuestionBankAi`, previewing questions, and 1-click addition to class pool; tests Aiken format parser and JSON array batch importer with syntax validation; tests Question Pool tab displaying questions, answers, explanations, and delete actions.
 
 ### 2. Backend Cloud Functions Logic Suite (`functions/`)
-* **Framework**: `vitest` with Node.js 22 runtime (37 Test Files / 651 Tests across 6 Cloud Function packages: `ai_flows`, `media_processing`, `scheduled_tasks`, `storage_triggers`, `auth_triggers`, `attendance`).
+* **Framework**: `vitest` with Node.js 22 runtime (42 Test Files / 708 Tests across 6 Cloud Function packages: `ai_flows`, `media_processing`, `scheduled_tasks`, `storage_triggers`, `auth_triggers`, `attendance`).
 * **Covered Modules**:
+  * `functions/ai_flows/projectMeetingFlows.test.js`: 10 tests validating **97.22% Lines** on `projectMeetingFlows.js` across both `prepare_log_questions` (pre-meeting weekly log audit & challenge question generation with custom Prompt Library override support) and two-stage multimodal meeting analysis (`gemini-3.5-transcribe-preview` speaker diarization + `gemini-3.8-flash` attendance & real-work verification).
   * `functions/ai_flows/passkeyFlows.test.js`: Validates all 15 WebAuthn FIDO2 passkey callables, including `handleCreateLectureBingoSession`, `handleGetLecturePasskeyAuthOptions`, `handleVerifyLecturePasskeyAuth`, fallback UID resolution from class enrolled students map and Firebase Auth for teacher roster pre-granting, token challenge caching, device fingerprint hardware lock, counter increments, and response ranking.
   * `functions/ai_flows/bingoFlows.test.js`: Validates `triggerBingoCheck` across all 3 FinOps modes (`question_bank`, `teacher_screen`, `student_screen`), payload security (stripping `correctIndex` from student payloads), `submitBingoAnswer` 2-strike state machine (correct $\to$ `passed`, incorrect $\to$ `failed_incorrect`, timeout Strike 1 reading configurable `bingoRetryDelayMinutes` and enqueuing Cloud Task with sanitized task ID, consecutive timeout Strike 2 $\to$ attendance adjustment penalty with dynamic elapsed minute boundaries), `enqueueBingoRetryTask` (regional queue targeting `locations/asia-east2/functions/dispatchBingoRetryTask`, deterministic task ID formatting), `handleDispatchBingoRetry` (pre-flight checks, skipping already cleared students, generating Strike 2 challenge on pending students, and fallback to `classes/{classId}.questionBank`), and `generateQuestionBankAi` with Gemini 3.5 Flash Lite drafting multiple choice questions with structured JSON output schema.
   * `functions/ai_flows/processLectureSubtitles.test.js` & `processLectureSubtitlesHandler.test.js`: 31 tests validating Gemini single-pass whole-audio ingestion, discontinuity prompt injection, multilingual VTT/SRT generation, non-zero cue duration guards, and reconciler recovery.
@@ -176,20 +179,21 @@ flowchart TD
 -----------------------------------|---------|----------|---------|---------|----------------------
 Module                             | % Stmts | % Branch | % Funcs | % Lines | Status
 -----------------------------------|---------|----------|---------|---------|----------------------
-functions/scheduled_tasks          |   89.28 |    78.43 |   92.85 |   90.13 | 🟢 Exceeds >= 90% Target
-functions/media_processing         |   90.17 |    78.96 |   91.54 |   90.31 | 🟢 Exceeds >= 90% Target
-functions/attendance               |   91.30 |    86.66 |   85.71 |   91.46 | 🟢 Exceeds >= 90% Target
-functions/auth_triggers            |   94.87 |    86.66 |  100.00 |   95.12 | 🟢 Exceeds >= 90% Target
-functions/storage_triggers         |   91.80 |    77.27 |  100.00 |   92.06 | 🟢 Exceeds >= 90% Target
-functions/ai_flows                 |   89.47 |    79.79 |   94.69 |   90.18 | 🟢 Exceeds >= 90% Target
+functions/scheduled_tasks          |   89.59 |    72.43 |   92.00 |   91.86 | 🟢 Exceeds >= 90% Target
+functions/media_processing         |   88.24 |    72.08 |   81.50 |   90.07 | 🟢 Exceeds >= 90% Target
+functions/attendance               |   87.91 |    68.75 |   93.75 |   92.51 | 🟢 Exceeds >= 90% Target
+functions/auth_triggers            |   93.72 |    79.31 |   90.32 |   95.12 | 🟢 Exceeds >= 90% Target
+functions/storage_triggers         |   91.10 |    73.49 |   87.27 |   92.06 | 🟢 Exceeds >= 90% Target
+functions/ai_flows                 |   90.16 |    73.07 |   91.48 |   90.65 | 🟢 Exceeds >= 90% Target
 -----------------------------------|---------|----------|---------|---------|----------------------
-web-app (constants)                |   96.84 |    83.57 |  100.00 |  100.00 | 🟢 Complete (100%)
+web-app (constants)                |   96.72 |    89.80 |  100.00 |   99.04 | 🟢 Exceeds >= 90% Target
 web-app (schemas)                  |  100.00 |    95.23 |  100.00 |  100.00 | 🟢 Complete (100%)
-web-app (utils)                    |   90.48 |    78.40 |   90.71 |   92.72 | 🟢 Exceeds >= 90% Target
-web-app (workers)                  |   88.61 |    68.49 |   83.33 |   89.53 | 🟢 High Functional (~90%)
-web-app (hooks)                    |   83.43 |    67.89 |   84.23 |   85.07 | 🟢 High Functional (>85%)
-web-app (components)               |   77.86 |    68.01 |   76.87 |   79.72 | 🟢 High Functional (~80%)
-web-app (all files)                |   81.62 |    70.58 |   79.17 |   83.53 | 🟢 Solid Baseline (>83%)
+web-app (utils)                    |   90.05 |    77.50 |   91.83 |   92.08 | 🟢 Exceeds >= 90% Target
+web-app (workers)                  |   90.46 |    72.22 |   87.50 |   91.37 | 🟢 Exceeds >= 90% Target
+web-app (components/meetings)      |   88.94 |    71.47 |   87.24 |   91.18 | 🟢 Exceeds >= 90% Target
+web-app (hooks)                    |   83.30 |    67.86 |   82.81 |   85.05 | 🟢 High Functional (>85%)
+web-app (components)               |   75.97 |    66.16 |   74.84 |   77.79 | 🟢 High Functional (~78%)
+web-app (all files)                |   81.05 |    69.43 |   78.95 |   82.95 | 🟢 Solid Baseline (~83%)
 ===================================================================================================
 ```
 

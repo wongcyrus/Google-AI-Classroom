@@ -56,6 +56,18 @@ vi.mock('fs', () => ({
 }));
 
 import { isExamTimeRange, determineActualCaptureInterval, slicePendingTaskSubmissions } from './processVideoJob.js';
+import { parsePeriodDateMs } from './examPeriodUtils.js';
+
+describe('examPeriodUtils - parsePeriodDateMs', () => {
+  it('handles Firestore Timestamp, Date, number, non-string, and naive timezone strings', () => {
+    expect(parsePeriodDateMs(null)).toBeNaN();
+    expect(parsePeriodDateMs({ toMillis: () => 12345 })).toBe(12345);
+    expect(parsePeriodDateMs(new Date(67890))).toBe(67890);
+    expect(parsePeriodDateMs(99999)).toBe(99999);
+    expect(parsePeriodDateMs({})).toBeNaN();
+    expect(parsePeriodDateMs('2026-09-15T09:00', 'Asia/Hong_Kong')).toBeGreaterThan(0);
+  });
+});
 
 describe('processVideoJob - isExamTimeRange', () => {
   const sampleExamPeriods = [
@@ -252,5 +264,67 @@ describe('processVideoJob - slicePendingTaskSubmissions (Approach 2)', () => {
         videoPath: 'classes/c1/tasks/lab_task_1/submissions/s1/attempt_1.mp4'
       })
     );
+  });
+
+  it('falls back to time calculation when screenshots are empty and handles stream-copy error re-encode fallback', async () => {
+    let firstRun = true;
+    mockFfmpegCommand.on.mockImplementation(function (event, cb) {
+      if (event === 'error' && firstRun) {
+        firstRun = false;
+        setTimeout(() => cb(new Error('stream copy error')), 1);
+      } else if (event === 'end' && !firstRun) {
+        setTimeout(cb, 1);
+      }
+      return this;
+    });
+
+    const mockJobUpdate = vi.fn().mockResolvedValue();
+    const taskJobDoc = {
+      id: 'task_job_fallback',
+      ref: { update: mockJobUpdate },
+      data: () => ({
+        taskId: 'lab_task_2',
+        attemptNumber: 2,
+        startTime: { toMillis: () => new Date('2026-09-19T09:10:00Z').getTime() },
+        endTime: { toDate: () => new Date('2026-09-19T09:20:00Z') },
+        status: 'pending',
+      }),
+    };
+    const invalidTaskDoc = {
+      id: 'task_invalid',
+      data: () => ({ taskId: null, status: 'pending' }),
+    };
+
+    const makeDocRef = () => ({
+      set: vi.fn().mockResolvedValue(),
+      collection: () => ({ doc: () => makeDocRef() }),
+    });
+
+    const mockDb = {
+      collection: vi.fn((col) => {
+        if (col === 'videoJobs') {
+          return {
+            where: vi.fn().mockReturnThis(),
+            get: vi.fn().mockResolvedValue({ docs: [invalidTaskDoc, taskJobDoc] }),
+          };
+        }
+        return { doc: () => makeDocRef() };
+      }),
+    };
+
+    const result = await slicePendingTaskSubmissions({
+      classId: 'c1',
+      studentUid: 's1',
+      classStartTime: '2026-09-19T09:00:00Z',
+      classEndTime: '2026-09-19T10:00:00Z',
+      captureInterval: 15,
+      outputVideoPath: '/tmp/class.mp4',
+      screenshots: [],
+      db: mockDb,
+      bucket: { upload: vi.fn().mockResolvedValue() },
+      retry: (fn) => fn(),
+    });
+
+    expect(result).toEqual(['task_job_fallback']);
   });
 });

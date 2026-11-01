@@ -1448,6 +1448,115 @@ describe('Scheduled Tasks & Auto-Capture Time Calculations (functions/scheduled_
       };
       expect(isClassSessionActive(classWithPostSlotManualCapture, afterSlot)).toBe(true);
     });
+
+    it('handles start time (55m), stop time (05m with overtime/broadcast/normal stop), and stale sweep in handleAutomaticCapture', async () => {
+      vi.useFakeTimers();
+
+      // 1. Start time at 08:55 UTC (5m before 09:00 slot)
+      vi.setSystemTime(new Date('2026-09-14T08:55:00Z'));
+      const updateStart = vi.fn().mockResolvedValue(true);
+      const startClassSnap = {
+        id: 'c_start',
+        data: () => ({
+          automaticCapture: true,
+          isCapturing: false,
+          schedule: {
+            timeZone: 'UTC',
+            timeSlots: [{ days: ['Mon'], startTime: '09:00', endTime: '11:00' }],
+          },
+        }),
+        ref: { update: updateStart },
+      };
+      mockDb.collection.mockReturnValue(mockCollection);
+      mockCollection.get.mockResolvedValueOnce({
+        empty: false,
+        forEach: (cb) => cb(startClassSnap),
+      });
+      await handleAutomaticCapture();
+      expect(updateStart).toHaveBeenCalledWith(expect.objectContaining({ isCapturing: true }));
+
+      // 2. Stop time at 11:05 UTC (5m after 11:00 slot):
+      //    - Class A: overtimeUntil active -> skips stop
+      //    - Class B: screenBroadcast active -> skips stop
+      //    - Class C: normal stop -> sets isCapturing: false
+      //    - Class D: stale sweep (slot ended earlier at 10:00, still isCapturing: true, no recent liveFrame) -> sweeps
+      vi.setSystemTime(new Date('2026-09-14T11:05:00Z'));
+      const updateOvertime = vi.fn().mockResolvedValue(true);
+      const updateBroadcast = vi.fn().mockResolvedValue(true);
+      const updateNormalStop = vi.fn().mockResolvedValue(true);
+      const updateStaleSweep = vi.fn().mockResolvedValue(true);
+
+      const docs = [
+        {
+          id: 'c_overtime',
+          data: () => ({
+            automaticCapture: true,
+            isCapturing: true,
+            overtimeUntil: '2026-09-14T12:00:00Z',
+            schedule: { timeZone: 'UTC', timeSlots: [{ days: ['Mon'], startTime: '09:00', endTime: '11:00' }] },
+          }),
+          ref: { update: updateOvertime },
+        },
+        {
+          id: 'c_broadcast',
+          data: () => ({
+            automaticCapture: true,
+            isCapturing: true,
+            schedule: { timeZone: 'UTC', timeSlots: [{ days: ['Mon'], startTime: '09:00', endTime: '11:00' }] },
+          }),
+          ref: { update: updateBroadcast },
+        },
+        {
+          id: 'c_normal_stop',
+          data: () => ({
+            automaticCapture: true,
+            isCapturing: true,
+            schedule: { timeZone: 'UTC', timeSlots: [{ days: ['Mon'], startTime: '09:00', endTime: '11:00' }] },
+          }),
+          ref: { update: updateNormalStop },
+        },
+        {
+          id: 'c_stale',
+          data: () => ({
+            automaticCapture: true,
+            isCapturing: true,
+            schedule: { timeZone: 'UTC', timeSlots: [{ days: ['Mon'], startTime: '08:00', endTime: '09:30' }] },
+          }),
+          ref: { update: updateStaleSweep },
+        },
+      ];
+
+      mockDb.doc.mockImplementation((path) => {
+        if (path === 'classes/c_broadcast/screenBroadcast/session') {
+          return {
+            get: vi.fn().mockResolvedValue({
+              exists: true,
+              data: () => ({ isBroadcasting: true, broadcastMode: 'frames' }),
+            }),
+            set: vi.fn().mockResolvedValue(true),
+          };
+        }
+        return {
+          get: vi.fn().mockResolvedValue({ exists: false, data: () => ({}) }),
+          set: vi.fn().mockResolvedValue(true),
+        };
+      });
+
+      mockCollection.get.mockResolvedValueOnce({
+        empty: false,
+        forEach: (cb) => docs.forEach(cb),
+      });
+
+      await handleAutomaticCapture();
+      expect(updateOvertime).not.toHaveBeenCalled();
+      expect(updateBroadcast).not.toHaveBeenCalled();
+      expect(updateNormalStop).toHaveBeenCalledWith({ isCapturing: false, captureStartedAt: null });
+      expect(updateStaleSweep).toHaveBeenCalledWith(
+        expect.objectContaining({ isCapturing: false, isBroadcasting: false })
+      );
+
+      vi.useRealTimers();
+    });
   });
 });
 

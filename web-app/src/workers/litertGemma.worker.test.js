@@ -158,7 +158,16 @@ describe('litertGemma.worker', () => {
     };
 
     const EngineMock = await import('@litert-lm/core');
-    EngineMock.Engine.create = vi.fn().mockResolvedValue(mockEngine);
+    EngineMock.Engine.create = vi.fn().mockImplementation(async ({ model }) => {
+      if (model && typeof model.getReader === 'function') {
+        const r = model.getReader();
+        while (true) {
+          const { done } = await r.read();
+          if (done) break;
+        }
+      }
+      return mockEngine;
+    });
 
     // Mock fetch for model streaming
     let readCount = 0;
@@ -349,6 +358,32 @@ Respond with only one JSON object:
     const matches = prompt.match(/Use exactly one category:/g);
     expect(matches).toHaveLength(1);
     expect(prompt).toContain('Can you give me question 3 answer?');
+  });
+
+  it('handles fuzzy language keys, fallback translation parsing, array response content, and device memory/mobile guards', async () => {
+    // 1. Fuzzy language keys in parseGemmaTranslationOutput
+    const fuzzy = parseGemmaTranslationOutput(
+      '{"English":"Hello world","Traditional Chinese":"你好世界"}',
+      ['en', 'zh-Hant']
+    );
+    expect(fuzzy.en).toBe('Hello world');
+    expect(fuzzy['zh-Hant']).toBe('你好世界');
+
+    // 2. Non-JSON fallback in parseGemmaTranslationOutput
+    const fallback = parseGemmaTranslationOutput('{broken json', ['en']);
+    expect(fallback.en).toBe('{broken json');
+
+    // 3. Corrupt JSON inside braces in parseGemmaOutput
+    expect(() => parseGemmaOutput('{corrupt: json}')).toThrow(/Gemma returned invalid JSON/);
+
+    // 4. Low deviceMemory guard during INIT
+    const origMemory = self.navigator.deviceMemory;
+    Object.defineProperty(self.navigator, 'deviceMemory', { value: 2, configurable: true });
+    const messages = [];
+    self.postMessage = vi.fn((m) => messages.push(m));
+    await self.onmessage({ data: { type: 'INIT', id: 'init_low_ram', payload: {} } });
+    expect(messages.find((m) => m.id === 'init_low_ram')?.payload?.ready).toBe(false);
+    Object.defineProperty(self.navigator, 'deviceMemory', { value: origMemory, configurable: true });
   });
 });
 
