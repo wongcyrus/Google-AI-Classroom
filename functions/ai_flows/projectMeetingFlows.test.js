@@ -884,6 +884,116 @@ describe('projectMeetingFlows', () => {
       );
     });
 
+    it('processes meetings containing photo artifacts and mobile camera demo video clips while maintaining full backward compatibility', async () => {
+      mockDocGet.mockImplementation(async (path) => {
+        if (path === 'classes/c1/projectMeetings/m_multimodal') {
+          return {
+            exists: true,
+            data: () => ({
+              groupId: 'grp_a04',
+              groupName: 'Group A04',
+              weekNumber: 10,
+              audioClips: [
+                {
+                  clipId: 'voice_1',
+                  label: 'Part 1 Voice',
+                  storagePath: 'projectMeetings/c1/grp_a04/m_multimodal/voice_1.m4a',
+                  durationSeconds: 120,
+                  mimeType: 'audio/mp4',
+                },
+              ],
+              screenClips: [
+                {
+                  clipId: 'demo_1',
+                  type: 'mobile_camera',
+                  label: 'Mobile Demo (Alex)',
+                  storagePath: 'projectMeetings/c1/grp_a04/m_multimodal/videos/demo_1.mp4',
+                  durationSeconds: 45,
+                  mimeType: 'video/mp4',
+                  studentName: 'Alex',
+                  studentEmail: 'alex@stu.vtc.edu.hk',
+                },
+              ],
+              photos: [
+                {
+                  photoId: 'photo_1',
+                  label: 'Whiteboard ERD',
+                  caption: 'Database schema with 6 collections',
+                  storagePath: 'projectMeetings/c1/grp_a04/m_multimodal/photos/photo_1.jpg',
+                  studentName: 'Alex',
+                },
+              ],
+            }),
+          };
+        }
+        if (path === 'classes/c1/projectGroups/grp_a04') {
+          return {
+            exists: true,
+            data: () => ({
+              name: 'Group A04',
+              projectTopic: 'IoT Monitoring',
+              members: [{ uid: 'alex_1', name: 'Alex', email: 'alex@stu.vtc.edu.hk' }],
+            }),
+          };
+        }
+        return { exists: false };
+      });
+
+      // Mock Stage 1: voice clip STT
+      mockGenerateWithResilience.mockResolvedValueOnce({
+        response: { text: '[00:10] Speaker 1 (Alex): Explaining IoT gateway setup.', usage: {} },
+        modelUsed: 'gemini-3.5-transcribe-preview',
+      });
+      // Mock Stage 1: mobile camera demo clip audio STT
+      mockGenerateWithResilience.mockResolvedValueOnce({
+        response: { text: '[00:05] Alex: Demonstrating ESP32 sensor circuit.', usage: {} },
+        modelUsed: 'gemini-3.8-flash',
+      });
+      // Mock Stage 2: reasoning with multimodal photo and demo clip
+      mockGenerateWithResilience.mockResolvedValueOnce({
+        response: {
+          text: JSON.stringify({
+            attendanceRecord: [{ name: 'Alex', status: 'present', speakingContribution: 'high' }],
+            keyInsights: { executiveSummary: 'Alex demonstrated IoT gateway and breadboard.' },
+            studentContributions: [
+              {
+                name: 'Alex',
+                realWorkScore: 9,
+                logQualityScore: 9,
+                weeklyFeedback: 'Great prototype demo.',
+              },
+            ],
+            transcriptSegments: [],
+          }),
+          usage: {},
+        },
+        modelUsed: 'gemini-3.8-flash',
+      });
+
+      const res = await handleAnalyzeProjectMeeting({
+        classId: 'c1',
+        meetingId: 'm_multimodal',
+        auth: { uid: 'teacher_1', token: { email: 'teacher@vtc.edu.hk', role: 'teacher' } },
+      });
+
+      expect(res.success).toBe(true);
+      expect(mockDocUpdate).toHaveBeenCalledWith(
+        'classes/c1/projectMeetings/m_multimodal',
+        expect.objectContaining({
+          rawDiarizedTranscript: expect.stringContaining('=== Demonstration Video: Mobile Demo (Alex)'),
+          status: 'ready',
+          needsReanalysis: 'FIELD_DELETED',
+        })
+      );
+      expect(mockDocUpdate).toHaveBeenCalledWith(
+        'classes/c1/projectMeetings/m_multimodal',
+        expect.objectContaining({
+          rawDiarizedTranscript: expect.stringContaining('Demonstrating ESP32 sensor circuit.'),
+        })
+      );
+      expect(res.studentContributions[0].realWorkScore).toBe(9);
+    });
+
     it('enforces authentication and authorization in batchEmailProjectMeetingReports callable', async () => {
       // 1. Unauthenticated
       await expect(

@@ -18,8 +18,9 @@
    - [2.3 Generate Pre-Meeting AI Challenge Questions](#23-generate-pre-meeting-ai-challenge-questions)
 4. [Part 3: During the Meeting — Live Dual-Device Recording (Mobile Voice + Student PC Screen)](#part-3-during-the-meeting--live-dual-device-recording-mobile-voice--student-pc-screen)
    - [3.1 For Supervisors (Mobile Phone or Tablet)](#31-for-supervisors-mobile-phone-or-tablet)
-   - [3.2 For the Presenting Student (PC Screen Demo)](#32-for-the-presenting-student-pc-screen-demo)
-   - [3.3 For Co-Supervisors (Multiple Meetings in the Same Week)](#33-for-co-supervisors-multiple-meetings-in-the-same-week)
+   - [3.2 Mobile Demo Video (720p) & Photo Artifact Capture on Teacher's Phone](#32-mobile-demo-video-720p--photo-artifact-capture-on-teachers-phone)
+   - [3.3 For the Presenting Student (PC Screen Demo)](#33-for-the-presenting-student-pc-screen-demo)
+   - [3.4 For Co-Supervisors (Multiple Meetings in the Same Week)](#34-for-co-supervisors-multiple-meetings-in-the-same-week)
 5. [Part 4: After the Meeting — 2-Stage AI Analysis, Weekly Feedback & Excel Exports](#part-4-after-the-meeting--2-stage-ai-analysis-weekly-feedback--excel-exports)
    - [4.1 Run 2-Stage Gemini Analysis (Diarization + Real Work Verification)](#41-run-2-stage-gemini-analysis-diarization--real-work-verification)
    - [4.2 Review & Edit Weekly Feedback, Log Quality Score & Real Work Score](#42-review--edit-weekly-feedback-log-quality-score--real-work-score)
@@ -142,7 +143,49 @@ Click **`👤 Student Profiles & Log Audit`** in the view switcher (or click any
 5. When finished, tap **`⏹️ Stop & Save Clip`**.
    - If you pause for a break and record another clip for the same group and week, the studio automatically groups all clips into the same meeting session (`🔗 Grouping into A11 — Week 8`).
 
-### 3.2 For the Presenting Student (PC Screen Demo)
+### 3.2 Mobile Demo Video (720p) & Photo Artifact Capture on Teacher's Phone
+
+Students frequently present physical deliverables that cannot be screencasted—such as whiteboard system architecture diagrams, IoT breadboard circuits, mobile apps running on physical phones, or terminal error logs on a laptop screen.
+
+The supervisor's mobile phone can capture visual evidence directly during the consultation:
+
+```mermaid
+flowchart TD
+    subgraph MobileStudio ["Teacher Mobile Studio"]
+        AUD["🎙️ Continuous Voice Consultation\n(Always running in background)"]
+        
+        P_SNAP["📸 Snap Photo (0.1s)\n• Whiteboard ERD / Architecture\n• IoT Hardware Circuit / Wiring\n• Laptop Monitor Error / Code\n• ZERO voice recording pause!"]
+        
+        V_DEMO["📹 Record Demo Video (720p)\n• 1280x720 @ 24/30 FPS (~1.5 Mbps)\n• Rear Camera (facingMode: 'environment')\n• Auto-Slicing: Voice Part 1 -> Demo -> Voice Part 2"]
+    end
+
+    subgraph CloudProcessing ["Cloud Storage & Firestore"]
+        F_DOC[("Meeting Session Document\n• audioClips[]\n• screenClips[] (mobile_camera)\n• photos[]")]
+    end
+
+    subgraph GeminiAI ["Two-Stage Gemini AI Analysis"]
+        ST1["Stage 1 Diarization:\nTranscribes Voice Audio + Video Demo Audio Tracks\n(Unified Linear Meeting Transcript)"]
+        ST2["Stage 2 Multimodal Reasoning:\nInspects Photos + 720p Video Demo\nCross-examines with Weekly Logs\nComputes realWorkScore (0-10)"]
+    end
+
+    AUD & P_SNAP & V_DEMO --> F_DOC
+    F_DOC --> ST1 --> ST2
+```
+
+1. **Still Photo Artifacts (`📸 Snap Photo`)**:
+   - Tap **`📸 Snap Photo`** anytime during the meeting (while voice recording is running or idle).
+   - Attribute the photo to a specific member (`👤 Chan Tai Man`) or `👥 Whole Group`, select a category chip (e.g., *Whiteboard / Architecture*, *IoT / Hardware Wiring*), and add an optional caption.
+   - The photo is automatically clamped client-side to max `1280px` JPEG at `0.85` quality (~200–350 KB) and uploaded to Cloud Storage.
+   - **Continuous Consultation Audio**: Taking a photo runs alongside voice recording with **zero pause or interruption**.
+2. **On-Demand Mobile Video Demo (`📹 Record Demo (720p)`)**:
+   - Tap **`📹 Record Demo (720p)`** when a student demonstrates hardware, an IoT device, or a mobile app.
+   - **Optimized 720p HD Default**: Clamped to `1280x720` at 24/30 FPS and ~1.5 Mbps bitrate. A 2-minute demo is only ~20 MB (fast 5G/Wi-Fi upload, low storage footprint, and battery-friendly).
+   - **Auto-Slicing Architecture**: To prevent iOS WebKit/Safari and Android Chrome audio driver lockups, the system automatically slices consultation voice into Part 1, films the demo (capturing synchronized video + speech), and upon saving, **automatically resumes voice recording as Part 2**.
+   - **Flip Camera**: Includes a 1-tap `🔄 Flip Camera` button to switch between rear and front cameras.
+3. **Backward Compatibility for Legacy Data**:
+   - Legacy meeting sessions with voice recordings only (`audioClips` with no `photos` or `screenClips`) continue to load, play, and analyze 100% seamlessly.
+
+### 3.3 For the Presenting Student (PC Screen Demo)
 1. Log in to the Student Portal (`/student`) on your PC using **Google Chrome** and your `@stu.vtc.edu.hk` account. (You do **not** need a scheduled class to be in session.)
 2. As soon as your supervisor selects your name in **💻 Presenter Student PC Screen** and starts recording, a purple **Project Group Meeting Banner** appears at the top of your screen:
    - Click **`🖥️ Share My PC Screen for Meeting Demo`** and choose **Entire Screen** (or the application window you are demonstrating).
@@ -150,7 +193,7 @@ Click **`👤 Student Profiles & Log Audit`** in the view switcher (or click any
 3. Demonstrate your code, database, or prototype while answering your supervisor's questions.
 4. When your supervisor stops the meeting on their phone (or switches to another presenter), your PC screen recording stops, uploads to Cloud Storage, and links to the meeting dossier automatically.
 
-### 3.3 For Co-Supervisors (Multiple Meetings in the Same Week)
+### 3.4 For Co-Supervisors (Multiple Meetings in the Same Week)
 If a group meets with their **Main Supervisor** on Tuesday and a **Co-Supervisor** on Thursday in the same week:
 1. The Co-Supervisor simply logs in with their own teacher account, selects the **Group** and **Week #**, and taps **`🔴 Start Voice Recording`**.
 2. Because the system checks `supervisorEmail === currentUserEmail`, the Co-Supervisor's recording **automatically creates a separate meeting entry** (`👨‍🏫 {Co-Supervisor Name}`) for that week—it **never overwrites** the Main Supervisor's meeting.

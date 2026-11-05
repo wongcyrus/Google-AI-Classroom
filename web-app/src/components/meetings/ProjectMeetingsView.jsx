@@ -48,6 +48,108 @@ function parseTimestampToSecs(ts) {
 }
 
 /**
+ * Compresses an image file or blob client-side to maximum dimension 1280px (JPEG 0.85)
+ * to keep photo artifacts lightweight (~200-350 KB) and fast to upload without losing whiteboard/code clarity.
+ */
+export async function compressPhotoBlob(fileOrBlob, maxDimension = 1280, quality = 0.85) {
+  return new Promise((resolve) => {
+    if (
+      typeof Image === 'undefined' ||
+      typeof document === 'undefined' ||
+      typeof URL === 'undefined' ||
+      typeof URL.createObjectURL !== 'function'
+    ) {
+      resolve({ blob: fileOrBlob, width: 1280, height: 720 });
+      return;
+    }
+
+    try {
+      const img = new Image();
+      let timer = null;
+
+      const finishFallback = () => {
+        if (timer) clearTimeout(timer);
+        resolve({ blob: fileOrBlob, width: 1280, height: 720 });
+      };
+
+      // Safeguard against jsdom or blocked image decoders
+      timer = setTimeout(finishFallback, 250);
+
+      const objectUrl = URL.createObjectURL(fileOrBlob);
+
+      img.onload = () => {
+        if (timer) clearTimeout(timer);
+        try {
+          URL.revokeObjectURL(objectUrl);
+          let { width, height } = img;
+          if (!width || !height) {
+            resolve({ blob: fileOrBlob, width: 1280, height: 720 });
+            return;
+          }
+          if (width > maxDimension || height > maxDimension) {
+            if (width >= height) {
+              height = Math.round((height * maxDimension) / width);
+              width = maxDimension;
+            } else {
+              width = Math.round((width * maxDimension) / height);
+              height = maxDimension;
+            }
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext?.('2d');
+          if (!ctx || typeof canvas.toBlob !== 'function') {
+            resolve({ blob: fileOrBlob, width, height });
+            return;
+          }
+          ctx.drawImage(img, 0, 0, width, height);
+          canvas.toBlob(
+            (blob) => {
+              resolve({ blob: blob || fileOrBlob, width, height });
+            },
+            'image/jpeg',
+            quality
+          );
+        } catch {
+          resolve({ blob: fileOrBlob, width: 1280, height: 720 });
+        }
+      };
+
+      img.onerror = () => {
+        if (timer) clearTimeout(timer);
+        try { URL.revokeObjectURL(objectUrl); } catch {}
+        resolve({ blob: fileOrBlob, width: 1280, height: 720 });
+      };
+
+      img.src = objectUrl;
+    } catch {
+      resolve({ blob: fileOrBlob, width: 1280, height: 720 });
+    }
+  });
+}
+
+/**
+ * Detects supported video MIME type for MediaRecorder on mobile/desktop browsers
+ */
+function getSupportedVideoMimeType() {
+  if (typeof MediaRecorder === 'undefined' || !MediaRecorder.isTypeSupported) {
+    return '';
+  }
+  const candidates = [
+    'video/mp4;codecs=avc1,mp4a',
+    'video/mp4',
+    'video/webm;codecs=vp8,opus',
+    'video/webm;codecs=vp9,opus',
+    'video/webm',
+  ];
+  for (const c of candidates) {
+    if (MediaRecorder.isTypeSupported(c)) return c;
+  }
+  return '';
+}
+
+/**
  * Determines if a project meeting has audio recordings that require AI analysis or re-analysis:
  * - Completely unanalyzed meetings with audio
  * - Meetings explicitly flagged with `needsReanalysis: true` (e.g. after moving/deleting clips)
@@ -172,6 +274,30 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
   const audioPlayerRef = useRef(null);
   const videoPlayerRef = useRef(null);
   const wakeLockRef = useRef(null);
+
+  // Photo & 720p Mobile Video Capture state & refs
+  const [isPhotoModalOpen, setIsPhotoModalOpen] = useState(false);
+  const [photoStudentUid, setPhotoStudentUid] = useState('');
+  const [photoCaption, setPhotoCaption] = useState('');
+  const [photoLabelPreset, setPhotoLabelPreset] = useState('Whiteboard / Architecture');
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+  const [previewPhoto, setPreviewPhoto] = useState(null); // Photo object for Lightbox preview
+  const photoInputRef = useRef(null);
+  const photoGalleryInputRef = useRef(null);
+
+  const [isVideoRecordingOpen, setIsVideoRecordingOpen] = useState(false);
+  const [videoRecordingState, setVideoRecordingState] = useState('preview'); // 'preview' | 'recording' | 'uploading'
+  const [videoRecordingSeconds, setVideoRecordingSeconds] = useState(0);
+  const [videoCameraFacing, setVideoCameraFacing] = useState('environment'); // 'environment' | 'user'
+  const [videoPresenterUid, setVideoPresenterUid] = useState('');
+  const [videoLabelDraft, setVideoLabelDraft] = useState('');
+  const [isVideoAutoSlicing, setIsVideoAutoSlicing] = useState(false);
+  const videoRecorderRef = useRef(null);
+  const videoStreamRef = useRef(null);
+  const videoPreviewRef = useRef(null);
+  const videoRecordedChunksRef = useRef([]);
+  const videoTimerIntervalRef = useRef(null);
+  const videoRecordingSecondsRef = useRef(0);
 
   // Keep mobile/desktop screen awake (Screen Wake Lock API) and guard against accidental reload during 20+ min meetings
   useEffect(() => {
@@ -1220,6 +1346,7 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
           supervisorName: activeStudioGroup.supervisorName || currentUserName,
           audioClips: [],
           screenClips: [],
+          photos: [],
           voiceAnchors: [],
           recordingSegmentsCount: 0,
           durationSeconds: 0,
@@ -1459,6 +1586,431 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
       console.error('[ProjectMeetingsView] Upload failed:', err);
       setStudioError(`Failed to upload voice clip: ${err.message}`);
       setRecordingState('idle');
+    }
+  };
+
+  // Ensures a meeting document exists in Firestore for the active group & week (used by photo capture & video demos)
+  const ensureTargetMeetingDoc = useCallback(
+    async (initialStatus = 'ready') => {
+      if (activeMeetingIdRef.current) {
+        return activeMeetingIdRef.current;
+      }
+      if (existingTargetMeeting?.id) {
+        activeMeetingIdRef.current = existingTargetMeeting.id;
+        return existingTargetMeeting.id;
+      }
+      if (selectedMeeting?.id && selectedMeeting.groupId === studioGroupId) {
+        activeMeetingIdRef.current = selectedMeeting.id;
+        return selectedMeeting.id;
+      }
+
+      // Create new meeting doc
+      const targetMeetingId = `mtg_${studioGroupId}_wk${studioWeekNumber}_${Date.now()}`;
+      const sessionGroupId = `${classId}_${studioGroupId}_wk${studioWeekNumber}`;
+      const defaultAttendance = (activeStudioGroup?.members || []).map((m) => ({
+        uid: m.uid || m.email,
+        email: normalizeStudentEmail(m.email),
+        name: m.name || m.email,
+        role: m.role || 'Member',
+        status:
+          presenterStudentUid && (m.uid === presenterStudentUid || m.email === presenterStudentUid)
+            ? 'present'
+            : 'absent',
+        detectedByAi: false,
+        teacherVerified: Boolean(
+          presenterStudentUid && (m.uid === presenterStudentUid || m.email === presenterStudentUid)
+        ),
+        speakingContribution: 'none',
+        evidence: '',
+        firstHeardTimestamp: '',
+      }));
+
+      await setDoc(doc(db, `classes/${classId}/projectMeetings/${targetMeetingId}`), {
+        groupId: studioGroupId,
+        groupName: activeStudioGroup?.name || 'Group',
+        projectTopic: activeStudioGroup?.projectTopic || '',
+        sessionGroupId,
+        weekNumber: Number(studioWeekNumber) || 1,
+        title: studioTitle.trim() || `Week ${studioWeekNumber} Supervision Meeting`,
+        meetingDate: new Date().toISOString(),
+        supervisorUid: user?.uid || '',
+        supervisorEmail: activeStudioGroup?.supervisorEmail || currentUserEmail,
+        supervisorName: activeStudioGroup?.supervisorName || currentUserName,
+        audioClips: [],
+        screenClips: [],
+        photos: [],
+        voiceAnchors: [],
+        recordingSegmentsCount: 0,
+        durationSeconds: 0,
+        status: initialStatus,
+        attendanceRecord: defaultAttendance,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+
+      activeMeetingIdRef.current = targetMeetingId;
+      setSelectedMeetingId(targetMeetingId);
+      return targetMeetingId;
+    },
+    [
+      activeStudioGroup,
+      classId,
+      currentUserEmail,
+      currentUserName,
+      existingTargetMeeting,
+      presenterStudentUid,
+      selectedMeeting,
+      studioGroupId,
+      studioTitle,
+      studioWeekNumber,
+      user?.uid,
+    ]
+  );
+
+  // Open photo capture modal
+  const handleOpenPhotoModal = () => {
+    if (!studioGroupId && !selectedMeeting) {
+      setStudioError('Please select a Project Group before taking or uploading meeting photos.');
+      return;
+    }
+    setPhotoStudentUid(presenterStudentUid || '');
+    setPhotoCaption('');
+    setPhotoLabelPreset('Whiteboard / Architecture');
+    setIsPhotoModalOpen(true);
+  };
+
+  // Upload and persist photo artifact
+  const handleUploadPhoto = async (file) => {
+    if (!file) return;
+    const targetGroupId = studioGroupId || selectedMeeting?.groupId;
+    if (!targetGroupId) {
+      setStudioError('Please select a Project Group before uploading photos.');
+      return;
+    }
+
+    setIsUploadingPhoto(true);
+    setStudioError('');
+
+    try {
+      const { blob: compressedBlob, width, height } = await compressPhotoBlob(file, 1280, 0.85);
+      const targetMeetingId = await ensureTargetMeetingDoc('ready');
+      const photoId = `photo_${Date.now()}`;
+      const storagePath = `projectMeetings/${classId}/${targetGroupId}/${targetMeetingId}/photos/${photoId}.jpg`;
+      const fileRef = storageRef(storage, storagePath);
+
+      const uploadTask = uploadBytesResumable(fileRef, compressedBlob, { contentType: 'image/jpeg' });
+      await new Promise((resolve, reject) => {
+        uploadTask.on('state_changed', null, reject, resolve);
+      });
+
+      const downloadUrl = await getDownloadURL(fileRef);
+
+      const activeGrp = activeStudioGroup || groups.find((g) => g.id === targetGroupId);
+      const studentObj = (activeGrp?.members || []).find(
+        (m) => m.uid === photoStudentUid || m.email === photoStudentUid
+      );
+
+      const computedLabel = photoLabelPreset
+        ? `${photoLabelPreset}${studentObj ? ` (${studentObj.name})` : ''}`
+        : (studentObj ? `Photo (${studentObj.name})` : 'Meeting Photo');
+
+      const photoEntry = {
+        photoId,
+        label: computedLabel,
+        caption: photoCaption.trim() || '',
+        storagePath,
+        downloadUrl,
+        studentUid: studentObj?.uid || '',
+        studentName: studentObj?.name || '',
+        studentEmail: studentObj?.email || '',
+        takenAt: new Date().toISOString(),
+        fileSize: compressedBlob.size || file.size || 0,
+        width,
+        height,
+        mimeType: 'image/jpeg',
+      };
+
+      await updateDoc(doc(db, `classes/${classId}/projectMeetings/${targetMeetingId}`), {
+        photos: arrayUnion(photoEntry),
+        updatedAt: serverTimestamp(),
+      });
+
+      showToastMessage(`📸 Saved photo "${computedLabel}"!`);
+      setIsPhotoModalOpen(false);
+      setPhotoCaption('');
+    } catch (err) {
+      console.error('[ProjectMeetingsView] Photo upload error:', err);
+      setStudioError(`Failed to save photo: ${err.message}`);
+    } finally {
+      setIsUploadingPhoto(false);
+      if (photoInputRef.current) photoInputRef.current.value = '';
+      if (photoGalleryInputRef.current) photoGalleryInputRef.current.value = '';
+    }
+  };
+
+  // Delete a specific meeting photo artifact
+  const handleDeletePhoto = async (photoIdx) => {
+    if (!selectedMeeting) return;
+    const photos = Array.isArray(selectedMeeting.photos) ? selectedMeeting.photos : [];
+    const photoToDelete = photos[photoIdx];
+    if (!photoToDelete) return;
+
+    const photoLabel = photoToDelete.label || `Photo ${photoIdx + 1}`;
+    if (!window.confirm(`Delete photo "${photoLabel}"?`)) return;
+
+    const remainingPhotos = photos.filter((_, i) => i !== photoIdx);
+    if (photoToDelete.storagePath) {
+      deleteObject(storageRef(storage, photoToDelete.storagePath)).catch((err) => {
+        console.warn('[ProjectMeetingsView] Could not delete photo from storage:', err);
+      });
+    }
+
+    await updateDoc(doc(db, `classes/${classId}/projectMeetings/${selectedMeeting.id}`), {
+      photos: remainingPhotos,
+      updatedAt: serverTimestamp(),
+    });
+
+    if (previewPhoto?.photoId === photoToDelete.photoId) {
+      setPreviewPhoto(null);
+    }
+
+    showToastMessage(`🗑️ Deleted photo ${photoLabel}`);
+  };
+
+  // Camera stream handler for 720p Mobile Video Demo recording
+  const startCameraStream = async (facing = videoCameraFacing) => {
+    if (videoStreamRef.current) {
+      videoStreamRef.current.getTracks().forEach((t) => t.stop());
+      videoStreamRef.current = null;
+    }
+    const constraints = {
+      video: {
+        facingMode: { ideal: facing },
+        width: { ideal: 1280 },
+        height: { ideal: 720 },
+        frameRate: { ideal: 24, max: 30 },
+      },
+      audio: { echoCancellation: true, noiseSuppression: true },
+    };
+    try {
+      if (navigator?.mediaDevices?.getUserMedia) {
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        videoStreamRef.current = stream;
+        if (videoPreviewRef.current) {
+          videoPreviewRef.current.srcObject = stream;
+          videoPreviewRef.current.play?.().catch(() => {});
+        }
+      }
+    } catch (err) {
+      console.error('[ProjectMeetingsView] Camera stream error:', err);
+      setStudioError(`Could not access camera for 720p recording: ${err.message}`);
+    }
+  };
+
+  // Open 720p video demo recorder
+  const handleOpenVideoRecorder = async () => {
+    if (!studioGroupId && !selectedMeeting) {
+      setStudioError('Please select a Project Group before recording demo video.');
+      return;
+    }
+    setStudioError('');
+    setVideoPresenterUid(presenterStudentUid || '');
+    setVideoLabelDraft('');
+    setVideoRecordingSeconds(0);
+    setVideoRecordingState('preview');
+    setIsVideoRecordingOpen(true);
+    await startCameraStream(videoCameraFacing);
+  };
+
+  // Flip camera between environment (rear) and user (front)
+  const handleFlipVideoCamera = async () => {
+    const nextFacing = videoCameraFacing === 'environment' ? 'user' : 'environment';
+    setVideoCameraFacing(nextFacing);
+    await startCameraStream(nextFacing);
+  };
+
+  // Close 720p video demo recorder
+  const handleCloseVideoRecorder = () => {
+    if (videoTimerIntervalRef.current) {
+      clearInterval(videoTimerIntervalRef.current);
+      videoTimerIntervalRef.current = null;
+    }
+    if (videoRecorderRef.current && videoRecorderRef.current.state !== 'inactive') {
+      try {
+        videoRecorderRef.current.stop();
+      } catch {}
+    }
+    if (videoStreamRef.current) {
+      videoStreamRef.current.getTracks().forEach((t) => t.stop());
+      videoStreamRef.current = null;
+    }
+    if (videoPreviewRef.current) {
+      videoPreviewRef.current.srcObject = null;
+    }
+    setIsVideoRecordingOpen(false);
+    setVideoRecordingState('preview');
+    setIsVideoAutoSlicing(false);
+  };
+
+  // Start 720p video demo recording (with seamless voice auto-slicing)
+  const handleStart720pVideoRecording = async () => {
+    setStudioError('');
+
+    // Auto-slicing: if voice recording is currently active, slice voice Part 1 first
+    const wasVoiceRecording = recordingState === 'recording' || recordingState === 'paused';
+    if (wasVoiceRecording) {
+      setIsVideoAutoSlicing(true);
+      await handleStopAndSaveRecording(false);
+    }
+
+    try {
+      const targetMeetingId = await ensureTargetMeetingDoc('recording');
+      let stream = videoStreamRef.current;
+      if (!stream || stream.getTracks().every((t) => t.readyState === 'ended')) {
+        await startCameraStream(videoCameraFacing);
+        stream = videoStreamRef.current;
+      }
+      if (!stream) {
+        setStudioError('Cannot start video recording without camera stream.');
+        return;
+      }
+
+      const mimeType = getSupportedVideoMimeType();
+      const options = {
+        videoBitsPerSecond: 1500000, // 720p default: ~1.5 Mbps
+        ...(mimeType ? { mimeType } : {}),
+      };
+
+      const recorder = new MediaRecorder(stream, options);
+      videoRecorderRef.current = recorder;
+      videoRecordedChunksRef.current = [];
+      videoRecordingSecondsRef.current = 0;
+      setVideoRecordingSeconds(0);
+
+      recorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) {
+          videoRecordedChunksRef.current.push(e.data);
+        }
+      };
+
+      recorder.start(1000);
+      setVideoRecordingState('recording');
+
+      videoTimerIntervalRef.current = setInterval(() => {
+        videoRecordingSecondsRef.current += 1;
+        setVideoRecordingSeconds(videoRecordingSecondsRef.current);
+      }, 1000);
+    } catch (err) {
+      console.error('[ProjectMeetingsView] Video record start error:', err);
+      setStudioError(`Failed to start 720p demo recording: ${err.message}`);
+    }
+  };
+
+  // Stop & save 720p demo video clip
+  const handleStopAndSave720pVideo = async () => {
+    const rec = videoRecorderRef.current;
+    if (!rec) return;
+
+    if (videoTimerIntervalRef.current) {
+      clearInterval(videoTimerIntervalRef.current);
+      videoTimerIntervalRef.current = null;
+    }
+
+    const durationSecs = Math.max(1, videoRecordingSecondsRef.current);
+    const targetGroupId = studioGroupId || selectedMeeting?.groupId;
+    const targetMeetingId = activeMeetingIdRef.current || (await ensureTargetMeetingDoc('recording'));
+    const clipId = `demo_${Date.now()}`;
+
+    setVideoRecordingState('uploading');
+    setUploadProgress(0);
+
+    await new Promise((resolve) => {
+      rec.onstop = () => resolve();
+      if (rec.state !== 'inactive') {
+        try {
+          rec.requestData();
+        } catch {}
+        rec.stop();
+      } else {
+        resolve();
+      }
+    });
+
+    try {
+      const actualMime = rec.mimeType || getSupportedVideoMimeType() || 'video/webm';
+      const isMp4 = actualMime.includes('mp4');
+      const ext = isMp4 ? 'mp4' : 'webm';
+      let blob = new Blob(videoRecordedChunksRef.current, { type: actualMime });
+
+      if (!isMp4) {
+        blob = await injectWebmDuration(blob, durationSecs * 1000);
+      }
+
+      const storagePath = `projectMeetings/${classId}/${targetGroupId}/${targetMeetingId}/demo_${clipId}.${ext}`;
+      const fileRef = storageRef(storage, storagePath);
+
+      const uploadTask = uploadBytesResumable(fileRef, blob, {
+        contentType: isMp4 ? 'video/mp4' : 'video/webm',
+      });
+
+      await new Promise((resolve, reject) => {
+        uploadTask.on(
+          'state_changed',
+          (snap) => {
+            if (snap.totalBytes > 0) {
+              setUploadProgress(Math.round((snap.bytesTransferred / snap.totalBytes) * 100));
+            }
+          },
+          reject,
+          resolve
+        );
+      });
+
+      const downloadUrl = await getDownloadURL(fileRef);
+
+      const activeGrp = activeStudioGroup || groups.find((g) => g.id === targetGroupId);
+      const presenterObj = (activeGrp?.members || []).find(
+        (m) => m.uid === videoPresenterUid || m.email === videoPresenterUid
+      );
+
+      const computedLabel =
+        videoLabelDraft.trim() ||
+        (presenterObj ? `${presenterObj.name} Demo (720p)` : 'Mobile Demo Video (720p)');
+
+      const demoEntry = {
+        clipId,
+        type: 'mobile_camera',
+        resolution: '720p',
+        label: computedLabel,
+        storagePath,
+        downloadUrl,
+        durationSeconds: durationSecs,
+        fileSize: blob.size,
+        mimeType: blob.type || (isMp4 ? 'video/mp4' : 'video/webm'),
+        studentUid: presenterObj?.uid || '',
+        studentName: presenterObj?.name || '',
+        studentEmail: presenterObj?.email || '',
+        recordedByEmail: currentUserEmail,
+        recordedAt: new Date().toISOString(),
+      };
+
+      await updateDoc(doc(db, `classes/${classId}/projectMeetings/${targetMeetingId}`), {
+        screenClips: arrayUnion(demoEntry),
+        updatedAt: serverTimestamp(),
+      });
+
+      handleCloseVideoRecorder();
+      showToastMessage(`📹 Saved 720p Demo Video "${computedLabel}" (${formatDuration(durationSecs)})!`);
+
+      // If video auto-sliced voice recording, automatically resume voice recording as Part 2!
+      if (isVideoAutoSlicing) {
+        setIsVideoAutoSlicing(false);
+        await handleStartRecording();
+      }
+    } catch (err) {
+      console.error('[ProjectMeetingsView] Video demo upload error:', err);
+      setStudioError(`Failed to save 720p demo video: ${err.message}`);
+      setVideoRecordingState('preview');
     }
   };
 
@@ -1784,6 +2336,11 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
     (mtg.screenClips || []).forEach((c) => {
       if (c.storagePath) {
         deleteObject(storageRef(storage, c.storagePath)).catch(() => {});
+      }
+    });
+    (mtg.photos || []).forEach((p) => {
+      if (p.storagePath) {
+        deleteObject(storageRef(storage, p.storagePath)).catch(() => {});
       }
     });
 
@@ -2145,6 +2702,7 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
         supervisorName: targetGroup.supervisorName || currentUserName,
         audioClips: [movedClipObj],
         screenClips: [],
+        photos: [],
         voiceAnchors: [],
         audioStoragePath: movedClipObj.storagePath || '',
         audioDownloadUrl: movedClipObj.downloadUrl || '',
@@ -2723,6 +3281,52 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
                 >
                   🔴 {existingTargetMeeting ? 'Record Next Clip in Meeting' : 'Start Meeting Recording'}
                 </button>
+                <button
+                  type="button"
+                  className="btn-studio-snap-photo"
+                  onClick={handleOpenPhotoModal}
+                  disabled={!studioGroupId && !selectedMeeting}
+                  style={{
+                    padding: '8px 14px',
+                    borderRadius: '8px',
+                    background: '#8b5cf6',
+                    border: '1.5px solid #7c3aed',
+                    color: '#ffffff',
+                    fontSize: '0.88rem',
+                    fontWeight: 700,
+                    cursor: !studioGroupId && !selectedMeeting ? 'not-allowed' : 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    boxShadow: '0 2px 4px rgba(139, 92, 246, 0.25)',
+                  }}
+                  title="Snap or upload whiteboard diagrams, circuit wiring, or laptop screen photos"
+                >
+                  📸 Snap Photo
+                </button>
+                <button
+                  type="button"
+                  className="btn-studio-rec-video"
+                  onClick={handleOpenVideoRecorder}
+                  disabled={!studioGroupId && !selectedMeeting}
+                  style={{
+                    padding: '8px 14px',
+                    borderRadius: '8px',
+                    background: '#0284c7',
+                    border: '1.5px solid #0369a1',
+                    color: '#ffffff',
+                    fontSize: '0.88rem',
+                    fontWeight: 700,
+                    cursor: !studioGroupId && !selectedMeeting ? 'not-allowed' : 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    boxShadow: '0 2px 4px rgba(2, 132, 199, 0.25)',
+                  }}
+                  title="Record a 1-3 minute mobile camera demo video in 720p HD"
+                >
+                  📹 Record Demo (720p)
+                </button>
                 {(existingTargetMeeting || selectedMeeting) && (
                   <button
                     type="button"
@@ -2801,14 +3405,72 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
                 </button>
                 <button
                   type="button"
+                  className="btn-studio-snap-photo-live"
+                  onClick={handleOpenPhotoModal}
+                  style={{
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    background: '#8b5cf6',
+                    border: '1px solid #7c3aed',
+                    color: '#ffffff',
+                    fontSize: '0.84rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                  }}
+                  title="Snap a photo artifact right now without interrupting voice recording"
+                >
+                  📸 Snap Photo
+                </button>
+                <button
+                  type="button"
+                  className="btn-studio-rec-video-live"
+                  onClick={handleOpenVideoRecorder}
+                  style={{
+                    padding: '8px 12px',
+                    borderRadius: '8px',
+                    background: '#0284c7',
+                    border: '1px solid #0369a1',
+                    color: '#ffffff',
+                    fontSize: '0.84rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                  }}
+                  title="Film 720p demo video (auto-slices voice Part 1 -> Demo -> Part 2)"
+                >
+                  📹 Record Demo (720p)
+                </button>
+                <button
+                  type="button"
                   className="btn-stop-meeting-rec"
                   onClick={() => handleStopAndSaveRecording(true)}
                 >
-                  ⏹️ Stop & Analyze with Gemini
+                  ⏹️ Stop &amp; Analyze with Gemini
                 </button>
               </>
             )}
           </div>
+
+          {/* Artifacts Summary Pill Strip */}
+          {(existingTargetMeeting || selectedMeeting) && (
+            <div className="studio-artifacts-summary-strip" style={{ marginTop: '8px', display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+              <span style={{ fontSize: '0.78rem', color: '#475569', fontWeight: 600 }}>Captured Artifacts:</span>
+              <span style={{ fontSize: '0.76rem', background: '#f1f5f9', padding: '2px 8px', borderRadius: '12px', border: '1px solid #cbd5e1' }}>
+                🎙️ {((existingTargetMeeting || selectedMeeting).audioClips || []).length || ((existingTargetMeeting || selectedMeeting).audioStoragePath ? 1 : 0)} Voice Part(s)
+              </span>
+              <span style={{ fontSize: '0.76rem', background: '#f0fdf4', padding: '2px 8px', borderRadius: '12px', border: '1px solid #bbf7d0', color: '#166534' }}>
+                💻 {((existingTargetMeeting || selectedMeeting).screenClips || []).length} Demo/Screen Clip(s)
+              </span>
+              <span style={{ fontSize: '0.76rem', background: '#faf5ff', padding: '2px 8px', borderRadius: '12px', border: '1px solid #e9d5ff', color: '#6b21a8' }}>
+                📸 {((existingTargetMeeting || selectedMeeting).photos || []).length} Photo(s)
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Hands-Free Attendance Self-Introduction Banner */}
@@ -3917,7 +4579,7 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
 
                     {(selectedMeeting.screenClips || []).length > 0 && (
                       <div className="clip-pills-group">
-                        <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#334155' }}>💻 Student PC Screens:</span>
+                        <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#334155' }}>💻 Student PC Screens &amp; 📹 Mobile Demos:</span>
                         {selectedMeeting.screenClips.map((sc, idx) => (
                           <button
                             key={sc.clipId || idx}
@@ -3925,13 +4587,13 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
                             className={`clip-pill-btn screen-pill ${activeScreenClipIdx === idx ? 'active' : ''}`}
                             onClick={() => setActiveScreenClipIdx(idx)}
                           >
-                            💻 {sc.label || sc.studentName || `Screen ${idx + 1}`}
+                            {sc.type === 'mobile_camera' ? '📹' : '💻'} {sc.label || sc.studentName || (sc.type === 'mobile_camera' ? `Demo ${idx + 1}` : `Screen ${idx + 1}`)}
                           </button>
                         ))}
                         <button
                           type="button"
                           className="btn-delete-clip-part"
-                          title="Delete selected student PC screen clip"
+                          title="Delete selected screen or demo recording clip"
                           onClick={() => handleDeleteScreenClip(activeScreenClipIdx)}
                           style={{
                             fontSize: '0.74rem',
@@ -3953,7 +4615,7 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
                             checked={syncVideoWithAudio}
                             onChange={(e) => setSyncVideoWithAudio(e.target.checked)}
                           />
-                          🔗 Sync Screen + Voice
+                          🔗 Sync Video + Voice
                         </label>
                       </div>
                     )}
@@ -4000,6 +4662,128 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
                     />
                   ) : (
                     <div style={{ fontSize: '0.82rem', color: '#64748b' }}>No voice recording uploaded yet.</div>
+                  )}
+                </div>
+
+                {/* Visual Artifacts & Photos Gallery */}
+                <div className="inspector-photos-section" style={{ marginTop: '12px', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '14px', marginBottom: '14px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap', gap: '8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ fontSize: '1.1rem' }}>📸</span>
+                      <strong style={{ fontSize: '0.92rem', color: '#1e293b' }}>
+                        Meeting Photos &amp; Visual Evidence ({(selectedMeeting.photos || []).length})
+                      </strong>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleOpenPhotoModal}
+                      style={{
+                        padding: '5px 12px',
+                        borderRadius: '6px',
+                        background: '#f3e8ff',
+                        border: '1px solid #d8b4fe',
+                        color: '#6b21a8',
+                        fontSize: '0.78rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                      }}
+                    >
+                      ➕ Snap / Upload Photo
+                    </button>
+                  </div>
+
+                  {(selectedMeeting.photos || []).length === 0 ? (
+                    <p style={{ margin: 0, fontSize: '0.82rem', color: '#64748b', fontStyle: 'italic' }}>
+                      No photos captured yet for this meeting. Tap &quot;Snap / Upload Photo&quot; to attach whiteboard diagrams, IoT hardware, or screen photos for Gemini multimodal verification.
+                    </p>
+                  ) : (
+                    <div className="photo-artifacts-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '10px' }}>
+                      {(selectedMeeting.photos || []).map((p, pIdx) => (
+                        <div
+                          key={p.photoId || pIdx}
+                          className="photo-artifact-card"
+                          style={{
+                            border: '1px solid #e2e8f0',
+                            borderRadius: '8px',
+                            overflow: 'hidden',
+                            background: '#f8fafc',
+                            display: 'flex',
+                            flexDirection: 'column',
+                          }}
+                        >
+                          <div
+                            onClick={() => setPreviewPhoto(p)}
+                            style={{
+                              position: 'relative',
+                              width: '100%',
+                              height: '100px',
+                              cursor: 'pointer',
+                              background: '#0f172a',
+                            }}
+                            title="Click to Zoom / Lightbox"
+                          >
+                            <img
+                              src={p.downloadUrl}
+                              alt={p.label || `Photo ${pIdx + 1}`}
+                              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                              loading="lazy"
+                            />
+                            <span
+                              style={{
+                                position: 'absolute',
+                                bottom: '4px',
+                                right: '4px',
+                                background: 'rgba(0,0,0,0.65)',
+                                color: '#ffffff',
+                                fontSize: '0.66rem',
+                                padding: '1px 5px',
+                                borderRadius: '4px',
+                              }}
+                            >
+                              🔍 Zoom
+                            </span>
+                          </div>
+                          <div style={{ padding: '6px', display: 'flex', flexDirection: 'column', gap: '2px', flex: 1 }}>
+                            <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#1e293b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {p.label || `Photo ${pIdx + 1}`}
+                            </span>
+                            {p.studentName && (
+                              <span style={{ fontSize: '0.68rem', color: '#2563eb', fontWeight: 600 }}>
+                                👤 {p.studentName}
+                              </span>
+                            )}
+                            {p.caption && (
+                              <span style={{ fontSize: '0.68rem', color: '#64748b', fontStyle: 'italic', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {p.caption}
+                              </span>
+                            )}
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 'auto', paddingTop: '4px' }}>
+                              <span style={{ fontSize: '0.64rem', color: '#94a3b8' }}>
+                                {p.takenAt ? new Date(p.takenAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleDeletePhoto(pIdx)}
+                                title="Delete this photo"
+                                style={{
+                                  background: 'none',
+                                  border: 'none',
+                                  cursor: 'pointer',
+                                  fontSize: '0.72rem',
+                                  padding: '1px',
+                                  color: '#be123c',
+                                }}
+                              >
+                                🗑️
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   )}
                 </div>
 
@@ -5641,6 +6425,461 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
           </div>
         </div>
       )}
+
+      {/* Photo Lightbox Modal */}
+      {previewPhoto && (
+        <div
+          className="modal-overlay"
+          style={{ zIndex: 9999 }}
+          onClick={() => setPreviewPhoto(null)}
+        >
+          <div
+            className="photo-lightbox-modal"
+            style={{
+              maxWidth: '920px',
+              width: '95%',
+              background: '#0f172a',
+              color: '#ffffff',
+              borderRadius: '12px',
+              overflow: 'hidden',
+              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5)',
+              display: 'flex',
+              flexDirection: 'column',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', background: '#1e293b', borderBottom: '1px solid #334155' }}>
+              <div>
+                <strong style={{ fontSize: '0.98rem' }}>{previewPhoto.label || 'Meeting Photo'}</strong>
+                {previewPhoto.studentName && (
+                  <span style={{ marginLeft: '8px', fontSize: '0.78rem', color: '#93c5fd', background: '#1e3a8a', padding: '2px 8px', borderRadius: '4px' }}>
+                    👤 {previewPhoto.studentName}
+                  </span>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => setPreviewPhoto(null)}
+                style={{ background: 'none', border: 'none', color: '#cbd5e1', fontSize: '1.2rem', cursor: 'pointer' }}
+              >
+                ✕
+              </button>
+            </div>
+            <div style={{ padding: '12px', display: 'flex', justifyContent: 'center', alignItems: 'center', background: '#020617', maxHeight: '70vh', overflow: 'hidden' }}>
+              <img
+                src={previewPhoto.downloadUrl}
+                alt={previewPhoto.label || 'Preview'}
+                style={{ maxWidth: '100%', maxHeight: '68vh', objectFit: 'contain', borderRadius: '6px' }}
+              />
+            </div>
+            {(previewPhoto.caption || previewPhoto.takenAt) && (
+              <div style={{ padding: '10px 16px', background: '#1e293b', borderTop: '1px solid #334155', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                <span style={{ fontSize: '0.84rem', color: '#e2e8f0' }}>
+                  {previewPhoto.caption ? `📝 ${previewPhoto.caption}` : 'No caption'}
+                </span>
+                <span style={{ fontSize: '0.74rem', color: '#94a3b8' }}>
+                  📅 {previewPhoto.takenAt ? new Date(previewPhoto.takenAt).toLocaleString() : ''}
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Photo Capture & Upload Modal */}
+      {isPhotoModalOpen && (
+        <div
+          className="modal-overlay"
+          style={{ zIndex: 9998 }}
+          onClick={() => !isUploadingPhoto && setIsPhotoModalOpen(false)}
+        >
+          <div
+            className="modal-card"
+            style={{ maxWidth: '480px', width: '92%', borderRadius: '12px', padding: '20px' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+              <h3 style={{ margin: 0, fontSize: '1.05rem', color: '#1e293b', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                📸 Snap Meeting Photo / Artifact
+              </h3>
+              <button
+                type="button"
+                onClick={() => !isUploadingPhoto && setIsPhotoModalOpen(false)}
+                disabled={isUploadingPhoto}
+                style={{ background: 'none', border: 'none', fontSize: '1.1rem', cursor: 'pointer', color: '#64748b' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <p style={{ margin: '0 0 12px 0', fontSize: '0.82rem', color: '#64748b' }}>
+              Take or upload a photo of whiteboards, hardware wiring, or code. Gemini will inspect it alongside the consultation transcript to verify student contributions.
+            </p>
+
+            {/* Member Attribution Selector */}
+            <div style={{ marginBottom: '12px' }}>
+              <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#334155', marginBottom: '4px' }}>
+                Attributed Student Member:
+              </label>
+              <select
+                value={photoStudentUid}
+                onChange={(e) => setPhotoStudentUid(e.target.value)}
+                disabled={isUploadingPhoto}
+                style={{ width: '100%', padding: '7px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.84rem' }}
+              >
+                <option value="">👥 Whole Group / General Evidence</option>
+                {((activeStudioGroup || selectedGroup)?.members || []).map((m) => (
+                  <option key={m.uid || m.email} value={m.uid || m.email}>
+                    👤 {m.name} ({m.email})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Preset Label Chips */}
+            <div style={{ marginBottom: '12px' }}>
+              <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+                Artifact Category:
+              </label>
+              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                {[
+                  'Whiteboard / Architecture',
+                  'IoT / Hardware Wiring',
+                  'Laptop Code / Terminal',
+                  'UI / Mobile Screen',
+                  'Project Poster / Chart',
+                ].map((preset) => (
+                  <button
+                    key={preset}
+                    type="button"
+                    onClick={() => setPhotoLabelPreset(preset)}
+                    style={{
+                      padding: '4px 8px',
+                      borderRadius: '6px',
+                      border: photoLabelPreset === preset ? '1.5px solid #7c3aed' : '1px solid #cbd5e1',
+                      background: photoLabelPreset === preset ? '#f3e8ff' : '#f8fafc',
+                      color: photoLabelPreset === preset ? '#6b21a8' : '#334155',
+                      fontSize: '0.74rem',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {preset}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Optional Caption */}
+            <div style={{ marginBottom: '16px' }}>
+              <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#334155', marginBottom: '4px' }}>
+                Optional Caption / Note:
+              </label>
+              <input
+                type="text"
+                placeholder="e.g. Drafted database ERD with 5 collections..."
+                value={photoCaption}
+                onChange={(e) => setPhotoCaption(e.target.value)}
+                disabled={isUploadingPhoto}
+                style={{ width: '100%', padding: '7px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.84rem' }}
+              />
+            </div>
+
+            {/* Action Buttons */}
+            {isUploadingPhoto ? (
+              <div style={{ textAlign: 'center', padding: '12px', background: '#f8fafc', borderRadius: '8px', color: '#2563eb', fontWeight: 600, fontSize: '0.88rem' }}>
+                ☁️ Compressing (1280px) &amp; Uploading Photo...
+              </div>
+            ) : (
+              <div style={{ display: 'flex', gap: '10px', flexDirection: 'column' }}>
+                <button
+                  type="button"
+                  className="btn-camera-snap-modal"
+                  onClick={() => photoInputRef.current?.click()}
+                  style={{
+                    padding: '10px 16px',
+                    borderRadius: '8px',
+                    background: '#8b5cf6',
+                    border: '1.5px solid #7c3aed',
+                    color: '#ffffff',
+                    fontSize: '0.92rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px',
+                    boxShadow: '0 2px 4px rgba(139, 92, 246, 0.3)',
+                  }}
+                >
+                  📸 Open Camera &amp; Snap Photo
+                </button>
+                <button
+                  type="button"
+                  className="btn-gallery-upload-modal"
+                  onClick={() => photoGalleryInputRef.current?.click()}
+                  style={{
+                    padding: '8px 16px',
+                    borderRadius: '8px',
+                    background: '#f1f5f9',
+                    border: '1px solid #cbd5e1',
+                    color: '#334155',
+                    fontSize: '0.84rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '6px',
+                  }}
+                >
+                  🖼️ Upload from Photo Gallery / Files
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 720p Mobile Video Demo Recording Viewfinder Modal */}
+      {isVideoRecordingOpen && (
+        <div
+          className="modal-overlay"
+          style={{ zIndex: 9998 }}
+          onClick={() => videoRecordingState !== 'uploading' && handleCloseVideoRecorder()}
+        >
+          <div
+            className="video-recorder-drawer"
+            style={{
+              maxWidth: '680px',
+              width: '95%',
+              background: '#0f172a',
+              color: '#ffffff',
+              borderRadius: '12px',
+              overflow: 'hidden',
+              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.6)',
+              display: 'flex',
+              flexDirection: 'column',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', background: '#1e293b', borderBottom: '1px solid #334155' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '1.1rem' }}>📹</span>
+                <strong style={{ fontSize: '0.94rem' }}>Mobile Demo Video (720p)</strong>
+                <span style={{ fontSize: '0.72rem', background: '#15803d', color: '#ffffff', padding: '1px 6px', borderRadius: '4px', fontWeight: 700 }}>
+                  720p @ 24/30 FPS
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={handleCloseVideoRecorder}
+                disabled={videoRecordingState === 'uploading'}
+                style={{ background: 'none', border: 'none', color: '#cbd5e1', fontSize: '1.2rem', cursor: 'pointer' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Presenter Selector & Title Input (Visible before recording) */}
+            {videoRecordingState === 'preview' && (
+              <div style={{ padding: '10px 16px', background: '#1e293b', borderBottom: '1px solid #334155', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                <div style={{ flex: 1, minWidth: '180px' }}>
+                  <label style={{ display: 'block', fontSize: '0.74rem', color: '#94a3b8', marginBottom: '3px' }}>
+                    Presenter / Demonstrator:
+                  </label>
+                  <select
+                    value={videoPresenterUid}
+                    onChange={(e) => setVideoPresenterUid(e.target.value)}
+                    style={{ width: '100%', padding: '5px 8px', borderRadius: '6px', background: '#334155', color: '#ffffff', border: '1px solid #475569', fontSize: '0.8rem' }}
+                  >
+                    <option value="">👥 Whole Group</option>
+                    {((activeStudioGroup || selectedGroup)?.members || []).map((m) => (
+                      <option key={m.uid || m.email} value={m.uid || m.email}>
+                        👤 {m.name} ({m.email})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div style={{ flex: 1, minWidth: '180px' }}>
+                  <label style={{ display: 'block', fontSize: '0.74rem', color: '#94a3b8', marginBottom: '3px' }}>
+                    Demo Topic / Title:
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. IoT Sensor Breadboard Demo"
+                    value={videoLabelDraft}
+                    onChange={(e) => setVideoLabelDraft(e.target.value)}
+                    style={{ width: '100%', padding: '5px 8px', borderRadius: '6px', background: '#334155', color: '#ffffff', border: '1px solid #475569', fontSize: '0.8rem' }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Viewfinder Video Stream Container */}
+            <div style={{ position: 'relative', width: '100%', background: '#020617', display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '320px', maxHeight: '55vh', overflow: 'hidden' }}>
+              <video
+                ref={videoPreviewRef}
+                autoPlay
+                playsInline
+                muted
+                style={{ width: '100%', maxHeight: '55vh', objectFit: 'contain' }}
+              />
+
+              {/* Viewfinder Overlays */}
+              <div style={{ position: 'absolute', top: '10px', left: '10px', display: 'flex', gap: '6px', alignItems: 'center' }}>
+                {videoRecordingState === 'recording' ? (
+                  <span style={{ background: '#dc2626', color: '#ffffff', fontSize: '0.78rem', fontWeight: 800, padding: '3px 8px', borderRadius: '6px', display: 'flex', alignItems: 'center', gap: '4px', boxShadow: '0 2px 4px rgba(0,0,0,0.5)' }}>
+                    🔴 REC {formatDuration(videoRecordingSeconds)}
+                  </span>
+                ) : (
+                  <span style={{ background: 'rgba(0,0,0,0.6)', color: '#cbd5e1', fontSize: '0.74rem', padding: '2px 6px', borderRadius: '4px' }}>
+                    📷 720p Viewfinder ({videoCameraFacing === 'environment' ? 'Rear' : 'Front'})
+                  </span>
+                )}
+              </div>
+
+              <div style={{ position: 'absolute', top: '10px', right: '10px' }}>
+                <button
+                  type="button"
+                  onClick={handleFlipVideoCamera}
+                  disabled={videoRecordingState === 'uploading'}
+                  style={{
+                    background: 'rgba(15, 23, 42, 0.75)',
+                    border: '1px solid rgba(255, 255, 255, 0.25)',
+                    color: '#ffffff',
+                    padding: '4px 10px',
+                    borderRadius: '6px',
+                    fontSize: '0.76rem',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                  }}
+                  title="Switch between rear and front cameras"
+                >
+                  🔄 Flip Camera
+                </button>
+              </div>
+
+              {videoRecordingState === 'uploading' && (
+                <div style={{ position: 'absolute', inset: 0, background: 'rgba(15, 23, 42, 0.85)', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '1.5rem' }}>☁️</span>
+                  <span style={{ fontSize: '0.94rem', fontWeight: 700, color: '#ffffff' }}>
+                    Uploading 720p Demo Video ({uploadProgress}%)...
+                  </span>
+                  <span style={{ fontSize: '0.76rem', color: '#94a3b8' }}>
+                    Optimized 1.5 Mbps bitrate (~11 MB/min)
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* Footer Recording Controls */}
+            <div style={{ padding: '12px 16px', background: '#1e293b', borderTop: '1px solid #334155', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+              <div style={{ fontSize: '0.76rem', color: '#94a3b8' }}>
+                {videoRecordingState === 'recording'
+                  ? '💡 Speak naturally — audio dialogue is transcribed into meeting minutes.'
+                  : '💡 Standard 720p HD keeps upload fast (~11 MB/min) and saves phone battery.'}
+              </div>
+
+              <div style={{ display: 'flex', gap: '8px' }}>
+                {videoRecordingState === 'preview' && (
+                  <button
+                    type="button"
+                    className="btn-start-720p-video-rec"
+                    onClick={handleStart720pVideoRecording}
+                    style={{
+                      background: '#dc2626',
+                      border: '1.5px solid #b91c1c',
+                      color: '#ffffff',
+                      padding: '8px 18px',
+                      borderRadius: '8px',
+                      fontWeight: 800,
+                      fontSize: '0.9rem',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      boxShadow: '0 2px 6px rgba(220, 38, 38, 0.4)',
+                    }}
+                  >
+                    🔴 Start 720p Recording
+                  </button>
+                )}
+
+                {videoRecordingState === 'recording' && (
+                  <button
+                    type="button"
+                    className="btn-stop-720p-video-rec"
+                    onClick={handleStopAndSave720pVideo}
+                    style={{
+                      background: '#15803d',
+                      border: '1.5px solid #166534',
+                      color: '#ffffff',
+                      padding: '8px 18px',
+                      borderRadius: '8px',
+                      fontWeight: 800,
+                      fontSize: '0.9rem',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      boxShadow: '0 2px 6px rgba(21, 128, 61, 0.4)',
+                    }}
+                  >
+                    ⏹️ Finish &amp; Save Demo Video
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={handleCloseVideoRecorder}
+                  disabled={videoRecordingState === 'uploading'}
+                  style={{
+                    background: '#334155',
+                    border: '1px solid #475569',
+                    color: '#cbd5e1',
+                    padding: '8px 14px',
+                    borderRadius: '8px',
+                    fontWeight: 600,
+                    fontSize: '0.84rem',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Hidden File Inputs for Photo Capture */}
+      <input
+        type="file"
+        accept="image/*"
+        capture="environment"
+        ref={photoInputRef}
+        data-testid="photo-camera-input"
+        style={{ display: 'none' }}
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) handleUploadPhoto(file);
+        }}
+      />
+      <input
+        type="file"
+        accept="image/*"
+        ref={photoGalleryInputRef}
+        data-testid="photo-gallery-input"
+        style={{ display: 'none' }}
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) handleUploadPhoto(file);
+        }}
+      />
     </div>
   );
 }

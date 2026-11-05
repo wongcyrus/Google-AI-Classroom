@@ -507,6 +507,26 @@ export function generateMeetingMarkdownMinutes(meeting = {}) {
       ...(sc.weeklyFeedback ? [`- **Weekly Feedback**: ${sc.weeklyFeedback}`] : []),
       '',
     ]),
+    ...((meeting.photos || []).length > 0
+      ? [
+          '## 4. Visual Artifacts & Photos Captured Live',
+          ...meeting.photos.map(
+            (p, idx) =>
+              `- **Photo ${idx + 1}**: ${p.label || 'Artifact'}${p.caption ? ` — "${p.caption}"` : ''}${p.studentName ? ` (${p.studentName})` : ''}`
+          ),
+          '',
+        ]
+      : []),
+    ...((meeting.screenClips || []).length > 0
+      ? [
+          '## 5. Demonstrations & Video Clips',
+          ...meeting.screenClips.map(
+            (sc, idx) =>
+              `- **${sc.type === 'mobile_camera' ? 'Mobile Camera Demo (720p)' : 'Student PC Screencast'}**: ${sc.label || `Clip ${idx + 1}`} (${sc.durationSeconds || 0}s)`
+          ),
+          '',
+        ]
+      : []),
   ];
   return lines.join('\n');
 }

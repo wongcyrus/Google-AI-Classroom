@@ -747,6 +747,57 @@ If a speaker states their name or is addressed by name, include their name next 
       cumulativeOffsetSeconds += Number(clip.durationSeconds) || 0;
     }
 
+    // Transcribe dialogue from any mobile camera demo videos recorded during the session (if any)
+    const mobileDemoClips = (Array.isArray(meetingData.screenClips) ? meetingData.screenClips : []).filter(
+      (c) => c.type === 'mobile_camera' && (c.storagePath || c.downloadUrl)
+    );
+    for (let v = 0; v < mobileDemoClips.length; v++) {
+      const vClip = mobileDemoClips[v];
+      let vPath = (vClip.storagePath || '').trim();
+      if (vPath.startsWith('http://') || vPath.startsWith('https://')) {
+        const match = vPath.match(/\/o\/([^?#]+)/);
+        if (match) vPath = decodeURIComponent(match[1]);
+      }
+      if (!vPath && vClip.downloadUrl) {
+        const match = vClip.downloadUrl.match(/\/o\/([^?#]+)/);
+        if (match) vPath = decodeURIComponent(match[1]);
+      }
+      if (!vPath) continue;
+
+      const vGsUri = vPath.startsWith('gs://') ? vPath : `gs://${bucketName}/${vPath.replace(/^\/+/, '')}`;
+      const vContentType = vClip.mimeType?.includes('mp4') ? 'video/mp4' : 'video/webm';
+      const vPrompt = `Transcribe any speech or spoken dialogue during this live project demonstration video clip (${vClip.label || `Demo ${v + 1}`}) verbatim with speaker diarization and [MM:SS] timestamps. If no speech is present, reply with [Demonstration without speech].`;
+
+      try {
+        const { response: vSttResp, modelUsed: vSttModel } = await generateWithResilience(
+          {
+            config: { temperature: 0.1, maxOutputTokens: 16384 },
+            prompt: [
+              { text: vPrompt },
+              { media: { url: vGsUri, contentType: vContentType } },
+            ],
+          },
+          DEFAULT_LECTURE_AI_MODEL || 'gemini-3.8-flash'
+        );
+        modelsUsedSet.add(vSttModel);
+        const vUsage = vSttResp.usage || {};
+        totalInputTokens += vUsage.inputTokens ?? vUsage.promptTokenCount ?? 0;
+        totalOutputTokens += vUsage.outputTokens ?? vUsage.candidatesTokenCount ?? 0;
+        totalCost += calculateCost(vUsage, vSttModel);
+
+        const vText = (vSttResp.text || '').trim();
+        if (vText) {
+          const shiftedVText = offsetTranscriptTimestamps(vText, cumulativeOffsetSeconds);
+          clipTranscripts.push(
+            `=== Demonstration Video: ${vClip.label || `Demo ${v + 1}`} (Starts at [${formatSecondsToMmSs(cumulativeOffsetSeconds)}]) ===\n${shiftedVText}`
+          );
+          cumulativeOffsetSeconds += Number(vClip.durationSeconds) || 0;
+        }
+      } catch (vErr) {
+        console.warn('[analyzeProjectMeeting] Could not transcribe demo video audio:', vErr.message);
+      }
+    }
+
     const combinedDiarizedTranscript =
       clipTranscripts.length > 0
         ? clipTranscripts.join('\n\n')
@@ -772,11 +823,22 @@ If a speaker states their name or is addressed by name, include their name next 
     const screenClips = Array.isArray(meetingData.screenClips) ? meetingData.screenClips : [];
     const screenClipLines =
       screenClips.length > 0
-        ? screenClips.map(
-            (s, idx) =>
-              `- Screen Clip ${idx + 1} (${s.label || 'PC Screen'}): Student ${s.studentName} (${s.studentEmail || s.studentUid}) shared their PC screen (${s.durationSeconds || 0}s)`
-          )
+        ? screenClips.map((s, idx) => {
+            const typeLabel = s.type === 'mobile_camera' ? '📹 Mobile Demo Video (720p)' : '💻 Student PC Screen Demo';
+            const stu = s.studentName ? `by ${s.studentName} (${s.studentEmail || s.studentUid})` : '';
+            return `- Demonstration Clip ${idx + 1} [${typeLabel}]: ${s.label || 'Demo'} ${stu} (${s.durationSeconds || 0}s)`;
+          })
         : ['None recorded.'];
+
+    const meetingPhotos = Array.isArray(meetingData.photos) ? meetingData.photos : [];
+    const meetingPhotoLines =
+      meetingPhotos.length > 0
+        ? meetingPhotos.map((p, idx) => {
+            const stu = p.studentName ? ` for ${p.studentName} (${p.studentEmail || p.studentUid})` : '';
+            const cap = p.caption ? ` — Caption: "${p.caption}"` : '';
+            return `- Photo Artifact ${idx + 1} ("${p.label || 'Meeting Photo'}")${stu}${cap}`;
+          })
+        : ['None attached.'];
 
     const baseSystemPrompt = customPromptText || DEFAULT_PROJECT_MEETING_PROMPT;
 
@@ -818,7 +880,11 @@ ${rosterLines.length > 0 ? rosterLines.join('\n') : 'No pre-assigned group membe
 ### 1-Tap Supervisor "Speaking Now" Anchors (100% Ground Truth Speaker Identity at Timestamp):
 ${voiceAnchorLines.join('\n')}
 
-### Student PC Screen Demonstration Clips (100% Ground Truth Presenter Identity):
+### Visual Demonstration Clips & Meeting Photo Artifacts:
+#### Meeting Photo Artifacts Captured Live by Supervisor (${meetingPhotos.length} photos):
+${meetingPhotoLines.join('\n')}
+
+#### Demonstration Video Clips (${screenClips.length} clips):
 ${screenClipLines.join('\n')}
 
 ## Prior Week's Assigned Action Items (for Continuity Check)
@@ -837,10 +903,11 @@ Using the Stage 1 Diarized Audio Transcript, the Deterministic Speaker Anchors, 
 1. Resolve anonymous speaker labels (Speaker 1, Speaker 2, etc.) to the exact students in the Enrolled Group Student Roster or the Supervisor. Students are required to introduce themselves at the start of the meeting (e.g. "Hi, I'm Alex..."). Use these opening self-introductions, their discussed project tasks matching their submitted weekly logs, and any student PC screen demonstrations to decisively attribute each speaker.
 2. Determine the Attendance Record for every student in the roster ('present', 'late', or 'absent'), their speakingContribution ('high', 'moderate', 'low', 'none'), a concise evidence string with [MM:SS] timestamp, and firstHeardTimestamp ('MM:SS').
 3. Extract Key Meeting Insights (executiveSummary, overallGroupProgress: 'on_track' | 'ahead' | 'at_risk' | 'behind', keyDecisions[], blockersAndRisks[], supervisorFeedback[], and weeklyGroupFeedback: a 2-4 sentence constructive post-meeting weekly feedback message for the group).
-4. Cross-verify each student's **Submitted Weekly Log** against what they **actually discussed/demonstrated in the meeting**:
+4. Cross-verify each student's **Submitted Weekly Log** against what they **actually discussed/demonstrated in the meeting**, including any attached **Meeting Photo Artifacts** (whiteboard diagrams, hardware wiring, terminal code) and **Demonstration Clips**:
    - High-quality weekly logs that reflect real work are an explicit grading criterion.
-   - Flag **vague/useless logs** (e.g. "done", "thinking") as \`"vague_useless"\` and **AI-generated/fake logs** that were NOT backed up by real understanding or code in the meeting as \`"suspected_ai_unverified"\` or \`"contradicted_in_meeting"\`. If verified by their spoken explanation/demo, mark \`"genuine_verified"\`.
-   - Grade \`logQualityScore\` (0 to 10) and \`realWorkScore\` (0 to 10).
+   - Flag **vague/useless logs** (e.g. "done", "thinking") as \`"vague_useless"\` and **AI-generated/fake logs** that were NOT backed up by real understanding, code, or visual demonstration in the meeting as \`"suspected_ai_unverified"\` or \`"contradicted_in_meeting"\`. If verified by their spoken explanation/demo or photo artifacts, mark \`"genuine_verified"\`.
+   - Grade \`logQualityScore\` (0 to 10) and \`realWorkScore\` (0 to 10). Cite specific visual evidence from photos or demo clips when available.
+   - If no photos or demo clips are attached (voice-only session), evaluate based on the spoken discussion and weekly logs.
    - Provide 1-2 \`challengeQuestions\` (to challenge fake/vague log claims or verify next week's work) and a constructive 2-3 sentence \`weeklyFeedback\` for the student covering both their real project work and how to improve their weekly log quality.
 5. Output speaker-attributed transcriptSegments[] with startTime ('MM:SS'), endTime ('MM:SS'), speaker (resolved student name or Supervisor), and text.
 
@@ -892,9 +959,26 @@ Respond strictly with valid JSON matching this exact structure:
   ]
 }`;
 
+    const reasoningMediaParts = [];
+    for (const photo of meetingPhotos.slice(0, 8)) {
+      let pPath = (photo.storagePath || '').trim();
+      if (pPath.startsWith('http://') || pPath.startsWith('https://')) {
+        const match = pPath.match(/\/o\/([^?#]+)/);
+        if (match) pPath = decodeURIComponent(match[1]);
+      }
+      if (!pPath && photo.downloadUrl) {
+        const match = photo.downloadUrl.match(/\/o\/([^?#]+)/);
+        if (match) pPath = decodeURIComponent(match[1]);
+      }
+      if (pPath) {
+        const pGsUri = pPath.startsWith('gs://') ? pPath : `gs://${bucketName}/${pPath.replace(/^\/+/, '')}`;
+        reasoningMediaParts.push({ media: { url: pGsUri, contentType: 'image/jpeg' } });
+      }
+    }
+
     const { response: reasoningResponse, modelUsed: reasoningModelUsed } = await generateWithResilience(
       {
-        prompt: [{ text: reasoningPrompt }],
+        prompt: [{ text: reasoningPrompt }, ...reasoningMediaParts],
         config: {
           temperature: 0.1,
           maxOutputTokens: 65536,

@@ -3407,11 +3407,11 @@ const StudentRecordsView = ({ user }) => {
                             </div>
                           )}
 
-                          {/* Meeting Media: Audio clips & Screen Recordings */}
-                          {((m.audioClips || []).length > 0 || (m.screenClips || []).length > 0) && (
+                          {/* Meeting Media: Audio clips, Screen Recordings & Photo Artifacts */}
+                          {((m.audioClips || []).length > 0 || (m.screenClips || []).length > 0 || (m.photos || []).length > 0) && (
                             <div className="meeting-media-bar">
                               {(m.audioClips || []).map((ac, acIdx) => (
-                                <div key={ac.id || acIdx} className="media-chip audio">
+                                <div key={ac.id || ac.clipId || acIdx} className="media-chip audio">
                                   <span>🎙️ {ac.label || `Audio Part ${acIdx + 1}`}</span>
                                   {ac.downloadUrl && (
                                     <audio src={ac.downloadUrl} controls preload="none" style={{ height: '28px', maxWidth: '240px' }} />
@@ -3419,8 +3419,8 @@ const StudentRecordsView = ({ user }) => {
                                 </div>
                               ))}
                               {(m.screenClips || []).map((sc, scIdx) => (
-                                <div key={sc.id || scIdx} className="media-chip screen">
-                                  <span>💻 {sc.label || `Screen Clip ${scIdx + 1}`}</span>
+                                <div key={sc.id || sc.clipId || scIdx} className="media-chip screen">
+                                  <span>{sc.type === 'mobile_camera' ? '📹' : '💻'} {sc.label || `Demo Clip ${scIdx + 1}`}</span>
                                   {sc.downloadUrl && (
                                     <button
                                       type="button"
@@ -3428,11 +3428,27 @@ const StudentRecordsView = ({ user }) => {
                                       onClick={() => {
                                         setPlayerVideoUrl(sc.downloadUrl);
                                         setShowPlayer(true);
-                                        setPlayingVideoRecord({ id: sc.id, title: `${m.groupName || 'Meeting'} - ${sc.label || 'Screen Clip'}` });
+                                        setPlayingVideoRecord({ id: sc.id || sc.clipId, title: `${m.groupName || 'Meeting'} - ${sc.label || 'Demo Clip'}` });
                                       }}
                                     >
-                                      ▶ Watch Screen
+                                      ▶ {sc.type === 'mobile_camera' ? 'Watch Demo' : 'Watch Screen'}
                                     </button>
+                                  )}
+                                </div>
+                              ))}
+                              {(m.photos || []).map((p, pIdx) => (
+                                <div key={p.photoId || pIdx} className="media-chip photo">
+                                  <span>📸 {p.label || `Photo ${pIdx + 1}`}</span>
+                                  {p.downloadUrl && (
+                                    <a
+                                      href={p.downloadUrl}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="action-btn-sm action-btn-secondary"
+                                      style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}
+                                    >
+                                      🔍 View Photo
+                                    </a>
                                   )}
                                 </div>
                               ))}

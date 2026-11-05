@@ -1898,3 +1898,83 @@
   flex-direction: column;
   gap: 4px;
 }
+
+/* =========================================================================
+   Photo Artifacts & 720p Mobile Video Demo Recording Viewfinder Styles
+   ========================================================================= */
+
+.btn-studio-snap-photo:hover,
+.btn-studio-snap-photo-live:hover {
+  background: #7c3aed !important;
+  border-color: #6d28d9 !important;
+}
+
+.btn-studio-rec-video:hover,
+.btn-studio-rec-video-live:hover {
+  background: #0369a1 !important;
+  border-color: #075985 !important;
+}
+
+.inspector-photos-section {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.photo-artifacts-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 12px;
+}
+
+.photo-artifact-card {
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.photo-artifact-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+.photo-lightbox-modal {
+  animation: photoModalFadeIn 0.2s ease-out;
+}
+
+@keyframes photoModalFadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.video-recorder-drawer {
+  animation: videoDrawerSlideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes videoDrawerSlideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 640px) {
+  .photo-artifacts-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+  }
+
+  .video-recorder-drawer {
+    width: 100% !important;
+    max-width: 100% !important;
+    border-radius: 0 !important;
+    height: 100vh !important;
+    max-height: 100vh !important;
+  }
+}

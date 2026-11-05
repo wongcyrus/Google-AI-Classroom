@@ -108,7 +108,7 @@ import {
   mergeIncrementalStudentProfiles,
   bootstrapProjectGroupsFromWeeklyLogs,
 } from '../../utils/projectGroupUtils';
-import ProjectMeetingsView, { isMeetingPendingAnalysis } from './ProjectMeetingsView';
+import ProjectMeetingsView, { isMeetingPendingAnalysis, compressPhotoBlob } from './ProjectMeetingsView';
 import ProjectGroupEditorModal from './ProjectGroupEditorModal';
 
 const SAMPLE_FORM_RESPONSES_2_CSV = `Timestamp,Group ID,Student Name,Student ID,Supervisor,I am doing something this week,Work done & findings since last recording,State which part of the last plan not yet finished (leave it blank if you finished all the work of the last plan,Plan of work before the next recording,Description
@@ -1291,5 +1291,283 @@ Group Beta,New Beta Topic,other@vtc.edu.hk,eva@stu.vtc.edu.hk,Eva Ho,Leader`;
     });
 
     confirmSpy.mockRestore();
+  });
+
+  it('supports photo artifact capture, member attribution, canvas compression, gallery preview, lightbox zoom, and deletion', async () => {
+    // 1. Verify compressPhotoBlob utility
+    const mockFile = new Blob(['fake-image-bytes'], { type: 'image/jpeg' });
+    const compressed = await compressPhotoBlob(mockFile, 1280, 0.85);
+    expect(compressed).toBeDefined();
+    expect(compressed.blob).toBeDefined();
+    expect(compressed.width).toBeGreaterThanOrEqual(100);
+
+    // 2. Setup mock meeting with existing photo artifact
+    const mockPhoto1 = {
+      photoId: 'photo_101',
+      label: 'Whiteboard Architecture (Alice Chan)',
+      caption: 'Drafted 5 collections',
+      downloadUrl: 'https://storage.example.com/photos/photo_101.jpg',
+      storagePath: 'projectMeetings/it114115/grp_1/mtg_photo_test/photos/photo_101.jpg',
+      studentUid: 'u_alice',
+      studentName: 'Alice Chan',
+      studentEmail: 'alice@stu.vtc.edu.hk',
+      takenAt: '2026-10-15T10:30:00Z',
+      fileSize: 250000,
+      width: 1280,
+      height: 960,
+      mimeType: 'image/jpeg',
+    };
+
+    mockGroupsSnapshotDocs = [
+      {
+        id: 'grp_1',
+        data: () => ({
+          name: 'Group A01',
+          projectTopic: 'IoT Smart Clinic',
+          supervisorEmail: 'cywong@vtc.edu.hk',
+          members: [
+            { uid: 'u_alice', name: 'Alice Chan', email: 'alice@stu.vtc.edu.hk', role: 'Leader' },
+            { uid: 'u_bob', name: 'Bob Lee', email: 'bob@stu.vtc.edu.hk', role: 'Dev' },
+          ],
+        }),
+      },
+    ];
+
+    mockMeetingsSnapshotDocs = [
+      {
+        id: 'mtg_photo_test',
+        data: () => ({
+          groupId: 'grp_1',
+          groupName: 'Group A01',
+          weekNumber: 1,
+          title: 'Week 1 Supervision Meeting',
+          supervisorEmail: 'cywong@vtc.edu.hk',
+          audioClips: [
+            {
+              clipId: 'c1',
+              label: 'Part 1',
+              downloadUrl: 'https://storage.example.com/voice1.webm',
+              durationSeconds: 120,
+            },
+          ],
+          photos: [mockPhoto1],
+          status: 'ready',
+        }),
+      },
+    ];
+
+    render(
+      <ProjectMeetingsView
+        classId="it114115"
+        classInfo={{
+          name: 'Capstone Project',
+          teacherEmails: ['cywong@vtc.edu.hk'],
+          studentEmails: ['alice@stu.vtc.edu.hk', 'bob@stu.vtc.edu.hk'],
+        }}
+        user={{ email: 'cywong@vtc.edu.hk', displayName: 'Dr. Wong', uid: 'u_teacher' }}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText(/📁 Project Group:/i), { target: { value: 'grp_1' } });
+
+    // Verify Inspector photos gallery is rendered
+    expect(await screen.findByText(/Meeting Photos & Visual Evidence/i)).toBeInTheDocument();
+    expect(screen.getByText('Whiteboard Architecture (Alice Chan)')).toBeInTheDocument();
+    expect(screen.getByText('Drafted 5 collections')).toBeInTheDocument();
+
+    // Test Lightbox Zoom
+    const zoomTrigger = screen.getByTitle(/Click to Zoom \/ Lightbox/i);
+    fireEvent.click(zoomTrigger);
+
+    // Lightbox modal should appear
+    expect(screen.getAllByText(/Drafted 5 collections/i).length).toBeGreaterThanOrEqual(1);
+    const closeLightboxBtn = screen.getByRole('button', { name: '✕' });
+    fireEvent.click(closeLightboxBtn);
+
+    // Open Photo Capture Modal
+    const snapPhotoBtn = screen.getByRole('button', { name: /📸 Snap Photo/i });
+    fireEvent.click(snapPhotoBtn);
+
+    // Modal title should be visible
+    expect(screen.getByText(/📸 Snap Meeting Photo \/ Artifact/i)).toBeInTheDocument();
+
+    // Select category and member attribution
+    const categoryBtn = screen.getByRole('button', { name: 'IoT / Hardware Wiring' });
+    fireEvent.click(categoryBtn);
+
+    const captionInput = screen.getByPlaceholderText(/Drafted database ERD/i);
+    fireEvent.change(captionInput, { target: { value: 'Breadboard circuit wiring for ESP32' } });
+
+    // Simulate uploading photo file via camera input
+    const cameraInput = screen.getByTestId('photo-camera-input');
+    const testFile = new File(['mock-photo-content'], 'test_circuit.jpg', { type: 'image/jpeg' });
+    fireEvent.change(cameraInput, { target: { files: [testFile] } });
+
+    await waitFor(() => {
+      expect(mockUpdateDoc).toHaveBeenCalledWith(
+        expect.objectContaining({ path: 'classes/it114115/projectMeetings/mtg_photo_test' }),
+        expect.objectContaining({
+          photos: expect.objectContaining({
+            photoId: expect.stringContaining('photo_'),
+            caption: 'Breadboard circuit wiring for ESP32',
+            mimeType: 'image/jpeg',
+          }),
+        })
+      );
+    });
+
+    // Delete photo artifact
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const deletePhotoBtn = screen.getByTitle('Delete this photo');
+    fireEvent.click(deletePhotoBtn);
+
+    await waitFor(() => {
+      expect(mockUpdateDoc).toHaveBeenCalledWith(
+        expect.objectContaining({ path: 'classes/it114115/projectMeetings/mtg_photo_test' }),
+        expect.objectContaining({
+          photos: [],
+        })
+      );
+    });
+
+    confirmSpy.mockRestore();
+  });
+
+  it('supports 720p mobile demo video recording with seamless voice auto-slicing and legacy backward compatibility', async () => {
+    const mockStopTrack = vi.fn();
+    let capturedConstraints = null;
+
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: {
+        getUserMedia: vi.fn().mockImplementation((constraints) => {
+          capturedConstraints = constraints;
+          return Promise.resolve({
+            getTracks: () => [{ stop: mockStopTrack, readyState: 'live' }],
+          });
+        }),
+      },
+    });
+
+    class MockVideoAndAudioRecorder {
+      constructor(stream, options) {
+        this.stream = stream;
+        this.options = options;
+        this.mimeType = options?.mimeType || 'video/webm';
+        this.state = 'inactive';
+        this.ondataavailable = null;
+        this.onstop = null;
+      }
+      static isTypeSupported(type) {
+        return true;
+      }
+      start() {
+        this.state = 'recording';
+        if (this.ondataavailable) {
+          this.ondataavailable({ data: new Blob(['video-720p-bytes'], { type: 'video/webm' }) });
+        }
+      }
+      stop() {
+        this.state = 'inactive';
+        if (this.onstop) this.onstop();
+      }
+    }
+    global.MediaRecorder = MockVideoAndAudioRecorder;
+
+    // Legacy meeting session with ONLY audio clips (no photos, no screenClips)
+    mockMeetingsSnapshotDocs = [
+      {
+        id: 'mtg_legacy_voice_only',
+        data: () => ({
+          groupId: 'grp_1',
+          groupName: 'Group A01',
+          weekNumber: 1,
+          title: 'Week 1 Legacy Voice Meeting',
+          supervisorEmail: 'cywong@vtc.edu.hk',
+          audioClips: [
+            {
+              clipId: 'voice_legacy',
+              label: 'Voice Part 1',
+              downloadUrl: 'https://storage.example.com/legacy_voice.webm',
+              durationSeconds: 180,
+            },
+          ],
+          // Notice: photos and screenClips are completely undefined/absent!
+          status: 'ready',
+        }),
+      },
+    ];
+
+    render(
+      <ProjectMeetingsView
+        classId="it114115"
+        classInfo={{
+          name: 'Capstone Project',
+          teacherEmails: ['cywong@vtc.edu.hk'],
+          studentEmails: ['alice@stu.vtc.edu.hk', 'bob@stu.vtc.edu.hk'],
+        }}
+        user={{ email: 'cywong@vtc.edu.hk', displayName: 'Dr. Wong', uid: 'u_teacher' }}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText(/📁 Project Group:/i), { target: { value: 'grp_1' } });
+
+    // Verify backward compatibility: renders legacy meeting cleanly without crash
+    expect(await screen.findByText(/1 Voice Part\(s\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/0 Demo\/Screen Clip\(s\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/0 Photo\(s\)/i)).toBeInTheDocument();
+
+    // 1. Start continuous voice recording in Studio
+    const startRecBtn = screen.getByRole('button', { name: /Record Next Clip in Meeting/i });
+    fireEvent.click(startRecBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText(/REC 00:00/i)).toBeInTheDocument();
+    });
+
+    // 2. Teacher clicks 📹 Record Demo (720p) while voice recording is actively running
+    const recDemoBtn = screen.getByRole('button', { name: /📹 Record Demo \(720p\)/i });
+    fireEvent.click(recDemoBtn);
+
+    // Voice recording should auto-slice Part 1, saving it first
+    await waitFor(() => {
+      expect(mockUpdateDoc).toHaveBeenCalled();
+    });
+
+    // 3. Viewfinder opens with 720p resolution indicator
+    expect(screen.getByText(/720p @ 24\/30 FPS/i)).toBeInTheDocument();
+    expect(capturedConstraints?.video?.width?.ideal).toBe(1280);
+    expect(capturedConstraints?.video?.height?.ideal).toBe(720);
+    expect(capturedConstraints?.video?.facingMode?.ideal).toBe('environment');
+
+    // 4. Start 720p video demo recording
+    const start720pBtn = screen.getByRole('button', { name: /🔴 Start 720p Recording/i });
+    fireEvent.click(start720pBtn);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /⏹️ Finish & Save Demo Video/i })).toBeInTheDocument();
+    });
+
+    // 5. Finish and save video demo
+    const finishVideoBtn = screen.getByRole('button', { name: /⏹️ Finish & Save Demo Video/i });
+    fireEvent.click(finishVideoBtn);
+
+    await waitFor(() => {
+      expect(mockUpdateDoc).toHaveBeenCalledWith(
+        expect.objectContaining({ path: 'classes/it114115/projectMeetings/mtg_legacy_voice_only' }),
+        expect.objectContaining({
+          screenClips: expect.objectContaining({
+            clipId: expect.stringContaining('demo_'),
+            type: 'mobile_camera',
+            resolution: '720p',
+          }),
+        })
+      );
+    });
+
+    // 6. Voice recording automatically resumed as Part 2!
+    await waitFor(() => {
+      expect(screen.getByText(/REC 00:00/i)).toBeInTheDocument();
+    });
   });
 });
