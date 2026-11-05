@@ -60,7 +60,6 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
   const [supervisorFilter, setSupervisorFilter] = useState('all'); // 'mine' | 'all'
   const [subViewMode, setSubViewMode] = useState('studio'); // 'studio' | 'matrix'
   const [selectedMeetingId, setSelectedMeetingId] = useState(null);
-  const [collapsedGroupFolders, setCollapsedGroupFolders] = useState({});
   const [mobileSidebarExpanded, setMobileSidebarExpanded] = useState(false);
   const [showGroupEditorModal, setShowGroupEditorModal] = useState(false);
 
@@ -3015,11 +3014,14 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
             <div className={`meetings-grouped-sidebar ${mobileSidebarExpanded ? 'mobile-expanded' : 'mobile-collapsed'}`}>
               <div
                 className="sidebar-group-filter-row"
-                onClick={() => setMobileSidebarExpanded((prev) => !prev)}
+                onClick={() => {
+                  if (typeof window !== 'undefined' && window.innerWidth <= 960) {
+                    setMobileSidebarExpanded((prev) => !prev);
+                  }
+                }}
                 role="button"
                 tabIndex={0}
                 aria-label="Toggle meeting sessions list"
-                style={{ cursor: 'pointer' }}
               >
                 <span className="sidebar-title-badge" style={{ fontSize: '0.84rem', fontWeight: 700, color: '#334155', display: 'flex', alignItems: 'center', gap: '6px' }}>
                   📂 Meeting Sessions ({filteredMeetings.length})
@@ -3086,18 +3088,14 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
             ) : (
               <div className="grouped-folders-list">
                 {meetingsGroupedByProjectGroup.map(({ group: grp, items }) => {
-                  const isCollapsed = Boolean(collapsedGroupFolders[grp.id]);
                   return (
                     <div key={grp.id} className="project-group-folder">
                       <div
                         className={`project-group-folder-header ${grp.id === studioGroupId ? 'active-group-header' : ''}`}
-                        onClick={() =>
-                          setCollapsedGroupFolders((prev) => ({ ...prev, [grp.id]: !prev[grp.id] }))
-                        }
                       >
                         <div>
                           <span style={{ fontWeight: 700, fontSize: '0.88rem', color: '#1e293b' }}>
-                            {isCollapsed ? '📁' : '📂'} {grp.name}
+                            📂 {grp.name}
                           </span>
                           {grp.supervisorEmail && (
                             <span style={{ display: 'block', fontSize: '0.72rem', color: '#64748b' }}>
@@ -3108,88 +3106,86 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
                         <span className="folder-count-badge">{items.length} wk(s)</span>
                       </div>
 
-                      {!isCollapsed && (
-                        <div className="project-group-folder-items">
-                          {items.length === 0 ? (
-                            <div className="empty-folder-note">
-                              No recordings yet — select <strong>{grp.name}</strong> above to record.
-                            </div>
-                          ) : (
-                            items.map((m) => {
-                              const isSelected = m.id === selectedMeetingId;
-                              const voiceClipCount = (m.audioClips || []).length || (m.audioStoragePath ? 1 : 0);
-                              const screenClipCount = (m.screenClips || []).length;
-                              const presentCount = (m.attendanceRecord || []).filter(
-                                (a) => a.status === 'present' || a.status === 'late'
-                              ).length;
-                              const totalRoster = (m.attendanceRecord || []).length;
-                              const isChecked = selectedMeetingIdsToMerge.includes(m.id);
+                      <div className="project-group-folder-items">
+                        {items.length === 0 ? (
+                          <div className="empty-folder-note">
+                            No recordings yet — select <strong>{grp.name}</strong> above to record.
+                          </div>
+                        ) : (
+                          items.map((m) => {
+                            const isSelected = m.id === selectedMeetingId;
+                            const voiceClipCount = (m.audioClips || []).length || (m.audioStoragePath ? 1 : 0);
+                            const screenClipCount = (m.screenClips || []).length;
+                            const presentCount = (m.attendanceRecord || []).filter(
+                              (a) => a.status === 'present' || a.status === 'late'
+                            ).length;
+                            const totalRoster = (m.attendanceRecord || []).length;
+                            const isChecked = selectedMeetingIdsToMerge.includes(m.id);
 
-                              return (
-                                <div
-                                  key={m.id}
-                                  className={`meeting-session-card ${isSelected ? 'active' : ''}`}
-                                  onClick={() => {
-                                    if (isMergeSelectionMode) {
-                                      setSelectedMeetingIdsToMerge((prev) =>
-                                        prev.includes(m.id) ? prev.filter((id) => id !== m.id) : [...prev, m.id]
-                                      );
-                                    } else {
-                                      handleSelectMeeting(m);
-                                    }
-                                  }}
-                                >
-                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '6px' }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                      {isMergeSelectionMode && (
-                                        <input
-                                          type="checkbox"
-                                          checked={isChecked}
-                                          onChange={() => {}}
-                                          aria-label={`Select ${m.title} for grouping`}
-                                        />
-                                      )}
-                                      <strong style={{ fontSize: '0.86rem', color: '#0f172a' }}>
-                                        Week {m.weekNumber || 1}: {m.title || 'Meeting'}
-                                      </strong>
-                                    </div>
-                                    <span className={`meeting-status-dot ${m.status || 'ready'}`}>
-                                      {m.status === 'analyzing'
-                                        ? '⏳ AI...'
-                                        : m.status === 'recording'
-                                        ? '🔴 REC'
-                                        : m.keyInsights?.overallGroupProgress === 'at_risk' ||
-                                          m.keyInsights?.overallGroupProgress === 'behind'
-                                        ? '⚠️ At Risk'
-                                        : m.analyzedAt || m.aiModelUsed || m.rawDiarizedTranscript
-                                        ? '✨ Analyzed'
-                                        : '🎙️ Recorded'}
-                                    </span>
+                            return (
+                              <div
+                                key={m.id}
+                                className={`meeting-session-card ${isSelected ? 'active' : ''}`}
+                                onClick={() => {
+                                  if (isMergeSelectionMode) {
+                                    setSelectedMeetingIdsToMerge((prev) =>
+                                      prev.includes(m.id) ? prev.filter((id) => id !== m.id) : [...prev, m.id]
+                                    );
+                                  } else {
+                                    handleSelectMeeting(m);
+                                  }
+                                }}
+                              >
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '6px' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    {isMergeSelectionMode && (
+                                      <input
+                                        type="checkbox"
+                                        checked={isChecked}
+                                        onChange={() => {}}
+                                        aria-label={`Select ${m.title} for grouping`}
+                                      />
+                                    )}
+                                    <strong style={{ fontSize: '0.86rem', color: '#0f172a' }}>
+                                      Week {m.weekNumber || 1}: {m.title || 'Meeting'}
+                                    </strong>
                                   </div>
-
-                                  <div className="meeting-card-badges">
-                                    {(m.supervisorName || m.supervisorEmail) && (
-                                      <span title={m.supervisorEmail || ''}>
-                                        👨‍🏫 {m.supervisorName || m.supervisorEmail.split('@')[0]}
-                                      </span>
-                                    )}
-                                    <span>🎙️ {voiceClipCount} Voice Clip{voiceClipCount === 1 ? '' : 's'}</span>
-                                    {screenClipCount > 0 && (
-                                      <span>💻 {screenClipCount} PC Screen{screenClipCount === 1 ? '' : 's'}</span>
-                                    )}
-                                    <span>⏱️ {formatDuration(m.durationSeconds || 0)}</span>
-                                    {totalRoster > 0 && (
-                                      <span>
-                                        👥 {presentCount}/{totalRoster} Present
-                                      </span>
-                                    )}
-                                  </div>
+                                  <span className={`meeting-status-dot ${m.status || 'ready'}`}>
+                                    {m.status === 'analyzing'
+                                      ? '⏳ AI...'
+                                      : m.status === 'recording'
+                                      ? '🔴 REC'
+                                      : m.keyInsights?.overallGroupProgress === 'at_risk' ||
+                                        m.keyInsights?.overallGroupProgress === 'behind'
+                                      ? '⚠️ At Risk'
+                                      : m.analyzedAt || m.aiModelUsed || m.rawDiarizedTranscript
+                                      ? '✨ Analyzed'
+                                      : '🎙️ Recorded'}
+                                  </span>
                                 </div>
-                              );
-                            })
-                          )}
-                        </div>
-                      )}
+
+                                <div className="meeting-card-badges">
+                                  {(m.supervisorName || m.supervisorEmail) && (
+                                    <span title={m.supervisorEmail || ''}>
+                                      👨‍🏫 {m.supervisorName || m.supervisorEmail.split('@')[0]}
+                                    </span>
+                                  )}
+                                  <span>🎙️ {voiceClipCount} Voice Clip{voiceClipCount === 1 ? '' : 's'}</span>
+                                  {screenClipCount > 0 && (
+                                    <span>💻 {screenClipCount} PC Screen{screenClipCount === 1 ? '' : 's'}</span>
+                                  )}
+                                  <span>⏱️ {formatDuration(m.durationSeconds || 0)}</span>
+                                  {totalRoster > 0 && (
+                                    <span>
+                                      👥 {presentCount}/{totalRoster} Present
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
                     </div>
                   );
                 })}

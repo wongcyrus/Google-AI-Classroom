@@ -909,6 +909,8 @@ Group Beta,New Beta Topic,other@vtc.edu.hk,eva@stu.vtc.edu.hk,Eva Ho,Leader`;
       target: { value: '3' },
     });
     fireEvent.click(screen.getByText(/📂 Group A09/i));
+    // Verify sessions under Group A09 remain permanently visible without collapsible hiding
+    expect(screen.getAllByText(/Week 3: Week 3 Prototype Demo/i).length).toBeGreaterThanOrEqual(1);
 
     // 6c. Open and close Manage / Import Groups modal from main view
     fireEvent.click(screen.getByRole('button', { name: /👥 Manage \/ Import Groups/i }));

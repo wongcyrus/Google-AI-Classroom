@@ -3,6 +3,8 @@
   flex-direction: column;
   gap: 16px;
   padding: 8px 0 32px;
+  max-width: 100%;
+  overflow-x: hidden;
 }
 
 .project-meetings-top-bar {
@@ -408,7 +410,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  cursor: pointer;
+  cursor: default;
 }
 
 .mobile-sidebar-toggle-indicator {
@@ -427,6 +429,11 @@
     grid-template-columns: 1fr;
   }
 
+  .sidebar-group-filter-row,
+  .sidebar-title-badge {
+    cursor: pointer;
+  }
+
   .meetings-grouped-sidebar.mobile-collapsed .grouped-folders-list,
   .meetings-grouped-sidebar.mobile-collapsed .sidebar-merge-action-bar,
   .meetings-grouped-sidebar.mobile-collapsed .empty-meetings-box {
@@ -435,6 +442,32 @@
 
   .meetings-grouped-sidebar {
     padding: 8px 12px;
+  }
+
+  /* Section 3: Student Contributions & Feedback - Force Single Column on Mobile to eliminate horizontal scrolling */
+  .student-contributions-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Pre-meeting weekly log cards - Single column on mobile */
+  .studio-log-cards-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Section 1 & 2: Responsive single-column wrapping on mobile */
+  .attendance-cards-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .insights-three-col {
+    grid-template-columns: 1fr !important;
+  }
+
+  .meeting-inspector-panel,
+  .inspector-section-card {
+    min-width: 0;
+    max-width: 100%;
+    overflow-x: hidden;
   }
 }
 
@@ -452,6 +485,7 @@
   display: flex;
   gap: 8px;
   align-items: center;
+  cursor: default;
 }
 
 .btn-merge-mode-toggle {
@@ -506,7 +540,7 @@
   align-items: center;
   background: #f8fafc;
   padding: 8px 12px;
-  cursor: pointer;
+  cursor: default;
   transition: background 0.15s ease;
 }
 
@@ -601,6 +635,8 @@
   border: 1px solid #e2e8f0;
   border-radius: 12px;
   padding: 16px;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .clip-switcher-row {
@@ -640,6 +676,8 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
   margin-bottom: 12px;
 }
 
@@ -749,6 +787,7 @@
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 12px;
+  min-width: 0;
 }
 
 .student-contribution-card {
@@ -759,22 +798,47 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .student-contrib-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.student-contrib-header > div {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .contrib-block {
   font-size: 0.82rem;
   color: #1e293b;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .contrib-block ul {
   margin: 4px 0 0;
   padding-left: 18px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.contrib-block li {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .ai-contrib-assessment {
@@ -783,6 +847,9 @@
   background: #eff6ff;
   padding: 6px 10px;
   border-radius: 6px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .contrib-timestamps-row {
@@ -1374,6 +1441,7 @@
   align-items: center;
   flex-wrap: wrap;
   gap: 6px;
+  min-width: 0;
 }
 
 .real-work-score-pill {
@@ -1382,6 +1450,8 @@
   padding: 2px 8px;
   border-radius: 999px;
   font-size: 0.72rem;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .submitted-log-reference-box {
@@ -1391,6 +1461,9 @@
   border: 1px dashed #cbd5e1;
   border-radius: 6px;
   padding: 6px 8px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .weekly-feedback-banner {
