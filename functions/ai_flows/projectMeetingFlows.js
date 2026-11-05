@@ -1255,18 +1255,21 @@ export async function handleEmailProjectMeetingReport({
   }
 
   // Check SMTP credentials
-  const smtpPassword = process.env.SMTP_PASSWORD;
+  const smtpPassword = process.env.OTP_SMTP_PASSWORD || process.env.SMTP_PASSWORD;
   if (!smtpPassword) {
     throw new HttpsError(
       'failed-precondition',
-      'SMTP password is not configured in Google Secret Manager (SMTP_PASSWORD). Please configure it via Terraform or Firebase Console.'
+      'SMTP password is not configured in Google Secret Manager (SMTP_PASSWORD). Please configure it via Secret Manager.'
     );
   }
 
-  const smtpUser = process.env.SMTP_USER || 'noreply@vtc.edu.hk';
-  const smtpHost = process.env.SMTP_HOST || 'smtp.gmail.com';
-  const smtpPort = parseInt(process.env.SMTP_PORT || '465', 10);
-  const isSecure = smtpPort === 465;
+  const smtpUser = process.env.OTP_SMTP_USERNAME || process.env.SMTP_USER || 'noreply@vtc.edu.hk';
+  const smtpHost = process.env.OTP_SMTP_HOST || process.env.SMTP_HOST || 'smtp.gmail.com';
+  const smtpPort = parseInt(process.env.OTP_SMTP_PORT || process.env.SMTP_PORT || '465', 10);
+  const isSecure = process.env.OTP_SMTP_SECURE !== undefined
+    ? process.env.OTP_SMTP_SECURE === 'true'
+    : smtpPort === 465;
+  const fromEmail = process.env.OTP_FROM_EMAIL || process.env.SMTP_FROM_EMAIL || smtpUser;
 
   const transporter = nodemailer.createTransport({
     host: smtpHost,
@@ -1334,7 +1337,7 @@ export async function handleEmailProjectMeetingReport({
 
     try {
       const sendResult = await transporter.sendMail({
-        from: `"HKIIT Capstone Assistant" <${smtpUser}>`,
+        from: `"HKIIT Capstone Assistant" <${fromEmail}>`,
         to: student.email,
         subject,
         html,

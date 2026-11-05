@@ -1020,8 +1020,8 @@ Group Beta,New Beta Topic,other@vtc.edu.hk,eva@stu.vtc.edu.hk,Eva Ho,Leader`;
       '_blank'
     );
 
-    // Click Send via noreply@vtc.edu.hk
-    fireEvent.click(screen.getByRole('button', { name: /Send via noreply@vtc\.edu\.hk/i }));
+    // Click Send Email Report
+    fireEvent.click(screen.getByRole('button', { name: /Send Email Report \(AWS SES \/ SMTP\)/i }));
 
     await waitFor(() => {
       expect(mockHttpsCallable).toHaveBeenCalledWith(

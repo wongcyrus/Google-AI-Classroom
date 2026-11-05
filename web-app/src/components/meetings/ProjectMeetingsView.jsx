@@ -1786,7 +1786,7 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
 
       if (res.data?.success) {
         showToastMessage(`📧 Emailed report to ${res.data.count} student(s)!`);
-        setEmailSuccessMessage(`Successfully sent email reports to ${res.data.count} student(s) via noreply@vtc.edu.hk.`);
+        setEmailSuccessMessage(`Successfully sent email reports to ${res.data.count} student(s).`);
       } else {
         throw new Error(res.data?.errors?.[0]?.error || 'Failed to dispatch emails.');
       }
@@ -4577,7 +4577,7 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
                   gap: '6px',
                 }}
               >
-                {isSendingEmail ? '⏳ Sending via noreply@vtc.edu.hk...' : '🚀 Send via noreply@vtc.edu.hk'}
+                {isSendingEmail ? '⏳ Sending Email Report...' : '🚀 Send Email Report (AWS SES / SMTP)'}
               </button>
             </div>
           </div>
