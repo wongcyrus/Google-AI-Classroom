@@ -2444,14 +2444,45 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
 
           <div className="studio-record-buttons">
             {recordingState === 'idle' ? (
-              <button
-                type="button"
-                className="btn-start-meeting-rec"
-                onClick={handleStartRecording}
-                disabled={!studioGroupId}
-              >
-                🔴 {existingTargetMeeting ? 'Record Next Clip in Meeting' : 'Start Meeting Recording'}
-              </button>
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+                <button
+                  type="button"
+                  className="btn-start-meeting-rec"
+                  onClick={handleStartRecording}
+                  disabled={!studioGroupId}
+                >
+                  🔴 {existingTargetMeeting ? 'Record Next Clip in Meeting' : 'Start Meeting Recording'}
+                </button>
+                {(existingTargetMeeting || selectedMeeting) && (
+                  <button
+                    type="button"
+                    className="btn-studio-email-report"
+                    onClick={() => handleOpenEmailModal(existingTargetMeeting || selectedMeeting)}
+                    style={{
+                      padding: '8px 16px',
+                      borderRadius: '8px',
+                      background: '#2563eb',
+                      border: '1.5px solid #1d4ed8',
+                      color: '#ffffff',
+                      fontSize: '0.88rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      boxShadow: '0 2px 4px rgba(37, 99, 235, 0.25)',
+                    }}
+                    title="Email this meeting session's report, scores, and feedback to students"
+                  >
+                    📧 Email Meeting Report
+                    {(existingTargetMeeting || selectedMeeting)?.emailDispatch?.sentAt && (
+                      <span style={{ fontSize: '0.72rem', background: '#1e40af', color: '#ffffff', padding: '1px 6px', borderRadius: '4px' }}>
+                        ✓ Sent
+                      </span>
+                    )}
+                  </button>
+                )}
+              </div>
             ) : recordingState === 'uploading' ? (
               <div className="uploading-pill">
                 ☁️ Saving Live Clip ({uploadProgress}%)...
@@ -3031,9 +3062,37 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
                           <th>Role</th>
                           <th>Attendance Rate</th>
                           <th>Tasks Done</th>
-                          {weeks.map((wk) => (
-                            <th key={wk}>Week {wk}</th>
-                          ))}
+                          {weeks.map((wk) => {
+                            const wkMeeting = grpMeetings.find((m) => Number(m.weekNumber) === wk);
+                            return (
+                              <th key={wk}>
+                                <div>Week {wk}</div>
+                                {wkMeeting && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenEmailModal(wkMeeting)}
+                                    title={`Email Week ${wk} report for ${grp.name}`}
+                                    style={{
+                                      marginTop: '4px',
+                                      padding: '2px 8px',
+                                      fontSize: '0.7rem',
+                                      background: wkMeeting.emailDispatch?.sentAt ? '#dcfce7' : '#eff6ff',
+                                      color: wkMeeting.emailDispatch?.sentAt ? '#15803d' : '#1d4ed8',
+                                      border: '1px solid #bfdbfe',
+                                      borderRadius: '4px',
+                                      cursor: 'pointer',
+                                      fontWeight: 600,
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '3px',
+                                    }}
+                                  >
+                                    📧 {wkMeeting.emailDispatch?.sentAt ? 'Sent ✓' : 'Email'}
+                                  </button>
+                                )}
+                              </th>
+                            );
+                          })}
                           <th>Latest Next-Week Action Items</th>
                         </tr>
                       </thead>
@@ -3248,6 +3307,33 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
                                     </span>
                                   )}
                                 </div>
+
+                                <div style={{ marginTop: '8px', display: 'flex', justifyContent: 'flex-end', gap: '6px' }}>
+                                  <button
+                                    type="button"
+                                    className="btn-card-email-report"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleOpenEmailModal(m);
+                                    }}
+                                    style={{
+                                      padding: '4px 10px',
+                                      borderRadius: '5px',
+                                      border: '1px solid #bfdbfe',
+                                      background: m.emailDispatch?.sentAt ? '#f0fdf4' : '#eff6ff',
+                                      color: m.emailDispatch?.sentAt ? '#15803d' : '#1d4ed8',
+                                      fontSize: '0.76rem',
+                                      fontWeight: 600,
+                                      cursor: 'pointer',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '4px',
+                                    }}
+                                    title="Email meeting report to students"
+                                  >
+                                    📧 {m.emailDispatch?.sentAt ? 'Report Sent ✓' : 'Email Report'}
+                                  </button>
+                                </div>
                               </div>
                             );
                           })
@@ -3263,8 +3349,24 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
           {/* Right Panel: Selected Meeting Inspector (Dual-Stream Player + Attendance + Key Insights + Work Done Per Student) */}
           <div className="meeting-inspector-panel">
             {!selectedMeeting ? (
-              <div className="empty-meetings-box">
-                Select a meeting on the left or record a new group meeting above.
+              <div className="empty-meetings-box" style={{ padding: '32px 20px', textAlign: 'center' }}>
+                <div style={{ fontSize: '2.2rem', marginBottom: '8px' }}>📂</div>
+                <h4 style={{ margin: '0 0 8px 0', color: '#1e293b' }}>No Meeting Session Selected</h4>
+                <p style={{ margin: '0 0 16px 0', color: '#64748b', fontSize: '0.88rem' }}>
+                  Select a meeting session from the left sidebar to view the analysis dossier, attendance, scores, and email reports to students.
+                </p>
+                {filteredMeetings.length > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    <button
+                      type="button"
+                      className="btn-start-meeting-rec"
+                      onClick={() => handleSelectMeeting(filteredMeetings[0])}
+                      style={{ padding: '8px 16px', fontSize: '0.86rem' }}
+                    >
+                      👉 Open Latest Session: {filteredMeetings[0].groupName} — Week {filteredMeetings[0].weekNumber || 1}
+                    </button>
+                  </div>
+                )}
               </div>
             ) : (
               <>
@@ -3354,19 +3456,20 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
                         display: 'flex',
                         alignItems: 'center',
                         gap: '6px',
-                        padding: '6px 12px',
+                        padding: '7px 14px',
                         borderRadius: '6px',
-                        border: '1px solid #bfdbfe',
-                        background: '#eff6ff',
-                        color: '#1d4ed8',
-                        fontSize: '0.82rem',
+                        border: '1.5px solid #2563eb',
+                        background: '#2563eb',
+                        color: '#ffffff',
+                        fontSize: '0.84rem',
                         cursor: 'pointer',
-                        fontWeight: 600,
+                        fontWeight: 700,
+                        boxShadow: '0 1px 3px rgba(37, 99, 235, 0.3)',
                       }}
                     >
                       📧 Email Report
-                      {selectedMeeting.emailDispatch?.lastEmailedAt && (
-                        <span style={{ fontSize: '0.72rem', background: '#dbeafe', padding: '1px 5px', borderRadius: '4px' }}>
+                      {selectedMeeting.emailDispatch?.sentAt && (
+                        <span style={{ fontSize: '0.72rem', background: '#1e40af', color: '#ffffff', padding: '1px 6px', borderRadius: '4px' }}>
                           ✓ Sent
                         </span>
                       )}
@@ -3710,7 +3813,24 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
                   <div className="weekly-group-feedback-box">
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                       <strong>📝 Post-Meeting Weekly Group Feedback (For Students):</strong>
-                      <div style={{ display: 'flex', gap: '6px' }}>
+                      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                        <button
+                          type="button"
+                          className="btn-edit-student-work"
+                          onClick={() => handleOpenEmailModal(selectedMeeting)}
+                          style={{
+                            background: '#2563eb',
+                            color: '#ffffff',
+                            border: '1px solid #1d4ed8',
+                            fontWeight: 600,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                          }}
+                          title="Email this feedback and report to group students"
+                        >
+                          📧 Email Report to Students
+                        </button>
                         <button
                           type="button"
                           className="btn-edit-student-work"
@@ -4003,6 +4123,80 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
                       )}
                     </div>
                   )}
+
+                  {/* Persistent Bottom Dispatch Banner */}
+                  <div
+                    className="inspector-bottom-dispatch-bar"
+                    style={{
+                      marginTop: '24px',
+                      padding: '16px 20px',
+                      borderRadius: '10px',
+                      background: 'linear-gradient(135deg, #eff6ff 0%, #f8fafc 100%)',
+                      border: '1.5px solid #bfdbfe',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      flexWrap: 'wrap',
+                      gap: '14px',
+                    }}
+                  >
+                    <div>
+                      <div style={{ fontWeight: 800, fontSize: '0.98rem', color: '#1e3a8a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        📧 Send Consultation Report &amp; Feedback to Students
+                        {selectedMeeting.emailDispatch?.sentAt && (
+                          <span style={{ fontSize: '0.74rem', background: '#dcfce7', color: '#15803d', padding: '2px 8px', borderRadius: '12px', fontWeight: 700 }}>
+                            ✓ Last dispatched {new Date(selectedMeeting.emailDispatch.sentAt).toLocaleDateString()}
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ fontSize: '0.82rem', color: '#475569', marginTop: '3px' }}>
+                        Dispatches formatted HTML report with verified attendance, Real Work score, Log Quality score, challenge questions, verified tasks, and supervisor feedback.
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+                      <button
+                        type="button"
+                        className="btn-bottom-email-report"
+                        onClick={() => handleOpenEmailModal(selectedMeeting)}
+                        style={{
+                          padding: '10px 18px',
+                          borderRadius: '8px',
+                          background: '#2563eb',
+                          color: '#ffffff',
+                          border: 'none',
+                          fontWeight: 700,
+                          fontSize: '0.88rem',
+                          cursor: 'pointer',
+                          boxShadow: '0 2px 4px rgba(37, 99, 235, 0.25)',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                        }}
+                      >
+                        🚀 Email Report to Students
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const md = generateMeetingMarkdownMinutes(selectedMeeting);
+                          navigator.clipboard?.writeText(md);
+                          showToastMessage('📋 Copied Markdown Meeting Minutes to clipboard!');
+                        }}
+                        style={{
+                          padding: '10px 14px',
+                          borderRadius: '8px',
+                          background: '#ffffff',
+                          color: '#334155',
+                          border: '1px solid #cbd5e1',
+                          fontWeight: 600,
+                          fontSize: '0.84rem',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        📝 Copy Markdown (.md)
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </>
             )}

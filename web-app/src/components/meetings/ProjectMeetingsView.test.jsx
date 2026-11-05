@@ -1005,9 +1005,9 @@ Group Beta,New Beta Topic,other@vtc.edu.hk,eva@stu.vtc.edu.hk,Eva Ho,Leader`;
     fireEvent.change(screen.getByLabelText(/📁 Project Group:/i), { target: { value: 'grp_1' } });
 
     // Click "📧 Email Report" button
-    const emailBtn = screen.getByRole('button', { name: /📧 Email Report/i });
-    expect(emailBtn).toBeInTheDocument();
-    fireEvent.click(emailBtn);
+    const emailBtns = screen.getAllByRole('button', { name: /📧 Email Report/i });
+    expect(emailBtns.length).toBeGreaterThanOrEqual(1);
+    fireEvent.click(emailBtns[0]);
 
     // Verify modal is open
     expect(screen.getByText(/📧 Email Supervision Minutes & Feedback/i)).toBeInTheDocument();
