@@ -1080,6 +1080,20 @@ Group Beta,New Beta Topic,other@vtc.edu.hk,eva@stu.vtc.edu.hk,Eva Ho,Leader`;
       target: { value: 'Milestone 2 presentation is due next Tuesday at 23:59.' },
     });
 
+    // Test Select All / Deselect All / View Report preview
+    const deselectBtn = screen.getByRole('button', { name: /✕ Deselect All/i });
+    fireEvent.click(deselectBtn);
+    expect(screen.getByText(/0 of 1 selected/i)).toBeInTheDocument();
+
+    const selectAllBtn = screen.getByRole('button', { name: /☑️ Select All/i });
+    fireEvent.click(selectAllBtn);
+    expect(screen.getByText(/1 of 1 selected/i)).toBeInTheDocument();
+
+    // Toggle inline report preview
+    const viewBtn = screen.getByRole('button', { name: /👁️ View/i });
+    fireEvent.click(viewBtn);
+    expect(screen.getByText(/📋 Report Preview:/i)).toBeInTheDocument();
+
     // Test copy student emails button
     const copyEmailsBtn = screen.getByRole('button', { name: /Copy All Student Emails \(Week 3\)/i });
     fireEvent.click(copyEmailsBtn);

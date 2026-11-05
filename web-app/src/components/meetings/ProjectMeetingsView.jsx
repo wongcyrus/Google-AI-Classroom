@@ -114,6 +114,7 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
   const [batchEmailResultsLog, setBatchEmailResultsLog] = useState([]);
   const [batchEmailErrorMessage, setBatchEmailErrorMessage] = useState('');
   const [batchEmailSuccessMessage, setBatchEmailSuccessMessage] = useState('');
+  const [batchPreviewMeetingId, setBatchPreviewMeetingId] = useState(null);
 
   // Public Weekly Log Google Sheet (stored per-class in classes/{classId}.projectLogSheetUrl) & Student Contribution Profile state
   const [logSheetUrl, setLogSheetUrl] = useState(
@@ -4924,16 +4925,58 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
                 </p>
                 {emailReportTargetMeeting.emailDispatch?.lastEmailedAt && (
                   <div style={{ marginTop: '8px', padding: '6px 10px', background: '#dcfce7', color: '#15803d', borderRadius: '6px', fontSize: '0.8rem', fontWeight: 600 }}>
-                    ✓ Previously emailed: {formatDate(emailReportTargetMeeting.emailDispatch.lastEmailedAt)} to {emailReportTargetMeeting.emailDispatch.recipients?.join(', ')}
+                    ✓ Previously emailed: {new Date(emailReportTargetMeeting.emailDispatch.lastEmailedAt).toLocaleDateString()} to {emailReportTargetMeeting.emailDispatch.recipients?.join(', ')}
                   </div>
                 )}
               </div>
 
               {/* Recipient Selection */}
               <div>
-                <label style={{ display: 'block', fontWeight: 700, fontSize: '0.85rem', color: '#0f172a', marginBottom: '6px' }}>
-                  Select Recipients ({emailRecipientUids.length}):
-                </label>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                  <label style={{ display: 'block', fontWeight: 700, fontSize: '0.85rem', color: '#0f172a', margin: 0 }}>
+                    Select Recipients ({emailRecipientUids.length}):
+                  </label>
+                  <div style={{ display: 'flex', gap: '6px' }}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const grp = groups.find((g) => g.id === emailReportTargetMeeting.groupId) || selectedGroup;
+                        const allIds = (grp?.members || []).map((m) => m.uid || m.email);
+                        setEmailRecipientUids(allIds);
+                      }}
+                      disabled={isSendingEmail}
+                      style={{
+                        padding: '2px 8px',
+                        fontSize: '0.75rem',
+                        background: '#f1f5f9',
+                        color: '#0f172a',
+                        border: '1px solid #cbd5e1',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                        fontWeight: 600,
+                      }}
+                    >
+                      ☑️ Select All
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEmailRecipientUids([])}
+                      disabled={isSendingEmail}
+                      style={{
+                        padding: '2px 8px',
+                        fontSize: '0.75rem',
+                        background: '#fef2f2',
+                        color: '#b91c1c',
+                        border: '1px solid #fecaca',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                        fontWeight: 600,
+                      }}
+                    >
+                      ✕ Deselect All
+                    </button>
+                  </div>
+                </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '160px', overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '10px' }}>
                   {(groups.find((g) => g.id === emailReportTargetMeeting.groupId)?.members || []).map((m) => {
                     const id = m.uid || m.email;
@@ -5116,58 +5159,70 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
 
               {/* Group Selection Controls & Summary */}
               <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                  <label style={{ fontWeight: 700, fontSize: '0.88rem', color: '#0f172a' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
+                  <label style={{ fontWeight: 700, fontSize: '0.88rem', color: '#0f172a', margin: 0 }}>
                     Select Groups to Email ({batchEmailSelectedMeetingIds.length} of {meetings.filter((m) => Number(m.weekNumber) === Number(batchEmailWeekNumber)).length} selected):
                   </label>
-                  <div style={{ display: 'flex', gap: '6px' }}>
+                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
                     <button
                       type="button"
                       onClick={() => handleSelectAllBatchMeetings(false)}
                       disabled={isBatchSendingEmails}
                       style={{
-                        padding: '2px 8px',
-                        fontSize: '0.75rem',
+                        padding: '3px 10px',
+                        fontSize: '0.8rem',
                         background: '#f1f5f9',
-                        border: '1px solid #cbd5e1',
-                        borderRadius: '4px',
+                        color: '#0f172a',
+                        border: '1.5px solid #cbd5e1',
+                        borderRadius: '6px',
                         cursor: 'pointer',
+                        fontWeight: 700,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
                       }}
                     >
-                      Select All
+                      ☑️ Select All
                     </button>
                     <button
                       type="button"
                       onClick={() => handleSelectAllBatchMeetings(true)}
                       disabled={isBatchSendingEmails}
                       style={{
-                        padding: '2px 8px',
-                        fontSize: '0.75rem',
+                        padding: '3px 10px',
+                        fontSize: '0.8rem',
                         background: '#f0fdf4',
                         color: '#15803d',
-                        border: '1px solid #86efac',
-                        borderRadius: '4px',
+                        border: '1.5px solid #86efac',
+                        borderRadius: '6px',
                         cursor: 'pointer',
-                        fontWeight: 600,
+                        fontWeight: 700,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
                       }}
                     >
-                      Only Analyzed
+                      ✓ Only Analyzed
                     </button>
                     <button
                       type="button"
                       onClick={() => setBatchEmailSelectedMeetingIds([])}
                       disabled={isBatchSendingEmails}
                       style={{
-                        padding: '2px 8px',
-                        fontSize: '0.75rem',
+                        padding: '3px 10px',
+                        fontSize: '0.8rem',
                         background: '#fef2f2',
                         color: '#b91c1c',
-                        border: '1px solid #fecaca',
-                        borderRadius: '4px',
+                        border: '1.5px solid #fecaca',
+                        borderRadius: '6px',
                         cursor: 'pointer',
+                        fontWeight: 700,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
                       }}
                     >
-                      Deselect All
+                      ✕ Deselect All
                     </button>
                   </div>
                 </div>
@@ -5178,7 +5233,7 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
                     display: 'flex',
                     flexDirection: 'column',
                     gap: '6px',
-                    maxHeight: '220px',
+                    maxHeight: '260px',
                     overflowY: 'auto',
                     border: '1px solid #e2e8f0',
                     borderRadius: '8px',
@@ -5200,61 +5255,149 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
                         const memberCount = (grp?.members || []).length || (mtg.attendanceRecord || []).length || 0;
 
                         return (
-                          <label
+                          <div
                             key={mtg.id}
                             style={{
                               display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'space-between',
+                              flexDirection: 'column',
                               padding: '8px 10px',
                               borderRadius: '6px',
                               background: isChecked ? '#f0fdf4' : '#f8fafc',
                               border: isChecked ? '1px solid #bbf7d0' : '1px solid #e2e8f0',
-                              cursor: 'pointer',
                             }}
                           >
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                              <input
-                                type="checkbox"
-                                checked={isChecked}
-                                onChange={() => handleToggleBatchEmailMeeting(mtg.id)}
-                                disabled={isBatchSendingEmails}
-                              />
-                              <div>
-                                <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#0f172a' }}>
-                                  {grp?.name || mtg.groupName || 'Project Group'}
-                                  {grp?.projectTopic && (
-                                    <span style={{ fontWeight: 400, color: '#64748b', marginLeft: '6px' }}>
-                                      ({grp.projectTopic})
-                                    </span>
-                                  )}
-                                </div>
-                                <div style={{ fontSize: '0.78rem', color: '#64748b' }}>
-                                  👥 {memberCount} member(s)
-                                  {mtg.emailDispatch?.lastEmailedAt && (
-                                    <span style={{ marginLeft: '8px', color: '#15803d', fontWeight: 600 }}>
-                                      ✓ Emailed {formatDate(mtg.emailDispatch.lastEmailedAt)}
-                                    </span>
-                                  )}
+                            <label
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                cursor: 'pointer',
+                                margin: 0,
+                              }}
+                            >
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <input
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  onChange={() => handleToggleBatchEmailMeeting(mtg.id)}
+                                  disabled={isBatchSendingEmails}
+                                />
+                                <div>
+                                  <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#0f172a' }}>
+                                    {grp?.name || mtg.groupName || 'Project Group'}
+                                    {grp?.projectTopic && (
+                                      <span style={{ fontWeight: 400, color: '#64748b', marginLeft: '6px' }}>
+                                        ({grp.projectTopic})
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div style={{ fontSize: '0.78rem', color: '#64748b' }}>
+                                    👥 {memberCount} member(s)
+                                    {mtg.emailDispatch?.lastEmailedAt && (
+                                      <span style={{ marginLeft: '8px', color: '#15803d', fontWeight: 600 }}>
+                                        ✓ Emailed {new Date(mtg.emailDispatch.lastEmailedAt).toLocaleDateString()}
+                                      </span>
+                                    )}
+                                  </div>
                                 </div>
                               </div>
-                            </div>
-                            <div>
-                              {isAnalyzed ? (
-                                <span style={{ fontSize: '0.72rem', background: '#dcfce7', color: '#15803d', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 }}>
-                                  ✓ Analyzed
-                                </span>
-                              ) : (
-                                <span style={{ fontSize: '0.72rem', background: '#fef3c7', color: '#b45309', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 }}>
-                                  ⚠️ Unanalyzed
-                                </span>
-                              )}
-                            </div>
-                          </label>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    setBatchPreviewMeetingId((prev) => (prev === mtg.id ? null : mtg.id));
+                                  }}
+                                  style={{
+                                    padding: '2px 8px',
+                                    fontSize: '0.72rem',
+                                    background: batchPreviewMeetingId === mtg.id ? '#2563eb' : '#eff6ff',
+                                    color: batchPreviewMeetingId === mtg.id ? '#ffffff' : '#1d4ed8',
+                                    border: '1px solid #bfdbfe',
+                                    borderRadius: '4px',
+                                    cursor: 'pointer',
+                                    fontWeight: 600,
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '2px',
+                                  }}
+                                  title="View and preview this meeting session's report & feedback"
+                                >
+                                  👁️ {batchPreviewMeetingId === mtg.id ? 'Hide' : 'View'}
+                                </button>
+                                {isAnalyzed ? (
+                                  <span style={{ fontSize: '0.72rem', background: '#dcfce7', color: '#15803d', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 }}>
+                                    ✓ Analyzed
+                                  </span>
+                                ) : (
+                                  <span style={{ fontSize: '0.72rem', background: '#fef3c7', color: '#b45309', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 }}>
+                                    ⚠️ Unanalyzed
+                                  </span>
+                                )}
+                              </div>
+                            </label>
+
+                            {/* Inline Report Preview */}
+                            {batchPreviewMeetingId === mtg.id && (
+                              <div
+                                style={{
+                                  marginTop: '8px',
+                                  padding: '10px 12px',
+                                  background: '#ffffff',
+                                  border: '1px solid #cbd5e1',
+                                  borderRadius: '6px',
+                                  fontSize: '0.8rem',
+                                  color: '#1e293b',
+                                  cursor: 'default',
+                                }}
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', borderBottom: '1px solid #f1f5f9', paddingBottom: '4px' }}>
+                                  <strong>📋 Report Preview: {mtg.title || 'Supervision Meeting'}</strong>
+                                  <span style={{ color: '#64748b' }}>📅 {mtg.meetingDate ? new Date(mtg.meetingDate).toLocaleDateString() : 'Recent'}</span>
+                                </div>
+
+                                {mtg.summary && (
+                                  <div style={{ marginBottom: '6px', color: '#334155' }}>
+                                    <strong>Summary:</strong> {mtg.summary}
+                                  </div>
+                                )}
+
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginBottom: '6px' }}>
+                                  <div style={{ fontWeight: 700, color: '#475569', fontSize: '0.76rem' }}>👥 Students &amp; Evaluations:</div>
+                                  {(mtg.attendanceRecord || (grp?.members || [])).map((att) => {
+                                    const studentUid = att.uid || att.email;
+                                    const contrib = (mtg.studentContributions || {})[studentUid] || {};
+                                    return (
+                                      <div key={studentUid} style={{ display: 'flex', justifyContent: 'space-between', background: '#f8fafc', padding: '4px 8px', borderRadius: '4px', fontSize: '0.78rem' }}>
+                                        <span><strong>{att.name || att.email}</strong> ({att.status || 'present'})</span>
+                                        <span>
+                                          Real Work: <strong>{contrib.realWorkScore ?? '-'}</strong>/10 • Log Quality: <strong>{contrib.logQualityScore ?? '-'}</strong>/10
+                                        </span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+
+                                {mtg.groupSupervisorFeedback && (
+                                  <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', padding: '6px 8px', borderRadius: '4px', color: '#166534', marginTop: '4px' }}>
+                                    <strong>👨‍🏫 Group Feedback:</strong> {mtg.groupSupervisorFeedback}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
                         );
                       })
                   )}
                 </div>
+
+                {visibleGroups.filter((g) => !meetings.some((m) => m.groupId === g.id && Number(m.weekNumber) === Number(batchEmailWeekNumber))).length > 0 && (
+                  <div style={{ fontSize: '0.78rem', color: '#64748b', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '6px 10px', marginTop: '6px' }}>
+                    ℹ️ <strong>Unrecorded Groups:</strong> {visibleGroups.filter((g) => !meetings.some((m) => m.groupId === g.id && Number(m.weekNumber) === Number(batchEmailWeekNumber))).length} group(s) have no session for Week {batchEmailWeekNumber} yet ({visibleGroups.filter((g) => !meetings.some((m) => m.groupId === g.id && Number(m.weekNumber) === Number(batchEmailWeekNumber))).map((g) => g.name).join(', ')}). Only recorded sessions can be dispatched.
+                  </div>
+                )}
               </div>
 
               {/* Optional Overarching Supervisor Note */}
