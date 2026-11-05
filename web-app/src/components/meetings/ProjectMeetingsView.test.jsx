@@ -1034,4 +1034,81 @@ Group Beta,New Beta Topic,other@vtc.edu.hk,eva@stu.vtc.edu.hk,Eva Ho,Leader`;
 
     expect(screen.getByText(/Successfully sent email reports to 2 student\(s\)/i)).toBeInTheDocument();
   });
+
+  it('supports emailing supervision reports to the whole class of the week in batch with supervisor note', async () => {
+    const mockWindowOpen = vi.fn();
+    window.open = mockWindowOpen;
+
+    const mockClipboardWrite = vi.fn().mockResolvedValue();
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText: mockClipboardWrite },
+      configurable: true,
+      writable: true,
+    });
+
+    mockHttpsCallable.mockResolvedValue({
+      data: { success: true, count: 2 },
+    });
+
+    render(
+      <ProjectMeetingsView
+        classId="it114115"
+        classInfo={{
+          name: 'Capstone Project',
+          teacherEmails: ['cywong@vtc.edu.hk'],
+          studentEmails: ['alice@stu.vtc.edu.hk', 'bob@stu.vtc.edu.hk'],
+        }}
+        user={{ uid: 't_1', email: 'cywong@vtc.edu.hk', displayName: 'Dr. Wong' }}
+      />
+    );
+
+    // Switch Studio week to Week 3 (which has mtg_1_wk3 in our mocks)
+    fireEvent.change(screen.getByLabelText(/📅 Week #:/i), { target: { value: '3' } });
+
+    // Click "📧 Email Whole Class (Week 3)" button
+    const batchEmailBtn = screen.getByRole('button', { name: /📧 Email Whole Class \(Week 3\)/i });
+    expect(batchEmailBtn).toBeInTheDocument();
+    fireEvent.click(batchEmailBtn);
+
+    // Verify Modal opens
+    expect(screen.getByText(/📧 Email Weekly Reports to Whole Class \(Week 3\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/Select Academic Week:/i)).toBeInTheDocument();
+
+    // Type an overarching supervisor note
+    const noteTextarea = screen.getByPlaceholderText(/Great progress in this sprint review/i);
+    fireEvent.change(noteTextarea, {
+      target: { value: 'Milestone 2 presentation is due next Tuesday at 23:59.' },
+    });
+
+    // Test copy student emails button
+    const copyEmailsBtn = screen.getByRole('button', { name: /Copy All Student Emails \(Week 3\)/i });
+    fireEvent.click(copyEmailsBtn);
+    expect(mockClipboardWrite).toHaveBeenCalled();
+
+    // Test open mail draft button
+    const mailDraftBtn = screen.getByRole('button', { name: /Open Whole-Class Draft \(Mail Client\)/i });
+    fireEvent.click(mailDraftBtn);
+    expect(mockWindowOpen).toHaveBeenCalledWith(
+      expect.stringContaining('mailto:'),
+      '_blank'
+    );
+
+    // Click dispatch button
+    const sendBatchBtn = screen.getByRole('button', { name: /🚀 Send Reports to Selected/i });
+    fireEvent.click(sendBatchBtn);
+
+    await waitFor(() => {
+      expect(mockHttpsCallable).toHaveBeenCalledWith(
+        expect.objectContaining({
+          classId: 'it114115',
+          customNote: 'Milestone 2 presentation is due next Tuesday at 23:59.',
+          sendToAllTeammates: true,
+        })
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getAllByText(/Successfully dispatched reports to/i).length).toBeGreaterThanOrEqual(1);
+    });
+  });
 });

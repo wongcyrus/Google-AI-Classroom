@@ -104,6 +104,17 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
   const [emailErrorMessage, setEmailErrorMessage] = useState('');
   const [emailSuccessMessage, setEmailSuccessMessage] = useState('');
 
+  // Whole-Class Weekly Batch Email Reports Modal state
+  const [showWeekBatchEmailModal, setShowWeekBatchEmailModal] = useState(false);
+  const [batchEmailWeekNumber, setBatchEmailWeekNumber] = useState(1);
+  const [batchEmailSelectedMeetingIds, setBatchEmailSelectedMeetingIds] = useState([]);
+  const [batchEmailCustomNote, setBatchEmailCustomNote] = useState('');
+  const [isBatchSendingEmails, setIsBatchSendingEmails] = useState(false);
+  const [batchEmailProgress, setBatchEmailProgress] = useState({ current: 0, total: 0, groupName: '' });
+  const [batchEmailResultsLog, setBatchEmailResultsLog] = useState([]);
+  const [batchEmailErrorMessage, setBatchEmailErrorMessage] = useState('');
+  const [batchEmailSuccessMessage, setBatchEmailSuccessMessage] = useState('');
+
   // Public Weekly Log Google Sheet (stored per-class in classes/{classId}.projectLogSheetUrl) & Student Contribution Profile state
   const [logSheetUrl, setLogSheetUrl] = useState(
     () => classInfo?.projectLogSheetUrl || ''
@@ -1830,6 +1841,165 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
     showToastMessage('📧 Opened email draft in your mail client!');
   };
 
+  // Open Week Batch Email Reports Modal (Whole Class)
+  const handleOpenWeekBatchEmailModal = (targetWeek) => {
+    const wk = Number(targetWeek || studioWeekNumber || 1);
+    setBatchEmailWeekNumber(wk);
+    const weekMts = meetings.filter((m) => Number(m.weekNumber) === wk);
+    const readyIds = weekMts
+      .filter((m) => m.status === 'ready' || Boolean(m.analyzedAt || m.rawDiarizedTranscript || (Array.isArray(m.audioClips) && m.audioClips.length > 0)))
+      .map((m) => m.id);
+    setBatchEmailSelectedMeetingIds(readyIds.length > 0 ? readyIds : weekMts.map((m) => m.id));
+    setBatchEmailCustomNote('');
+    setBatchEmailResultsLog([]);
+    setBatchEmailErrorMessage('');
+    setBatchEmailSuccessMessage('');
+    setShowWeekBatchEmailModal(true);
+  };
+
+  const handleToggleBatchEmailMeeting = (meetingId) => {
+    setBatchEmailSelectedMeetingIds((prev) =>
+      prev.includes(meetingId) ? prev.filter((id) => id !== meetingId) : [...prev, meetingId]
+    );
+  };
+
+  const handleSelectAllBatchMeetings = (onlyAnalyzed = false) => {
+    const weekMts = meetings.filter((m) => Number(m.weekNumber) === Number(batchEmailWeekNumber));
+    if (onlyAnalyzed) {
+      const readyIds = weekMts
+        .filter((m) => m.status === 'ready' || Boolean(m.analyzedAt || m.rawDiarizedTranscript))
+        .map((m) => m.id);
+      setBatchEmailSelectedMeetingIds(readyIds);
+    } else {
+      setBatchEmailSelectedMeetingIds(weekMts.map((m) => m.id));
+    }
+  };
+
+  const handleCopyWeekStudentEmails = () => {
+    const weekMts = meetings.filter((m) => batchEmailSelectedMeetingIds.includes(m.id));
+    const emails = new Set();
+    weekMts.forEach((m) => {
+      const grp = groups.find((g) => g.id === m.groupId);
+      (grp?.members || []).forEach((mem) => {
+        if (mem.email) emails.add(mem.email);
+      });
+      (m.attendanceRecord || []).forEach((att) => {
+        if (att.email) emails.add(att.email);
+      });
+    });
+    const list = [...emails].filter(Boolean);
+    if (list.length === 0) {
+      showToastMessage('⚠️ No student emails found for selected groups.');
+      return;
+    }
+    navigator.clipboard?.writeText?.(list.join('; '));
+    showToastMessage(`📋 Copied ${list.length} student email(s) for Week ${batchEmailWeekNumber} to clipboard!`);
+  };
+
+  const handleOpenWeekMailtoDraft = () => {
+    const weekMts = meetings.filter((m) => batchEmailSelectedMeetingIds.includes(m.id));
+    const emails = new Set();
+    weekMts.forEach((m) => {
+      const grp = groups.find((g) => g.id === m.groupId);
+      (grp?.members || []).forEach((mem) => {
+        if (mem.email) emails.add(mem.email);
+      });
+      (m.attendanceRecord || []).forEach((att) => {
+        if (att.email) emails.add(att.email);
+      });
+    });
+    const list = [...emails].filter(Boolean);
+    if (list.length === 0) {
+      showToastMessage('⚠️ No student emails found.');
+      return;
+    }
+    const subject = `[Week ${batchEmailWeekNumber}] Supervision Meeting Reports & Feedback - Class Announcement`;
+    const portalLink = `${window.location.origin}/student/records`;
+    const bodyText = `Dear Project Students,\n\nYour official supervision meeting records, scores, and feedback for Week ${batchEmailWeekNumber} have been published.\n\n${batchEmailCustomNote ? `Supervisor Note:\n${batchEmailCustomNote}\n\n` : ''}Access your personalized recordings, meeting minutes, and grades at:\n${portalLink}\n\nBest regards,\nYour Project Supervisor`;
+    const mailtoUrl = `mailto:${list.join(';')}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(bodyText)}`;
+    window.open(mailtoUrl, '_blank');
+    showToastMessage(`📧 Opened mail draft with ${list.length} student recipient(s)!`);
+  };
+
+  const handleSendWeekBatchEmails = async () => {
+    const targetMeetings = meetings.filter((m) => batchEmailSelectedMeetingIds.includes(m.id));
+    if (targetMeetings.length === 0) return;
+
+    setIsBatchSendingEmails(true);
+    setBatchEmailErrorMessage('');
+    setBatchEmailSuccessMessage('');
+    setBatchEmailResultsLog([]);
+    setBatchEmailProgress({ current: 0, total: targetMeetings.length, groupName: '' });
+
+    const callEmail = httpsCallable(functions, 'emailProjectMeetingReport', { timeout: 120000 });
+    const results = [];
+    let successCount = 0;
+    let failCount = 0;
+    let totalRecipients = 0;
+
+    for (let i = 0; i < targetMeetings.length; i++) {
+      const mtg = targetMeetings[i];
+      const grp = groups.find((g) => g.id === mtg.groupId);
+      const groupName = grp?.name || mtg.groupName || `Group #${i + 1}`;
+      setBatchEmailProgress({ current: i + 1, total: targetMeetings.length, groupName });
+
+      try {
+        const res = await callEmail({
+          classId,
+          meetingId: mtg.id,
+          sendToAllTeammates: true,
+          portalUrl: window.location.origin,
+          customNote: batchEmailCustomNote.trim(),
+        });
+
+        if (res.data?.success) {
+          successCount++;
+          const count = res.data.count || 0;
+          totalRecipients += count;
+          results.push({
+            id: mtg.id,
+            groupName,
+            status: 'success',
+            count,
+            message: `Emailed ${count} student(s)`,
+          });
+        } else {
+          failCount++;
+          results.push({
+            id: mtg.id,
+            groupName,
+            status: 'error',
+            message: res.data?.errors?.[0]?.error || 'Failed to dispatch email',
+          });
+        }
+      } catch (err) {
+        failCount++;
+        results.push({
+          id: mtg.id,
+          groupName,
+          status: 'error',
+          message: err.message || 'Dispatch failed',
+        });
+      }
+
+      setBatchEmailResultsLog([...results]);
+      if (i < targetMeetings.length - 1) {
+        await new Promise((r) => setTimeout(r, 100));
+      }
+    }
+
+    setIsBatchSendingEmails(false);
+    if (failCount === 0) {
+      const msg = `🎉 Successfully dispatched reports to ${successCount} group(s) (${totalRecipients} students) for Week ${batchEmailWeekNumber}!`;
+      setBatchEmailSuccessMessage(msg);
+      showToastMessage(msg);
+    } else {
+      setBatchEmailErrorMessage(
+        `⚠️ Batch completed with errors: ${successCount} succeeded, ${failCount} failed. Please review the log.`
+      );
+    }
+  };
+
   // Move a specific audio clip part to a different Project Group (e.g. accidentally recorded under the wrong group)
   const handleMoveAudioClipToGroup = async (clipIdx, targetGroupId) => {
     if (!selectedMeeting || !targetGroupId || targetGroupId === selectedMeeting.groupId) return;
@@ -2348,14 +2518,37 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
               <label htmlFor="studio-week-select" title={`Week 1 Monday resolved from Class Schedule: ${semesterStartMonday}`}>
                 📅 Week #:
               </label>
-              <button
-                type="button"
-                className="btn-batch-ai-trigger"
-                onClick={() => setShowBatchAiModal(true)}
-                title={`Batch Analyze recordings in Week ${studioWeekNumber} with Gemini`}
-              >
-                ⚡ Batch AI
-              </button>
+              <div style={{ display: 'flex', gap: '4px' }}>
+                <button
+                  type="button"
+                  className="btn-batch-ai-trigger"
+                  onClick={() => setShowBatchAiModal(true)}
+                  title={`Batch Analyze recordings in Week ${studioWeekNumber} with Gemini`}
+                >
+                  ⚡ Batch AI
+                </button>
+                <button
+                  type="button"
+                  className="btn-batch-email-trigger"
+                  onClick={() => handleOpenWeekBatchEmailModal(studioWeekNumber)}
+                  title={`Email Consultation Reports to All Groups in Week ${studioWeekNumber}`}
+                  style={{
+                    background: '#f0fdf4',
+                    color: '#15803d',
+                    border: '1px solid #86efac',
+                    fontSize: '0.75rem',
+                    padding: '2px 8px',
+                    borderRadius: '4px',
+                    cursor: 'pointer',
+                    fontWeight: 600,
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '2px',
+                  }}
+                >
+                  📧 Email Class
+                </button>
+              </div>
             </div>
             <select
               id="studio-week-select"
@@ -2482,6 +2675,28 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
                     )}
                   </button>
                 )}
+                <button
+                  type="button"
+                  className="btn-studio-email-whole-class"
+                  onClick={() => handleOpenWeekBatchEmailModal(studioWeekNumber)}
+                  style={{
+                    padding: '8px 14px',
+                    borderRadius: '8px',
+                    background: '#15803d',
+                    border: '1.5px solid #166534',
+                    color: '#ffffff',
+                    fontSize: '0.88rem',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    boxShadow: '0 2px 4px rgba(21, 128, 61, 0.25)',
+                  }}
+                  title={`Email supervision reports to all project groups in Week ${studioWeekNumber}`}
+                >
+                  📧 Email Whole Class (Week {studioWeekNumber})
+                </button>
               </div>
             ) : recordingState === 'uploading' ? (
               <div className="uploading-pill">
@@ -3028,14 +3243,38 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
                 Cross-week attendance rate, tasks completed, and next-week action items across all supervised groups.
               </p>
             </div>
-            <button
-              type="button"
-              className="btn-export-matrix-xlsx"
-              onClick={() => exportProjectMeetingsMatrixExcel({ classId, groups: visibleGroups, meetings })}
-              disabled={visibleGroups.length === 0}
-            >
-              📥 Export Full Matrix (.xlsx)
-            </button>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+              <button
+                type="button"
+                className="btn-matrix-email-whole-class"
+                onClick={() => handleOpenWeekBatchEmailModal(studioWeekNumber)}
+                style={{
+                  padding: '8px 14px',
+                  borderRadius: '8px',
+                  background: '#15803d',
+                  color: '#ffffff',
+                  border: '1.5px solid #166534',
+                  fontSize: '0.85rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  boxShadow: '0 2px 4px rgba(21, 128, 61, 0.2)',
+                }}
+                title={`Send supervision meeting reports to all project groups in Week ${studioWeekNumber}`}
+              >
+                📧 Email Whole Class Reports (Week {studioWeekNumber})
+              </button>
+              <button
+                type="button"
+                className="btn-export-matrix-xlsx"
+                onClick={() => exportProjectMeetingsMatrixExcel({ classId, groups: visibleGroups, meetings })}
+                disabled={visibleGroups.length === 0}
+              >
+                📥 Export Full Matrix (.xlsx)
+              </button>
+            </div>
           </div>
 
           {visibleGroups.length === 0 ? (
@@ -4436,13 +4675,34 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
                   </button>
                 </>
               ) : (
-                <button
-                  type="button"
-                  className="btn-modal-cancel"
-                  onClick={() => setShowBatchAiModal(false)}
-                >
-                  Close
-                </button>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowBatchAiModal(false);
+                      handleOpenWeekBatchEmailModal(studioWeekNumber);
+                    }}
+                    style={{
+                      background: '#f0fdf4',
+                      color: '#15803d',
+                      border: '1px solid #86efac',
+                      borderRadius: '6px',
+                      padding: '8px 14px',
+                      fontSize: '0.85rem',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    📧 Email Reports to Whole Class (Week {studioWeekNumber})
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-modal-cancel"
+                    onClick={() => setShowBatchAiModal(false)}
+                  >
+                    Close
+                  </button>
+                </div>
               )}
             </div>
           </div>
@@ -4772,6 +5032,385 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
                 }}
               >
                 {isSendingEmail ? '⏳ Sending Email Report...' : '🚀 Send Email Report (SMTP)'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Whole-Class Weekly Meeting Reports Batch Email Modal */}
+      {showWeekBatchEmailModal && (
+        <div
+          className="student-edit-modal-backdrop"
+          onClick={() => !isBatchSendingEmails && setShowWeekBatchEmailModal(false)}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="batch-email-modal-title"
+        >
+          <div
+            className="student-edit-modal-card"
+            style={{ maxWidth: '680px', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="student-edit-modal-header">
+              <div>
+                <h3
+                  id="batch-email-modal-title"
+                  style={{
+                    margin: 0,
+                    fontSize: '1.2rem',
+                    color: '#0f172a',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                  }}
+                >
+                  📧 Email Weekly Reports to Whole Class (Week {batchEmailWeekNumber})
+                </h3>
+                <div style={{ margin: '4px 0 0', fontSize: '0.82rem', color: '#64748b' }}>
+                  Dispatch consultation minutes, attendance, supervisor scores, and personalized feedback to all project groups for Week {batchEmailWeekNumber}.
+                </div>
+              </div>
+              <button
+                type="button"
+                className="btn-modal-close"
+                onClick={() => !isBatchSendingEmails && setShowWeekBatchEmailModal(false)}
+                aria-label="Close"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div
+              className="student-edit-modal-body"
+              style={{ display: 'flex', flexDirection: 'column', gap: '14px', overflowY: 'auto' }}
+            >
+              {/* Target Week Selector */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', background: '#f8fafc', padding: '10px 14px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                <label htmlFor="batch-email-week-select" style={{ fontWeight: 700, fontSize: '0.88rem', color: '#1e293b' }}>
+                  📅 Select Academic Week:
+                </label>
+                <select
+                  id="batch-email-week-select"
+                  value={batchEmailWeekNumber}
+                  onChange={(e) => handleOpenWeekBatchEmailModal(Number(e.target.value))}
+                  disabled={isBatchSendingEmails}
+                  style={{
+                    padding: '6px 12px',
+                    borderRadius: '6px',
+                    border: '1px solid #cbd5e1',
+                    fontSize: '0.88rem',
+                    fontWeight: 600,
+                  }}
+                >
+                  {Array.from({ length: totalProjectWeeks }, (_, i) => i + 1).map((wk) => (
+                    <option key={wk} value={wk}>
+                      Week {wk}
+                    </option>
+                  ))}
+                </select>
+                <span style={{ fontSize: '0.82rem', color: '#64748b' }}>
+                  ({meetings.filter((m) => Number(m.weekNumber) === Number(batchEmailWeekNumber)).length} session(s) recorded in this week)
+                </span>
+              </div>
+
+              {/* Group Selection Controls & Summary */}
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <label style={{ fontWeight: 700, fontSize: '0.88rem', color: '#0f172a' }}>
+                    Select Groups to Email ({batchEmailSelectedMeetingIds.length} of {meetings.filter((m) => Number(m.weekNumber) === Number(batchEmailWeekNumber)).length} selected):
+                  </label>
+                  <div style={{ display: 'flex', gap: '6px' }}>
+                    <button
+                      type="button"
+                      onClick={() => handleSelectAllBatchMeetings(false)}
+                      disabled={isBatchSendingEmails}
+                      style={{
+                        padding: '2px 8px',
+                        fontSize: '0.75rem',
+                        background: '#f1f5f9',
+                        border: '1px solid #cbd5e1',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Select All
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleSelectAllBatchMeetings(true)}
+                      disabled={isBatchSendingEmails}
+                      style={{
+                        padding: '2px 8px',
+                        fontSize: '0.75rem',
+                        background: '#f0fdf4',
+                        color: '#15803d',
+                        border: '1px solid #86efac',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                        fontWeight: 600,
+                      }}
+                    >
+                      Only Analyzed
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setBatchEmailSelectedMeetingIds([])}
+                      disabled={isBatchSendingEmails}
+                      style={{
+                        padding: '2px 8px',
+                        fontSize: '0.75rem',
+                        background: '#fef2f2',
+                        color: '#b91c1c',
+                        border: '1px solid #fecaca',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Deselect All
+                    </button>
+                  </div>
+                </div>
+
+                {/* Groups Checklist */}
+                <div
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '6px',
+                    maxHeight: '220px',
+                    overflowY: 'auto',
+                    border: '1px solid #e2e8f0',
+                    borderRadius: '8px',
+                    padding: '8px',
+                    background: '#ffffff',
+                  }}
+                >
+                  {meetings.filter((m) => Number(m.weekNumber) === Number(batchEmailWeekNumber)).length === 0 ? (
+                    <div style={{ padding: '16px', textAlign: 'center', color: '#64748b', fontSize: '0.85rem' }}>
+                      No meeting sessions found for Week {batchEmailWeekNumber}. Please record or add meetings first.
+                    </div>
+                  ) : (
+                    meetings
+                      .filter((m) => Number(m.weekNumber) === Number(batchEmailWeekNumber))
+                      .map((mtg) => {
+                        const grp = groups.find((g) => g.id === mtg.groupId);
+                        const isChecked = batchEmailSelectedMeetingIds.includes(mtg.id);
+                        const isAnalyzed = mtg.status === 'ready' || Boolean(mtg.analyzedAt || mtg.rawDiarizedTranscript);
+                        const memberCount = (grp?.members || []).length || (mtg.attendanceRecord || []).length || 0;
+
+                        return (
+                          <label
+                            key={mtg.id}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              padding: '8px 10px',
+                              borderRadius: '6px',
+                              background: isChecked ? '#f0fdf4' : '#f8fafc',
+                              border: isChecked ? '1px solid #bbf7d0' : '1px solid #e2e8f0',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={() => handleToggleBatchEmailMeeting(mtg.id)}
+                                disabled={isBatchSendingEmails}
+                              />
+                              <div>
+                                <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#0f172a' }}>
+                                  {grp?.name || mtg.groupName || 'Project Group'}
+                                  {grp?.projectTopic && (
+                                    <span style={{ fontWeight: 400, color: '#64748b', marginLeft: '6px' }}>
+                                      ({grp.projectTopic})
+                                    </span>
+                                  )}
+                                </div>
+                                <div style={{ fontSize: '0.78rem', color: '#64748b' }}>
+                                  👥 {memberCount} member(s)
+                                  {mtg.emailDispatch?.lastEmailedAt && (
+                                    <span style={{ marginLeft: '8px', color: '#15803d', fontWeight: 600 }}>
+                                      ✓ Emailed {formatDate(mtg.emailDispatch.lastEmailedAt)}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                            <div>
+                              {isAnalyzed ? (
+                                <span style={{ fontSize: '0.72rem', background: '#dcfce7', color: '#15803d', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 }}>
+                                  ✓ Analyzed
+                                </span>
+                              ) : (
+                                <span style={{ fontSize: '0.72rem', background: '#fef3c7', color: '#b45309', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 }}>
+                                  ⚠️ Unanalyzed
+                                </span>
+                              )}
+                            </div>
+                          </label>
+                        );
+                      })
+                  )}
+                </div>
+              </div>
+
+              {/* Optional Overarching Supervisor Note */}
+              <div>
+                <label htmlFor="batch-email-note" style={{ display: 'block', fontWeight: 700, fontSize: '0.85rem', color: '#0f172a', marginBottom: '4px' }}>
+                  👨‍🏫 Overarching Supervisor Note for Week {batchEmailWeekNumber} (Optional):
+                </label>
+                <textarea
+                  id="batch-email-note"
+                  rows={2}
+                  value={batchEmailCustomNote}
+                  onChange={(e) => setBatchEmailCustomNote(e.target.value)}
+                  placeholder="e.g. Great progress in this sprint review. Reminder: Milestone 2 presentation slides are due next Tuesday by 23:59..."
+                  disabled={isBatchSendingEmails}
+                  style={{
+                    width: '100%',
+                    padding: '8px 10px',
+                    borderRadius: '6px',
+                    border: '1px solid #cbd5e1',
+                    fontSize: '0.85rem',
+                    fontFamily: 'inherit',
+                  }}
+                />
+                <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '2px' }}>
+                  This note will be prominently highlighted in green at the top of every student's meeting email.
+                </div>
+              </div>
+
+              {/* Live Progress Bar during dispatch */}
+              {isBatchSendingEmails && (
+                <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '8px', padding: '12px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', fontWeight: 700, color: '#1d4ed8', marginBottom: '6px' }}>
+                    <span>Sending Reports [{batchEmailProgress.current} of {batchEmailProgress.total}]...</span>
+                    <span>{batchEmailProgress.groupName}</span>
+                  </div>
+                  <div style={{ width: '100%', height: '8px', background: '#dbeafe', borderRadius: '4px', overflow: 'hidden' }}>
+                    <div
+                      style={{
+                        height: '100%',
+                        background: '#2563eb',
+                        transition: 'width 0.3s ease',
+                        width: `${batchEmailProgress.total ? (batchEmailProgress.current / batchEmailProgress.total) * 100 : 0}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Real-time Dispatch Results Log */}
+              {batchEmailResultsLog.length > 0 && (
+                <div style={{ border: '1px solid #e2e8f0', borderRadius: '8px', padding: '8px 12px', background: '#f8fafc', maxHeight: '140px', overflowY: 'auto' }}>
+                  <div style={{ fontWeight: 700, fontSize: '0.8rem', color: '#475569', marginBottom: '4px' }}>
+                    📋 Dispatch Log ({batchEmailResultsLog.length} processed):
+                  </div>
+                  {batchEmailResultsLog.map((item, idx) => (
+                    <div
+                      key={item.id || idx}
+                      style={{
+                        fontSize: '0.8rem',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        padding: '2px 0',
+                        color: item.status === 'success' ? '#15803d' : '#b91c1c',
+                      }}
+                    >
+                      <span><strong>{item.groupName}:</strong> {item.message}</span>
+                      <span>{item.status === 'success' ? '✓' : '❌'}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Status alerts */}
+              {batchEmailErrorMessage && (
+                <div style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#b91c1c', padding: '10px 12px', borderRadius: '8px', fontSize: '0.85rem' }}>
+                  {batchEmailErrorMessage}
+                </div>
+              )}
+
+              {batchEmailSuccessMessage && (
+                <div style={{ background: '#dcfce7', border: '1px solid #bbf7d0', color: '#15803d', padding: '10px 12px', borderRadius: '8px', fontSize: '0.85rem', fontWeight: 600 }}>
+                  {batchEmailSuccessMessage}
+                </div>
+              )}
+
+              {/* Client Fallback & Copy Bar */}
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', paddingTop: '6px', borderTop: '1px solid #f1f5f9' }}>
+                <button
+                  type="button"
+                  onClick={handleOpenWeekMailtoDraft}
+                  disabled={isBatchSendingEmails || batchEmailSelectedMeetingIds.length === 0}
+                  style={{
+                    background: '#f8fafc',
+                    border: '1px solid #cbd5e1',
+                    color: '#334155',
+                    borderRadius: '6px',
+                    padding: '6px 12px',
+                    fontSize: '0.82rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                  title="Open mailto draft pre-populated with all student emails for selected groups"
+                >
+                  📨 Open Whole-Class Draft (Mail Client)
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleCopyWeekStudentEmails}
+                  disabled={isBatchSendingEmails || batchEmailSelectedMeetingIds.length === 0}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: '#2563eb',
+                    fontSize: '0.82rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    textDecoration: 'underline',
+                  }}
+                >
+                  📋 Copy All Student Emails (Week {batchEmailWeekNumber})
+                </button>
+              </div>
+            </div>
+
+            <div className="student-edit-modal-footer">
+              <button
+                type="button"
+                className="btn-cancel-edit"
+                onClick={() => setShowWeekBatchEmailModal(false)}
+                disabled={isBatchSendingEmails}
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                className="btn-send-week-batch-emails"
+                onClick={handleSendWeekBatchEmails}
+                disabled={isBatchSendingEmails || batchEmailSelectedMeetingIds.length === 0}
+                style={{
+                  background: isBatchSendingEmails ? '#94a3b8' : '#15803d',
+                  border: '1px solid #166534',
+                  color: '#ffffff',
+                  padding: '8px 16px',
+                  borderRadius: '6px',
+                  fontWeight: 700,
+                  fontSize: '0.88rem',
+                  cursor: isBatchSendingEmails || batchEmailSelectedMeetingIds.length === 0 ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                }}
+              >
+                {isBatchSendingEmails
+                  ? `⏳ Sending [${batchEmailProgress.current}/${batchEmailProgress.total}]...`
+                  : `🚀 Send Reports to Selected (${batchEmailSelectedMeetingIds.length} Groups)`}
               </button>
             </div>
           </div>

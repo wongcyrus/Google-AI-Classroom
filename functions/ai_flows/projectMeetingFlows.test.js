@@ -67,6 +67,8 @@ import {
   generateMeetingEmailHtml,
   handleEmailProjectMeetingReport,
   emailProjectMeetingReport,
+  handleBatchEmailProjectMeetingReports,
+  batchEmailProjectMeetingReports,
 } from './projectMeetingFlows.js';
 
 describe('projectMeetingFlows', () => {
@@ -716,6 +718,93 @@ describe('projectMeetingFlows', () => {
           data: { classId: 'c1', meetingId: 'm1' },
         })
       ).rejects.toThrow(/Only teachers and project supervisors can email meeting reports/);
+    });
+
+    it('executes handleBatchEmailProjectMeetingReports across all meetings in an academic week', async () => {
+      process.env.SMTP_PASSWORD = 'mock-password';
+
+      // Mock meetings query for week 8
+      mockCollectionWhereGet.mockResolvedValueOnce({
+        docs: [
+          {
+            id: 'm_wk8_a',
+            data: () => ({
+              groupId: 'grp_a',
+              groupName: 'Group Alpha',
+              weekNumber: 8,
+              status: 'ready',
+              members: [{ uid: 'u1', email: 'u1@stu.vtc.edu.hk', name: 'User 1' }],
+            }),
+          },
+          {
+            id: 'm_wk8_b',
+            data: () => ({
+              groupId: 'grp_b',
+              groupName: 'Group Beta',
+              weekNumber: 8,
+              status: 'ready',
+              members: [{ uid: 'u2', email: 'u2@stu.vtc.edu.hk', name: 'User 2' }],
+            }),
+          },
+        ],
+      });
+
+      mockDocGet.mockImplementation(async (path) => {
+        if (path === 'classes/c1/projectMeetings/m_wk8_a') {
+          return {
+            exists: true,
+            data: () => ({
+              groupId: 'grp_a',
+              weekNumber: 8,
+              groupName: 'Group Alpha',
+              attendanceRecord: [{ uid: 'u1', email: 'u1@stu.vtc.edu.hk', status: 'present' }],
+            }),
+          };
+        }
+        if (path === 'classes/c1/projectGroups/grp_a') {
+          return {
+            exists: true,
+            data: () => ({
+              name: 'Group Alpha',
+              members: [{ uid: 'u1', email: 'u1@stu.vtc.edu.hk', name: 'User 1' }],
+            }),
+          };
+        }
+        if (path === 'classes/c1/projectMeetings/m_wk8_b') {
+          return {
+            exists: true,
+            data: () => ({
+              groupId: 'grp_b',
+              weekNumber: 8,
+              groupName: 'Group Beta',
+              attendanceRecord: [{ uid: 'u2', email: 'u2@stu.vtc.edu.hk', status: 'present' }],
+            }),
+          };
+        }
+        if (path === 'classes/c1/projectGroups/grp_b') {
+          return {
+            exists: true,
+            data: () => ({
+              name: 'Group Beta',
+              members: [{ uid: 'u2', email: 'u2@stu.vtc.edu.hk', name: 'User 2' }],
+            }),
+          };
+        }
+        return { exists: false };
+      });
+
+      const batchRes = await handleBatchEmailProjectMeetingReports({
+        classId: 'c1',
+        weekNumber: 8,
+        customNote: 'Great sprint review this week!',
+      });
+
+      expect(batchRes.success).toBe(true);
+      expect(batchRes.totalMeetingsProcessed).toBe(2);
+      expect(batchRes.totalDelivered).toBe(2);
+      expect(batchRes.results).toHaveLength(2);
+
+      delete process.env.SMTP_PASSWORD;
     });
   });
 });

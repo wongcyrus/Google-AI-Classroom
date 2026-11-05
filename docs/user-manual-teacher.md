@@ -1185,15 +1185,28 @@ Supervisors and co-supervisors can host meetings at **any period** without enabl
    - **Stage 1 (`gemini-3.5-transcribe-preview`)**: Verbatim multilingual speaker diarization across all audio clips.
    - **Stage 2 (`gemini-3.8-flash`)**: Synthesizes attendance, key insights, per-student completed work, **Log Quality Score (`1–10`)**, **Real Work Score (`1–10`)**, and **Post-Meeting Weekly Feedback** (`weeklyFeedback`), which can also be edited inline by the supervisor (`✏️ Edit Work / Feedback`).
 
-### 19.5 Emailing Meeting Reports to Students & 1-Click Mailto Fallback
-Once the meeting analysis and evaluations are reviewed, supervisors can dispatch individualized reports to students:
-1. In the Meeting Inspector, click the **`📧 Email Report`** button ([`ProjectMeetingsView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/meetings/ProjectMeetingsView.jsx)).
-2. Toggle recipient student checkboxes (defaulted to all group members) and optionally enter a **Supervisor Note / Guidance** for the week.
-3. Click **`🚀 Send Report Emails`** to trigger the [`emailProjectMeetingReport`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/projectMeetingFlows.js) Cloud Function:
-   - Securely fetches the SMTP password from **Google Cloud Secret Manager** (`SMTP_PASSWORD`).
-   - Delivers responsive HTML reports via **SMTP Relay** over secure TLS (sender `t-cywong@stu.vtc.edu.hk`).
+### 19.5 Emailing Meeting Reports to Students & 1-Click Whole-Class Weekly Dispatch
+Once meeting analysis and evaluations are reviewed, supervisors can dispatch individualized reports to students:
+
+#### A. Single Group Meeting Report Dispatch
+1. In the Meeting Inspector, Studio action bar, or Weekly Matrix column header, click **`📧 Email Report`** / **`📧 Email Meeting Report`** ([`ProjectMeetingsView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/meetings/ProjectMeetingsView.jsx)).
+2. Toggle recipient student checkboxes (defaulted to all group members).
+3. Click **`🚀 Send Email Report (SMTP)`** to trigger the [`emailProjectMeetingReport`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/projectMeetingFlows.js) Cloud Function:
+   - Securely fetches the Google App Password from **Google Cloud Secret Manager** (`SMTP_PASSWORD`).
+   - Delivers responsive HTML reports via **SMTP Relay** over secure SSL on port 465 (sender `noreply@vtc.edu.hk`).
    - Logs dispatch metadata (`emailDispatch`) to the meeting document in Firestore.
-4. If desktop email software (such as Microsoft Outlook) is preferred, click **`📨 Open in Mail Client (Outlook / Mailto)`** to open your local email client with all student emails pre-filled, subject set, and report text encoded. Click **`📋 Copy Student Emails`** to copy recipient addresses to your clipboard.
+4. If desktop email software (such as Microsoft Outlook) is preferred, click **`📨 Open in Mail Client (Outlook / Mailto)`** to open your local email client with all student emails pre-filled, subject set, and Markdown minutes encoded. Click **`📋 Copy Text`** to copy formatted meeting minutes to your clipboard.
+
+#### B. 1-Click Whole-Class Weekly Report Dispatch (All Groups in Week W)
+Instead of dispatching reports group-by-group, supervisors can email reports to the entire class for any academic week:
+1. In the Recording Studio, click **`📧 Email Whole Class (Week W)`** or **`📧 Email Class`**; in the Weekly Matrix tab header, click **`📧 Email Whole Class Reports (Week W)`**; or click **`📧 Email Reports to Whole Class`** in the Batch AI modal footer.
+2. The **Email Weekly Reports to Whole Class** dialog displays all groups recorded for that week with member counts, AI analyzed status (`✓ Analyzed` vs `⚠️ Unanalyzed`), and prior dispatch timestamps.
+3. Use quick filters: **`Select All`**, **`Only Analyzed`** (pre-selects verified sessions), or **`Deselect All`**.
+4. (Optional) Enter an **Overarching Supervisor Note for Week W** (e.g. Milestone 2 deadlines or presentation guidelines), which is prominently highlighted in green at the top of every student's meeting email.
+5. Click **`🚀 Send Reports to Selected`**:
+   - Dispatches reports with real-time progress indicators (`[3 of 8] Sending Group A03...`).
+   - Generates a live group dispatch log showing successful recipients or errors.
+   - Provides 1-click fallback buttons: **`📋 Copy All Student Emails (Week W)`** and **`📨 Open Whole-Class Draft (Mail Client)`**.
 
 ---
 

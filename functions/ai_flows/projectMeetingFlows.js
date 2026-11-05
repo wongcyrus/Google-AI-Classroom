@@ -1079,16 +1079,17 @@ export function generateMeetingEmailHtml({
   attendance,
   contribution,
   portalUrl = 'https://it114115-2627.web.app',
+  customNote = '',
 }) {
-  const weekNum = meeting.weekNumber || 1;
-  const title = meeting.title || 'Supervision Meeting';
-  const meetingDateStr = meeting.meetingDate
+  const weekNum = meeting?.weekNumber || 1;
+  const title = meeting?.title || 'Supervision Meeting';
+  const meetingDateStr = meeting?.meetingDate
     ? new Date(meeting.meetingDate).toLocaleString('en-US', {
         dateStyle: 'full',
         timeStyle: 'short',
       })
     : 'Recent';
-  const supervisor = meeting.supervisorName || meeting.supervisorEmail || 'Supervisor';
+  const supervisor = meeting?.supervisorName || meeting?.supervisorEmail || 'Supervisor';
   const groupName = group?.name || 'Project Group';
   const topic = group?.projectTopic || 'Capstone Project';
   const studentName = student?.name || student?.email || 'Student';
@@ -1167,6 +1168,12 @@ export function generateMeetingEmailHtml({
       <p>Hello <strong>${studentName}</strong>,</p>
       <p>Here is your official supervision meeting record and personalized feedback from <strong>${supervisor}</strong> for Week ${weekNum} (${meetingDateStr}).</p>
 
+      ${customNote ? `
+      <div style="background: #f0fdf4; border: 1.5px solid #86efac; border-radius: 8px; padding: 14px 16px; margin-bottom: 16px;">
+        <div style="font-weight: 700; color: #166534; font-size: 0.92rem; margin-bottom: 4px;">👨‍🏫 Supervisor Note for Week ${weekNum}:</div>
+        <div style="color: #14532d; font-size: 0.88rem; white-space: pre-wrap;">${customNote}</div>
+      </div>` : ''}
+
       <div class="card">
         <h3 style="margin: 0 0 10px; font-size: 1rem; color: #0f172a;">📊 Weekly Evaluation &amp; Scores</h3>
         <div>
@@ -1230,6 +1237,7 @@ export async function handleEmailProjectMeetingReport({
   studentUids,
   sendToAllTeammates = true,
   portalUrl = 'https://it114115-2627.web.app',
+  customNote = '',
   auth,
 }) {
   if (!classId || !meetingId) {
@@ -1332,6 +1340,7 @@ export async function handleEmailProjectMeetingReport({
       attendance: att,
       contribution: contrib,
       portalUrl,
+      customNote,
     });
 
     const weekNum = meetingData.weekNumber || 1;
@@ -1396,7 +1405,7 @@ export const emailProjectMeetingReport = onCall(
       throw new HttpsError('unauthenticated', 'User must be authenticated.');
     }
 
-    const { classId, meetingId, studentUids, sendToAllTeammates, portalUrl } = request.data || {};
+    const { classId, meetingId, studentUids, sendToAllTeammates, portalUrl, customNote } = request.data || {};
     let isAuthorized = request.auth.token?.role === 'teacher' || request.auth.token?.role === 'admin';
 
     if (!isAuthorized && classId) {
@@ -1424,6 +1433,142 @@ export const emailProjectMeetingReport = onCall(
       meetingId,
       studentUids,
       sendToAllTeammates,
+      portalUrl,
+      customNote,
+      auth: request.auth,
+    });
+  }
+);
+
+/**
+ * Dispatches consultation meeting report emails for all or selected meetings in a given academic week.
+ */
+export async function handleBatchEmailProjectMeetingReports({
+  classId,
+  weekNumber,
+  meetingIds,
+  customNote = '',
+  onlyAnalyzed = false,
+  portalUrl = 'https://it114115-2627.web.app',
+  auth,
+}) {
+  if (!classId || !weekNumber) {
+    throw new HttpsError('invalid-argument', 'Missing required classId or weekNumber.');
+  }
+
+  const meetingsRef = db.collection(`classes/${classId}/projectMeetings`);
+  const snap = await meetingsRef.where('weekNumber', '==', Number(weekNumber)).get();
+
+  let targetDocs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+
+  if (Array.isArray(meetingIds) && meetingIds.length > 0) {
+    targetDocs = targetDocs.filter((m) => meetingIds.includes(m.id));
+  }
+
+  if (onlyAnalyzed) {
+    targetDocs = targetDocs.filter(
+      (m) => m.status === 'ready' || Boolean(m.analyzedAt || m.aiModelUsed || m.rawDiarizedTranscript)
+    );
+  }
+
+  const results = [];
+  let totalDelivered = 0;
+  const errors = [];
+
+  for (const m of targetDocs) {
+    try {
+      const res = await handleEmailProjectMeetingReport({
+        classId,
+        meetingId: m.id,
+        sendToAllTeammates: true,
+        portalUrl,
+        customNote,
+        auth,
+      });
+      totalDelivered += res.count || 0;
+      results.push({
+        meetingId: m.id,
+        groupName: m.groupName || m.groupId,
+        count: res.count || 0,
+        success: res.success,
+        recipients: res.recipients,
+      });
+      if (Array.isArray(res.errors) && res.errors.length > 0) {
+        errors.push(...res.errors);
+      }
+    } catch (err) {
+      errors.push({
+        meetingId: m.id,
+        groupName: m.groupName || m.groupId,
+        error: err.message,
+      });
+      results.push({
+        meetingId: m.id,
+        groupName: m.groupName || m.groupId,
+        count: 0,
+        success: false,
+        error: err.message,
+      });
+    }
+  }
+
+  return {
+    success: errors.length === 0,
+    weekNumber: Number(weekNumber),
+    totalMeetingsProcessed: targetDocs.length,
+    totalDelivered,
+    results,
+    errors,
+  };
+}
+
+/**
+ * Callable Cloud Function: batchEmailProjectMeetingReports
+ * Dispatches consultation meeting report emails for all project groups in a specified academic week.
+ */
+export const batchEmailProjectMeetingReports = onCall(
+  {
+    region: 'asia-east2',
+    cors: CORS_ORIGINS,
+    cpu: 1,
+    memory: '1GiB',
+    timeoutSeconds: 300,
+    secrets: ['SMTP_PASSWORD'],
+  },
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError('unauthenticated', 'User must be authenticated.');
+    }
+
+    const { classId, weekNumber, meetingIds, customNote, onlyAnalyzed, portalUrl } = request.data || {};
+    let isAuthorized = request.auth.token?.role === 'teacher' || request.auth.token?.role === 'admin';
+
+    if (!isAuthorized && classId) {
+      const classSnap = await db.doc(`classes/${classId}`).get();
+      if (classSnap.exists) {
+        const cData = classSnap.data() || {};
+        const userEmail = (request.auth.token?.email || '').toLowerCase();
+        if (
+          (Array.isArray(cData.teacherEmails) && cData.teacherEmails.map((e) => e.toLowerCase()).includes(userEmail)) ||
+          (cData.teachers && cData.teachers[request.auth.uid]) ||
+          cData.ownerUid === request.auth.uid ||
+          cData.teacherUid === request.auth.uid
+        ) {
+          isAuthorized = true;
+        }
+      }
+    }
+
+    if (!isAuthorized) {
+      throw new HttpsError('permission-denied', 'Only teachers and project supervisors can email meeting reports.');
+    }
+
+    return await handleBatchEmailProjectMeetingReports({
+      classId,
+      weekNumber,
+      meetingIds,
+      customNote,
+      onlyAnalyzed,
       portalUrl,
       auth: request.auth,
     });

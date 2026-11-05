@@ -242,9 +242,16 @@ This directory contains all the Cloud Functions related to AI-powered analysis, 
     -   **Trigger**: Callable `onCall` (`functions/ai_flows/projectMeetingFlows.js`, `memory: 512MiB`, `timeoutSeconds: 120`, region `asia-east2`).
     -   **Authentication & Authorization**: Requires teacher authorization (`isTeacherInClass(classId)`).
     -   **Secret Binding**: `secrets: ['SMTP_PASSWORD']` (Google Cloud Secret Manager).
-    -   **Description**: Dispatches customized, responsive HTML consultation reports to enrolled project group students via **SMTP Relay** over secure TLS (sender `t-cywong@stu.vtc.edu.hk`). Parses meeting metadata, group summary, student evaluations (scores, feedback, challenge questions, verified tasks), and supervisor notes into an email payload using `nodemailer`. Updates Firestore document `classes/{classId}/projectMeetings/{meetingId}` with an audit log (`emailDispatch: { sentAt, sentBy, recipientCount, recipients, subject, messageIds }`).
-    -   **Input Schema**: `{ classId: string, meetingId: string, recipientEmails: string[], customNote?: string }`.
+    -   **Description**: Dispatches customized, responsive HTML consultation reports to enrolled project group students via **SMTP Relay** over secure SSL/TLS on port 465 (sender `noreply@vtc.edu.hk`). Parses meeting metadata, group summary, student evaluations (scores, feedback, challenge questions, verified tasks), and supervisor notes into an email payload using `nodemailer`. Updates Firestore document `classes/{classId}/projectMeetings/{meetingId}` with an audit log (`emailDispatch: { sentAt, sentBy, recipientCount, recipients, subject, messageIds }`).
+    -   **Input Schema**: `{ classId: string, meetingId: string, studentUids?: string[], sendToAllTeammates?: boolean, portalUrl?: string, customNote?: string }`.
     -   **Output Schema**: `{ success: boolean, count: number, recipients: string[], messageIds: string[], sentAt: string }`.
+-   **`batchEmailProjectMeetingReports`**:
+    -   **Trigger**: Callable `onCall` (`functions/ai_flows/projectMeetingFlows.js`, `memory: 512MiB`, `timeoutSeconds: 300`, region `asia-east2`).
+    -   **Authentication & Authorization**: Requires teacher authorization (`isTeacherInClass(classId)`).
+    -   **Secret Binding**: `secrets: ['SMTP_PASSWORD']` (Google Cloud Secret Manager).
+    -   **Description**: Dispatches consultation meeting report emails for all or selected meetings in a given academic week ($W$) across the whole class. Queries `classes/{classId}/projectMeetings` where `weekNumber == W`, iterates groups, injects optional overarching supervisor notes (`customNote`), and provides per-group delivery summaries.
+    -   **Input Schema**: `{ classId: string, weekNumber: number, meetingIds?: string[], customNote?: string, onlyAnalyzed?: boolean, portalUrl?: string }`.
+    -   **Output Schema**: `{ success: boolean, totalMeetingsProcessed: number, totalDelivered: number, totalFailed: number, results: Array<{ id, groupName, success, count, error? }> }`.
 
 #### Task Queue Workers (`firebase-functions/v2/tasks`)
 

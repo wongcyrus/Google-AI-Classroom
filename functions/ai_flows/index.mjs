@@ -589,5 +589,7 @@ export {
   handleAnalyzeProjectMeeting,
   emailProjectMeetingReport,
   handleEmailProjectMeetingReport,
+  batchEmailProjectMeetingReports,
+  handleBatchEmailProjectMeetingReports,
   generateMeetingEmailHtml,
 } from './projectMeetingFlows.js';

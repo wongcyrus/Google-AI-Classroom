@@ -188,28 +188,47 @@ In the **🧑‍🎓 Individual Student Contributions, Log Quality & Post-Meetin
 - **Download Markdown Meeting Minutes (`.md`)**:
   - In any meeting dossier, click **`📝 Minutes (.md)`** to download formatted Markdown minutes for that session.
 
-### 4.4 Email Supervision Reports to Students & Mail Client Fallback
-Once the meeting analysis and feedback are verified, supervisors can dispatch individualized, formatted HTML meeting reports directly to all group members with a single click:
-1. **Open the Email Report Modal**:
-   - In the Meeting Inspector header, click the **`📧 Email Report`** button ([`ProjectMeetingsView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/meetings/ProjectMeetingsView.jsx)).
+### 4.4 Email Supervision Reports to Students & Multi-Touchpoint Dispatch
+Once meeting analysis and feedback are verified, supervisors can dispatch individualized, formatted HTML meeting reports directly to group members with a single click:
+1. **Multi-Touchpoint Access**:
+   - **Studio Action Strip**: Click **`📧 Email Meeting Report`** right next to the recording button ([`ProjectMeetingsView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/meetings/ProjectMeetingsView.jsx#L2648-L2675)).
+   - **Meeting Inspector Header**: Click **`📧 Email Report`** at the top of the dossier.
+   - **Section 2 Supervisor Feedback Box**: Click **`📧 Email Report to Students`** directly inside the feedback card.
+   - **Inspector Bottom Dispatch Bar**: Click **`📧 Email Report to Group Members`** at the bottom of the inspector dossier.
+   - **Weekly Matrix Column Header**: Click **`📧 Email Report`** directly under any `Week W` column header.
 2. **Review Recipients & Add Guidance**:
-   - All enrolled group members (`members[]`) are displayed with checkboxes (defaulted to checked).
+   - All enrolled group members are displayed with checkboxes (defaulted to checked).
    - Supervisors can toggle specific teammates or leave all selected.
-   - *(Optional)* Add a **Supervisor Note / Remarks** in the textarea (e.g., *"Great progress on the database schema this week. Please push your commits to main before Thursday's code review."*).
 3. **Automated Serverless Dispatch via Secure SMTP Relay**:
-   - Click **`🚀 Send Report Emails`**.
-   - Invokes Cloud Function [`emailProjectMeetingReport`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/projectMeetingFlows.js), which retrieves the SMTP password securely from **Google Cloud Secret Manager** (`SMTP_PASSWORD`) and connects to the configured **SMTP Server** over secure TLS using verified sender `t-cywong@stu.vtc.edu.hk`.
+   - Click **`🚀 Send Email Report (SMTP)`**.
+   - Invokes Cloud Function [`emailProjectMeetingReport`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/projectMeetingFlows.js), which retrieves the App Password securely from **Google Cloud Secret Manager** (`SMTP_PASSWORD`) and connects to `smtp.gmail.com:465` (SSL) using sender `noreply@vtc.edu.hk`.
    - Each student receives a cleanly formatted, responsive HTML email containing:
      - Meeting metadata: Group ID, Week #, Title, Date, and Host Supervisor.
      - Executive Summary & Key Decisions.
      - Student attendance and speaking participation status.
      - Individualized student breakdown: Log Quality Score (`/10`), Real Work Verified Score (`/10`), Verified Tasks, AI Challenge Questions, and Post-Meeting Weekly Feedback.
-     - Action Items for Next Week and Supervisor Follow-up Notes.
+     - Action Items for Next Week and highlighted Supervisor Follow-up Notes.
    - The dispatch status and timestamp are automatically persisted to Firestore under `projectMeetings/{meetingId}.emailDispatch` and displayed in the meeting dossier.
 4. **1-Click Local Mail Client Fallback (Outlook / Mailto)**:
-   - If a supervisor prefers to review or send the email via their local desktop client (such as Microsoft Outlook or Apple Mail), click **`📨 Open in Mail Client (Outlook / Mailto)`**.
-   - This launches the system's default email client with all student emails pre-filled in the `to` field, a pre-populated subject line, and an encoded plain-text summary of the meeting evaluation.
-   - Supervisors can also click **`📋 Copy Student Emails`** to quickly paste the recipient list into any messaging channel.
+   - Click **`📨 Open in Mail Client (Outlook / Mailto)`** to launch your local desktop client with all student emails pre-filled, pre-populated subject line, and Markdown meeting minutes.
+   - Click **`📋 Copy Text`** to quickly copy the Markdown minutes to the clipboard.
+
+### 4.5 1-Click Whole-Class Weekly Report Dispatch (All Project Groups of the Week)
+Instead of emailing reports group-by-group, supervisors can dispatch consultation reports to the **entire class** for a selected academic week in one operation:
+1. **Trigger Points**:
+   - **Recording Studio**: Click **`📧 Email Whole Class (Week W)`** in the Studio actions bar or **`📧 Email Class`** in the Week # selector row.
+   - **Weekly Matrix Tab**: Click **`📧 Email Whole Class Reports (Week W)`** in the Matrix header.
+   - **Batch AI Modal Footer**: Click **`📧 Email Reports to Whole Class (Week W)`** immediately after running batch Gemini analysis.
+2. **Whole-Class Batch Dispatch Modal Features**:
+   - **Week Selector**: Easily switch between academic weeks (`Week 1` $\to$ `Week N`).
+   - **Interactive Group Checklist**: Displays all sessions recorded for that week with member counts, topic, AI analyzed status (`✓ Analyzed` vs `⚠️ Unanalyzed`), and prior dispatch timestamps.
+   - **Smart Filters**: Click **`Select All`**, **`Only Analyzed`** (recommended to dispatch only finalized reports), or **`Deselect All`**.
+   - **Overarching Supervisor Note**: An optional textarea to write a common announcement or reminder for Week $W$ (e.g. *"Reminder: Milestone 2 presentation slides are due next Tuesday by 23:59"*), which is highlighted in green at the top of every dispatched student email.
+   - **Real-Time Progress & Fault Tolerance**: Displays a live progress bar (`Sending Reports [3 of 8]... Group A03`) and logs each group's delivery outcome. If one student email fails or bounces, subsequent groups continue dispatching seamlessly.
+   - **Whole-Class Fallback Utilities**:
+     - **`📋 Copy All Student Emails (Week W)`**: Copies all unique student emails across selected groups to clipboard.
+     - **`📨 Open Whole-Class Draft (Mail Client)`**: Launches desktop mail client with all students pre-populated.
+   - **Backend Callable Support**: Supported by both client-orchestrated progress and serverless [`batchEmailProjectMeetingReports`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/projectMeetingFlows.js).
 
 ---
 

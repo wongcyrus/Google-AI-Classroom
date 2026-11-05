@@ -4,6 +4,53 @@
 **System**: Google AI Classroom  
 **Production URL**: `https://it114115-2627.web.app`
 
+## 0.0.0.0.0.0.0.0.0.0.3.3 1-Click Whole-Class Weekly Report Dispatch, Multi-Touchpoint Email Buttons, Google App Password Migration & batchEmailProjectMeetingReports Cloud Function
+
+**Date**: November 5, 2026  
+**Status**: Implemented, Verified with Passing Unit Tests (`ProjectMeetingsView.test.jsx` 12/12, `projectMeetingFlows.test.js` 15/15), and Deployed to `it114115-2627` (Production: Hosting & Cloud Functions Gen 2 `asia-east2`)  
+**Primary Files**:
+- [`web-app/src/components/meetings/ProjectMeetingsView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/meetings/ProjectMeetingsView.jsx) & [`web-app/src/components/meetings/ProjectMeetingsView.test.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/meetings/ProjectMeetingsView.test.jsx)
+- [`functions/ai_flows/projectMeetingFlows.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/projectMeetingFlows.js), [`functions/ai_flows/index.mjs`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/index.mjs), [`functions/ai_flows/projectMeetingFlows.test.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/projectMeetingFlows.test.js)
+- [`functions/ai_flows/.env.it114115-2627`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/.env.it114115-2627)
+- [`docs/project-group-meetings-and-weekly-log-user-guide.md`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/docs/project-group-meetings-and-weekly-log-user-guide.md), [`docs/functions.md`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/docs/functions.md), [`docs/user-manual-teacher.md`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/docs/user-manual-teacher.md)
+
+### Technical Analysis & Implementation Details:
+
+1. **Google App Password Configuration for `noreply@vtc.edu.hk` over Secure SSL (`smtp.gmail.com:465`)**:
+   - **Secret Versioning**: Updated Google Cloud Secret Manager secret `SMTP_PASSWORD` in `it114115-2627` to version 2 containing the sanitized App Password with all whitespace stripped.
+   - **Configuration Update**: Configured `SMTP_HOST=smtp.gmail.com`, `SMTP_PORT=465`, `SMTP_SECURE=true`, `SMTP_USER=noreply@vtc.edu.hk`, and `SMTP_FROM_EMAIL=noreply@vtc.edu.hk` in `functions/ai_flows/.env.it114115-2627`.
+   - **Connectivity Verification**: Confirmed direct SMTP handshake and credential authentication with `smtp.gmail.com:465` (`verify: true`).
+
+2. **1-Click Whole-Class Weekly Report Dispatch (`EmailWholeClassReportsModal`)**:
+   - **Prominent UI Trigger Buttons**:
+     - **Recording Studio**: Added **`📧 Email Whole Class (Week W)`** right beside the recording start button and **`📧 Email Class`** beside the Week # selector.
+     - **Weekly Matrix Tab**: Added **`📧 Email Whole Class Reports (Week W)`** in the matrix card header.
+     - **Batch AI Modal**: Added **`📧 Email Reports to Whole Class (Week W)`** in the modal footer so supervisors can dispatch emails immediately after batch AI processing.
+   - **Interactive Modal Controls**:
+     - Academic week selector dropdown with real-time meeting count.
+     - Group checklist showing member counts, project topic, AI analyzed status (`✓ Analyzed` vs `⚠️ Unanalyzed`), and prior dispatch timestamps.
+     - Quick filter chips: **`Select All`**, **`Only Analyzed`** (pre-selects verified sessions), and **`Deselect All`**.
+     - Overarching supervisor note textarea rendered in a highlighted green alert box at the top of every recipient's email.
+     - Real-time progress bar (`Sending Reports [3 of 8]... Group A03`) and live dispatch outcome log.
+     - Whole-class fallbacks: **`📋 Copy All Student Emails (Week W)`** and **`📨 Open Whole-Class Draft (Mail Client)`**.
+
+3. **Multi-Touchpoint Single-Group Email Report Buttons**:
+   - Added **`📧 Email Meeting Report`** across:
+     - Studio action strip (`btn-studio-email-report`).
+     - Sidebar meeting session cards (`btn-card-email-report`).
+     - Meeting Inspector top header (`btn-email-meeting-report`).
+     - Section 2 Supervisor Feedback card (`weekly-group-feedback-box`).
+     - Bottom of inspector dossier (`inspector-bottom-dispatch-bar`).
+     - Weekly Matrix column header for each week.
+     - Inspector empty state quick-jump button (`👉 Open Latest Session`).
+
+4. **Cloud Function `batchEmailProjectMeetingReports` & Robust Sequential Execution**:
+   - Created and deployed 2nd Gen Cloud Function `batchEmailProjectMeetingReports` bound to `SMTP_PASSWORD` (`asia-east2`).
+   - Supports both client-driven sequential dispatch with progress updates and serverless batch dispatch.
+   - Unit tested: 15/15 tests passing in `functions/ai_flows`, 12/12 passing in `web-app`.
+
+---
+
 ## 0.0.0.0.0.0.0.0.0.0.3.2 Student Project Meeting Records View (with Late Status), SMTP Email Dispatch via Secret Manager & Airtight Git Secret Safeguards
 
 **Date**: November 5, 2026  
