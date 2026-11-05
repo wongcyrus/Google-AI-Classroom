@@ -3033,17 +3033,6 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <button
                     type="button"
-                    className="btn-batch-ai-sidebar-trigger"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setShowBatchAiModal(true);
-                    }}
-                    title={`Batch analyze recordings in Week ${studioWeekNumber} with Gemini`}
-                  >
-                    ⚡ Batch AI
-                  </button>
-                  <button
-                    type="button"
                     className="btn-merge-mode-toggle"
                     onClick={(e) => {
                       e.stopPropagation();

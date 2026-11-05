@@ -144,23 +144,6 @@
   background: linear-gradient(135deg, #4338ca 0%, #4f46e5 100%);
 }
 
-.btn-batch-ai-sidebar-trigger {
-  background: #f1f5f9;
-  border: 1px solid #cbd5e1;
-  color: #4338ca;
-  font-weight: 700;
-  font-size: 0.75rem;
-  padding: 4px 8px;
-  border-radius: 6px;
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.btn-batch-ai-sidebar-trigger:hover {
-  background: #e0e7ff;
-  border-color: #a5b4fc;
-}
-
 .batch-analysis-progress-banner {
   background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
   border: 1.5px solid #93c5fd;

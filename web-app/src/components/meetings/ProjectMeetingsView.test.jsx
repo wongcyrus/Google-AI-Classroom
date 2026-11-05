@@ -967,9 +967,8 @@ Group Beta,New Beta Topic,other@vtc.edu.hk,eva@stu.vtc.edu.hk,Eva Ho,Leader`;
     // Switch to Week 2 where mtg_2_wk2 exists
     fireEvent.change(screen.getByLabelText(/📅 Week #:/i), { target: { value: 2 } });
 
-    // Open Batch AI modal via Studio trigger
-    const batchBtns = screen.getAllByRole('button', { name: /⚡ Batch AI/i });
-    fireEvent.click(batchBtns[0]);
+    // Open Batch AI modal via Studio trigger (single source of truth)
+    fireEvent.click(screen.getByRole('button', { name: /⚡ Batch AI/i }));
 
     // Modal should be visible
     expect(screen.getByText(/⚡ Batch Gemini Analysis — Week 2/i)).toBeInTheDocument();
