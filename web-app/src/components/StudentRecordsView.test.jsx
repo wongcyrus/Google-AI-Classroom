@@ -2723,5 +2723,180 @@ describe('StudentRecordsView Component', () => {
       expect(isExamRecord({ timestamp: '2026-10-02T10:00:00.000Z' }, classObj)).toBe(false);
     });
   });
+
+  describe('Capstone Project Supervision & Meeting Records Tab', () => {
+    it('displays empty state when student has no project group assigned', async () => {
+      mockOnSnapshot.mockImplementation((refOrQuery, callback) => {
+        if (typeof callback === 'function') {
+          callback({ docs: [] });
+        }
+        return vi.fn();
+      });
+
+      render(<StudentRecordsView user={mockUser} />);
+
+      await waitFor(() => {
+        expect(screen.getByRole('tab', { name: /Project Meetings/i })).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByRole('tab', { name: /Project Meetings/i }));
+
+      expect(screen.getByText(/No Project Group Assigned Yet/i)).toBeInTheDocument();
+    });
+
+    it('renders project overview, teammates, late attendance status, and supervisor feedback', async () => {
+      mockOnSnapshot.mockImplementation((refOrQuery, callback) => {
+        const path = refOrQuery?.path || refOrQuery?.args?.[0]?.path || '';
+        if (typeof callback === 'function') {
+          if (path.includes('projectGroups')) {
+            callback({
+              docs: [
+                {
+                  id: 'grp_10',
+                  data: () => ({
+                    name: 'Group A10',
+                    projectTopic: 'AI Classroom Assistant',
+                    supervisorName: 'Dr. Alan Turing',
+                    members: [
+                      { name: 'Student Test', email: 'student@vtc.edu.hk', role: 'Leader' },
+                      { name: 'Teammate Bob', email: 'bob@vtc.edu.hk', role: 'Member' },
+                    ],
+                  }),
+                },
+              ],
+            });
+          } else if (path.includes('projectMeetings')) {
+            callback({
+              docs: [
+                {
+                  id: 'mtg_10',
+                  data: () => ({
+                    groupId: 'grp_10',
+                    weekNumber: 10,
+                    title: 'Sprint Review & Architecture',
+                    meetingDate: '2026-11-01T10:00:00Z',
+                    supervisorName: 'Dr. Alan Turing',
+                    keyInsights: { overallGroupProgress: 'on_track' },
+                    attendanceRecord: [
+                      {
+                        email: 'student@vtc.edu.hk',
+                        status: 'late',
+                        speakingContribution: 'high',
+                        firstHeardSec: 145,
+                      },
+                    ],
+                    studentContributions: [
+                      {
+                        email: 'student@vtc.edu.hk',
+                        realWorkScore: 9,
+                        logQualityScore: 8,
+                        logQualityAssessment: 'genuine_verified',
+                        supervisorFeedback: 'Great progress on Firebase Genkit integration',
+                        verifiedTasks: ['Implemented auth flow', 'Set up Genkit'],
+                        challengeQuestions: ['How will you handle cold starts?'],
+                        actionItems: ['Write unit tests'],
+                      },
+                    ],
+                  }),
+                },
+                {
+                  id: 'mtg_9',
+                  data: () => ({
+                    groupId: 'grp_10',
+                    weekNumber: 9,
+                    title: 'Requirements Kickoff',
+                    meetingDate: '2026-10-24T10:00:00Z',
+                    attendanceRecord: [
+                      { email: 'student@vtc.edu.hk', status: 'present' },
+                    ],
+                  }),
+                },
+                {
+                  id: 'mtg_8',
+                  data: () => ({
+                    groupId: 'grp_10',
+                    weekNumber: 8,
+                    title: 'Topic Ideation',
+                    meetingDate: '2026-10-17T10:00:00Z',
+                    attendanceRecord: [
+                      { email: 'student@vtc.edu.hk', status: 'absent' },
+                    ],
+                  }),
+                },
+              ],
+            });
+          } else if (path.includes('projectStudentProfiles')) {
+            callback({
+              docs: [
+                {
+                  id: 'prof_1',
+                  data: () => ({
+                    email: 'student@vtc.edu.hk',
+                    weeklyLogEntries: [
+                      {
+                        weekNumber: 10,
+                        submittedAt: '2026-11-01T09:00:00Z',
+                        qualityScore: 8,
+                        classification: 'genuine_verified',
+                        explanation: 'Solid code snippets and verifiable commit hashes provided.',
+                        doneTasks: 'Configured Firebase Genkit flows',
+                      },
+                    ],
+                  }),
+                },
+              ],
+            });
+          } else {
+            callback({ docs: [] });
+          }
+        }
+        return vi.fn();
+      });
+
+      render(<StudentRecordsView user={mockUser} />);
+
+      // Verify tab badge displays 3 meetings
+      await waitFor(() => {
+        const tabBtn = screen.getByRole('tab', { name: /Project Meetings/i });
+        expect(tabBtn).toBeInTheDocument();
+        expect(tabBtn).toHaveTextContent('3');
+      });
+
+      // Switch to Project Meetings tab
+      fireEvent.click(screen.getByRole('tab', { name: /Project Meetings/i }));
+
+      // Hero Card details
+      expect(screen.getByText(/Group A10/i)).toBeInTheDocument();
+      expect(screen.getByText(/AI Classroom Assistant/i)).toBeInTheDocument();
+      expect(screen.getAllByText(/Dr\. Alan Turing/i).length).toBeGreaterThanOrEqual(1);
+      expect(screen.getByText(/Student Test/i)).toBeInTheDocument();
+      expect(screen.getByText(/Teammate Bob/i)).toBeInTheDocument();
+
+      // Attendance Summary Stats (1 present + 1 late out of 3 = 67%)
+      expect(screen.getByText('67%')).toBeInTheDocument();
+      expect(screen.getByText(/1 Present/i)).toBeInTheDocument();
+      expect(screen.getByText(/1 Late/i)).toBeInTheDocument();
+      expect(screen.getByText(/1 Absent/i)).toBeInTheDocument();
+
+      // Meeting Card
+      expect(screen.getByText(/Week 10: Sprint Review & Architecture/i)).toBeInTheDocument();
+      // Late status badge
+      expect(screen.getByText('🕒 Late')).toBeInTheDocument();
+      // Scores and feedback
+      expect(screen.getByText(/9\/10/)).toBeInTheDocument();
+      expect(screen.getByText(/8\/10/)).toBeInTheDocument();
+      expect(screen.getByText(/Great progress on Firebase Genkit integration/i)).toBeInTheDocument();
+      expect(screen.getByText(/How will you handle cold starts\?/i)).toBeInTheDocument();
+      expect(screen.getByText(/Implemented auth flow/i)).toBeInTheDocument();
+      expect(screen.getByText(/Write unit tests/i)).toBeInTheDocument();
+
+      // Toggle to Google Form Weekly Logs subview
+      const logsSubViewBtn = screen.getByRole('button', { name: /Google Form Weekly Logs/i });
+      fireEvent.click(logsSubViewBtn);
+
+      expect(screen.getByText(/Solid code snippets and verifiable commit hashes provided\./i)).toBeInTheDocument();
+      expect(screen.getByText(/Configured Firebase Genkit flows/i)).toBeInTheDocument();
+    });
+  });
 });
 

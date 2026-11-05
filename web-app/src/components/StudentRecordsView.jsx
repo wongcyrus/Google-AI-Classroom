@@ -20,7 +20,31 @@ import {
   handleVideoEndedGuard,
 } from '../utils/videoSubtitleUtils';
 import { parsePeriodDateMs } from '../utils/examPeriodUtils';
+import { normalizeStudentEmail } from '../utils/studentDisplayUtils';
 import './StudentRecordsView.css';
+
+export const generateStudentMeetingMarkdownMinutes = (m) => {
+  if (!m) return '';
+  if (m.minutesMarkdown) return m.minutesMarkdown;
+  const lines = [
+    `# Supervision Meeting Minutes — Week ${m.weekNumber || 1}: ${m.title || 'Meeting'}`,
+    `**Group:** ${m.groupName || 'Project Group'}`,
+    `**Supervisor:** ${m.supervisorName || m.supervisorEmail || 'Supervisor'}`,
+    `**Date:** ${m.meetingDate ? new Date(m.meetingDate).toLocaleString() : 'Recent'}`,
+    '',
+    '## Attendance Record',
+  ];
+  (m.attendanceRecord || []).forEach((a) => {
+    lines.push(`- **${a.name || a.email}:** ${a.status ? a.status.toUpperCase() : 'ABSENT'}${a.evidence ? ` (${a.evidence})` : ''}`);
+  });
+  if (m.keyInsights?.executiveSummary) {
+    lines.push('', '## Executive Summary', m.keyInsights.executiveSummary);
+  }
+  if (m.keyInsights?.weeklyGroupFeedback) {
+    lines.push('', '## Weekly Group Feedback', m.keyInsights.weeklyGroupFeedback);
+  }
+  return lines.join('\n');
+};
 
 export const formatDuration = (totalSeconds) => {
   if (!totalSeconds || isNaN(totalSeconds)) return '0s';
@@ -163,6 +187,13 @@ const StudentRecordsView = ({ user }) => {
   const [viewingFeedbackTask, setViewingFeedbackTask] = useState(null);
   const [feedbackSubmission, setFeedbackSubmission] = useState(null);
 
+  // Capstone Project Supervision Meetings & Weekly Logs State
+  const [projectGroups, setProjectGroups] = useState([]);
+  const [projectMeetings, setProjectMeetings] = useState([]);
+  const [projectStudentProfiles, setProjectStudentProfiles] = useState([]);
+  const [projectSubView, setProjectSubView] = useState('meetings'); // 'meetings' | 'logs'
+  const [copiedMinutesId, setCopiedMinutesId] = useState(null);
+
   // Subscribe to practical tasks and submissions
   useEffect(() => {
     if (!selectedClassId || !user?.uid) {
@@ -230,6 +261,63 @@ const StudentRecordsView = ({ user }) => {
       if (typeof unsub === 'function') unsub();
     };
   }, [selectedClassId, user?.uid]);
+
+  // Subscribe to Capstone Project Groups, Meetings, and Student Profiles
+  useEffect(() => {
+    if (!selectedClassId || !user?.email) {
+      setProjectGroups([]);
+      setProjectMeetings([]);
+      setProjectStudentProfiles([]);
+      return;
+    }
+
+    if (typeof onSnapshot !== 'function') return;
+
+    const unsubs = [];
+    try {
+      const grpRef = collection(db, 'classes', selectedClassId, 'projectGroups');
+      const mtgRef = collection(db, 'classes', selectedClassId, 'projectMeetings');
+      const profRef = collection(db, 'classes', selectedClassId, 'projectStudentProfiles');
+
+      unsubs.push(
+        onSnapshot(
+          grpRef,
+          (snap) => {
+            setProjectGroups((snap?.docs || []).map((d) => ({ id: d.id, ...d.data() })));
+          },
+          () => {}
+        )
+      );
+
+      unsubs.push(
+        onSnapshot(
+          mtgRef,
+          (snap) => {
+            setProjectMeetings((snap?.docs || []).map((d) => ({ id: d.id, ...d.data() })));
+          },
+          () => {}
+        )
+      );
+
+      unsubs.push(
+        onSnapshot(
+          profRef,
+          (snap) => {
+            setProjectStudentProfiles((snap?.docs || []).map((d) => ({ id: d.id, ...d.data() })));
+          },
+          () => {}
+        )
+      );
+    } catch {
+      // Ignore if test mocks don't support collection refs
+    }
+
+    return () => {
+      unsubs.forEach((fn) => {
+        if (typeof fn === 'function') fn();
+      });
+    };
+  }, [selectedClassId, user?.email]);
 
   // Video player modal state
   const [showPlayer, setShowPlayer] = useState(false);
@@ -702,6 +790,72 @@ const StudentRecordsView = ({ user }) => {
   const activeClassObj = useMemo(() => {
     return enrolledClasses.find((c) => c.id === selectedClassId) || null;
   }, [enrolledClasses, selectedClassId]);
+
+  const userEmail = useMemo(() => normalizeStudentEmail(user?.email || ''), [user?.email]);
+
+  // Resolve Capstone Project Group for current student in selected class
+  const myProjectGroup = useMemo(() => {
+    return (
+      projectGroups.find((g) =>
+        (g.members || []).some(
+          (m) => normalizeStudentEmail(m.email) === userEmail || m.uid === user?.uid
+        )
+      ) || null
+    );
+  }, [projectGroups, userEmail, user?.uid]);
+
+  // Resolve Capstone Project Meetings for this group / student
+  const myProjectMeetings = useMemo(() => {
+    const list = projectMeetings.filter((m) => {
+      const isGroupMatch = myProjectGroup && m.groupId === myProjectGroup.id;
+      const isAttendanceMatch = (m.attendanceRecord || []).some(
+        (a) => normalizeStudentEmail(a.email) === userEmail || a.uid === user?.uid
+      );
+      const isContributionMatch = (m.studentContributions || []).some(
+        (c) => normalizeStudentEmail(c.email) === userEmail || c.uid === user?.uid
+      );
+      return isGroupMatch || isAttendanceMatch || isContributionMatch;
+    });
+    return list.sort((a, b) => (Number(b.weekNumber) || 0) - (Number(a.weekNumber) || 0));
+  }, [projectMeetings, myProjectGroup, userEmail, user?.uid]);
+
+  // Resolve Student Profile (Weekly Logs and Feedback)
+  const myProjectProfile = useMemo(() => {
+    if (!projectStudentProfiles || projectStudentProfiles.length === 0) return null;
+    return (
+      projectStudentProfiles.find(
+        (p) =>
+          normalizeStudentEmail(p.email || p.studentEmail || p.id) === userEmail ||
+          p.uid === user?.uid
+      ) || null
+    );
+  }, [projectStudentProfiles, userEmail, user?.uid]);
+
+  const myWeeklyLogs = useMemo(() => {
+    const logs = myProjectProfile?.weeklyLogEntries || [];
+    return [...logs].sort((a, b) => (Number(b.weekNumber) || 0) - (Number(a.weekNumber) || 0));
+  }, [myProjectProfile]);
+
+  // Project Meeting Attendance Stats
+  const projectAttendanceStats = useMemo(() => {
+    let present = 0;
+    let late = 0;
+    let absent = 0;
+    myProjectMeetings.forEach((m) => {
+      const att = (m.attendanceRecord || []).find(
+        (a) => normalizeStudentEmail(a.email) === userEmail || a.uid === user?.uid
+      );
+      if (att) {
+        if (att.status === 'present') present++;
+        else if (att.status === 'late') late++;
+        else if (att.status === 'absent') absent++;
+      }
+    });
+    const total = present + late + absent;
+    const attended = present + late;
+    const rate = total > 0 ? Math.round((attended / total) * 100) : 0;
+    return { present, late, absent, total, attended, rate };
+  }, [myProjectMeetings, userEmail, user?.uid]);
 
   // Lessons for selected class
   const classLessons = useMemo(() => {
@@ -1524,6 +1678,18 @@ const StudentRecordsView = ({ user }) => {
           <span>⚡</span> Tasks & AI Progress
           {(filteredMetrics.length + filteredProgress.length) > 0 && (
             <span className="tab-badge">{filteredMetrics.length + filteredProgress.length}</span>
+          )}
+        </button>
+
+        <button
+          className={`records-tab-btn ${activeTab === 'projectMeetings' ? 'active' : ''}`}
+          onClick={() => setActiveTab('projectMeetings')}
+          role="tab"
+          aria-selected={activeTab === 'projectMeetings'}
+        >
+          <span>👥</span> Project Meetings
+          {myProjectMeetings.length > 0 && (
+            <span className="tab-badge">{myProjectMeetings.length}</span>
           )}
         </button>
 
@@ -2996,6 +3162,370 @@ const StudentRecordsView = ({ user }) => {
                 </tbody>
               </table>
             </div>
+          )}
+        </div>
+      )}
+
+      {/* Tab: Project Supervision Meetings & Weekly Logs */}
+      {activeTab === 'projectMeetings' && (
+        <div className="tab-panel-card project-student-panel">
+          {!myProjectGroup && myProjectMeetings.length === 0 ? (
+            <div className="project-empty-card">
+              <div style={{ fontSize: '2.5rem', marginBottom: '8px' }}>👥</div>
+              <h3 style={{ margin: '0 0 6px', color: '#0f172a' }}>No Project Group Assigned Yet</h3>
+              <p style={{ margin: 0, color: '#64748b', fontSize: '0.9rem', maxWidth: '520px', lineHeight: 1.5 }}>
+                You have not been assigned to a Capstone Project group in this class yet. When your supervisor creates your group or records your supervision meetings, your attendance, minutes, and weekly feedback will appear here.
+              </p>
+            </div>
+          ) : (
+            <>
+              {/* Project Overview Card */}
+              <div className="project-overview-hero-card">
+                <div className="project-overview-top">
+                  <div>
+                    <div className="project-group-pill">👥 {myProjectGroup?.name || 'My Project Group'}</div>
+                    <h2 className="project-topic-heading">
+                      {myProjectGroup?.projectTopic || 'Capstone Project'}
+                    </h2>
+                    <div className="project-supervisor-sub">
+                      <span>👨‍🏫 <strong>Supervisor:</strong> {myProjectGroup?.supervisorName || myProjectGroup?.supervisorEmail || 'Assigned Supervisor'}</span>
+                      {myProjectGroup?.coSupervisorEmails?.length > 0 && (
+                        <span>• 👨‍🏫 <strong>Co-Supervisors:</strong> {myProjectGroup.coSupervisorEmails.join(', ')}</span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Attendance Stats Counter */}
+                  <div className="project-att-summary-box">
+                    <div className="att-stat-metric">
+                      <span className="metric-val">{projectAttendanceStats.rate}%</span>
+                      <span className="metric-lbl">Attendance</span>
+                    </div>
+                    <div className="att-stat-pills-row">
+                      <span className="stat-pill present" title="Attended on time">
+                        ✅ {projectAttendanceStats.present} Present
+                      </span>
+                      <span className="stat-pill late" title="Attended late">
+                        🕒 {projectAttendanceStats.late} Late
+                      </span>
+                      <span className="stat-pill absent" title="Absent">
+                        ❌ {projectAttendanceStats.absent} Absent
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Teammates Roster */}
+                {myProjectGroup?.members?.length > 0 && (
+                  <div className="project-members-roster-row">
+                    <span className="roster-lbl">👥 Teammates:</span>
+                    <div className="roster-chips">
+                      {myProjectGroup.members.map((m, idx) => {
+                        const isMe = normalizeStudentEmail(m.email) === userEmail || m.uid === user?.uid;
+                        return (
+                          <span key={m.uid || m.email || idx} className={`member-chip ${isMe ? 'is-me' : ''}`}>
+                            {m.role === 'Leader' ? '👑 ' : '👤 '}
+                            <strong>{m.name || m.email}</strong>
+                            {m.studentId ? ` (${m.studentId})` : ''}
+                            {isMe ? ' (You)' : ''}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Sub-view switcher: Meetings vs Submitted Weekly Logs */}
+              <div className="project-subview-bar">
+                <button
+                  type="button"
+                  className={`subview-pill ${projectSubView === 'meetings' ? 'active' : ''}`}
+                  onClick={() => setProjectSubView('meetings')}
+                >
+                  🎙️ Supervision Meetings ({myProjectMeetings.length})
+                </button>
+                <button
+                  type="button"
+                  className={`subview-pill ${projectSubView === 'logs' ? 'active' : ''}`}
+                  onClick={() => setProjectSubView('logs')}
+                >
+                  📋 Google Form Weekly Logs ({myWeeklyLogs.length})
+                </button>
+              </div>
+
+              {/* Subview 1: Supervision Meetings */}
+              {projectSubView === 'meetings' && (
+                <div className="project-meetings-list">
+                  {myProjectMeetings.length === 0 ? (
+                    <div className="project-empty-card" style={{ padding: '2rem 1rem' }}>
+                      No recorded supervision meetings for your group yet.
+                    </div>
+                  ) : (
+                    myProjectMeetings.map((m) => {
+                      const myAtt = (m.attendanceRecord || []).find(
+                        (a) => normalizeStudentEmail(a.email) === userEmail || a.uid === user?.uid
+                      );
+                      const myContrib = (m.studentContributions || []).find(
+                        (c) => normalizeStudentEmail(c.email) === userEmail || c.uid === user?.uid
+                      );
+                      const attStatus = myAtt?.status || 'pending';
+
+                      return (
+                        <div key={m.id} className="student-meeting-record-card">
+                          <div className="student-meeting-header">
+                            <div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                                <h3 style={{ margin: 0, fontSize: '1.05rem', color: '#0f172a' }}>
+                                  Week {m.weekNumber || 1}: {m.title || 'Supervision Meeting'}
+                                </h3>
+                                <span className={`att-badge ${attStatus}`}>
+                                  {attStatus === 'present'
+                                    ? '✅ Present'
+                                    : attStatus === 'late'
+                                    ? '🕒 Late'
+                                    : attStatus === 'absent'
+                                    ? '❌ Absent'
+                                    : '⏳ Pending'}
+                                </span>
+                                {m.keyInsights?.overallGroupProgress && (
+                                  <span className={`group-progress-badge ${m.keyInsights.overallGroupProgress}`}>
+                                    Group: {m.keyInsights.overallGroupProgress === 'on_track' ? '🟢 On Track' : m.keyInsights.overallGroupProgress === 'ahead' ? '🚀 Ahead' : m.keyInsights.overallGroupProgress === 'at_risk' ? '⚠️ At Risk' : '🔴 Behind'}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="student-meeting-meta">
+                                <span>📅 {m.meetingDate ? new Date(m.meetingDate).toLocaleString() : 'Recent'}</span>
+                                <span>👨‍🏫 {m.supervisorName || m.supervisorEmail || 'Supervisor'}</span>
+                                {myAtt?.speakingContribution && (
+                                  <span>🎙️ Participation: <strong>{myAtt.speakingContribution.toUpperCase()}</strong></span>
+                                )}
+                              </div>
+                            </div>
+
+                            <button
+                              type="button"
+                              className="btn-copy-minutes-sm"
+                              onClick={() => {
+                                const minutes = generateStudentMeetingMarkdownMinutes(m);
+                                navigator.clipboard?.writeText(minutes);
+                                setCopiedMinutesId(m.id);
+                                setTimeout(() => setCopiedMinutesId(null), 2500);
+                              }}
+                              title="Copy Markdown minutes for this meeting"
+                            >
+                              {copiedMinutesId === m.id ? '✓ Copied' : '📋 Copy Minutes'}
+                            </button>
+                          </div>
+
+                          {/* Attendance Evidence */}
+                          {myAtt && (
+                            <div className="student-att-evidence-box">
+                              <strong>🗣️ Attendance &amp; Speaking Record:</strong>{' '}
+                              {myAtt.firstHeardTimestamp && <code>[{myAtt.firstHeardTimestamp}] </code>}
+                              {myAtt.evidence ? (
+                                <span>{myAtt.evidence}</span>
+                              ) : attStatus === 'present' || attStatus === 'late' ? (
+                                <span>Spoke and contributed in group supervision discussion.</span>
+                              ) : (
+                                <span>No spoken turn recorded in meeting audio.</span>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Supervisor Feedback & Scores */}
+                          {myContrib && (
+                            <div className="student-feedback-box">
+                              <div className="feedback-scores-row">
+                                {(myContrib.realWorkScore !== undefined && myContrib.realWorkScore !== null) && (
+                                  <span className="score-pill work">
+                                    ⭐ Work Score: <strong>{myContrib.realWorkScore}/10</strong>
+                                  </span>
+                                )}
+                                {((myContrib.logQualityScore ?? myContrib.weeklyLogScore) !== undefined && (myContrib.logQualityScore ?? myContrib.weeklyLogScore) !== null) && (
+                                  <span className="score-pill log">
+                                    📄 Log Score: <strong>{myContrib.logQualityScore ?? myContrib.weeklyLogScore}/10</strong>
+                                  </span>
+                                )}
+                                {myContrib.logQualityAssessment && (
+                                  <span className={`quality-pill ${myContrib.logQualityAssessment}`}>
+                                    {myContrib.logQualityAssessment === 'genuine_verified'
+                                      ? '✅ Genuine & Verified'
+                                      : myContrib.logQualityAssessment === 'vague_useless'
+                                      ? '🟡 Vague / Low Quality'
+                                      : myContrib.logQualityAssessment === 'suspected_ai_unverified'
+                                      ? '⚠️ Suspected AI Unverified'
+                                      : '❌ Contradicted in Meeting'}
+                                  </span>
+                                )}
+                              </div>
+
+                              {(myContrib.weeklyFeedback || myContrib.supervisorFeedback) && (
+                                <div className="supervisor-comment">
+                                  <strong>💬 Supervisor's Feedback for You:</strong>
+                                  <p style={{ margin: '4px 0 0', fontStyle: 'italic', color: '#1e293b' }}>
+                                    &ldquo;{myContrib.weeklyFeedback || myContrib.supervisorFeedback}&rdquo;
+                                  </p>
+                                </div>
+                              )}
+
+                              {Array.isArray(myContrib.challengeQuestions) && myContrib.challengeQuestions.length > 0 && (
+                                <div className="challenge-questions-box">
+                                  <strong>🎯 Challenge Questions to Answer:</strong>
+                                  <ul>
+                                    {myContrib.challengeQuestions.map((q, qIdx) => (
+                                      <li key={qIdx}>{q}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+
+                              <div className="tasks-grid">
+                                {Array.isArray(myContrib.workCompleted || myContrib.workDone || myContrib.verifiedTasks) &&
+                                  (myContrib.workCompleted || myContrib.workDone || myContrib.verifiedTasks).length > 0 && (
+                                  <div className="task-subcol">
+                                    <strong>✅ Verified Work Done:</strong>
+                                    <ul>
+                                      {(myContrib.workCompleted || myContrib.workDone || myContrib.verifiedTasks).map((t, tIdx) => (
+                                        <li key={tIdx}>{t}</li>
+                                      ))}
+                                    </ul>
+                                  </div>
+                                )}
+                                {Array.isArray(myContrib.actionItemsNextWeek || myContrib.actionItems) &&
+                                  (myContrib.actionItemsNextWeek || myContrib.actionItems).length > 0 && (
+                                  <div className="task-subcol">
+                                    <strong>📋 Action Items for Next Week:</strong>
+                                    <ul>
+                                      {(myContrib.actionItemsNextWeek || myContrib.actionItems).map((t, tIdx) => (
+                                        <li key={tIdx}>{t}</li>
+                                      ))}
+                                    </ul>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Meeting Media: Audio clips & Screen Recordings */}
+                          {((m.audioClips || []).length > 0 || (m.screenClips || []).length > 0) && (
+                            <div className="meeting-media-bar">
+                              {(m.audioClips || []).map((ac, acIdx) => (
+                                <div key={ac.id || acIdx} className="media-chip audio">
+                                  <span>🎙️ {ac.label || `Audio Part ${acIdx + 1}`}</span>
+                                  {ac.downloadUrl && (
+                                    <audio src={ac.downloadUrl} controls preload="none" style={{ height: '28px', maxWidth: '240px' }} />
+                                  )}
+                                </div>
+                              ))}
+                              {(m.screenClips || []).map((sc, scIdx) => (
+                                <div key={sc.id || scIdx} className="media-chip screen">
+                                  <span>💻 {sc.label || `Screen Clip ${scIdx + 1}`}</span>
+                                  {sc.downloadUrl && (
+                                    <button
+                                      type="button"
+                                      className="action-btn-sm action-btn-primary"
+                                      onClick={() => {
+                                        setPlayerVideoUrl(sc.downloadUrl);
+                                        setShowPlayer(true);
+                                        setPlayingVideoRecord({ id: sc.id, title: `${m.groupName || 'Meeting'} - ${sc.label || 'Screen Clip'}` });
+                                      }}
+                                    >
+                                      ▶ Watch Screen
+                                    </button>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* Group Executive Summary & Weekly Feedback */}
+                          {m.keyInsights && (m.keyInsights.executiveSummary || m.keyInsights.weeklyGroupFeedback) && (
+                            <div className="group-insights-footer">
+                              {m.keyInsights.executiveSummary && (
+                                <div>
+                                  <strong>📝 Meeting Summary:</strong> {m.keyInsights.executiveSummary}
+                                </div>
+                              )}
+                              {m.keyInsights.weeklyGroupFeedback && (
+                                <div style={{ marginTop: '4px' }}>
+                                  <strong>👥 Group Feedback:</strong> {m.keyInsights.weeklyGroupFeedback}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              )}
+
+              {/* Subview 2: Google Form Weekly Logs */}
+              {projectSubView === 'logs' && (
+                <div className="project-weekly-logs-list">
+                  {myWeeklyLogs.length === 0 ? (
+                    <div className="project-empty-card" style={{ padding: '2rem 1rem' }}>
+                      No Google Form weekly log submissions found for your email ({userEmail}) in this class.
+                    </div>
+                  ) : (
+                    <div className="table-responsive">
+                      <table className="records-table">
+                        <thead>
+                          <tr>
+                            <th>Week</th>
+                            <th>Status &amp; Quality</th>
+                            <th>Work Completed</th>
+                            <th>Next Plan</th>
+                            <th>Unfinished / Challenges</th>
+                            <th>Quality Explanation</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {myWeeklyLogs.map((log, idx) => {
+                            const isInactive = log.isDoingSomething !== undefined
+                              ? String(log.isDoingSomething).toLowerCase().includes('no')
+                              : false;
+                            const flag = log.flag || log.classification || log.qualityStatus || (isInactive ? 'inactive' : 'genuine');
+                            const workText = log.workDone || log.doneTasks || log.taskDone || '—';
+                            const nextText = log.nextPlan || log.nextTasks || '—';
+                            const unfinishedText = log.unfinished || log.inactiveReason || log.blockers || '—';
+                            const qualityReasonText = log.qualityReason || log.explanation || log.reason || '—';
+
+                            return (
+                              <tr key={log.id || idx}>
+                                <td>
+                                  <strong>Week {log.weekNumber}</strong>
+                                </td>
+                                <td>
+                                  <span className={`quality-pill ${flag}`}>
+                                    {flag === 'genuine' || flag === 'genuine_verified'
+                                      ? '✅ Genuine'
+                                      : flag === 'vague' || flag === 'vague_useless'
+                                      ? '🟡 Vague'
+                                      : flag === 'inactive'
+                                      ? '🔴 Inactive'
+                                      : flag === 'ai_generated' || flag === 'suspected_ai_unverified' || flag === 'suspected_ai_fake'
+                                      ? '⚠️ Suspected AI'
+                                      : flag}
+                                  </span>
+                                </td>
+                                <td>{workText}</td>
+                                <td>{nextText}</td>
+                                <td>{unfinishedText}</td>
+                                <td style={{ fontSize: '0.8rem', color: '#64748b' }}>
+                                  {qualityReasonText}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
           )}
         </div>
       )}
