@@ -76,6 +76,7 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
   const [studentPcCaptureStatus, setStudentPcCaptureStatus] = useState(null);
   const [studioError, setStudioError] = useState('');
   const [studioToast, setStudioToast] = useState('');
+  const [micSuspendedWarning, setMicSuspendedWarning] = useState(false);
 
   // Custom Merge / Grouping Selection state
   const [isMergeSelectionMode, setIsMergeSelectionMode] = useState(false);
@@ -1111,6 +1112,21 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
         });
       }
 
+      // Listen for OS/browser microphone stream mute events (e.g. iOS screen lock or backgrounding)
+      try {
+        const audioTrack = stream.getAudioTracks()?.[0];
+        if (audioTrack) {
+          audioTrack.onmute = () => {
+            console.warn('[ProjectMeetingsView] Microphone track muted by OS (screen locked or tab backgrounded)');
+            setMicSuspendedWarning(true);
+          };
+          audioTrack.onunmute = () => {
+            console.info('[ProjectMeetingsView] Microphone track unmuted');
+            setMicSuspendedWarning(false);
+          };
+        }
+      } catch {}
+
       recorder.ondataavailable = (e) => {
         if (e.data && e.data.size > 0) {
           recordedChunksRef.current.push(e.data);
@@ -1119,11 +1135,19 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
 
       recorder.start(3000);
       setRecordingState('recording');
+      setMicSuspendedWarning(false);
 
       if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
       timerIntervalRef.current = setInterval(() => {
         recordingSecondsRef.current += 1;
         setRecordingSeconds(recordingSecondsRef.current);
+
+        // Periodically flush chunks every 5s for Safari/WebKit timeslice reliability
+        if (recordingSecondsRef.current % 5 === 0 && recorder.state === 'recording') {
+          try {
+            recorder.requestData();
+          } catch {}
+        }
       }, 1000);
     } catch (err) {
       console.error('[ProjectMeetingsView] Microphone access error:', err);
@@ -1164,6 +1188,7 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
 
     setRecordingState('uploading');
     setUploadProgress(0);
+    setMicSuspendedWarning(false);
 
     // Signal Student PC to stop & upload its screen recording
     if (activePresenterUidRef.current && targetMeetingId) {
@@ -1179,6 +1204,9 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
     await new Promise((resolve) => {
       rec.onstop = () => resolve();
       if (rec.state !== 'inactive') {
+        try {
+          rec.requestData();
+        } catch {}
         rec.stop();
       } else {
         resolve();
@@ -1194,8 +1222,35 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
       const isMp4 = actualMime.includes('mp4') || actualMime.includes('m4a');
       const ext = isMp4 ? 'm4a' : 'webm';
       let blob = new Blob(recordedChunksRef.current, { type: actualMime });
+
+      // Guard against iOS lock-screen or background microphone suspension (e.g. <25KB after >15s)
+      const totalBytes = blob.size;
+      const isTruncated = durationSecs > 15 && totalBytes < 25000;
+      if (isTruncated && typeof window !== 'undefined' && typeof window.confirm === 'function') {
+        console.warn(
+          `[ProjectMeetingsView] Potential truncated recording: duration=${durationSecs}s, totalBytes=${totalBytes}`
+        );
+        const confirmSave = window.confirm(
+          `⚠️ Incomplete Audio Recording Detected!\n\n` +
+          `The recording timer ran for ${formatDuration(durationSecs)}, but only ~${(totalBytes / 1024).toFixed(1)} KB of audio was captured.\n` +
+          `This happens on iOS Safari when the iPhone screen is locked, turns off, or another app is opened.\n\n` +
+          `• Click OK to save what was captured (~1 second).\n` +
+          `• Click Cancel to discard and re-record with your screen unlocked.`
+        );
+        if (!confirmSave) {
+          setRecordingState('idle');
+          setUploadProgress(0);
+          return;
+        }
+      }
+
+      // If truncated, inject realistic duration matching actual audio size (~8KB/sec) rather than misleading timer duration
+      const effectiveDurationSecs = isTruncated
+        ? Math.max(1, Math.min(durationSecs, Math.round(totalBytes / 8000)))
+        : durationSecs;
+
       if (!isMp4) {
-        blob = await injectWebmDuration(blob, durationSecs * 1000);
+        blob = await injectWebmDuration(blob, effectiveDurationSecs * 1000);
       }
 
       const storagePath = `projectMeetings/${classId}/${studioGroupId}/${targetMeetingId}/voice_${clipId}.${ext}`;
@@ -1234,7 +1289,7 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
           : `Part ${partNumber}`,
         storagePath,
         downloadUrl,
-        durationSeconds: durationSecs,
+        durationSeconds: effectiveDurationSecs,
         fileSize: blob.size,
         mimeType: isMp4 ? 'audio/mp4' : 'audio/webm',
         presenterStudentUid: presenterObj?.uid || '',
@@ -2038,6 +2093,11 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
 
       {studioToast && <div className="project-meetings-toast">✅ {studioToast}</div>}
       {studioError && <div className="project-meetings-error-banner">⚠️ {studioError}</div>}
+      {micSuspendedWarning && (
+        <div className="project-meetings-mic-warning-banner">
+          ⚠️ <strong>Microphone was paused by iOS / Device:</strong> Your screen was locked or another app was opened. Please keep your device unlocked and stay on this page to continue recording.
+        </div>
+      )}
 
       {/* Mobile-Responsive Dual-Device Recording Studio Card */}
       <div className="project-meeting-recorder-studio">
@@ -2204,6 +2264,10 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
           <span>
             <strong>Hands-Free Attendance:</strong> Have each student introduce themselves briefly at the start of the meeting (e.g. &quot;Hi, I&apos;m Alex...&quot;) so Gemini automatically attributes their voice, attendance, and weekly work.
           </span>
+        </div>
+
+        <div className="ios-screen-lock-tip">
+          📱 <strong>Mobile Tip:</strong> iOS Safari pauses microphone capture if your phone screen locks or you switch apps. Keep this page open and unlocked while recording.
         </div>
 
         {/* Pre-Meeting Weekly Log Review & AI Fake-Log Challenge Questions Briefing Panel */}
