@@ -913,6 +913,10 @@ Stores information about each class.
                 *   `studentContributions`: (array of objects) `{ studentUid, name, email, role, workDone[], demonstratedOnScreen[], blockers[], actionItemsNextWeek[], previousActionStatus, contributionSummary, evidenceTimestamp, logQualityAssessment ('genuine_verified' | 'vague_useless' | 'suspected_ai_fake' | 'suspected_ai_unverified' | 'inactive_no'), logQualityScore (1..10), realWorkScore (1..10), challengeQuestions[], weeklyFeedback }`.
                 *   `transcriptSegments`: (array of objects) `{ startTime, endTime, speakerLabel, speakerRole, studentUid, text }`.
             *   `supervisorNotes`: (string) Editable teacher follow-up notes and remarks.
+            *   `needsReanalysis`: (boolean | undefined) Dirty flag stamped `true` when audio clips are moved, added, or deleted from the session. Used by Batch AI Mode 1 ("Run Missing Only") and the UI amber alert banner to prioritize re-analysis. Automatically removed (`FieldValue.delete()`) upon successful analysis completion.
+            *   `aiModelUsed`: (string | null) Multi-stage models utilized (e.g. `'gemini-3.5-transcribe-preview + gemini-3.8-flash'`).
+            *   `aiCost`: (number | null) Computed FinOps API cost for the two-stage analysis job in USD.
+            *   `analyzedAt`: (timestamp | null) Server timestamp when Two-Stage Gemini analysis completed.
             *   `emailDispatch`: (map | null) Audit log of email reports sent to students via SMTP relay:
                 *   `sentAt`: (string) ISO timestamp of email dispatch.
                 *   `sentBy`: (string) Email of the supervisor who dispatched the report.

@@ -1208,6 +1208,20 @@ Instead of dispatching reports group-by-group, supervisors can email reports to 
    - Generates a live group dispatch log showing successful recipients or errors.
    - Provides 1-click fallback buttons: **`📋 Copy All Student Emails (Week W)`** and **`📨 Open Whole-Class Draft (Mail Client)`**.
 
+### 19.6 Moving Audio Clips Between Groups, Batch AI Mode 1 & Stale Invalidation
+If a supervision audio recording was accidentally recorded under the wrong project group (e.g., recorded under Group A01 instead of Group A04):
+1. **Transferring a Voice Clip**:
+   - In the Meeting Inspector, expand the audio clips panel.
+   - Click **`➡️ Move Clip`** on the audio part, select the target Group (e.g. `Group A04`), specify the academic week, and confirm.
+2. **Automatic Stale Analysis Invalidation**:
+   - The destination meeting document automatically wipes any prior analysis results (`analyzedAt`, `aiModelUsed`, `rawDiarizedTranscript`, `keyInsights`, `studentContributions`, etc.) via Firestore `deleteField()`, marks `status: 'ready'`, and sets `needsReanalysis: true`.
+   - The source meeting document clears stale analysis if all clips were moved out, preventing phantom transcripts.
+3. **Smart Batch Mode 1 ("Run Missing Only")**:
+   - The Batch AI modal uses unified detection (`isMeetingPendingAnalysis`) to automatically include unanalyzed sessions, sessions marked with `needsReanalysis: true`, and sessions whose previous analysis reported *"No intelligible speech detected"* when audio clips exist.
+   - Transferred audio clips are never skipped in batch mode.
+4. **Backend STT Multimodal Fallback**:
+   - If `gemini-3.5-transcribe-preview` returns an empty transcript on short, low-volume, or accented clips, the backend automatically triggers a fallback to multimodal `gemini-3.8-flash` to ensure voices are captured accurately.
+
 ---
 
 ## 20. Troubleshooting & Best Practices
@@ -1219,6 +1233,7 @@ Instead of dispatching reports group-by-group, supervisors can email reports to 
 | **High AI token consumption** | Continuous video analysis or high-frequency scanning. | In Class Settings, switch the Vision Model to `gemini-3.5-flash-lite`, increase the capture interval to 30s, and switch Bingo to **Question Bank Mode ($0)**. |
 | **Audio clips are missing** | Silence suppression is discarding quiet chunks. | This is normal behavior to save storage. If you require continuous audio, disable **Silence Suppression (VAD)** in Class Settings. |
 | **Student cannot see recordings** | An active exam window is currently open. | Recordings are deliberately withheld behind exam confidentiality shields. Once the exam window ends, recordings become visible to students automatically. |
+| **Moved audio clip shows "No intelligible speech" / skipped in Batch AI** | Clip was moved into an existing meeting doc that had stale analysis from before the move. | The system now automatically clears stale analysis and flags `needsReanalysis: true` upon moving clips. Batch Mode 1 ("Run Missing Only") automatically picks up the meeting. You can also click **`✨ Run Gemini Analysis Now`** on the amber banner in the Meeting Inspector. |
 
 ---
 
