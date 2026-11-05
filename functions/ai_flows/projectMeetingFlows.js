@@ -610,7 +610,20 @@ export async function handleAnalyzeProjectMeeting({
 
     for (let i = 0; i < rawClips.length; i++) {
       const clip = rawClips[i];
-      const storagePath = clip.storagePath || clip.audioStoragePath || '';
+      let storagePath = (clip.storagePath || clip.audioStoragePath || '').trim();
+      if (storagePath.startsWith('http://') || storagePath.startsWith('https://')) {
+        const match = storagePath.match(/\/o\/([^?#]+)/);
+        if (match) {
+          storagePath = decodeURIComponent(match[1]);
+        }
+      }
+      if (!storagePath && (clip.downloadUrl || clip.audioDownloadUrl)) {
+        const dl = (clip.downloadUrl || clip.audioDownloadUrl).trim();
+        const match = dl.match(/\/o\/([^?#]+)/);
+        if (match) {
+          storagePath = decodeURIComponent(match[1]);
+        }
+      }
       if (!storagePath) continue;
 
       const gsUri = storagePath.startsWith('gs://')
@@ -653,6 +666,41 @@ If a speaker states their name or is addressed by name, include their name next 
           .filter(Boolean)
           .join(' ')
           .trim();
+      }
+
+      // Safeguard: If transcribeModel returned empty or no-speech text on a recorded clip,
+      // fall back to multimodal DEFAULT_LECTURE_AI_MODEL (gemini-3.8-flash) which excels at
+      // quiet, low-volume, or multilingual classroom speech that STT models might filter out
+      if (!clipText && sttModelUsed !== (DEFAULT_LECTURE_AI_MODEL || 'gemini-3.8-flash')) {
+        const emptyFallbackModel = DEFAULT_LECTURE_AI_MODEL || 'gemini-3.8-flash';
+        const { response: fallbackSttResponse, modelUsed: fallbackSttModel } = await generateWithResilience(
+          {
+            config: {
+              temperature: 0.1,
+              maxOutputTokens: 65536,
+              thinkingConfig: { thinkingBudget: 0 },
+            },
+            prompt: [
+              { text: diarizePrompt },
+              { media: { url: gsUri, contentType } },
+            ],
+          },
+          emptyFallbackModel
+        );
+        modelsUsedSet.add(fallbackSttModel);
+        const fbUsage = fallbackSttResponse.usage || {};
+        totalInputTokens += fbUsage.inputTokens ?? fbUsage.promptTokenCount ?? 0;
+        totalOutputTokens += fbUsage.outputTokens ?? fbUsage.candidatesTokenCount ?? 0;
+        totalCost += calculateCost(fbUsage, fallbackSttModel);
+
+        clipText = (fallbackSttResponse.text || '').trim();
+        if (!clipText && fallbackSttResponse.message?.content) {
+          clipText = fallbackSttResponse.message.content
+            .map((p) => p.text || '')
+            .filter(Boolean)
+            .join(' ')
+            .trim();
+        }
       }
 
       // Long-meeting safeguard (e.g. 20-60 min single clip): if gemini-3.5-transcribe-preview
@@ -948,6 +996,7 @@ Respond strictly with valid JSON matching this exact structure:
       aiCost: totalCost,
       analyzedAt: FieldValue.serverTimestamp(),
       analysisError: null,
+      needsReanalysis: FieldValue.delete(),
     });
 
     await logJob({

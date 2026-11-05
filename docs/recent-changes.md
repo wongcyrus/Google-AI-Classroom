@@ -4,6 +4,51 @@
 **System**: Google AI Classroom  
 **Production URL**: `https://it114115-2627.web.app`
 
+## 0.0.0.0.0.0.0.0.0.0.3.4 Stale Analysis Auto-Invalidation on Moved Audio Clips, Smart Batch AI Mode 1 Queuing & Multimodal STT Resilience
+
+**Date**: November 5, 2026  
+**Status**: Implemented, Verified with Passing Unit Tests (`ProjectMeetingsView.test.jsx` 13/13, `projectMeetingFlows.test.js` 16/16), Production Build Passing, and Deployed to `it114115-2627`  
+**Primary Files**:
+- [`web-app/src/components/meetings/ProjectMeetingsView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/meetings/ProjectMeetingsView.jsx) & [`web-app/src/components/meetings/ProjectMeetingsView.test.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/meetings/ProjectMeetingsView.test.jsx)
+- [`functions/ai_flows/projectMeetingFlows.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/projectMeetingFlows.js) & [`functions/ai_flows/projectMeetingFlows.test.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/projectMeetingFlows.test.js)
+- [`docs/project-group-meetings-and-weekly-log-user-guide.md`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/docs/project-group-meetings-and-weekly-log-user-guide.md)
+
+### Root-Cause Analysis & Technical Implementation:
+
+1. **Failure Mode on Moved Consultation Audio Clips**:
+   - When an audio consultation clip was transferred between groups (e.g. from Group A01 to Group A04 via `handleMoveAudioClipToGroup`), if the destination meeting document already existed in Firestore, its previous analysis fields (`analyzedAt`, `aiModelUsed`, `rawDiarizedTranscript`, `keyInsights`, etc.) were not deleted.
+   - If the destination meeting had previously been analyzed with no audio or failed audio, it held a stale executive summary stating *"No intelligible speech was recorded for this Week 10 supervision session..."*.
+   - When supervisors ran Batch Analysis with Mode 1 ("Run Missing Only"), it filtered exclusively for `!m.analyzedAt && !m.aiModelUsed && !m.rawDiarizedTranscript`. Consequently, the destination group was completely skipped, preserving the stale empty-session message despite audio clips being attached.
+
+2. **Automatic Stale Analysis Invalidation on Clip Movement & Deletion**:
+   - In [`handleMoveAudioClipToGroup`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/meetings/ProjectMeetingsView.jsx):
+     - **Destination Meeting**: Automatically wipes all stale analysis fields (`analyzedAt`, `aiModelUsed`, `aiCost`, `rawDiarizedTranscript`, `keyInsights`, `studentContributions`, `transcriptSegments`, `summary`) using `deleteField()`, sets `status: 'ready'`, and stamps `needsReanalysis: true`.
+     - **Source Meeting**: If all audio clips were moved out, automatically clears stale analysis fields; if other clips remain, marks `needsReanalysis: true`.
+   - In [`handleMoveMeetingToGroup`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/meetings/ProjectMeetingsView.jsx):
+     - Clears previous analysis fields, re-maps the attendance roster to the target group's members, and sets `needsReanalysis: true`.
+   - In [`handleDeleteAudioClip`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/meetings/ProjectMeetingsView.jsx):
+     - Wipes analysis if 0 clips remain; marks `needsReanalysis: true` if clips were modified.
+
+3. **Smart Batch Mode Inclusion via `isMeetingPendingAnalysis`**:
+   - Introduced unified helper `isMeetingPendingAnalysis(m)` used consistently across `weekAiStats`, `batchModalWeekOptions`, `handleBatchAnalyzeWeek`, and the Meeting Inspector notice banner.
+   - Detects meetings needing analysis if:
+     - Unanalyzed and has audio recordings.
+     - Explicitly flagged with `needsReanalysis: true`.
+     - Previous analysis produced *"No intelligible speech detected"* or *"No intelligible speech was recorded"* when audio clips actually exist and are non-empty.
+   - In Mode 1 ("Run Missing Only"), transferred or modified meetings are now immediately queued for analysis.
+
+4. **Backend Ingestion Resilience & STT Fallback in `analyzeProjectMeeting`**:
+   - **URL Sanitization**: In [`projectMeetingFlows.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/projectMeetingFlows.js), sanitizes `storagePath` and Firebase Storage download URLs (decodes `/o/<path>?...` tokens) to ensure proper Google Cloud Storage URI resolution (`gs://bucket/path`).
+   - **Empty STT Multimodal Fallback**: If `gemini-3.5-transcribe-preview` returns empty or whitespace text (e.g. on quiet, accented, or low-volume classroom audio), the backend automatically retries Stage 1 diarization with multimodal `gemini-3.8-flash`.
+   - **Flag Cleanup**: Upon successful analysis completion, automatically deletes `needsReanalysis` from Firestore via `FieldValue.delete()`.
+
+5. **Verification**:
+   - Added comprehensive unit tests in `projectMeetingFlows.test.js` (16/16 passing).
+   - Added comprehensive unit tests in `ProjectMeetingsView.test.jsx` (13/13 passing).
+   - Full web-app production build succeeds cleanly.
+
+---
+
 ## 0.0.0.0.0.0.0.0.0.0.3.3 1-Click Whole-Class Weekly Report Dispatch, Multi-Touchpoint Email Buttons, Google App Password Migration & batchEmailProjectMeetingReports Cloud Function
 
 **Date**: November 5, 2026  

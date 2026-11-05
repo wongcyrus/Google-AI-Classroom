@@ -24,6 +24,7 @@ vi.mock('firebase-admin/firestore', () => ({
   }),
   FieldValue: {
     serverTimestamp: () => 'MOCK_SERVER_TIMESTAMP',
+    delete: () => 'FIELD_DELETED',
   },
 }));
 
@@ -805,6 +806,82 @@ describe('projectMeetingFlows', () => {
       expect(batchRes.results).toHaveLength(2);
 
       delete process.env.SMTP_PASSWORD;
+    });
+
+    it('sanitizes audio download URLs, falls back to gemini-3.8-flash on empty transcribe text, and deletes needsReanalysis', async () => {
+      mockDocGet.mockImplementation(async (path) => {
+        if (path === 'classes/c1/projectMeetings/m_moved') {
+          return {
+            exists: true,
+            data: () => ({
+              groupId: 'grp_a04',
+              weekNumber: 10,
+              needsReanalysis: true,
+              audioClips: [
+                {
+                  clipId: 'c_moved_1',
+                  label: 'Part 1',
+                  storagePath: 'https://firebasestorage.googleapis.com/v0/b/test-bucket.firebasestorage.app/o/projectMeetings%2Fc1%2Fgrp_a01%2Fm_old%2Fvoice_c1.webm?alt=media&token=xyz',
+                  durationSeconds: 180,
+                  mimeType: 'audio/webm',
+                },
+              ],
+            }),
+          };
+        }
+        if (path === 'classes/c1/projectGroups/grp_a04') {
+          return {
+            exists: true,
+            data: () => ({
+              name: 'Group A04',
+              members: [{ uid: 'stu_4', email: 'stu4@stu.vtc.edu.hk', name: 'Student 4' }],
+            }),
+          };
+        }
+        return { exists: false };
+      });
+
+      // Transcribe model returns empty text (e.g. low-volume or silence filter)
+      mockGenerateWithResilience.mockResolvedValueOnce({
+        response: { text: '', usage: { promptTokenCount: 50, candidatesTokenCount: 0 } },
+        modelUsed: 'gemini-3.5-transcribe-preview',
+      });
+
+      // Fallback model gemini-3.8-flash captures the voice successfully
+      mockGenerateWithResilience.mockResolvedValueOnce({
+        response: { text: '[00:05] Speaker 1 (Student 4): We completed the backend module.', usage: { promptTokenCount: 100, candidatesTokenCount: 40 } },
+        modelUsed: 'gemini-3.8-flash',
+      });
+
+      // Stage 2 reasoning analysis
+      mockGenerateWithResilience.mockResolvedValueOnce({
+        response: {
+          text: JSON.stringify({
+            attendanceRecord: [{ uid: 'stu_4', email: 'stu4@stu.vtc.edu.hk', status: 'present', speakingContribution: 'high' }],
+            keyInsights: { executiveSummary: 'Backend module demonstrated successfully.', overallGroupProgress: 'on_track' },
+            studentContributions: [{ uid: 'stu_4', email: 'stu4@stu.vtc.edu.hk', workCompleted: ['Backend module'] }],
+            transcriptSegments: [{ startTime: '00:05', endTime: '00:20', speaker: 'Student 4', text: 'We completed the backend module.' }],
+          }),
+          usage: { promptTokenCount: 150, candidatesTokenCount: 80 },
+        },
+        modelUsed: 'gemini-3.8-flash',
+      });
+
+      const res = await handleAnalyzeProjectMeeting({
+        classId: 'c1',
+        meetingId: 'm_moved',
+        auth: { uid: 'teacher_1', token: { email: 'teacher@vtc.edu.hk', role: 'teacher' } },
+      });
+
+      expect(res.success).toBe(true);
+      expect(res.keyInsights.executiveSummary).toContain('Backend module demonstrated');
+      expect(mockDocUpdate).toHaveBeenCalledWith(
+        'classes/c1/projectMeetings/m_moved',
+        expect.objectContaining({
+          status: 'ready',
+          needsReanalysis: 'FIELD_DELETED',
+        })
+      );
     });
   });
 });

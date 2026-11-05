@@ -230,6 +230,21 @@ Instead of emailing reports group-by-group, supervisors can dispatch consultatio
      - **`📨 Open Whole-Class Draft (Mail Client)`**: Launches desktop mail client with all students pre-populated.
    - **Backend Callable Support**: Supported by both client-orchestrated progress and serverless [`batchEmailProjectMeetingReports`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/projectMeetingFlows.js).
 
+### 4.6 Moving Audio Clips Between Groups & Automatic Analysis Invalidation
+If an audio consultation clip was accidentally recorded under the wrong project group (e.g. recorded under Group A01 instead of Group A04), supervisors can easily transfer it:
+1. **Transferring a Voice Clip**:
+   - In the Meeting Inspector, expand the audio clips panel.
+   - Click **`➡️ Move Clip`** next to the specific audio segment, select the intended destination Group (e.g. `Group A04`) and target week, and confirm.
+2. **Automatic Stale Analysis Invalidation**:
+   - **Target Meeting Document**: When a clip is moved into an existing meeting (or when moving an entire session), any previous analysis results (such as an empty meeting's *"No intelligible speech detected"* result, previous timestamps, or outdated attendee attribution) are automatically wiped from Firestore (`analyzedAt`, `aiModelUsed`, `rawDiarizedTranscript`, `keyInsights`, `studentContributions`, etc.) and flagged with `needsReanalysis: true`.
+   - **Source Meeting Document**: If the moved clip was the only recording in the source meeting, its previous analysis fields are cleanly reset so it does not retain phantom data.
+3. **Smart Batch Mode Inclusion**:
+   - In the **Batch AI Modal**, **Mode 1 ("Run Missing Only")** utilizes smart detection (`isMeetingPendingAnalysis`) that checks not only unanalyzed meetings, but also sessions with `needsReanalysis: true` or sessions that previously recorded *"No intelligible speech"* where audio clips are now attached.
+   - This ensures transferred clips are immediately queued and re-analyzed in Batch Mode rather than being skipped.
+4. **Backend Ingestion Resilience**:
+   - The Stage 1 diarization pipeline in [`projectMeetingFlows.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/projectMeetingFlows.js) sanitizes all storage paths (including Firebase Storage download URLs) to resolve proper Google Cloud Storage URIs (`gs://`).
+   - If `gemini-3.5-transcribe-preview` returns empty text on short, low-volume, or accented clips, the backend automatically triggers an immediate fallback to multimodal `gemini-3.8-flash` to transcribe and diarize the recording.
+
 ---
 
 ## Part 5: Student Portal — "👥 Project Meetings" Tab (`/student/records`)

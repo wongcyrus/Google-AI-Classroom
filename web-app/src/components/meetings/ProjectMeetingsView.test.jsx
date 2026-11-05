@@ -67,6 +67,7 @@ vi.mock('firebase/firestore', () => ({
   }),
   serverTimestamp: () => 'MOCK_TS',
   arrayUnion: (val) => val,
+  deleteField: () => 'MOCK_DELETE_FIELD',
 }));
 
 vi.mock('firebase/storage', () => ({
@@ -107,7 +108,7 @@ import {
   mergeIncrementalStudentProfiles,
   bootstrapProjectGroupsFromWeeklyLogs,
 } from '../../utils/projectGroupUtils';
-import ProjectMeetingsView from './ProjectMeetingsView';
+import ProjectMeetingsView, { isMeetingPendingAnalysis } from './ProjectMeetingsView';
 import ProjectGroupEditorModal from './ProjectGroupEditorModal';
 
 const SAMPLE_FORM_RESPONSES_2_CSV = `Timestamp,Group ID,Student Name,Student ID,Supervisor,I am doing something this week,Work done & findings since last recording,State which part of the last plan not yet finished (leave it blank if you finished all the work of the last plan,Plan of work before the next recording,Description
@@ -1124,5 +1125,60 @@ Group Beta,New Beta Topic,other@vtc.edu.hk,eva@stu.vtc.edu.hk,Eva Ho,Leader`;
     await waitFor(() => {
       expect(screen.getAllByText(/Successfully dispatched reports to/i).length).toBeGreaterThanOrEqual(1);
     });
+  });
+
+  it('correctly identifies meetings pending AI analysis or re-analysis when clips are moved or previous analysis had no speech', () => {
+    // 1. Meeting with audio clips but no analysis done yet
+    expect(
+      isMeetingPendingAnalysis({
+        id: 'm_fresh',
+        audioClips: [{ clipId: 'c1', storagePath: 'voice.webm' }],
+      })
+    ).toBe(true);
+
+    // 2. Meeting without audio clips
+    expect(
+      isMeetingPendingAnalysis({
+        id: 'm_empty',
+        audioClips: [],
+      })
+    ).toBe(false);
+
+    // 3. Meeting successfully analyzed without error or dirty flag
+    expect(
+      isMeetingPendingAnalysis({
+        id: 'm_done',
+        audioClips: [{ clipId: 'c1', storagePath: 'voice.webm' }],
+        analyzedAt: '2026-11-05T00:00:00Z',
+        rawDiarizedTranscript: '[00:05] Speaker 1: Technical discussion...',
+        keyInsights: { executiveSummary: 'Progress was evaluated.' },
+      })
+    ).toBe(false);
+
+    // 4. Meeting where clips were moved or added, flagged with needsReanalysis
+    expect(
+      isMeetingPendingAnalysis({
+        id: 'm_moved_clip',
+        audioClips: [{ clipId: 'c1', storagePath: 'voice.webm' }],
+        analyzedAt: '2026-11-05T00:00:00Z',
+        rawDiarizedTranscript: '[00:05] Speaker 1: Technical discussion...',
+        needsReanalysis: true,
+      })
+    ).toBe(true);
+
+    // 5. Meeting where previous analysis produced "No intelligible speech was recorded" but audio now exists
+    expect(
+      isMeetingPendingAnalysis({
+        id: 'm_a04_wk10',
+        audioClips: [{ clipId: 'c_moved_from_a01', storagePath: 'voice_a01.webm', durationSeconds: 300 }],
+        analyzedAt: '2026-11-05T00:00:00Z',
+        aiModelUsed: 'gemini-3.8-flash',
+        rawDiarizedTranscript: '=== Clip 1: Part 1 ===\n[No intelligible speech detected in this clip]',
+        keyInsights: {
+          executiveSummary:
+            'No intelligible speech was recorded for this Week 10 supervision session. Consequently, no verbal technical discussions, screen demonstrations, or progress updates could be evaluated.',
+        },
+      })
+    ).toBe(true);
   });
 });

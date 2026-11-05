@@ -10,6 +10,7 @@ import {
   writeBatch,
   serverTimestamp,
   arrayUnion,
+  deleteField,
 } from 'firebase/firestore';
 import { ref as storageRef, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
 import { httpsCallable } from 'firebase/functions';
@@ -44,6 +45,26 @@ function parseTimestampToSecs(ts) {
   if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
   if (parts.length === 2) return parts[0] * 60 + parts[1];
   return parts[0] || 0;
+}
+
+/**
+ * Determines if a project meeting has audio recordings that require AI analysis or re-analysis:
+ * - Completely unanalyzed meetings with audio
+ * - Meetings explicitly flagged with `needsReanalysis: true` (e.g. after moving/deleting clips)
+ * - Meetings where previous analysis failed or produced "No intelligible speech detected" while audio clips exist
+ */
+export function isMeetingPendingAnalysis(m) {
+  if (!m) return false;
+  const hasAudio =
+    (Array.isArray(m.audioClips) && m.audioClips.length > 0) || Boolean(m.audioStoragePath);
+  if (!hasAudio) return false;
+  const isUnanalyzed = !m.analyzedAt && !m.aiModelUsed && !m.rawDiarizedTranscript;
+  const needsReanalysis = m.needsReanalysis === true;
+  const hadNoSpeechError = Boolean(
+    m.rawDiarizedTranscript?.includes('No intelligible speech detected') ||
+    m.keyInsights?.executiveSummary?.includes('No intelligible speech was recorded')
+  );
+  return isUnanalyzed || needsReanalysis || hadNoSpeechError;
 }
 
 export default function ProjectMeetingsView({ classId, classInfo, user }) {
@@ -364,12 +385,8 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
     const withAudio = weekMeetings.filter(
       (m) => (Array.isArray(m.audioClips) && m.audioClips.length > 0) || Boolean(m.audioStoragePath)
     );
-    const missing = withAudio.filter(
-      (m) => !m.analyzedAt && !m.aiModelUsed && !m.rawDiarizedTranscript
-    );
-    const analyzed = withAudio.filter(
-      (m) => Boolean(m.analyzedAt || m.aiModelUsed || m.rawDiarizedTranscript)
-    );
+    const missing = withAudio.filter((m) => isMeetingPendingAnalysis(m));
+    const analyzed = withAudio.filter((m) => !isMeetingPendingAnalysis(m));
     return {
       totalMeetings: weekMeetings.length,
       withAudioCount: withAudio.length,
@@ -758,9 +775,7 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
       const withAudio = wkMeetings.filter(
         (m) => (Array.isArray(m.audioClips) && m.audioClips.length > 0) || Boolean(m.audioStoragePath)
       );
-      const missing = withAudio.filter(
-        (m) => !m.analyzedAt && !m.aiModelUsed && !m.rawDiarizedTranscript
-      );
+      const missing = withAudio.filter((m) => isMeetingPendingAnalysis(m));
       const analyzed = withAudio.length - missing.length;
       options.push({
         week: wk,
@@ -1532,8 +1547,11 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
     try {
       const mtgObj = meetings.find((m) => m.id === targetId) || selectedMeeting;
       const mtgWeek = Number(mtgObj?.weekNumber || studioWeekNumber || 1);
-      const grpCode = String(mtgObj?.groupName || activeStudioGroup?.name || '')
+      const grpObj = groups.find((g) => g.id === mtgObj?.groupId);
+      const rawGrpName = grpObj?.name || mtgObj?.groupName || mtgObj?.groupId || activeStudioGroup?.name || '';
+      const grpCode = String(rawGrpName)
         .replace(/^group\s+/i, '')
+        .replace(/^grp_/i, '')
         .trim()
         .toUpperCase();
       const gwKey = `${grpCode}__wk${mtgWeek}`;
@@ -1593,9 +1611,7 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
 
     const targets =
       mode === 'missing_only'
-        ? weekMeetingsWithAudio.filter(
-            (m) => !m.analyzedAt && !m.aiModelUsed && !m.rawDiarizedTranscript
-          )
+        ? weekMeetingsWithAudio.filter((m) => isMeetingPendingAnalysis(m))
         : weekMeetingsWithAudio;
 
     if (targets.length === 0) {
@@ -1695,14 +1711,31 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
     }
 
     const meetingRef = doc(db, `classes/${classId}/projectMeetings/${selectedMeeting.id}`);
-    await updateDoc(meetingRef, {
+    const deleteUpdates = {
       audioClips: remainingClips,
       audioStoragePath: remainingClips[0]?.storagePath || '',
       audioDownloadUrl: remainingClips[0]?.downloadUrl || '',
       recordingSegmentsCount: remainingClips.length,
       durationSeconds: newTotalDuration,
+      status: 'ready',
       updatedAt: serverTimestamp(),
-    });
+    };
+
+    if (remainingClips.length === 0) {
+      deleteUpdates.analyzedAt = deleteField();
+      deleteUpdates.aiModelUsed = deleteField();
+      deleteUpdates.aiCost = deleteField();
+      deleteUpdates.rawDiarizedTranscript = deleteField();
+      deleteUpdates.keyInsights = deleteField();
+      deleteUpdates.studentContributions = deleteField();
+      deleteUpdates.transcriptSegments = deleteField();
+      deleteUpdates.summary = deleteField();
+      deleteUpdates.needsReanalysis = deleteField();
+    } else {
+      deleteUpdates.needsReanalysis = true;
+    }
+
+    await updateDoc(meetingRef, deleteUpdates);
 
     setActiveAudioClipIdx((prev) => Math.max(0, Math.min(prev, remainingClips.length - 1)));
     showToastMessage(`🗑️ Deleted ${clipLabel}`);
@@ -2030,7 +2063,7 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
     );
 
     const sourceRef = doc(db, `classes/${classId}/projectMeetings/${selectedMeeting.id}`);
-    await updateDoc(sourceRef, {
+    const sourceUpdates = {
       audioClips: remainingSourceClips,
       audioStoragePath: remainingSourceClips[0]?.storagePath || '',
       audioDownloadUrl: remainingSourceClips[0]?.downloadUrl || '',
@@ -2038,7 +2071,23 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
       durationSeconds: sourceDuration,
       status: 'ready',
       updatedAt: serverTimestamp(),
-    });
+    };
+
+    if (remainingSourceClips.length === 0) {
+      sourceUpdates.analyzedAt = deleteField();
+      sourceUpdates.aiModelUsed = deleteField();
+      sourceUpdates.aiCost = deleteField();
+      sourceUpdates.rawDiarizedTranscript = deleteField();
+      sourceUpdates.keyInsights = deleteField();
+      sourceUpdates.studentContributions = deleteField();
+      sourceUpdates.transcriptSegments = deleteField();
+      sourceUpdates.summary = deleteField();
+      sourceUpdates.needsReanalysis = deleteField();
+    } else {
+      sourceUpdates.needsReanalysis = true;
+    }
+
+    await updateDoc(sourceRef, sourceUpdates);
 
     // 2. Add clip to target group's meeting (find existing meeting or create one)
     const existingTarget = meetings.find(
@@ -2067,6 +2116,16 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
         recordingSegmentsCount: updatedTargetClips.length,
         durationSeconds: targetDuration,
         status: 'ready',
+        // Invalidate stale analysis results from before the clip was moved
+        analyzedAt: deleteField(),
+        aiModelUsed: deleteField(),
+        aiCost: deleteField(),
+        rawDiarizedTranscript: deleteField(),
+        keyInsights: deleteField(),
+        studentContributions: deleteField(),
+        transcriptSegments: deleteField(),
+        summary: deleteField(),
+        needsReanalysis: true,
         updatedAt: serverTimestamp(),
       });
     } else {
@@ -2130,6 +2189,23 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
       sessionGroupId: `${classId}_${targetGroup.id}_wk${selectedMeeting.weekNumber || 1}`,
       supervisorEmail: targetGroup.supervisorEmail || selectedMeeting.supervisorEmail,
       supervisorName: targetGroup.supervisorName || selectedMeeting.supervisorName,
+      attendanceRecord: (targetGroup.members || []).map((m) => ({
+        uid: m.uid || m.email,
+        email: normalizeStudentEmail(m.email),
+        name: m.name,
+        role: m.role || 'Member',
+        status: 'present',
+        speakingContribution: 'moderate',
+      })),
+      analyzedAt: deleteField(),
+      aiModelUsed: deleteField(),
+      aiCost: deleteField(),
+      rawDiarizedTranscript: deleteField(),
+      keyInsights: deleteField(),
+      studentContributions: deleteField(),
+      transcriptSegments: deleteField(),
+      summary: deleteField(),
+      needsReanalysis: true,
       status: 'ready',
       updatedAt: serverTimestamp(),
     });
@@ -3927,11 +4003,17 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
                   )}
                 </div>
 
-                {/* Notice banner if meeting has audio clips but has not yet been processed by Gemini */}
-                {!selectedMeeting.analyzedAt && !selectedMeeting.rawDiarizedTranscript && (
-                  <div style={{ padding: '10px 14px', background: '#fefce8', border: '1px solid #fef08a', borderRadius: '8px', color: '#854d0e', fontSize: '0.84rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', marginBottom: '14px' }}>
+                {/* Notice banner if meeting has audio clips but has not yet been processed by Gemini or needs re-analysis */}
+                {isMeetingPendingAnalysis(selectedMeeting) && (
+                  <div style={{ padding: '10px 14px', background: selectedMeeting.needsReanalysis ? '#fff7ed' : '#fefce8', border: `1px solid ${selectedMeeting.needsReanalysis ? '#fdba74' : '#fef08a'}`, borderRadius: '8px', color: selectedMeeting.needsReanalysis ? '#9a3412' : '#854d0e', fontSize: '0.84rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', marginBottom: '14px' }}>
                     <span>
-                      🎙️ <strong>Audio Recorded (Pending AI Analysis):</strong> Gemini has not processed this meeting yet. Click <strong>&quot;Run Gemini Analysis&quot;</strong> to diarize speakers, verify weekly logs, and attribute attendance.
+                      {selectedMeeting.needsReanalysis ? (
+                        <>⚠️ <strong>Audio Recordings Modified (Re-analysis Recommended):</strong> Audio clips were moved or modified on this session. Click <strong>&quot;Run Gemini Analysis&quot;</strong> to re-analyze the current audio.</>
+                      ) : selectedMeeting.rawDiarizedTranscript?.includes('No intelligible speech detected') || selectedMeeting.keyInsights?.executiveSummary?.includes('No intelligible speech was recorded') ? (
+                        <>⚠️ <strong>Previous Analysis Found No Speech:</strong> Audio clips are attached to this meeting. Click <strong>&quot;Run Gemini Analysis&quot;</strong> to re-transcribe and diarize.</>
+                      ) : (
+                        <>🎙️ <strong>Audio Recorded (Pending AI Analysis):</strong> Gemini has not processed this meeting yet. Click <strong>&quot;Run Gemini Analysis&quot;</strong> to diarize speakers, verify weekly logs, and attribute attendance.</>
+                      )}
                     </span>
                     <button
                       type="button"
