@@ -24,6 +24,8 @@ pubsub-debug.log*
 .env
 .env.*
 !.env.example
+*.secret.local
+.secret.local
 *.pem
 *.key
 sp.json

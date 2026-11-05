@@ -1,6 +1,6 @@
 # Secret Manager Configuration for Classroom Assistant Backend
 
-# Secret resource for SMTP credentials
+# Secret resource for SMTP credentials (container only; payload managed via Firebase CLI / Secret Manager)
 resource "google_secret_manager_secret" "smtp_password" {
   secret_id = "SMTP_PASSWORD"
   project   = var.project_id
@@ -17,13 +17,6 @@ resource "google_secret_manager_secret" "smtp_password" {
   depends_on = [
     google_project_service.apis
   ]
-}
-
-# Optional version creation: only create a version when var.smtp_password is supplied
-resource "google_secret_manager_secret_version" "smtp_password_version" {
-  count       = var.smtp_password != "" ? 1 : 0
-  secret      = google_secret_manager_secret.smtp_password.id
-  secret_data = var.smtp_password
 }
 
 # Grant Cloud Functions Gen 2 / Cloud Run default service account permission to access the secret

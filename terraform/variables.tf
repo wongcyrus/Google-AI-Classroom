@@ -68,10 +68,3 @@ variable "smtp_port" {
   description = "SMTP server port (e.g. 465 for SSL, 587 for TLS)"
   default     = 465
 }
-
-variable "smtp_password" {
-  type        = string
-  description = "Google Workspace App Password for SMTP (optional; stored in Secret Manager if provided)"
-  default     = ""
-  sensitive   = true
-}
