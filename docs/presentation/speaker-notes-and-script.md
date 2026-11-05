@@ -700,11 +700,11 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocation
 > **Cyrus Wong:**  
 > "Quality assurance is critical when deploying assessment software. We built a 4-tier automated testing pyramid:
 >
-> - **2,380+ Automated Tests & Assertions with Zero Flaky Tests:**
->   - **Level 1 (Frontend):** 1,750+ tests across 152+ suites achieving **~90% line coverage** in Vitest.
->   - **Level 2 (Backend Cloud Functions):** 600+ tests across `ai_flows` + 6 other isolated codebases (attendance, auth, media, scheduled, storage).
->   - **Level 3 (Security Rules):** 42 real-token isolation test scenarios verifying student self-read, exam shielding, zero-auth public spectator PIN gate, and `attendanceAdjustments` privacy.
->   - **Level 4 (Live Smoke Tests):** 28 live end-to-end cloud assertions.
+> - **2,575+ Automated Tests & Assertions with Zero Flaky Tests:**
+>   - **Level 1 (Frontend):** 1,757+ tests across 154+ suites achieving **~90% line coverage** in Vitest.
+>   - **Level 2 (Backend Cloud Functions):** 708+ tests across `ai_flows` + 6 other isolated codebases (attendance, auth, media, scheduled, storage, property).
+>   - **Level 3 (Security Rules):** 75 real-token isolation test scenarios verifying student self-read, exam shielding, zero-auth public spectator PIN gate, and `attendanceAdjustments` privacy.
+>   - **Level 4 (Live Smoke Tests):** 35 live end-to-end cloud assertions.
 > - **100% Gemini 4 & 3 Family Standardization:** Standardized entirely on the Gemini 4 & 3 family (`gemini-4-argon`, `gemini-3.8-flash`, `gemini-3.5-flash-lite`) in compliance with Google Cloud 2026 platform standards.
 > - **Automated Dual-Environment CI/CD & Hosting Bundle Guard:** We maintain isolated Development (`it114115-dev-2026`) and Production (`it114115-2627`) projects via `./deploy.sh [dev|prod]`, protected by a `firebase.json` `hosting.predeploy` bundle verification guard that prevents cross-environment credential contamination."
 

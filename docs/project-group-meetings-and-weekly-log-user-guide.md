@@ -24,7 +24,9 @@
    - [4.1 Run 2-Stage Gemini Analysis (Diarization + Real Work Verification)](#41-run-2-stage-gemini-analysis-diarization--real-work-verification)
    - [4.2 Review & Edit Weekly Feedback, Log Quality Score & Real Work Score](#42-review--edit-weekly-feedback-log-quality-score--real-work-score)
    - [4.3 Export Student Contribution Profiles & Semester Matrix (`.xlsx`)](#43-export-student-contribution-profiles--semester-matrix-xlsx)
-   - [4.4 Email Supervision Reports to Students & Mail Client Fallback](#44-email-supervision-reports-to-students--mail-client-fallback)
+   - [4.4 Email Supervision Reports to Students & Multi-Touchpoint Dispatch](#44-email-supervision-reports-to-students--multi-touchpoint-dispatch)
+   - [4.5 1-Click Whole-Class Weekly Report Dispatch (All Project Groups)](#45-1-click-whole-class-weekly-report-dispatch-all-project-groups-of-the-week)
+   - [4.6 Moving Audio Clips Between Groups & Automatic Analysis Invalidation](#46-moving-audio-clips-between-groups--automatic-analysis-invalidation)
 6. [Part 5: Student Portal — "👥 Project Meetings" Tab (`/student/records`)](#part-5-student-portal--project-meetings-tab-studentrecords)
    - [5.1 Accessing Project Group Meeting Records](#51-accessing-project-group-meeting-records)
    - [5.2 Attendance Tracking & "🕒 Late" Status](#52-attendance-tracking--late-status)
@@ -215,6 +217,49 @@ Once meeting analysis and feedback are verified, supervisors can dispatch indivi
 
 ### 4.5 1-Click Whole-Class Weekly Report Dispatch (All Project Groups of the Week)
 Instead of emailing reports group-by-group, supervisors can dispatch consultation reports to the **entire class** for a selected academic week in one operation:
+
+```mermaid
+flowchart TD
+    subgraph UI ["1. Supervisor UI Triggers"]
+        T1["Studio Action Strip\n📧 Email Whole Class (Week W)"]
+        T2["Week Selector Row\n📧 Email Class"]
+        T3["Weekly Matrix Tab\n📧 Email Whole Class Reports (Week W)"]
+        T4["Batch AI Modal Footer\n📧 Email Reports to Whole Class (Week W)"]
+    end
+
+    subgraph Modal ["2. Whole-Class Batch Dispatch Modal"]
+        M1["Academic Week Selector\nWeek 1 to Week N"]
+        M2["Interactive Group Checklist\nStatus: ✓ Analyzed vs ⚠️ Unanalyzed"]
+        M3["Smart Filters\n• Select All\n• Only Analyzed (Recommended)\n• Deselect All"]
+        M4["Overarching Supervisor Note\ne.g. Milestone 2 Reminders"]
+    end
+
+    subgraph Backend ["3. Serverless Callable Function (Gen 2 asia-east2)"]
+        CF["batchEmailProjectMeetingReports\nAuthorization: isTeacherInClass(classId)"]
+        SM[("Google Cloud Secret Manager\nSecret: SMTP_PASSWORD (v2)")]
+        CF -->|Fetches App Password| SM
+    end
+
+    subgraph Transport ["4. Secure SMTP Relay Layer"]
+        RELAY["Gmail SMTP Relay\nsmtp.gmail.com:465 (Direct SSL)"]
+        AUTH["Authenticated Sender\nnoreply@vtc.edu.hk"]
+        RELAY --- AUTH
+    end
+
+    subgraph Delivery ["5. Multi-Student Dispatch & Audit Log"]
+        HTML["Responsive HTML Meeting Reports\n• Overarching Note\n• Executive Summary & Attendance\n• Log Quality (1-10) & Real Work (1-10)\n• AI Challenge Questions & Verified Tasks"]
+        INBOX["Student Inboxes\n{studentId}@stu.vtc.edu.hk"]
+        AUDIT[("Firestore Audit Log\nclasses/{classId}/projectMeetings/{meetingId}\nemailDispatch: {sentAt, sentBy, count}")]
+    end
+
+    UI --> Modal
+    M1 & M2 & M3 & M4 -->|Click 🚀 Send Reports| CF
+    CF --> RELAY
+    RELAY --> HTML
+    HTML --> INBOX
+    HTML --> AUDIT
+```
+
 1. **Trigger Points**:
    - **Recording Studio**: Click **`📧 Email Whole Class (Week W)`** in the Studio actions bar or **`📧 Email Class`** in the Week # selector row.
    - **Weekly Matrix Tab**: Click **`📧 Email Whole Class Reports (Week W)`** in the Matrix header.
@@ -232,6 +277,45 @@ Instead of emailing reports group-by-group, supervisors can dispatch consultatio
 
 ### 4.6 Moving Audio Clips Between Groups & Automatic Analysis Invalidation
 If an audio consultation clip was accidentally recorded under the wrong project group (e.g. recorded under Group A01 instead of Group A04), supervisors can easily transfer it:
+
+```mermaid
+flowchart TD
+    subgraph Transfer ["1. Audio Clip Transfer"]
+        SRC["Source Meeting\ne.g. Group A01 (Week 10)"]
+        BTN["Supervisor Clicks ➡️ Move Clip\nSelects Group A04 & Week 10"]
+        DEST["Destination Meeting\ne.g. Group A04 (Week 10)"]
+        SRC --> BTN --> DEST
+    end
+
+    subgraph Invalidation ["2. Atomic Stale Analysis Invalidation (Firestore Batch)"]
+        WIPE["Delete Stale Fields via deleteField():\n• analyzedAt, aiModelUsed, aiCost\n• rawDiarizedTranscript, transcriptSegments\n• keyInsights, studentContributions, summary"]
+        READY["Reset Document State:\n• status: 'ready'\n• needsReanalysis: true"]
+        DEST --> WIPE --> READY
+    end
+
+    subgraph Queue ["3. Smart Batch AI Detection (isMeetingPendingAnalysis)"]
+        BATCH["Supervisor Runs Batch AI Analysis\nMode 1: 'Run Missing Only'"]
+        CHECK{"Meeting State Check:\n1. Unanalyzed with clips? OR\n2. needsReanalysis == true? OR\n3. Stale 'No intelligible speech' with clips?"}
+        ENQUEUE["Target Meeting Enqueued\n(Never Skipped)"]
+        READY --> BATCH --> CHECK
+        CHECK -->|Yes| ENQUEUE
+    end
+
+    subgraph Pipeline ["4. Resilient 2-Stage Backend Diarization & Reasoning"]
+        SAN["Input Sanitization:\nStorage download URL -> Authenticated gs:// URI"]
+        ST1["Stage 1: Speech-to-Text & Diarization\ngemini-3.5-transcribe-preview"]
+        FALLBACK{"STT Result Empty\nor Whitespace?"}
+        ST1_FB["Multimodal Fallback:\ngemini-3.8-flash Audio Diarization"]
+        ST2["Stage 2: Student Attribution & Evaluation\ngemini-3.8-flash\n• Diarized Audio + Voice Anchors\n• Google Form Weekly Logs + Screen Demos"]
+        CLEAN["Finalize & Cleanup:\n• Write Attendance, Scores & Feedback\n• needsReanalysis: FieldValue.delete()"]
+
+        ENQUEUE --> SAN --> ST1 --> FALLBACK
+        FALLBACK -->|Yes (Quiet/Accented)| ST1_FB --> ST2
+        FALLBACK -->|No (Valid Text)| ST2
+        ST2 --> CLEAN
+    end
+```
+
 1. **Transferring a Voice Clip**:
    - In the Meeting Inspector, expand the audio clips panel.
    - Click **`➡️ Move Clip`** next to the specific audio segment, select the intended destination Group (e.g. `Group A04`) and target week, and confirm.

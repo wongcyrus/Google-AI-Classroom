@@ -751,15 +751,15 @@ const processFrame = async (now, metadata) => {
 ---
 
 ## 09 | DevSecOps & Production Reliability Engineering
-### Multi-Tier Automated Testing Pyramid (>2,380 Tests) & Gemini 4 & 3 Frontier Standard
+### Multi-Tier Automated Testing Pyramid (>2,575 Tests & Assertions) & Gemini 4 & 3 Frontier Standard
 
 ![bg right:60% 95%](images/slide_devsecops_safeguards.png)
 
-- **2,380+ Automated Tests & Assertions (Zero Flaky Tests):**
-  - **Level 1 (Frontend):** 1,750+ unit tests across 152+ suites in Vitest (~90% line coverage across all core modules).
-  - **Level 2 (Backend Cloud Functions):** 600+ tests across `ai_flows` + 6 other isolated codebases (attendance, auth, media, scheduled, storage).
-  - **Level 3 (Security Rules):** 42 real-token isolation test scenarios (student self-read, exam shielding, zero-auth public spectator PIN gate & attendance adjustment isolation).
-  - **Level 4 (Live Smoke Tests):** 28 live end-to-end cloud assertions.
+- **2,575+ Automated Tests & Assertions (Zero Flaky Tests):**
+  - **Level 1 (Frontend):** 1,757+ unit tests across 154+ suites in Vitest (~90% line coverage across all core modules).
+  - **Level 2 (Backend Cloud Functions):** 708+ tests across `ai_flows` + 6 other isolated codebases (attendance, auth, media, scheduled, storage, property).
+  - **Level 3 (Security Rules):** 75 real-token isolation test scenarios (student self-read, exam shielding, zero-auth public spectator PIN gate & attendance adjustment isolation).
+  - **Level 4 (Live Smoke Tests):** 35 live end-to-end cloud assertions.
 - **Gemini 4 & 3 Frontier Family Standardization:**
   - Standardized on **Gemini 4 Argon**, **Gemini 3.8 Flash**, **Gemini 3.5 Flash-Lite**, and **Gemma 4 E2B** in compliance with Google Cloud 2026 platform standards.
 - **Automated Dual-Environment CI/CD & Hosting Bundle Guard:**

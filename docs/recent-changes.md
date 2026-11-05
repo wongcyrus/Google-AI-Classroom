@@ -15,6 +15,44 @@
 
 ### Root-Cause Analysis & Technical Implementation:
 
+```mermaid
+flowchart TD
+    subgraph Transfer ["1. Audio Clip Transfer"]
+        SRC["Source Meeting\ne.g. Group A01 (Week 10)"]
+        BTN["Supervisor Clicks ➡️ Move Clip\nSelects Group A04 & Week 10"]
+        DEST["Destination Meeting\ne.g. Group A04 (Week 10)"]
+        SRC --> BTN --> DEST
+    end
+
+    subgraph Invalidation ["2. Atomic Stale Analysis Invalidation (Firestore Batch)"]
+        WIPE["Delete Stale Fields via deleteField():\n• analyzedAt, aiModelUsed, aiCost\n• rawDiarizedTranscript, transcriptSegments\n• keyInsights, studentContributions, summary"]
+        READY["Reset Document State:\n• status: 'ready'\n• needsReanalysis: true"]
+        DEST --> WIPE --> READY
+    end
+
+    subgraph Queue ["3. Smart Batch AI Detection (isMeetingPendingAnalysis)"]
+        BATCH["Supervisor Runs Batch AI Analysis\nMode 1: 'Run Missing Only'"]
+        CHECK{"Meeting State Check:\n1. Unanalyzed with clips? OR\n2. needsReanalysis == true? OR\n3. Stale 'No intelligible speech' with clips?"}
+        ENQUEUE["Target Meeting Enqueued\n(Never Skipped)"]
+        READY --> BATCH --> CHECK
+        CHECK -->|Yes| ENQUEUE
+    end
+
+    subgraph Pipeline ["4. Resilient 2-Stage Backend Diarization & Reasoning"]
+        SAN["Input Sanitization:\nStorage download URL -> Authenticated gs:// URI"]
+        ST1["Stage 1: Speech-to-Text & Diarization\ngemini-3.5-transcribe-preview"]
+        FALLBACK{"STT Result Empty\nor Whitespace?"}
+        ST1_FB["Multimodal Fallback:\ngemini-3.8-flash Audio Diarization"]
+        ST2["Stage 2: Student Attribution & Evaluation\ngemini-3.8-flash\n• Diarized Audio + Voice Anchors\n• Google Form Weekly Logs + Screen Demos"]
+        CLEAN["Finalize & Cleanup:\n• Write Attendance, Scores & Feedback\n• needsReanalysis: FieldValue.delete()"]
+
+        ENQUEUE --> SAN --> ST1 --> FALLBACK
+        FALLBACK -->|Yes (Quiet/Accented)| ST1_FB --> ST2
+        FALLBACK -->|No (Valid Text)| ST2
+        ST2 --> CLEAN
+    end
+```
+
 1. **Failure Mode on Moved Consultation Audio Clips**:
    - When an audio consultation clip was transferred between groups (e.g. from Group A01 to Group A04 via `handleMoveAudioClipToGroup`), if the destination meeting document already existed in Firestore, its previous analysis fields (`analyzedAt`, `aiModelUsed`, `rawDiarizedTranscript`, `keyInsights`, etc.) were not deleted.
    - If the destination meeting had previously been analyzed with no audio or failed audio, it held a stale executive summary stating *"No intelligible speech was recorded for this Week 10 supervision session..."*.
@@ -60,6 +98,48 @@
 - [`docs/project-group-meetings-and-weekly-log-user-guide.md`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/docs/project-group-meetings-and-weekly-log-user-guide.md), [`docs/functions.md`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/docs/functions.md), [`docs/user-manual-teacher.md`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/docs/user-manual-teacher.md)
 
 ### Technical Analysis & Implementation Details:
+
+```mermaid
+flowchart TD
+    subgraph UI ["1. Supervisor UI Triggers"]
+        T1["Studio Action Strip\n📧 Email Whole Class (Week W)"]
+        T2["Week Selector Row\n📧 Email Class"]
+        T3["Weekly Matrix Tab\n📧 Email Whole Class Reports (Week W)"]
+        T4["Batch AI Modal Footer\n📧 Email Reports to Whole Class (Week W)"]
+    end
+
+    subgraph Modal ["2. Whole-Class Batch Dispatch Modal"]
+        M1["Academic Week Selector\nWeek 1 to Week N"]
+        M2["Interactive Group Checklist\nStatus: ✓ Analyzed vs ⚠️ Unanalyzed"]
+        M3["Smart Filters\n• Select All\n• Only Analyzed (Recommended)\n• Deselect All"]
+        M4["Overarching Supervisor Note\ne.g. Milestone 2 Reminders"]
+    end
+
+    subgraph Backend ["3. Serverless Callable Function (Gen 2 asia-east2)"]
+        CF["batchEmailProjectMeetingReports\nAuthorization: isTeacherInClass(classId)"]
+        SM[("Google Cloud Secret Manager\nSecret: SMTP_PASSWORD (v2)")]
+        CF -->|Fetches App Password| SM
+    end
+
+    subgraph Transport ["4. Secure SMTP Relay Layer"]
+        RELAY["Gmail SMTP Relay\nsmtp.gmail.com:465 (Direct SSL)"]
+        AUTH["Authenticated Sender\nnoreply@vtc.edu.hk"]
+        RELAY --- AUTH
+    end
+
+    subgraph Delivery ["5. Multi-Student Dispatch & Audit Log"]
+        HTML["Responsive HTML Meeting Reports\n• Overarching Note\n• Executive Summary & Attendance\n• Log Quality (1-10) & Real Work (1-10)\n• AI Challenge Questions & Verified Tasks"]
+        INBOX["Student Inboxes\n{studentId}@stu.vtc.edu.hk"]
+        AUDIT[("Firestore Audit Log\nclasses/{classId}/projectMeetings/{meetingId}\nemailDispatch: {sentAt, sentBy, count}")]
+    end
+
+    UI --> Modal
+    M1 & M2 & M3 & M4 -->|Click 🚀 Send Reports| CF
+    CF --> RELAY
+    RELAY --> HTML
+    HTML --> INBOX
+    HTML --> AUDIT
+```
 
 1. **Google App Password Configuration for `noreply@vtc.edu.hk` over Secure SSL (`smtp.gmail.com:465`)**:
    - **Secret Versioning**: Updated Google Cloud Secret Manager secret `SMTP_PASSWORD` in `it114115-2627` to version 2 containing the sanitized App Password with all whitespace stripped.
