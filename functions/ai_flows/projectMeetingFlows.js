@@ -1255,7 +1255,8 @@ export async function handleEmailProjectMeetingReport({
   }
 
   // Check SMTP credentials
-  const smtpPassword = process.env.SMTP_PASSWORD || process.env.OTP_SMTP_PASSWORD;
+  const rawSmtpPassword = (process.env.SMTP_PASSWORD || process.env.OTP_SMTP_PASSWORD || '').trim();
+  const smtpPassword = rawSmtpPassword.replace(/\s+/g, '');
   if (!smtpPassword) {
     throw new HttpsError(
       'failed-precondition',
