@@ -123,6 +123,71 @@
   margin-top: 4px;
 }
 
+.btn-batch-ai-trigger {
+  background: linear-gradient(135deg, #4f46e5 0%, #6366f1 100%);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-size: 0.76rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  white-space: nowrap;
+}
+
+.btn-batch-ai-trigger:hover {
+  background: linear-gradient(135deg, #4338ca 0%, #4f46e5 100%);
+}
+
+.btn-batch-ai-sidebar-trigger {
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  color: #4338ca;
+  font-weight: 700;
+  font-size: 0.75rem;
+  padding: 4px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.btn-batch-ai-sidebar-trigger:hover {
+  background: #e0e7ff;
+  border-color: #a5b4fc;
+}
+
+.batch-analysis-progress-banner {
+  background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%);
+  border: 1.5px solid #93c5fd;
+  border-radius: 10px;
+  padding: 12px 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 14px;
+  box-shadow: 0 4px 6px -1px rgba(59, 130, 246, 0.15);
+}
+
+.btn-cancel-batch-analysis {
+  background: #ffffff;
+  border: 1px solid #fca5a5;
+  color: #b91c1c;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.btn-cancel-batch-analysis:hover {
+  background: #fef2f2;
+}
+
 /* Recording Studio Bar */
 .project-meeting-recorder-studio {
   background: linear-gradient(135deg, #f8fafc 0%, #eff6ff 100%);

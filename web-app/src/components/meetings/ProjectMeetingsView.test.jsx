@@ -948,4 +948,36 @@ Group Beta,New Beta Topic,other@vtc.edu.hk,eva@stu.vtc.edu.hk,Eva Ho,Leader`;
     fireEvent.click(presentCells[0]);
     expect(screen.getByText(/1\. 📋 Meeting Attendance Record/i)).toBeInTheDocument();
   });
+
+  it('supports Batch Gemini Analysis modal for the selected week with Mode 1 and Mode 2', async () => {
+    render(
+      <ProjectMeetingsView
+        classId="it114115"
+        classInfo={{
+          name: 'Capstone Project',
+          teacherEmails: ['cywong@vtc.edu.hk'],
+          studentEmails: ['alice@stu.vtc.edu.hk'],
+        }}
+        user={{ uid: 't_1', email: 'cywong@vtc.edu.hk', displayName: 'Dr. Wong' }}
+      />
+    );
+
+    // Switch to Week 2 where mtg_2_wk2 exists
+    fireEvent.change(screen.getByLabelText(/📅 Week #:/i), { target: { value: 2 } });
+
+    // Open Batch AI modal via Studio trigger
+    const batchBtns = screen.getAllByRole('button', { name: /⚡ Batch AI/i });
+    fireEvent.click(batchBtns[0]);
+
+    // Modal should be visible
+    expect(screen.getByText(/⚡ Batch Gemini Analysis — Week 2/i)).toBeInTheDocument();
+    expect(screen.getByText(/Mode 1: Run Missing Only/i)).toBeInTheDocument();
+    expect(screen.getByText(/Mode 2: Re-Run All/i)).toBeInTheDocument();
+
+    // Trigger Mode 2: Re-Run All
+    fireEvent.click(screen.getByRole('button', { name: /🔄 Re-Analyze All/i }));
+    await waitFor(() => {
+      expect(mockHttpsCallable).toHaveBeenCalled();
+    });
+  });
 });

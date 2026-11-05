@@ -89,6 +89,9 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
   const [syncVideoWithAudio, setSyncVideoWithAudio] = useState(true);
   const [preferredAiModel, setPreferredAiModel] = useState('gemini-3.8-flash');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [showBatchAiModal, setShowBatchAiModal] = useState(false);
+  const [batchAnalysisProgress, setBatchAnalysisProgress] = useState(null);
+  const cancelBatchAnalysisRef = useRef(false);
   const [showTranscriptDrawer, setShowTranscriptDrawer] = useState(false);
   const [editingStudentUid, setEditingStudentUid] = useState(null);
   const [editWorkDraft, setEditWorkDraft] = useState('');
@@ -339,6 +342,29 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
       return true;
     });
   }, [meetings, visibleGroups, groups.length, supervisorFilter]);
+
+  // Statistics for Batch AI Analysis on the currently selected week
+  const weekAiStats = useMemo(() => {
+    const weekNum = Number(studioWeekNumber);
+    const weekMeetings = meetings.filter((m) => Number(m.weekNumber) === weekNum);
+    const withAudio = weekMeetings.filter(
+      (m) => (Array.isArray(m.audioClips) && m.audioClips.length > 0) || Boolean(m.audioStoragePath)
+    );
+    const missing = withAudio.filter(
+      (m) => !m.analyzedAt && !m.aiModelUsed && !m.rawDiarizedTranscript
+    );
+    const analyzed = withAudio.filter(
+      (m) => Boolean(m.analyzedAt || m.aiModelUsed || m.rawDiarizedTranscript)
+    );
+    return {
+      totalMeetings: weekMeetings.length,
+      withAudioCount: withAudio.length,
+      missingCount: missing.length,
+      analyzedCount: analyzed.length,
+      missingMeetings: missing,
+      allAudioMeetings: withAudio,
+    };
+  }, [meetings, studioWeekNumber]);
 
   // Unified Group & Week selection handlers
   const handleSelectGroup = useCallback(
@@ -1460,6 +1486,74 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
     }
   };
 
+  // Batch Analyze All Groups in Selected Week (Mode 1: Missing Only | Mode 2: Re-Run All)
+  const handleBatchAnalyzeWeek = async (mode = 'missing_only') => {
+    const weekNum = Number(studioWeekNumber);
+    const weekMeetingsWithAudio = meetings.filter((m) => {
+      const isWeek = Number(m.weekNumber) === weekNum;
+      const hasAudio =
+        (Array.isArray(m.audioClips) && m.audioClips.length > 0) || Boolean(m.audioStoragePath);
+      return isWeek && hasAudio;
+    });
+
+    const targets =
+      mode === 'missing_only'
+        ? weekMeetingsWithAudio.filter(
+            (m) => !m.analyzedAt && !m.aiModelUsed && !m.rawDiarizedTranscript
+          )
+        : weekMeetingsWithAudio;
+
+    if (targets.length === 0) {
+      showToastMessage(
+        mode === 'missing_only'
+          ? `All recorded groups in Week ${weekNum} have already been analyzed!`
+          : `No recordings found in Week ${weekNum}.`
+      );
+      setShowBatchAiModal(false);
+      return;
+    }
+
+    setShowBatchAiModal(false);
+    cancelBatchAnalysisRef.current = false;
+    setBatchAnalysisProgress({
+      current: 0,
+      total: targets.length,
+      groupName: '',
+      mode,
+    });
+
+    let successCount = 0;
+    let failCount = 0;
+
+    for (let i = 0; i < targets.length; i++) {
+      if (cancelBatchAnalysisRef.current) {
+        showToastMessage(`Batch analysis stopped after ${i} of ${targets.length} groups.`);
+        break;
+      }
+
+      const mtg = targets[i];
+      setBatchAnalysisProgress({
+        current: i + 1,
+        total: targets.length,
+        groupName: mtg.groupName || mtg.groupId || `Meeting ${i + 1}`,
+        mode,
+      });
+
+      try {
+        await handleRunGeminiAnalysis(mtg.id);
+        successCount++;
+      } catch (err) {
+        console.error(`[ProjectMeetingsView] Batch error on ${mtg.id}:`, err);
+        failCount++;
+      }
+    }
+
+    setBatchAnalysisProgress(null);
+    showToastMessage(
+      `⚡ Batch Analysis Complete for Week ${weekNum}: ${successCount} analyzed${failCount > 0 ? `, ${failCount} failed` : ''}!`
+    );
+  };
+
   // Group / Merge 2+ Selected Meetings into One Unified Grouped Meeting
   const handleMergeSelectedMeetings = async () => {
     if (selectedMeetingIdsToMerge.length < 2) return;
@@ -2124,9 +2218,19 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
           </div>
 
           <div className="studio-field studio-field-narrow">
-            <label htmlFor="studio-week-select" title={`Week 1 Monday resolved from Class Schedule: ${semesterStartMonday}`}>
-              📅 Week #:
-            </label>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <label htmlFor="studio-week-select" title={`Week 1 Monday resolved from Class Schedule: ${semesterStartMonday}`}>
+                📅 Week #:
+              </label>
+              <button
+                type="button"
+                className="btn-batch-ai-trigger"
+                onClick={() => setShowBatchAiModal(true)}
+                title={`Batch Analyze recordings in Week ${studioWeekNumber} with Gemini`}
+              >
+                ⚡ Batch AI
+              </button>
+            </div>
             <select
               id="studio-week-select"
               aria-label="📅 Week #:"
@@ -2850,38 +2954,85 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
           )}
         </div>
       ) : (
-        <div className="project-meetings-workspace-grid">
-          {/* Left Panel: Hierarchical Grouped Recordings Sidebar (By Project Group -> By Weekly Meeting) */}
-          <div className={`meetings-grouped-sidebar ${mobileSidebarExpanded ? 'mobile-expanded' : 'mobile-collapsed'}`}>
-            <div
-              className="sidebar-group-filter-row"
-              onClick={() => setMobileSidebarExpanded((prev) => !prev)}
-              role="button"
-              tabIndex={0}
-              aria-label="Toggle meeting sessions list"
-              style={{ cursor: 'pointer' }}
-            >
-              <span className="sidebar-title-badge" style={{ fontSize: '0.84rem', fontWeight: 700, color: '#334155', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                📂 Meeting Sessions ({filteredMeetings.length})
-                <span className="mobile-sidebar-toggle-indicator" style={{ fontSize: '0.74rem', color: '#64748b' }}>
-                  {mobileSidebarExpanded ? '▲' : '▼'}
-                </span>
-              </span>
-
+        <>
+          {/* Live Batch Analysis Progress Banner */}
+          {batchAnalysisProgress && (
+            <div className="batch-analysis-progress-banner">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1 }}>
+                <span style={{ fontSize: '1.2rem', animation: 'spin 1.5s linear infinite' }}>⏳</span>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#1e3a8a', marginBottom: '4px' }}>
+                    ⚡ Batch Analyzing Week {studioWeekNumber} ({batchAnalysisProgress.mode === 'missing_only' ? 'Missing Only' : 'All Groups'}): [{batchAnalysisProgress.current} of {batchAnalysisProgress.total}] Group <strong>{batchAnalysisProgress.groupName}</strong>
+                  </div>
+                  <div style={{ width: '100%', height: '8px', background: '#bfdbfe', borderRadius: '4px', overflow: 'hidden' }}>
+                    <div
+                      style={{
+                        height: '100%',
+                        background: '#2563eb',
+                        transition: 'width 0.3s ease',
+                        width: `${Math.round((batchAnalysisProgress.current / batchAnalysisProgress.total) * 100)}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
               <button
                 type="button"
-                className="btn-merge-mode-toggle"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setIsMergeSelectionMode((prev) => !prev);
-                  setSelectedMeetingIdsToMerge([]);
-                  setMobileSidebarExpanded(true);
+                className="btn-cancel-batch-analysis"
+                onClick={() => {
+                  cancelBatchAnalysisRef.current = true;
                 }}
-                title="Select 2 or more recordings to group/merge into a single meeting"
               >
-                {isMergeSelectionMode ? 'Cancel' : '🔗 Group Clips'}
+                ⏹️ Stop Batch
               </button>
             </div>
+          )}
+
+          <div className="project-meetings-workspace-grid">
+            {/* Left Panel: Hierarchical Grouped Recordings Sidebar (By Project Group -> By Weekly Meeting) */}
+            <div className={`meetings-grouped-sidebar ${mobileSidebarExpanded ? 'mobile-expanded' : 'mobile-collapsed'}`}>
+              <div
+                className="sidebar-group-filter-row"
+                onClick={() => setMobileSidebarExpanded((prev) => !prev)}
+                role="button"
+                tabIndex={0}
+                aria-label="Toggle meeting sessions list"
+                style={{ cursor: 'pointer' }}
+              >
+                <span className="sidebar-title-badge" style={{ fontSize: '0.84rem', fontWeight: 700, color: '#334155', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  📂 Meeting Sessions ({filteredMeetings.length})
+                  <span className="mobile-sidebar-toggle-indicator" style={{ fontSize: '0.74rem', color: '#64748b' }}>
+                    {mobileSidebarExpanded ? '▲' : '▼'}
+                  </span>
+                </span>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <button
+                    type="button"
+                    className="btn-batch-ai-sidebar-trigger"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowBatchAiModal(true);
+                    }}
+                    title={`Batch analyze recordings in Week ${studioWeekNumber} with Gemini`}
+                  >
+                    ⚡ Batch AI
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-merge-mode-toggle"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsMergeSelectionMode((prev) => !prev);
+                      setSelectedMeetingIdsToMerge([]);
+                      setMobileSidebarExpanded(true);
+                    }}
+                    title="Select 2 or more recordings to group/merge into a single meeting"
+                  >
+                    {isMergeSelectionMode ? 'Cancel' : '🔗 Group Clips'}
+                  </button>
+                </div>
+              </div>
 
             {isMergeSelectionMode && (
               <div className="sidebar-merge-action-bar">
@@ -3793,6 +3944,7 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
             )}
           </div>
         </div>
+        </>
       )}
 
       {/* Manage & Batch Import Project Groups Modal */}
@@ -3808,6 +3960,123 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
         currentUserName={currentUserName}
         onSaveGroups={handleSaveProjectGroups}
       />
+
+      {/* Batch Gemini Analysis Modal for Selected Week */}
+      {showBatchAiModal && (
+        <div className="project-group-editor-modal-overlay" onClick={() => !batchAnalysisProgress && setShowBatchAiModal(false)}>
+          <div className="project-group-editor-modal-card" style={{ maxWidth: '580px' }} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                ⚡ Batch Gemini Analysis — Week {studioWeekNumber}
+              </h3>
+              <button
+                type="button"
+                className="btn-modal-close"
+                onClick={() => !batchAnalysisProgress && setShowBatchAiModal(false)}
+                disabled={Boolean(batchAnalysisProgress)}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="modal-body" style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <p style={{ margin: 0, fontSize: '0.88rem', color: '#475569' }}>
+                Run Two-Stage Gemini Diarization, Attendance attribution, and Weekly Log verification across multiple project groups for <strong>Week {studioWeekNumber}</strong>.
+              </p>
+
+              {/* Status Breakdown Box */}
+              <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '12px 16px', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', textAlign: 'center' }}>
+                <div>
+                  <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a' }}>{weekAiStats.withAudioCount}</div>
+                  <div style={{ fontSize: '0.75rem', color: '#64748b' }}>🎙️ Total with Audio</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#d97706' }}>{weekAiStats.missingCount}</div>
+                  <div style={{ fontSize: '0.75rem', color: '#64748b' }}>🟡 Missing / Pending</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#16a34a' }}>{weekAiStats.analyzedCount}</div>
+                  <div style={{ fontSize: '0.75rem', color: '#64748b' }}>✨ Already Analyzed</div>
+                </div>
+              </div>
+
+              {/* Model Selection */}
+              <div>
+                <label htmlFor="batch-model-select" style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
+                  🤖 Select Gemini Model:
+                </label>
+                <select
+                  id="batch-model-select"
+                  value={preferredAiModel}
+                  onChange={(e) => setPreferredAiModel(e.target.value)}
+                  style={{ width: '100%', padding: '8px 12px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.88rem' }}
+                >
+                  <option value="gemini-3.8-flash">⚡ Gemini 3.5 Transcribe + 3.8 Flash (Recommended — Fast &amp; Accurate)</option>
+                  <option value="gemini-4-argon">🧠 Gemini 3.5 Transcribe + 4 Argon (Deep Reasoning &amp; Complex Logs)</option>
+                  <option value="gemini-3.5-flash-lite">🪶 Gemini 3.5 Transcribe + 3.5 Flash-Lite (Low Cost)</option>
+                </select>
+              </div>
+
+              {/* Mode 1 & Mode 2 Options */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div style={{ border: '1.5px solid #fed7aa', background: '#fffbeb', borderRadius: '8px', padding: '12px 14px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                    <strong style={{ fontSize: '0.92rem', color: '#9a3412' }}>
+                      ⚡ Mode 1: Run Missing Only ({weekAiStats.missingCount} groups)
+                    </strong>
+                    <span style={{ fontSize: '0.72rem', background: '#f97316', color: '#fff', padding: '2px 8px', borderRadius: '12px', fontWeight: 700 }}>
+                      Recommended
+                    </span>
+                  </div>
+                  <p style={{ margin: '0 0 10px 0', fontSize: '0.8rem', color: '#7c2d12' }}>
+                    Only analyzes groups in Week {studioWeekNumber} that have audio recordings but have not been analyzed yet. Skips already-analyzed groups to save time.
+                  </p>
+                  <button
+                    type="button"
+                    className="btn-start-meeting-rec"
+                    style={{ width: '100%', background: '#f97316', borderColor: '#ea580c' }}
+                    onClick={() => handleBatchAnalyzeWeek('missing_only')}
+                    disabled={weekAiStats.missingCount === 0 || isAnalyzing || Boolean(batchAnalysisProgress)}
+                  >
+                    {weekAiStats.missingCount === 0
+                      ? '✅ All Groups in Week ' + studioWeekNumber + ' Already Analyzed'
+                      : `⚡ Analyze ${weekAiStats.missingCount} Missing Group(s)`}
+                  </button>
+                </div>
+
+                <div style={{ border: '1px solid #cbd5e1', background: '#f8fafc', borderRadius: '8px', padding: '12px 14px' }}>
+                  <strong style={{ display: 'block', fontSize: '0.92rem', color: '#334155', marginBottom: '4px' }}>
+                    🔄 Mode 2: Re-Run All ({weekAiStats.withAudioCount} groups)
+                  </strong>
+                  <p style={{ margin: '0 0 10px 0', fontSize: '0.8rem', color: '#64748b' }}>
+                    Re-analyzes all recorded groups in Week {studioWeekNumber} from scratch. Useful if you updated student weekly logs or want to switch models.
+                  </p>
+                  <button
+                    type="button"
+                    className="btn-pause-meeting-rec"
+                    style={{ width: '100%' }}
+                    onClick={() => handleBatchAnalyzeWeek('all')}
+                    disabled={weekAiStats.withAudioCount === 0 || isAnalyzing || Boolean(batchAnalysisProgress)}
+                  >
+                    🔄 Re-Analyze All {weekAiStats.withAudioCount} Group(s) in Week {studioWeekNumber}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="modal-footer" style={{ padding: '12px 20px', display: 'flex', justifyContent: 'flex-end', borderTop: '1px solid #e2e8f0' }}>
+              <button
+                type="button"
+                className="btn-modal-cancel"
+                onClick={() => setShowBatchAiModal(false)}
+                disabled={Boolean(batchAnalysisProgress)}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
