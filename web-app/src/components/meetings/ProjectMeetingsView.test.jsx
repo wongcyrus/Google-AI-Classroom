@@ -915,9 +915,15 @@ Group Beta,New Beta Topic,other@vtc.edu.hk,eva@stu.vtc.edu.hk,Eva Ho,Leader`;
     expect(screen.getByRole('dialog')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
 
-    // 7. Toggle mobile sessions accordion and delete a clip part / delete meeting session
+    // 7. Toggle mobile sessions accordion, move clip part to another group, and delete clip
     fireEvent.click(screen.getByLabelText(/Toggle meeting sessions list/i));
     const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    fireEvent.change(screen.getByLabelText(/Move clip part to another group/i), {
+      target: { value: 'grp_2' },
+    });
+    await waitFor(() => {
+      expect(mockUpdateDoc).toHaveBeenCalled();
+    });
     fireEvent.click(screen.getByRole('button', { name: /🗑️ Delete Part 1/i }));
     await waitFor(() => {
       expect(mockUpdateDoc).toHaveBeenCalled();

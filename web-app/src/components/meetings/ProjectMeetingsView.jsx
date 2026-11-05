@@ -1577,6 +1577,142 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
     showToastMessage(`🗑️ Deleted meeting session "${mtg.title}"`);
   };
 
+  // Move a specific audio clip part to a different Project Group (e.g. accidentally recorded under the wrong group)
+  const handleMoveAudioClipToGroup = async (clipIdx, targetGroupId) => {
+    if (!selectedMeeting || !targetGroupId || targetGroupId === selectedMeeting.groupId) return;
+    const targetGroup = groups.find((g) => g.id === targetGroupId);
+    if (!targetGroup) return;
+
+    const clips = Array.isArray(selectedMeeting.audioClips) ? selectedMeeting.audioClips : [];
+    const clipToMove = clips[clipIdx];
+    if (!clipToMove) return;
+
+    const clipLabel = clipToMove.label || `Part ${clipIdx + 1}`;
+    const targetWeek = Number(selectedMeeting.weekNumber) || studioWeekNumber || 1;
+
+    const confirmMsg = `Move "${clipLabel}" (${formatDuration(clipToMove.durationSeconds || 0)}) from ${selectedMeeting.groupName} to Group ${targetGroup.name} (Week ${targetWeek})?`;
+    if (!window.confirm(confirmMsg)) return;
+
+    // 1. Remove clip from source meeting
+    const remainingSourceClips = clips
+      .filter((_, i) => i !== clipIdx)
+      .map((c, i) => ({
+        ...c,
+        label: `Part ${i + 1}`,
+      }));
+    const sourceDuration = remainingSourceClips.reduce(
+      (sum, c) => sum + (Number(c.durationSeconds) || 0),
+      0
+    );
+
+    const sourceRef = doc(db, `classes/${classId}/projectMeetings/${selectedMeeting.id}`);
+    await updateDoc(sourceRef, {
+      audioClips: remainingSourceClips,
+      audioStoragePath: remainingSourceClips[0]?.storagePath || '',
+      audioDownloadUrl: remainingSourceClips[0]?.downloadUrl || '',
+      recordingSegmentsCount: remainingSourceClips.length,
+      durationSeconds: sourceDuration,
+      status: 'ready',
+      updatedAt: serverTimestamp(),
+    });
+
+    // 2. Add clip to target group's meeting (find existing meeting or create one)
+    const existingTarget = meetings.find(
+      (m) =>
+        m.groupId === targetGroupId &&
+        Number(m.weekNumber) === targetWeek &&
+        m.id !== selectedMeeting.id
+    );
+
+    const movedClipObj = {
+      ...clipToMove,
+      label: `Part ${(existingTarget?.audioClips?.length || 0) + 1}`,
+    };
+
+    if (existingTarget) {
+      const updatedTargetClips = [...(existingTarget.audioClips || []), movedClipObj];
+      const targetDuration = updatedTargetClips.reduce(
+        (sum, c) => sum + (Number(c.durationSeconds) || 0),
+        0
+      );
+      const targetRef = doc(db, `classes/${classId}/projectMeetings/${existingTarget.id}`);
+      await updateDoc(targetRef, {
+        audioClips: updatedTargetClips,
+        audioStoragePath: updatedTargetClips[0]?.storagePath || movedClipObj.storagePath,
+        audioDownloadUrl: updatedTargetClips[0]?.downloadUrl || movedClipObj.downloadUrl,
+        recordingSegmentsCount: updatedTargetClips.length,
+        durationSeconds: targetDuration,
+        status: 'ready',
+        updatedAt: serverTimestamp(),
+      });
+    } else {
+      const newMeetingId = `mtg_${targetGroupId}_wk${targetWeek}_${Date.now()}`;
+      const newMeetingDoc = {
+        id: newMeetingId,
+        classId,
+        groupId: targetGroup.id,
+        groupName: targetGroup.name,
+        projectTopic: targetGroup.projectTopic || '',
+        weekNumber: targetWeek,
+        sessionGroupId: `${classId}_${targetGroupId}_wk${targetWeek}`,
+        title: `Week ${targetWeek} Supervision Meeting`,
+        meetingDate: clipToMove.recordedAt || new Date().toISOString(),
+        supervisorUid: targetGroup.supervisorUid || user?.uid || '',
+        supervisorEmail: targetGroup.supervisorEmail || currentUserEmail,
+        supervisorName: targetGroup.supervisorName || currentUserName,
+        audioClips: [movedClipObj],
+        screenClips: [],
+        voiceAnchors: [],
+        audioStoragePath: movedClipObj.storagePath || '',
+        audioDownloadUrl: movedClipObj.downloadUrl || '',
+        recordingSegmentsCount: 1,
+        durationSeconds: Number(movedClipObj.durationSeconds) || 0,
+        status: 'ready',
+        attendanceRecord: (targetGroup.members || []).map((m) => ({
+          uid: m.uid || m.email,
+          email: normalizeStudentEmail(m.email),
+          name: m.name,
+          role: m.role || 'Member',
+          status: 'present',
+          speakingContribution: 'moderate',
+        })),
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      };
+      await setDoc(doc(db, `classes/${classId}/projectMeetings/${newMeetingId}`), newMeetingDoc);
+    }
+
+    setActiveAudioClipIdx(0);
+    showToastMessage(`Moved ${clipLabel} to Group ${targetGroup.name}!`);
+  };
+
+  // Move an entire meeting session to a different Project Group
+  const handleMoveMeetingToGroup = async (targetGroupId) => {
+    if (!selectedMeeting || !targetGroupId || targetGroupId === selectedMeeting.groupId) return;
+    const targetGroup = groups.find((g) => g.id === targetGroupId);
+    if (!targetGroup) return;
+
+    if (
+      !window.confirm(
+        `Move this entire meeting session to Group ${targetGroup.name} (${targetGroup.projectTopic || 'Project'})?`
+      )
+    )
+      return;
+
+    await updateDoc(doc(db, `classes/${classId}/projectMeetings/${selectedMeeting.id}`), {
+      groupId: targetGroup.id,
+      groupName: targetGroup.name,
+      projectTopic: targetGroup.projectTopic || '',
+      sessionGroupId: `${classId}_${targetGroup.id}_wk${selectedMeeting.weekNumber || 1}`,
+      supervisorEmail: targetGroup.supervisorEmail || selectedMeeting.supervisorEmail,
+      supervisorName: targetGroup.supervisorName || selectedMeeting.supervisorName,
+      status: 'ready',
+      updatedAt: serverTimestamp(),
+    });
+    setStudioGroupId(targetGroup.id);
+    showToastMessage(`Moved meeting session to ${targetGroup.name}`);
+  };
+
   // Save inline edited student work / action items / weekly feedback / log quality score
   const handleSaveStudentContributionEdit = async (studentUidOrEmail) => {
     if (!selectedMeeting) return;
@@ -2902,6 +3038,38 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
                     >
                       🗑️ Delete Session
                     </button>
+
+                    {groups.length > 1 && (
+                      <select
+                        aria-label="Move entire session to another group"
+                        value=""
+                        onChange={(e) => {
+                          if (e.target.value) {
+                            handleMoveMeetingToGroup(e.target.value);
+                          }
+                        }}
+                        style={{
+                          padding: '6px 10px',
+                          borderRadius: '6px',
+                          border: '1px solid #cbd5e1',
+                          background: '#f8fafc',
+                          fontSize: '0.82rem',
+                          cursor: 'pointer',
+                        }}
+                        title="Move this entire recording session to another Project Group"
+                      >
+                        <option value="" disabled>
+                          ↪️ Move Session to Group...
+                        </option>
+                        {groups
+                          .filter((g) => g.id !== selectedMeeting.groupId)
+                          .map((g) => (
+                            <option key={g.id} value={g.id}>
+                              Move Session to {g.name}
+                            </option>
+                          ))}
+                      </select>
+                    )}
                   </div>
                 </div>
 
@@ -2940,6 +3108,39 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
                         >
                           🗑️ Delete {activeAudioClip?.label || `Part ${activeAudioClipIdx + 1}`}
                         </button>
+                      )}
+
+                      {(selectedMeeting.audioClips || []).length > 0 && groups.length > 1 && (
+                        <select
+                          aria-label="Move clip part to another group"
+                          value=""
+                          onChange={(e) => {
+                            if (e.target.value) {
+                              handleMoveAudioClipToGroup(activeAudioClipIdx, e.target.value);
+                            }
+                          }}
+                          style={{
+                            fontSize: '0.74rem',
+                            padding: '4px 8px',
+                            borderRadius: '6px',
+                            border: '1px solid #cbd5e1',
+                            background: '#f8fafc',
+                            cursor: 'pointer',
+                            marginLeft: '4px',
+                          }}
+                          title={`Move ${activeAudioClip?.label || `Part ${activeAudioClipIdx + 1}`} to another Project Group`}
+                        >
+                          <option value="" disabled>
+                            ↪️ Move {activeAudioClip?.label || `Part ${activeAudioClipIdx + 1}`} to...
+                          </option>
+                          {groups
+                            .filter((g) => g.id !== selectedMeeting.groupId)
+                            .map((g) => (
+                              <option key={g.id} value={g.id}>
+                                Move to {g.name} ({g.projectTopic || 'Project'})
+                              </option>
+                            ))}
+                        </select>
                       )}
                     </div>
 
