@@ -1255,7 +1255,7 @@ export async function handleEmailProjectMeetingReport({
   }
 
   // Check SMTP credentials
-  const smtpPassword = process.env.OTP_SMTP_PASSWORD || process.env.SMTP_PASSWORD;
+  const smtpPassword = process.env.SMTP_PASSWORD || process.env.OTP_SMTP_PASSWORD;
   if (!smtpPassword) {
     throw new HttpsError(
       'failed-precondition',
@@ -1263,13 +1263,15 @@ export async function handleEmailProjectMeetingReport({
     );
   }
 
-  const smtpUser = process.env.OTP_SMTP_USERNAME || process.env.SMTP_USER || 'noreply@vtc.edu.hk';
-  const smtpHost = process.env.OTP_SMTP_HOST || process.env.SMTP_HOST || 'smtp.gmail.com';
-  const smtpPort = parseInt(process.env.OTP_SMTP_PORT || process.env.SMTP_PORT || '465', 10);
-  const isSecure = process.env.OTP_SMTP_SECURE !== undefined
+  const smtpUser = process.env.SMTP_USER || process.env.SMTP_USERNAME || process.env.OTP_SMTP_USERNAME || 'noreply@vtc.edu.hk';
+  const smtpHost = process.env.SMTP_HOST || process.env.OTP_SMTP_HOST || 'email-smtp.us-east-1.amazonaws.com';
+  const smtpPort = parseInt(process.env.SMTP_PORT || process.env.OTP_SMTP_PORT || '465', 10);
+  const isSecure = process.env.SMTP_SECURE !== undefined
+    ? process.env.SMTP_SECURE === 'true'
+    : process.env.OTP_SMTP_SECURE !== undefined
     ? process.env.OTP_SMTP_SECURE === 'true'
     : smtpPort === 465;
-  const fromEmail = process.env.OTP_FROM_EMAIL || process.env.SMTP_FROM_EMAIL || smtpUser;
+  const fromEmail = process.env.SMTP_FROM_EMAIL || process.env.OTP_FROM_EMAIL || smtpUser;
 
   const transporter = nodemailer.createTransport({
     host: smtpHost,
