@@ -425,6 +425,14 @@ You have full transparency into your learning progress and attendance records. N
    - Review any proctoring flags logged during class (e.g., look-away alerts, multi-face detections).
 6. **🎙️ Audio Transcripts (`audio`):**
    - Review speech captured during lessons with language tags and click **`▶ Play Clip`** to review audio recordings.
+7. **👥 Project Meetings (`meetings`):**
+   - Access consultation dossiers and attendance history for your assigned capstone project group ([`StudentRecordsView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/StudentRecordsView.jsx)).
+   - **Attendance Tracking with Late Status:** View status badges for every session (`✅ Present`, `🕒 Late`, `❌ Absent`, `🤫 Silent Present`) and check your overall group meeting attendance rate.
+   - **Supervisor Evaluation Metrics:** Inspect supervisor-awarded **Real Work Verified Score (`/10`)** and **Log Quality Score (`/10`)**.
+   - **Personalized Feedback:** Review supervisor comments and constructive guidance in a highlighted quote container.
+   - **Verification Audit:** Check verified tasks, pre-meeting AI challenge questions, and next week's assigned action items.
+   - **Multimedia Playback:** Listen to the supervisor's mobile room audio recording and watch the presenting student's PC screen demonstration video.
+   - **Weekly Logs Subview:** Switch to the **`📋 Weekly Logs`** sub-tab to inspect your submitted Google Form logs (`Form Responses 2`) for each academic week.
 
 ---
 

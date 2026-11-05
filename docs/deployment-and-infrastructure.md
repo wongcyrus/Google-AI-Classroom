@@ -250,14 +250,31 @@ If you want to modify only the display name of an existing project (e.g. from *"
 
 A comprehensive security review was conducted on this architecture regarding sensitive key exposure risks to GitHub:
 
-### 1. File & Secret Tracking Protections (`.gitignore`)
-The repository strictly ignores all secrets and environment snapshots:
-- **Environment Files:** `.env`, `.env.*` (including `.env.dev`, `.env.prod`).
-- **Service Accounts & Private Keys:** `*.pem`, `*.key`, `sp.json`, `serviceAccountKey.json`, `service-account*.json`.
-- **Terraform State Files:** `terraform/*.tfstate`, `terraform/*.tfstate.*`, `terraform/*.tfvars`.
-- **Function Runtime Config Copies:** `functions/*/config.js`.
+### 1. File & Secret Tracking Protections (`.gitignore` & `.githooks/pre-commit`)
+The repository enforces a multi-layered barrier against secret leaks to GitHub:
+- **Recursive `.gitignore` Rules:**
+  - **Environment Files:** `**/.env*` (including `.env.dev`, `.env.prod`, `.env.local`), while whitelisting non-sensitive `**/.env.example`.
+  - **Service Accounts & Private Keys:** `**/*.pem`, `**/*.key`, `**/*sp.json`, `**/*serviceAccount*.json`, `**/*credentials*.json`.
+  - **Terraform State Files:** `**/*.tfstate`, `**/*.tfstate.*`, `**/*.tfvars`, `**/*.tfvars.json`.
+  - **Secret Files:** `**/*.secret*`.
+- **Active Pre-Commit Secret Scanner (`.githooks/pre-commit`):**
+  - Integrated via repository-level configuration (`git config core.hooksPath .githooks`).
+  - Automatically executes on `git commit` to block commits containing:
+    1. Sensitive filenames (e.g., any staged file with `.env`, `.tfstate`, `.secret`, `credentials.json`, `serviceAccount`).
+    2. High-entropy patterns in staged diffs: AWS Access Key IDs (`AKIA[0-9A-Z]{16}`), PEM/RSA private key headers, assignment regexes for passwords/secrets/tokens (`PASSWORD=`, `SECRET=`, `API_KEY=`), and authorization bearer tokens.
 
-### 2. Client-Side Firebase Keys vs. Backend Secrets
+### 2. Google Cloud Secret Manager & Terraform State Decoupling
+To eliminate secrets from Terraform state files (`terraform.tfstate`), backend credentials are decoupled from Terraform infrastructure definitions:
+- **Terraform Provisioning (`terraform/secrets.tf` & `terraform/apis.tf`):**
+  - Enables `secretmanager.googleapis.com`.
+  - Declares the container resource `google_secret_manager_secret.smtp_password`.
+  - **Decoupled Payload Pattern:** The secret value (`google_secret_manager_secret_version`) is **never defined in Terraform code**, preventing plaintext passwords from leaking into `terraform.tfstate` or Git history.
+  - Provisions least-privilege IAM access: Grants `roles/secretmanager.secretAccessor` on the secret to the Cloud Functions Gen 2 compute service account (`842713655587-compute@developer.gserviceaccount.com`).
+- **Runtime Secret Injection (`functions/ai_flows/projectMeetingFlows.js`):**
+  - Cloud Functions Gen 2 declares `secrets: ['SMTP_PASSWORD']` on the `emailProjectMeetingReport` callable function.
+  - Secret Manager injects the password into `process.env.SMTP_PASSWORD` in-memory inside the ephemeral container environment at runtime.
+
+### 3. Client-Side Firebase Keys vs. Backend Secrets
 - **Firebase Web API Key (`VITE_API_KEY`):**
   - Firebase Web API keys (strings starting with `AIzaSy...`) are **public project identifiers** designed by Google to reside on the client side. They do *not* grant administrative access to GCP services.
   - Security is enforced at the platform boundary via:
@@ -267,7 +284,7 @@ The repository strictly ignores all secrets and environment snapshots:
 - **Backend Service Credentials:**
   - Cloud Functions Gen 2 run under Google Cloud Default Application Credentials (ADC) and IAM Service Accounts without embedding any service account JSON private keys in the codebase.
 - **Git History Integrity:**
-  - An audit across all Git commit trees confirms **0 private keys** or sensitive service account credentials have ever been committed.
+  - An audit across all Git commit trees confirms **0 private keys**, sensitive passwords, or service account credentials have ever been committed.
 
 ---
 
@@ -286,6 +303,15 @@ Because `@vtc.edu.hk` and `@stu.vtc.edu.hk` are hosted on **Microsoft 365 Exchan
    - **Port:** `465`
    - **Security:** `SSL`
 4. Click **Save**.
+
+### AWS SES SMTP Relay for Project Group Meeting Reports:
+For automated weekly consultation reports dispatched via [`emailProjectMeetingReport`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/projectMeetingFlows.js), the backend uses **Amazon Simple Email Service (AWS SES)** over secure TLS SMTP:
+- **SMTP Host:** `email-smtp.us-east-1.amazonaws.com`
+- **SMTP Port:** `465` (SSL / TLS)
+- **SMTP Username:** AWS SES IAM SMTP credentials username (`AKIA...`)
+- **SMTP Password:** Fetched dynamically at runtime via Google Cloud Secret Manager (`SMTP_PASSWORD`).
+- **Verified Sender:** `t-cywong@stu.vtc.edu.hk` (AWS SES verified domain identity).
+- **1-Click Outlook / Mailto Fallback:** If SES sending limits are reached or a teacher prefers their desktop mail client, the UI provides a 1-click **"Open in Mail Client"** button with pre-filled student emails, subject, and meeting summary.
 
 ### Instant Admin CLI Verification (No Email Wait Needed):
 ```bash

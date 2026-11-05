@@ -4,6 +4,51 @@
 **System**: Google AI Classroom  
 **Production URL**: `https://it114115-2627.web.app`
 
+## 0.0.0.0.0.0.0.0.0.0.3.2 Student Project Meeting Records View (with Late Status), AWS SES Email Dispatch via Secret Manager & Airtight Git Secret Safeguards
+
+**Date**: November 5, 2026  
+**Status**: Implemented, Verified with Passing Unit Tests (`StudentRecordsView.test.jsx` 54/54, `ProjectMeetingsView.test.jsx` 11/11, `projectMeetingFlows.test.js` 14/14), and Deployed to `it114115-2627` (Production: Hosting & Cloud Functions Gen 2 `asia-east2`)  
+**Primary Files**:
+- [`web-app/src/components/StudentRecordsView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/StudentRecordsView.jsx), [`web-app/src/components/StudentRecordsView.css`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/StudentRecordsView.css), [`web-app/src/components/StudentRecordsView.test.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/StudentRecordsView.test.jsx)
+- [`web-app/src/components/meetings/ProjectMeetingsView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/meetings/ProjectMeetingsView.jsx) & [`web-app/src/components/meetings/ProjectMeetingsView.test.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/meetings/ProjectMeetingsView.test.jsx)
+- [`functions/ai_flows/projectMeetingFlows.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/projectMeetingFlows.js) & [`functions/ai_flows/projectMeetingFlows.test.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/projectMeetingFlows.test.js)
+- [`terraform/apis.tf`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/terraform/apis.tf) & [`terraform/secrets.tf`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/terraform/secrets.tf)
+- [`.gitignore`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/.gitignore) & [`.githooks/pre-commit`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/.githooks/pre-commit)
+
+### Technical Analysis & Implementation Details:
+
+1. **Student Self-Service Capstone Project Meetings Tab & "🕒 Late" Attendance Status (`StudentRecordsView.jsx`, `StudentRecordsView.css`)**:
+   - **Dedicated Student Meeting Dossier**: Added the **`👥 Project Meetings`** tab on `/student/records` allowing students to view all recorded consultations for their assigned project group.
+   - **Comprehensive "🕒 Late" Attendance Status Support**: Fully integrated the `late` attendance status (`🕒 Late`, alongside `✅ Present`, `❌ Absent`, `🤫 Silent Present`) into both the student portal and supervisor UI, ensuring tardy students are properly accounted for in attendance tallies and badges.
+   - **Multi-Faceted Supervision Insights**:
+     - **Evaluation Metrics**: Clear display of supervisor-awarded **Real Work Verified Score (`/10`)** and **Log Quality Score (`/10`)**.
+     - **Personalized Feedback Quote**: Styled blockquote highlighting actionable supervisor advice.
+     - **Challenge Questions & Verified Tasks**: Complete audit of pre-meeting questions, verified deliverables, and assigned action items for the subsequent week.
+     - **Embedded Media Playback**: Integrated audio player for supervisor voice recordings and video player for student PC screen demonstrations.
+     - **Google Form Weekly Logs Subview**: Sub-tab enabling students to inspect their submitted Google Form logs (`Form Responses 2`) for the corresponding week.
+
+2. **Supervisor Meeting Report Emailing Pipeline via AWS SES SMTP (`ProjectMeetingsView.jsx`, `projectMeetingFlows.js`)**:
+   - **Email Meeting Report Modal**: Added an **`📧 Email Report`** action button in `ProjectMeetingsView.jsx` presenting supervisors with student teammate selection checkboxes (default all selected) and an optional supervisor note field.
+   - **Cloud Function `emailProjectMeetingReport`**: Serverless Gen 2 HTTPS callable in `functions/ai_flows/projectMeetingFlows.js` (region `asia-east2`) that parses meeting metadata, student evaluations, scores, and feedback into a clean, responsive HTML email.
+   - **AWS SES SMTP Transport**: Connects via `nodemailer` to AWS SES (`email-smtp.us-east-1.amazonaws.com:465` TLS, username `AKIA...`, verified sender `t-cywong@stu.vtc.edu.hk`).
+   - **1-Click Outlook / Mailto Fallback**: Provided a client-side **`📨 Open in Mail Client (Outlook / Mailto)`** button with pre-filled recipient list, subject, and encoded body, plus a **`📋 Copy Student Emails`** helper.
+   - **Firestore Audit Logging**: Records `emailDispatch: { sentAt, sentBy, recipientCount, recipients, subject, messageIds }` on `classes/{classId}/projectMeetings/{meetingId}`.
+
+3. **Terraform Secret Manager Decoupling & Least-Privilege IAM (`terraform/apis.tf`, `terraform/secrets.tf`)**:
+   - **API Activation**: Enabled `secretmanager.googleapis.com` in `terraform/apis.tf`.
+   - **State-Decoupled Secret Container**: Provisioned `google_secret_manager_secret.smtp_password` in `terraform/secrets.tf` without declaring a `google_secret_manager_secret_version` with plaintext passwords, ensuring sensitive secrets are **never stored in `terraform.tfstate` or committed to Git**.
+   - **Service Account IAM Grant**: Granted `roles/secretmanager.secretAccessor` on the `SMTP_PASSWORD` secret to the Cloud Functions Gen 2 compute service account (`842713655587-compute@developer.gserviceaccount.com`).
+   - **Runtime Function Binding**: Bound Cloud Function `emailProjectMeetingReport` to the secret via `secrets: ['SMTP_PASSWORD']`.
+
+4. **Multi-Tier Git Secret Leaks Safeguards (`.gitignore`, `.githooks/pre-commit`)**:
+   - **Recursive `.gitignore` Hardening**: Enforced wildcard patterns across all subdirectories (`**/.env*`, `**/*.secret*`, `**/*.tfvars*`, `**/*.tfstate*`, `**/*credentials*.json`, `**/*serviceAccountKey*.json`).
+   - **Active Pre-Commit Secret Scanner**: Hardened `.githooks/pre-commit` (configured via `git config core.hooksPath .githooks`) to:
+     - Block staged files matching sensitive names (`.env`, `.tfstate`, `.secret`, etc.).
+     - Scan staged diffs against high-entropy secret patterns (AWS access key IDs `AKIA[0-9A-Z]{16}`, RSA/EC private keys, assignment patterns for `PASSWORD=`, `SECRET=`, `API_KEY=`, and bearer tokens).
+   - **Git Audit Verification**: Verified 0 tracked secrets exist across Git trees.
+
+---
+
 ## 0.0.0.0.0.0.0.0.0.0.3.1 Individual Student Contribution Profiles, On-Demand Weekly Log Sheet Ingestion, Fake/AI Log Challenge Engine, Holiday/Co-Supervisor Resilience & Sub-Second Live Captions
 
 **Date**: November 1, 2026  

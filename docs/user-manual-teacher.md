@@ -1185,6 +1185,16 @@ Supervisors and co-supervisors can host meetings at **any period** without enabl
    - **Stage 1 (`gemini-3.5-transcribe-preview`)**: Verbatim multilingual speaker diarization across all audio clips.
    - **Stage 2 (`gemini-3.8-flash`)**: Synthesizes attendance, key insights, per-student completed work, **Log Quality Score (`1–10`)**, **Real Work Score (`1–10`)**, and **Post-Meeting Weekly Feedback** (`weeklyFeedback`), which can also be edited inline by the supervisor (`✏️ Edit Work / Feedback`).
 
+### 19.5 Emailing Meeting Reports to Students & 1-Click Mailto Fallback
+Once the meeting analysis and evaluations are reviewed, supervisors can dispatch individualized reports to students:
+1. In the Meeting Inspector, click the **`📧 Email Report`** button ([`ProjectMeetingsView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/meetings/ProjectMeetingsView.jsx)).
+2. Toggle recipient student checkboxes (defaulted to all group members) and optionally enter a **Supervisor Note / Guidance** for the week.
+3. Click **`🚀 Send Report Emails`** to trigger the [`emailProjectMeetingReport`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/projectMeetingFlows.js) Cloud Function:
+   - Securely fetches the SMTP password from **Google Cloud Secret Manager** (`SMTP_PASSWORD`).
+   - Delivers responsive HTML reports via **AWS SES SMTP** (`email-smtp.us-east-1.amazonaws.com:465` TLS, sender `t-cywong@stu.vtc.edu.hk`).
+   - Logs dispatch metadata (`emailDispatch`) to the meeting document in Firestore.
+4. If desktop email software (such as Microsoft Outlook) is preferred, click **`📨 Open in Mail Client (Outlook / Mailto)`** to open your local email client with all student emails pre-filled, subject set, and report text encoded. Click **`📋 Copy Student Emails`** to copy recipient addresses to your clipboard.
+
 ---
 
 ## 20. Troubleshooting & Best Practices

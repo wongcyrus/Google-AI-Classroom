@@ -24,7 +24,14 @@
    - [4.1 Run 2-Stage Gemini Analysis (Diarization + Real Work Verification)](#41-run-2-stage-gemini-analysis-diarization--real-work-verification)
    - [4.2 Review & Edit Weekly Feedback, Log Quality Score & Real Work Score](#42-review--edit-weekly-feedback-log-quality-score--real-work-score)
    - [4.3 Export Student Contribution Profiles & Semester Matrix (`.xlsx`)](#43-export-student-contribution-profiles--semester-matrix-xlsx)
-6. [Part 5: Frequently Asked Questions (Holidays, ID Typos, 20-Min Meetings & Security)](#part-5-frequently-asked-questions-holidays-id-typos-20-min-meetings--security)
+   - [4.4 Email Supervision Reports to Students & Mail Client Fallback](#44-email-supervision-reports-to-students--mail-client-fallback)
+6. [Part 5: Student Portal — "👥 Project Meetings" Tab (`/student/records`)](#part-5-student-portal--project-meetings-tab-studentrecords)
+   - [5.1 Accessing Project Group Meeting Records](#51-accessing-project-group-meeting-records)
+   - [5.2 Attendance Tracking & "🕒 Late" Status](#52-attendance-tracking--late-status)
+   - [5.3 Individual Evaluation Dossier, Scores & Feedback Quotes](#53-individual-evaluation-dossier-scores--feedback-quotes)
+   - [5.4 Multi-Stream Audio & Video Demonstration Playback](#54-multi-stream-audio--video-demonstration-playback)
+   - [5.5 Google Form Weekly Logs Subview](#55-google-form-weekly-logs-subview)
+7. [Part 6: Frequently Asked Questions (Holidays, ID Typos, 20-Min Meetings & Security)](#part-6-frequently-asked-questions-holidays-id-typos-20-min-meetings--security)
 
 ---
 
@@ -181,9 +188,79 @@ In the **🧑‍🎓 Individual Student Contributions, Log Quality & Post-Meetin
 - **Download Markdown Meeting Minutes (`.md`)**:
   - In any meeting dossier, click **`📝 Minutes (.md)`** to download formatted Markdown minutes for that session.
 
+### 4.4 Email Supervision Reports to Students & Mail Client Fallback
+Once the meeting analysis and feedback are verified, supervisors can dispatch individualized, formatted HTML meeting reports directly to all group members with a single click:
+1. **Open the Email Report Modal**:
+   - In the Meeting Inspector header, click the **`📧 Email Report`** button ([`ProjectMeetingsView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/meetings/ProjectMeetingsView.jsx)).
+2. **Review Recipients & Add Guidance**:
+   - All enrolled group members (`members[]`) are displayed with checkboxes (defaulted to checked).
+   - Supervisors can toggle specific teammates or leave all selected.
+   - *(Optional)* Add a **Supervisor Note / Remarks** in the textarea (e.g., *"Great progress on the database schema this week. Please push your commits to main before Thursday's code review."*).
+3. **Automated Serverless Dispatch via AWS SES**:
+   - Click **`🚀 Send Report Emails`**.
+   - Invokes Cloud Function [`emailProjectMeetingReport`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/projectMeetingFlows.js), which retrieves the SMTP password securely from **Google Cloud Secret Manager** (`SMTP_PASSWORD`) and connects to **AWS SES SMTP** (`email-smtp.us-east-1.amazonaws.com:465` TLS) using verified sender `t-cywong@stu.vtc.edu.hk`.
+   - Each student receives a cleanly formatted, responsive HTML email containing:
+     - Meeting metadata: Group ID, Week #, Title, Date, and Host Supervisor.
+     - Executive Summary & Key Decisions.
+     - Student attendance and speaking participation status.
+     - Individualized student breakdown: Log Quality Score (`/10`), Real Work Verified Score (`/10`), Verified Tasks, AI Challenge Questions, and Post-Meeting Weekly Feedback.
+     - Action Items for Next Week and Supervisor Follow-up Notes.
+   - The dispatch status and timestamp are automatically persisted to Firestore under `projectMeetings/{meetingId}.emailDispatch` and displayed in the meeting dossier.
+4. **1-Click Local Mail Client Fallback (Outlook / Mailto)**:
+   - If a supervisor prefers to review or send the email via their local desktop client (such as Microsoft Outlook or Apple Mail), click **`📨 Open in Mail Client (Outlook / Mailto)`**.
+   - This launches the system's default email client with all student emails pre-filled in the `to` field, a pre-populated subject line, and an encoded plain-text summary of the meeting evaluation.
+   - Supervisors can also click **`📋 Copy Student Emails`** to quickly paste the recipient list into any messaging channel.
+
 ---
 
-## Part 5: Frequently Asked Questions (Holidays, ID Typos, 20-Min Meetings & Security)
+## Part 5: Student Portal — "👥 Project Meetings" Tab (`/student/records`)
+
+Students have full transparency into their capstone project consultations, attendance records, supervisor evaluations, and submitted weekly logs directly from the Student Portal ([`StudentRecordsView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/StudentRecordsView.jsx)).
+
+### 5.1 Accessing Project Group Meeting Records
+1. Log in to the Student Portal (`/student`) with your `@stu.vtc.edu.hk` institutional account.
+2. Navigate to **`📋 My Records`** (`/student/records`) and select your class.
+3. Click the **`👥 Project Meetings`** tab.
+4. If you are enrolled in a project group for that class, you will immediately see your assigned **Group Name**, **Project Topic**, and **Supervisor**.
+   - If not yet enrolled, an informational alert guides you to notify your supervisor.
+
+### 5.2 Attendance Tracking & "🕒 Late" Status
+Each recorded consultation displays an unambiguous attendance status badge derived from the supervisor's live verification and Gemini Stage 2 diarization:
+- **`✅ Present`**: Verified present and actively participating in the consultation.
+- **`🕒 Late`**: Student arrived after the scheduled meeting began (stamped with first-heard timestamp or manual supervisor verification).
+- **`❌ Absent`**: Student did not attend the weekly consultation.
+- **`🤫 Silent Present`**: Present in the room or screen session with minimal spoken contribution.
+
+The top KPI summary displays your cumulative **Project Meeting Attendance Rate (`X%`)** calculated across all held consultations for your group.
+
+### 5.3 Individual Evaluation Dossier, Scores & Feedback Quotes
+Selecting any meeting card opens the detailed supervision dossier:
+1. **Evaluation Scores**:
+   - **`🛠️ Real Work Verified: X / 10`**: Score reflecting concrete technical artifacts, code walkthroughs, or live demos presented during the meeting.
+   - **`📝 Log Quality Score: Y / 10`**: Score evaluating the detail, authenticity, and technical substance of your submitted Google Form weekly log.
+2. **Supervisor Feedback Quote**:
+   - Displayed in a styled quote container highlighting constructive guidance, commendations, or areas requiring focus before the next milestone.
+3. **AI Challenge Questions & Verification**:
+   - Displays the pointed technical questions prepared for your weekly log and your responses verified during the live consultation.
+4. **Verified Completed Tasks**:
+   - Bulleted list of milestones and features confirmed by your supervisor during the session.
+5. **Next Week Action Items**:
+   - Deliverables and tasks assigned for completion before the next consultation.
+
+### 5.4 Multi-Stream Audio & Video Demonstration Playback
+Under the **Meeting Recordings & Demos** panel:
+- **Room Audio**: Listen to the supervisor's mobile voice recording clips (`audio/webm` or `audio/mp4`) capturing the consultation discussion.
+- **Student PC Screen Demo**: Watch the recorded screencast of the student who demonstrated their code, system architecture, or UI prototype during the session.
+
+### 5.5 Google Form Weekly Logs Subview
+Click the sub-tab **`📋 Weekly Logs (Form Responses 2)`** to review your submitted weekly logs:
+- View all submissions chronologically by academic week (`Week 1` $\to$ `Week N`).
+- Audit log quality flags (`🟢 Genuine`, `🔴 Vague`, `🟠 Suspected AI`, `⚪ Inactive`).
+- Compare your **Prior Week Plan** directly against your **Work Done & Findings** to track personal accountability throughout the semester.
+
+---
+
+## Part 6: Frequently Asked Questions (Holidays, ID Typos, 20-Min Meetings & Security)
 
 | Question | How the System Handles It |
 | :--- | :--- |
