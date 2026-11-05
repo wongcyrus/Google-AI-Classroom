@@ -666,6 +666,26 @@ const processFrame = async (now, metadata) => {
 
 ---
 
+## Capstone Project Meetings & Multi-Stream AI Supervision
+### Live Dual-Device Capture, 2-Stage Diarization, Fake-Log AI Audit & Whole-Class Dispatch
+
+![bg right:60% 95%](images/slide_project_meetings_ai_supervision.png)
+
+- **Dual-Device Live Consultation Capture (Anti-Fabrication):**
+  - **Teacher Mobile Voice:** Live recording with browser Screen Wake Lock (`navigator.wakeLock`) and 1-tap `"🗣️ Speaking Now"` timestamp voice anchors (`voiceAnchors[]`).
+  - **Student PC Screen Demo:** Synchronized student screen demo screencast (`screenClips[]`). Direct media uploads disabled to ensure live authenticity.
+- **On-Demand Google Sheets Sync & 4-Tier Authenticity Audit:**
+  - Zero-cron incremental delta sync from public Google Sheet (`Form Responses 2`) with 1-digit student ID typo self-healing.
+  - Audits written logs (`🟢 Genuine`, `🔴 Vague`, `🟠 Suspected AI/Fake`, `⚪ Inactive`) and auto-generates 2–3 pointed technical AI challenge questions per student before class (`prepareProjectMeetingLogQuestions`).
+- **Resilient 2-Stage Gemini Multimodal Diarization Pipeline (`analyzeProjectMeeting`):**
+  - **Stage 1 (`gemini-3.5-transcribe-preview`):** Diarizes multilingual code-switching dialogue, with automatic multimodal `gemini-3.8-flash` fallback on low-volume clips.
+  - **Stage 2 (`gemini-3.8-flash`):** Fuses diarized audio, voice anchors, and student screen demos to verify Real Work (`/10`), Log Quality (`/10`), and attendance (`Present`, `Late`, `Absent`).
+- **1-Click Whole-Class Weekly Report Dispatch & Student Portal Visibility:**
+  - Dispatches individualized HTML reports to the entire class for Week $W$ with overarching supervisor guidance via `batchEmailProjectMeetingReports` (Gen 2 Cloud Function in `asia-east2`).
+  - Powered by Google Cloud Secret Manager (`SMTP_PASSWORD`) over Gmail SSL Relay (`smtp.gmail.com:465`, sender `noreply@vtc.edu.hk`), with student portal reflection (`/student/records?tab=meetings`) and rich `.xlsx` matrix exports.
+
+---
+
 ## 08 | Green AI & Cloud FinOps: Institutional Cost Sustainability
 ### 99.8% Cost Reduction: $0.85 per 50-Student Exam vs. $750.00 Commercial SaaS
 

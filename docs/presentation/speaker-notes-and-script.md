@@ -23,10 +23,10 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocation
 | **26:00 – 34:00** | **04 \| Edge AI & Privacy** | MediaPipe Mesh, Hardware Loop, LiteRT Whisper & Gemma 4, Cloud Diarization | Slides 14–17 |
 | **34:00 – 38:00** | **05 \| Zero-Trust Security** | Zero-Trust Exam Mode, 1-Min Bingo Presence & 2-Strike State Machine | Slides 18–19 |
 | **38:00 – 48:00** | **06 \| Real-Time Media & Student Hub** | WebRTC & Broadcaster, Dual-Engine Live Subtitles (Server Gemini vs. Client Gemma 4), Subject Domains & Custom Subtitle Prompts, YouTube CC, YouTube-Style Desktop Student Hub, 3-Step Readiness Wizard & Schedule, Command Center, Serverless Cloud FFmpeg Compilation, Media Lifecycle & Cascading Purge | Slides 20–28 |
-| **48:00 – 52:00** | **07 \| Video AI Pipeline** | Map-Reduce-Map Video Intelligence Pipeline, Dynamic Lab Tasks & Sortable Milestone Matrix | Slide 29 |
-| **52:00 – 56:00** | **08 \| FinOps & Operations** | Cloud FinOps Sustainability, Incident Dossiers, 19 UI Domains, Institutional Admin Console & Governance Hub, 1-Command Terraform IaC & Automated Demo Sandbox | Slides 30–34 |
-| **56:00 – 59:00** | **09 \| Operations & DevSecOps** | 1,580+ Tests Testing Pyramid, 5-Stage Live Verification Flow | Slides 35–36 |
-| **59:00 – 60:00** | **10 \| Conclusion & Q&A** | Summary, Enterprise Docs & Open-Source Impact, Google Cloud & Edge AI Takeaways, Q&A | Slide 37 |
+| **48:00 – 51:00** | **07 \| Video & Project AI** | Map-Reduce-Map Video Intelligence, Practical Lab Rubrics, Capstone Project Meetings & Weekly Log AI Pipeline | Slides 29–30 |
+| **51:00 – 56:00** | **08 \| FinOps & Operations** | Cloud FinOps Sustainability, Incident Dossiers, 19 UI Domains, Institutional Admin Console & Governance Hub, 1-Command Terraform IaC & Automated Demo Sandbox | Slides 31–35 |
+| **56:00 – 59:00** | **09 \| Operations & DevSecOps** | 2,575+ Tests Testing Pyramid, 5-Stage Live Verification Flow | Slides 36–37 |
+| **59:00 – 60:00** | **10 \| Conclusion & Q&A** | Summary, Enterprise Docs & Open-Source Impact, Google Cloud & Edge AI Takeaways, Q&A | Slide 38 |
 
 ---
 
@@ -618,7 +618,20 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocation
 
 ---
 
-### 50:30 – 52:30 | Slide 30: 08 | Green AI & Cloud FinOps: Institutional Cost Sustainability
+### 49:30 – 50:30 | Slide 30: Capstone Project Meetings & Multi-Stream AI Supervision
+*Visual: `slide_project_meetings_ai_supervision.png`*
+
+> **Cyrus Wong:**  
+> "Beyond lectures and coding exams, supervising final-year capstone projects is one of the most labor-intensive responsibilities in higher education. Students frequently submit vague or LLM-generated fake weekly logs, while teachers struggle to track who actually contributed code versus free-riding teammates. We engineered the **Capstone Project Supervision & Weekly Log AI Pipeline**:
+>
+> 1. **Dual-Device Live Consultation Capture:** During weekly lab consultations, direct file uploads are locked to prevent fabricated recordings. The supervisor starts voice recording on their mobile phone—protected by the browser Screen Wake Lock API—while the presenting student shares their PC screen to demonstrate real code and architecture. Tapping 1-tap 'Speaking Now' voice anchors tags speaker attribution in real time.
+> 2. **On-Demand Google Sheets Ingestion & Fake-Log AI Audit:** Teachers run on-demand incremental sync against public Google Form spreadsheets with automatic 1-digit student ID typo self-healing. Gemini 3.8 Flash audits each member's log against their prior week's plan, flagging vague or AI-generated entries and preparing 2–3 pointed technical challenge questions for the teacher to grill students during the meeting.
+> 3. **Resilient 2-Stage Multimodal Diarization:** Our Cloud Function executes Stage 1 diarization via `gemini-3.5-transcribe-preview` with automatic multimodal `gemini-3.8-flash` fallback on quiet clips. Stage 2 fuses the diarized speech, student screen demonstration videos, and weekly logs to evaluate attendance, verified completed tasks, a Log Quality Score out of 10, and a Real Work Verified Score out of 10.
+> 4. **1-Click Whole-Class Weekly Report Dispatch:** After consultations, supervisors dispatch individualized HTML progress reports across all project groups of the week in a single click using our `batchEmailProjectMeetingReports` Cloud Function, authenticated through Google Cloud Secret Manager over secure Gmail SSL Relay (`smtp.gmail.com:465`). Students immediately review their attendance, scores, and constructive feedback in the Student Portal, and supervisors can export complete longitudinal contribution profiles in Excel."
+
+---
+
+### 50:30 – 52:30 | Slide 31: 08 | Green AI & Cloud FinOps: Institutional Cost Sustainability
 *Visual: `slide_ai_cost_finops.png`*
 
 > **Cyrus Wong:**  
@@ -632,7 +645,7 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocation
 
 ---
 
-### 52:30 – 53:30 | Slide 31: Academic Integrity Incident Dossier Pipeline
+### 52:30 – 53:30 | Slide 32: Academic Integrity Incident Dossier Pipeline
 *Visual: `slide_incident_dossier_workflow.png`*
 
 > **Cyrus Wong:**  
@@ -645,7 +658,7 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocation
 
 ---
 
-### 53:30 – 54:30 | Slide 32: Multi-Persona Operations & 19 UI Control Domains
+### 53:30 – 54:30 | Slide 33: Multi-Persona Operations & 19 UI Control Domains
 *Visual: `slide_multipersona_operations.png`*
 
 > **Cyrus Wong:**  
@@ -658,7 +671,7 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocation
 
 ---
 
-### 54:30 – 55:30 | Slide 33: Institutional Admin Console & System Governance Hub
+### 54:30 – 55:30 | Slide 34: Institutional Admin Console & System Governance Hub
 *Visual: `slide_admin_governance.png`*
 
 > **Cyrus Wong:**  
@@ -676,7 +689,7 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocation
 
 ---
 
-### 55:30 – 56:30 | Slide 34: 1-Command Terraform IaC & Automated Demo Sandbox
+### 55:30 – 56:30 | Slide 35: 1-Command Terraform IaC & Automated Demo Sandbox
 *Visual: `slide_terraform_demo_sandbox.png`*
 
 > **Cyrus Wong:**  
@@ -694,7 +707,7 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocation
 
 ---
 
-### 56:30 – 58:00 | Slide 35: 09 | DevSecOps & Production Reliability Engineering
+### 56:30 – 58:00 | Slide 36: 09 | DevSecOps & Production Reliability Engineering
 *Visual: `slide_devsecops_safeguards.png`*
 
 > **Cyrus Wong:**  
@@ -710,7 +723,7 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocation
 
 ---
 
-### 58:00 – 59:00 | Slide 36: Live System Demonstration: 5-Stage Verification Flow
+### 58:00 – 59:00 | Slide 37: Live System Demonstration: 5-Stage Verification Flow
 *Visual: `slide_live_demo_workflow.png`*
 
 > **Cyrus Wong:**  
@@ -724,7 +737,7 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocation
 
 ---
 
-### 59:00 – 60:00 | Slide 37: 10 | Empowering Education with Google Cloud & Edge AI
+### 59:00 – 60:00 | Slide 38: 10 | Empowering Education with Google Cloud & Edge AI
 *Visual: `slide_closing_summary.png`*
 
 > **Cyrus Wong:**  
