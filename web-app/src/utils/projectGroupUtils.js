@@ -936,8 +936,48 @@ export function resolveSemesterStartMondayFromClass(
 }
 
 /**
+ * Resolves the total number of project weeks from the Class Schedule
+ * (`classInfo.schedule.startDate` -> `classInfo.schedule.endDate` or `classInfo.scheduleHistory`),
+ * defaulting to 16 if no endDate is configured, and supporting full-year schedules (e.g. 36 weeks from Sep 2026 to May 2027).
+ */
+export function resolveTotalProjectWeeksFromClass(
+  classInfo = {},
+  semesterStartMonday = ''
+) {
+  const startMonday =
+    semesterStartMonday || resolveSemesterStartMondayFromClass(classInfo, '2026-09-07');
+  const startMs = new Date(`${startMonday}T00:00:00`).getTime();
+
+  const endCandidates = [];
+  if (classInfo?.schedule?.endDate) {
+    endCandidates.push(String(classInfo.schedule.endDate).slice(0, 10));
+  }
+  if (classInfo?.endDate) {
+    endCandidates.push(String(classInfo.endDate).slice(0, 10));
+  }
+  if (Array.isArray(classInfo?.scheduleHistory)) {
+    classInfo.scheduleHistory.forEach((seg) => {
+      if (seg?.endDate) endCandidates.push(String(seg.endDate).slice(0, 10));
+    });
+  }
+  const latestEndIso = endCandidates.filter(Boolean).sort().pop();
+  if (!latestEndIso || Number.isNaN(startMs)) {
+    return 16;
+  }
+
+  const endMs = new Date(`${latestEndIso}T00:00:00`).getTime();
+  if (Number.isNaN(endMs) || endMs < startMs) {
+    return 16;
+  }
+
+  const diffDays = Math.floor((endMs - startMs) / 86400000);
+  const computedWeeks = Math.floor(diffDays / 7) + 1;
+  return Math.max(16, Math.min(52, computedWeeks));
+}
+
+/**
  * Formats the Monday–Sunday date range label for a given 1-based project Week Number
- * (e.g. `Sep 7 – Sep 13`).
+ * (e.g. `Sep 7 – Sep 13` or `Jan 4 – Jan 10, 2027` when crossing into the next calendar year).
  */
 export function formatWeekDateRange(weekNumber = 1, semesterStartMonday = '2026-09-07') {
   const base = new Date(`${semesterStartMonday}T00:00:00`);
@@ -946,7 +986,9 @@ export function formatWeekDateRange(weekNumber = 1, semesterStartMonday = '2026-
   const wkEnd = new Date(wkStart.getTime() + 6 * 86400000);
   const fmt = (d) =>
     d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  return `${fmt(wkStart)} – ${fmt(wkEnd)}`;
+  const yearSuffix =
+    wkEnd.getFullYear() !== base.getFullYear() ? `, ${wkEnd.getFullYear()}` : '';
+  return `${fmt(wkStart)} – ${fmt(wkEnd)}${yearSuffix}`;
 }
 
 /**

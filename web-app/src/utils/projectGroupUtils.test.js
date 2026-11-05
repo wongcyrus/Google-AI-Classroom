@@ -24,6 +24,7 @@ import {
   extractVtcStudentId,
   toVtcStudentEmail,
   resolveSemesterStartMondayFromClass,
+  resolveTotalProjectWeeksFromClass,
   formatWeekDateRange,
   parseProjectWeeklyLogCsv,
   rehydrateWeeklyLogDataFromPersistedProfiles,
@@ -334,6 +335,25 @@ describe('projectGroupUtils', () => {
 
     expect(formatWeekDateRange(1, 'invalid-date')).toBe('');
     expect(formatWeekDateRange(2, '2026-09-07')).toContain('Sep 14');
+    expect(formatWeekDateRange(36, '2026-08-31')).toContain('2027');
+
+    expect(resolveTotalProjectWeeksFromClass({})).toBe(16);
+    expect(
+      resolveTotalProjectWeeksFromClass({
+        schedule: { startDate: '2026-09-01', endDate: '2027-05-04' },
+      })
+    ).toBe(36);
+    expect(
+      resolveTotalProjectWeeksFromClass({
+        endDate: '2026-01-01',
+        scheduleHistory: [{ endDate: '2027-05-04' }],
+      }, '2026-08-31')
+    ).toBe(36);
+    expect(
+      resolveTotalProjectWeeksFromClass({
+        schedule: { startDate: '2026-09-01', endDate: '2026-08-01' },
+      })
+    ).toBe(16);
   });
 
   it('rehydrates persisted profiles, merges incremental profiles, bootstraps groups, and exports profiles Excel', async () => {

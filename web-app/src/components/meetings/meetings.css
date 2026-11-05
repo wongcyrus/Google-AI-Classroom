@@ -387,6 +387,12 @@
   background: #f8fafc;
   padding: 8px 12px;
   cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.project-group-folder-header.active-group-header {
+  background: #f0fdf4;
+  border-left: 4px solid #16a34a;
 }
 
 .folder-count-badge {

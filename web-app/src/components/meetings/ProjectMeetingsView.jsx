@@ -21,6 +21,7 @@ import {
   buildGoogleSheetCsvExportUrl,
   parseProjectWeeklyLogCsv,
   resolveSemesterStartMondayFromClass,
+  resolveTotalProjectWeeksFromClass,
   formatWeekDateRange,
   rehydrateWeeklyLogDataFromPersistedProfiles,
   buildStudentContributionProfiles,
@@ -57,13 +58,12 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
 
   // Filter & Navigation state
   const [supervisorFilter, setSupervisorFilter] = useState('all'); // 'mine' | 'all'
-  const [selectedGroupFilter, setSelectedGroupFilter] = useState('all'); // 'all' | groupId
   const [subViewMode, setSubViewMode] = useState('studio'); // 'studio' | 'matrix'
   const [selectedMeetingId, setSelectedMeetingId] = useState(null);
   const [collapsedGroupFolders, setCollapsedGroupFolders] = useState({});
   const [showGroupEditorModal, setShowGroupEditorModal] = useState(false);
 
-  // Recording Studio state
+  // Unified Recording Studio & Master Selection state (Single Source of Truth)
   const [studioGroupId, setStudioGroupId] = useState('');
   const [studioWeekNumber, setStudioWeekNumber] = useState(1);
   const [studioTitle, setStudioTitle] = useState('');
@@ -329,31 +329,113 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
     );
   }, [meetings, studioGroupId, studioWeekNumber, forceNewMeetingDoc, currentUserEmail]);
 
-  // Filter meetings for sidebar
+  // Filter meetings for sidebar based on supervisor scope
   const filteredMeetings = useMemo(() => {
     const allowedGroupIds = new Set(visibleGroups.map((g) => g.id));
     return meetings.filter((m) => {
       if (supervisorFilter === 'mine' && groups.length > 0 && m.groupId && !allowedGroupIds.has(m.groupId)) {
         return false;
       }
-      if (selectedGroupFilter !== 'all' && m.groupId !== selectedGroupFilter) {
-        return false;
-      }
       return true;
     });
-  }, [meetings, visibleGroups, groups.length, supervisorFilter, selectedGroupFilter]);
+  }, [meetings, visibleGroups, groups.length, supervisorFilter]);
 
+  // Unified Group & Week selection handlers
+  const handleSelectGroup = useCallback(
+    (newGroupId) => {
+      setStudioGroupId(newGroupId);
+      setPresenterStudentUid('');
+      // Find matching meeting for (newGroupId, studioWeekNumber)
+      const exactMatch = meetings.find(
+        (m) => m.groupId === newGroupId && Number(m.weekNumber) === Number(studioWeekNumber)
+      );
+      if (exactMatch) {
+        setSelectedMeetingId(exactMatch.id);
+        setActiveAudioClipIdx(0);
+        setActiveScreenClipIdx(0);
+      } else {
+        // If no meeting for this week, see if there is any meeting for this group
+        const groupMeetings = meetings.filter((m) => m.groupId === newGroupId);
+        if (groupMeetings.length > 0) {
+          const sorted = [...groupMeetings].sort(
+            (a, b) => (Number(b.weekNumber) || 0) - (Number(a.weekNumber) || 0)
+          );
+          setSelectedMeetingId(sorted[0].id);
+          setStudioWeekNumber(Number(sorted[0].weekNumber) || 1);
+          setActiveAudioClipIdx(0);
+          setActiveScreenClipIdx(0);
+        } else {
+          setSelectedMeetingId(null);
+        }
+      }
+    },
+    [meetings, studioWeekNumber]
+  );
+
+  const handleSelectWeek = useCallback(
+    (newWeekNum) => {
+      setStudioWeekNumber(newWeekNum);
+      const exactMatch = meetings.find(
+        (m) => m.groupId === studioGroupId && Number(m.weekNumber) === Number(newWeekNum)
+      );
+      if (exactMatch) {
+        setSelectedMeetingId(exactMatch.id);
+        setActiveAudioClipIdx(0);
+        setActiveScreenClipIdx(0);
+      } else {
+        setSelectedMeetingId(null);
+      }
+    },
+    [meetings, studioGroupId]
+  );
+
+  const handleSelectMeeting = useCallback((m) => {
+    if (!m) return;
+    if (m.groupId) {
+      setStudioGroupId(m.groupId);
+      setPresenterStudentUid('');
+    }
+    if (m.weekNumber) {
+      setStudioWeekNumber(Number(m.weekNumber) || 1);
+    }
+    setSelectedMeetingId(m.id);
+    setActiveAudioClipIdx(0);
+    setActiveScreenClipIdx(0);
+  }, []);
+
+  // Ensure selectedMeetingId is always synchronized with the active studioGroupId
   useEffect(() => {
-    if (filteredMeetings.length > 0) {
-      if (!selectedMeetingId || !filteredMeetings.some((m) => m.id === selectedMeetingId)) {
-        setSelectedMeetingId(filteredMeetings[0].id);
+    if (!studioGroupId) return;
+    // Prefer meeting matching both current studioGroupId and studioWeekNumber
+    const exactMatch = meetings.find(
+      (m) => m.groupId === studioGroupId && Number(m.weekNumber) === Number(studioWeekNumber)
+    );
+    if (exactMatch) {
+      if (selectedMeetingId !== exactMatch.id) {
+        setSelectedMeetingId(exactMatch.id);
         setActiveAudioClipIdx(0);
         setActiveScreenClipIdx(0);
       }
+      return;
+    }
+    // If current selectedMeetingId belongs to studioGroupId, keep it
+    if (selectedMeetingId && meetings.some((m) => m.id === selectedMeetingId && m.groupId === studioGroupId)) {
+      return;
+    }
+    // Otherwise pick the latest meeting for this group if any exists
+    const groupMeetings = meetings.filter((m) => m.groupId === studioGroupId);
+    if (groupMeetings.length > 0) {
+      const sorted = [...groupMeetings].sort(
+        (a, b) => (Number(b.weekNumber) || 0) - (Number(a.weekNumber) || 0)
+      );
+      setSelectedMeetingId(sorted[0].id);
+      setStudioWeekNumber(Number(sorted[0].weekNumber) || 1);
+      setActiveAudioClipIdx(0);
+      setActiveScreenClipIdx(0);
     } else {
       setSelectedMeetingId(null);
     }
-  }, [filteredMeetings, selectedMeetingId]);
+  }, [studioGroupId, studioWeekNumber, meetings, selectedMeetingId]);
 
   const selectedMeeting = useMemo(
     () => meetings.find((m) => m.id === selectedMeetingId) || null,
@@ -389,6 +471,11 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
   const semesterStartMonday = useMemo(
     () => resolveSemesterStartMondayFromClass(classInfo),
     [classInfo]
+  );
+
+  const totalProjectWeeks = useMemo(
+    () => resolveTotalProjectWeeksFromClass(classInfo, semesterStartMonday),
+    [classInfo, semesterStartMonday]
   );
 
   // Fetch, Parse & Incrementally Ingest Public Weekly Log Google Sheet (saved per-class in classes/{classId}.projectLogSheetUrl)
@@ -962,6 +1049,14 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
     // If a meeting is already selected or active, persist immediately
     const targetId = activeMeetingIdRef.current || selectedMeetingId;
     if (targetId && classId) {
+      const targetMtg = meetings.find((m) => m.id === targetId);
+      // Guard: Only write anchor if target meeting belongs to the active studio group
+      if (targetMtg && targetMtg.groupId && targetMtg.groupId !== studioGroupId) {
+        console.warn(
+          `[ProjectMeetingsView] Suppressed voice anchor for mismatched meeting: ${targetMtg.groupId} vs ${studioGroupId}`
+        );
+        return;
+      }
       const mRef = doc(db, `classes/${classId}/projectMeetings/${targetId}`);
       await updateDoc(mRef, {
         voiceAnchors: arrayUnion(anchor),
@@ -1523,9 +1618,7 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
   const meetingsGroupedByProjectGroup = useMemo(() => {
     const map = new Map();
     visibleGroups.forEach((g) => {
-      if (selectedGroupFilter === 'all' || selectedGroupFilter === g.id) {
-        map.set(g.id, { group: g, items: [] });
-      }
+      map.set(g.id, { group: g, items: [] });
     });
 
     filteredMeetings.forEach((m) => {
@@ -1539,8 +1632,16 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
       map.get(gId).items.push(m);
     });
 
-    return [...map.values()];
-  }, [visibleGroups, filteredMeetings, selectedGroupFilter]);
+    // Place the currently selected studioGroupId folder at the very top
+    const list = [...map.values()];
+    list.sort((a, b) => {
+      if (a.group.id === studioGroupId) return -1;
+      if (b.group.id === studioGroupId) return 1;
+      return (a.group.name || '').localeCompare(b.group.name || '', undefined, { numeric: true });
+    });
+
+    return list;
+  }, [visibleGroups, filteredMeetings, studioGroupId]);
 
   const activeAudioClip = useMemo(() => {
     if (!selectedMeeting) return null;
@@ -1776,11 +1877,9 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
             <label htmlFor="studio-group-select">📁 Project Group:</label>
             <select
               id="studio-group-select"
+              aria-label="📁 Project Group:"
               value={studioGroupId}
-              onChange={(e) => {
-                setStudioGroupId(e.target.value);
-                setPresenterStudentUid('');
-              }}
+              onChange={(e) => handleSelectGroup(e.target.value)}
               disabled={recordingState !== 'idle'}
             >
               {visibleGroups.length === 0 ? (
@@ -1788,7 +1887,7 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
               ) : (
                 visibleGroups.map((g) => (
                   <option key={g.id} value={g.id}>
-                    {g.name} ({g.members?.length || 0} students{g.supervisorEmail ? ` • ${g.supervisorEmail}` : ''})
+                    {g.name}: {g.projectTopic || 'Project'} ({g.members?.length || 0} students{g.supervisorName ? ` • 👨‍🏫 ${g.supervisorName}` : ''})
                   </option>
                 ))
               )}
@@ -1801,11 +1900,12 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
             </label>
             <select
               id="studio-week-select"
+              aria-label="📅 Week #:"
               value={studioWeekNumber}
-              onChange={(e) => setStudioWeekNumber(Number(e.target.value))}
+              onChange={(e) => handleSelectWeek(Number(e.target.value))}
               disabled={recordingState !== 'idle'}
             >
-              {Array.from({ length: 16 }, (_, i) => i + 1).map((wk) => {
+              {Array.from({ length: totalProjectWeeks }, (_, i) => i + 1).map((wk) => {
                 const rangeLabel = formatWeekDateRange(wk, semesterStartMonday);
                 return (
                   <option key={wk} value={wk}>
@@ -1977,7 +2077,7 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
                         key={wk}
                         type="button"
                         className={`log-week-chip ${Number(studioWeekNumber) === wk ? 'active' : ''}`}
-                        onClick={() => setStudioWeekNumber(wk)}
+                        onClick={() => handleSelectWeek(wk)}
                       >
                         Wk {wk}
                       </button>
@@ -2541,19 +2641,9 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
           {/* Left Panel: Hierarchical Grouped Recordings Sidebar (By Project Group -> By Weekly Meeting) */}
           <div className="meetings-grouped-sidebar">
             <div className="sidebar-group-filter-row">
-              <select
-                aria-label="Filter sidebar by project group"
-                value={selectedGroupFilter}
-                onChange={(e) => setSelectedGroupFilter(e.target.value)}
-                style={{ flex: 1, padding: '6px 8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.83rem' }}
-              >
-                <option value="all">📂 All Groups ({filteredMeetings.length} Meetings)</option>
-                {visibleGroups.map((g) => (
-                  <option key={g.id} value={g.id}>
-                    📁 {g.name}
-                  </option>
-                ))}
-              </select>
+              <span style={{ fontSize: '0.84rem', fontWeight: 700, color: '#334155' }}>
+                📂 Meeting Sessions ({filteredMeetings.length})
+              </span>
 
               <button
                 type="button"
@@ -2602,7 +2692,7 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
                   return (
                     <div key={grp.id} className="project-group-folder">
                       <div
-                        className="project-group-folder-header"
+                        className={`project-group-folder-header ${grp.id === studioGroupId ? 'active-group-header' : ''}`}
                         onClick={() =>
                           setCollapsedGroupFolders((prev) => ({ ...prev, [grp.id]: !prev[grp.id] }))
                         }
@@ -2647,9 +2737,7 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
                                         prev.includes(m.id) ? prev.filter((id) => id !== m.id) : [...prev, m.id]
                                       );
                                     } else {
-                                      setSelectedMeetingId(m.id);
-                                      setActiveAudioClipIdx(0);
-                                      setActiveScreenClipIdx(0);
+                                      handleSelectMeeting(m);
                                     }
                                   }}
                                 >
@@ -2726,14 +2814,28 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
                       {groups.length > 1 && (
                         <select
                           aria-label="Reassign meeting to another group"
-                          value={selectedMeeting.groupId || ''}
-                          onChange={(e) => handleReassignMeetingGroup(e.target.value)}
-                          style={{ fontSize: '0.78rem', padding: '3px 8px', borderRadius: '6px', border: '1px solid #cbd5e1' }}
-                          title="Keep or move recording group assignment"
+                          value=""
+                          onChange={(e) => {
+                            if (e.target.value) {
+                              handleReassignMeetingGroup(e.target.value);
+                            }
+                          }}
+                          style={{
+                            fontSize: '0.78rem',
+                            padding: '3px 8px',
+                            borderRadius: '6px',
+                            border: '1px solid #cbd5e1',
+                            background: '#f8fafc',
+                            cursor: 'pointer',
+                          }}
+                          title="Move this recording session to another group"
                         >
+                          <option value="" disabled>
+                            ↪️ Move to another group...
+                          </option>
                           {groups.map((g) => (
                             <option key={g.id} value={g.id}>
-                              📁 Group: {g.name}
+                              Move to {g.name} ({g.projectTopic || 'Project'})
                             </option>
                           ))}
                         </select>

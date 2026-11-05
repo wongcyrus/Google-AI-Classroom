@@ -901,15 +901,15 @@ Group Beta,New Beta Topic,other@vtc.edu.hk,eva@stu.vtc.edu.hk,Eva Ho,Leader`;
     expect(screen.getByText(/Here is our Week 3 prototype/i)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '[00:35]' }));
 
-    // 6b. Select second meeting in sidebar, filter sidebar by group, and toggle folder collapse
+    // 6b. Select second meeting in sidebar, use master group and week selector, and toggle folder collapse
     fireEvent.click(screen.getByText(/Week 2: Week 2 Architecture Check/i));
     expect(screen.getByText(/\[00:10\] Alice: Initial setup\./i)).toBeInTheDocument();
     fireEvent.click(screen.getByText(/Week 3: Week 3 Prototype Demo/i));
-    fireEvent.change(screen.getByLabelText(/Filter sidebar by project group/i), {
+    fireEvent.change(screen.getByLabelText(/📁 Project Group:/i), {
       target: { value: 'grp_1' },
     });
-    fireEvent.change(screen.getByLabelText(/Filter sidebar by project group/i), {
-      target: { value: 'all' },
+    fireEvent.change(screen.getByLabelText(/📅 Week #:/i), {
+      target: { value: '3' },
     });
     fireEvent.click(screen.getByText(/📂 Group A09/i));
 
