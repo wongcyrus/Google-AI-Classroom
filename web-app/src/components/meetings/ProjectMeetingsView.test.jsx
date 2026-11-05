@@ -932,16 +932,10 @@ Group Beta,New Beta Topic,other@vtc.edu.hk,eva@stu.vtc.edu.hk,Eva Ho,Leader`;
     });
     confirmSpy.mockRestore();
 
-    // 8. Group / Merge 2 clips in sidebar
-    fireEvent.click(screen.getByRole('button', { name: /🔗 Group Clips/i }));
-    fireEvent.click(screen.getByLabelText(/Select Week 3 Prototype Demo for grouping/i));
-    fireEvent.click(screen.getByLabelText(/Select Week 2 Architecture Check for grouping/i));
-    fireEvent.click(screen.getByRole('button', { name: /🔗 Combine into 1 Meeting \(2\)/i }));
-    await waitFor(() => {
-      expect(mockDeleteDoc).toHaveBeenCalledWith(
-        expect.objectContaining({ path: 'classes/it114115/projectMeetings/mtg_1_wk3' })
-      );
-    });
+    // 8. Select meeting session directly from sidebar
+    const sessionCard = screen.getByText(/Week 2: Week 2 Architecture Check/i);
+    fireEvent.click(sessionCard);
+    expect(screen.getAllByText(/Group A09/i).length).toBeGreaterThanOrEqual(1);
 
     // 9. Switch to Weekly Matrix & Export, click a week cell to jump back to Studio
     fireEvent.click(screen.getByRole('button', { name: /📊 Weekly Matrix & Export/i }));

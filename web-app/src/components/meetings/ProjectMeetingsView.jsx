@@ -77,11 +77,6 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
   const [studioToast, setStudioToast] = useState('');
   const [micSuspendedWarning, setMicSuspendedWarning] = useState(false);
 
-  // Custom Merge / Grouping Selection state
-  const [isMergeSelectionMode, setIsMergeSelectionMode] = useState(false);
-  const [selectedMeetingIdsToMerge, setSelectedMeetingIdsToMerge] = useState([]);
-  const [isMergingMeetings, setIsMergingMeetings] = useState(false);
-
   // Player & Inspector state
   const [activeAudioClipIdx, setActiveAudioClipIdx] = useState(0);
   const [activeScreenClipIdx, setActiveScreenClipIdx] = useState(0);
@@ -1553,69 +1548,6 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
     );
   };
 
-  // Group / Merge 2+ Selected Meetings into One Unified Grouped Meeting
-  const handleMergeSelectedMeetings = async () => {
-    if (selectedMeetingIdsToMerge.length < 2) return;
-    setIsMergingMeetings(true);
-    try {
-      const docsToMerge = selectedMeetingIdsToMerge
-        .map((id) => meetings.find((m) => m.id === id))
-        .filter(Boolean)
-        .sort((a, b) => new Date(a.meetingDate || 0).getTime() - new Date(b.meetingDate || 0).getTime());
-
-      if (docsToMerge.length < 2) return;
-      const primary = docsToMerge[0];
-      const secondaryList = docsToMerge.slice(1);
-
-      const combinedAudioClips = docsToMerge.flatMap((m, mIdx) => {
-        if (Array.isArray(m.audioClips) && m.audioClips.length > 0) return m.audioClips;
-        if (m.audioStoragePath) {
-          return [
-            {
-              clipId: `clip_${m.id}`,
-              label: `Part ${mIdx + 1} (${m.title || 'Clip'})`,
-              storagePath: m.audioStoragePath,
-              downloadUrl: m.audioDownloadUrl || '',
-              durationSeconds: m.durationSeconds || 0,
-              mimeType: 'audio/webm',
-            },
-          ];
-        }
-        return [];
-      });
-
-      const combinedScreenClips = docsToMerge.flatMap((m) =>
-        Array.isArray(m.screenClips) ? m.screenClips : []
-      );
-      const combinedVoiceAnchors = docsToMerge.flatMap((m) =>
-        Array.isArray(m.voiceAnchors) ? m.voiceAnchors : []
-      );
-      const totalDuration = combinedAudioClips.reduce((sum, c) => sum + (Number(c.durationSeconds) || 0), 0);
-
-      await updateDoc(doc(db, `classes/${classId}/projectMeetings/${primary.id}`), {
-        audioClips: combinedAudioClips,
-        screenClips: combinedScreenClips,
-        voiceAnchors: combinedVoiceAnchors,
-        recordingSegmentsCount: combinedAudioClips.length,
-        durationSeconds: totalDuration,
-        updatedAt: serverTimestamp(),
-      });
-
-      for (const sec of secondaryList) {
-        await deleteDoc(doc(db, `classes/${classId}/projectMeetings/${sec.id}`));
-      }
-
-      setSelectedMeetingId(primary.id);
-      setIsMergeSelectionMode(false);
-      setSelectedMeetingIdsToMerge([]);
-      showToastMessage(`🔗 Grouped ${docsToMerge.length} recordings into "${primary.title}"!`);
-    } catch (err) {
-      alert(`Failed to group recordings: ${err.message}`);
-    } finally {
-      setIsMergingMeetings(false);
-    }
-  };
-
   // Manual 1-Click Attendance Status Override
   const handleToggleAttendanceStatus = async (studentUidOrEmail, newStatus) => {
     if (!selectedMeeting) return;
@@ -3029,37 +2961,7 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
                     {mobileSidebarExpanded ? '▲' : '▼'}
                   </span>
                 </span>
-
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <button
-                    type="button"
-                    className="btn-merge-mode-toggle"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setIsMergeSelectionMode((prev) => !prev);
-                      setSelectedMeetingIdsToMerge([]);
-                      setMobileSidebarExpanded(true);
-                    }}
-                    title="Select 2 or more recordings to group/merge into a single meeting"
-                  >
-                    {isMergeSelectionMode ? 'Cancel' : '🔗 Group Clips'}
-                  </button>
-                </div>
               </div>
-
-            {isMergeSelectionMode && (
-              <div className="sidebar-merge-action-bar">
-                <span>Selected: <strong>{selectedMeetingIdsToMerge.length}</strong></span>
-                <button
-                  type="button"
-                  disabled={selectedMeetingIdsToMerge.length < 2 || isMergingMeetings}
-                  onClick={handleMergeSelectedMeetings}
-                  className="btn-confirm-group-merge"
-                >
-                  {isMergingMeetings ? '⏳ Grouping...' : `🔗 Combine into 1 Meeting (${selectedMeetingIdsToMerge.length})`}
-                </button>
-              </div>
-            )}
 
             {loading ? (
               <div className="empty-meetings-box">Loading project meetings...</div>
@@ -3109,36 +3011,17 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
                               (a) => a.status === 'present' || a.status === 'late'
                             ).length;
                             const totalRoster = (m.attendanceRecord || []).length;
-                            const isChecked = selectedMeetingIdsToMerge.includes(m.id);
 
                             return (
                               <div
                                 key={m.id}
                                 className={`meeting-session-card ${isSelected ? 'active' : ''}`}
-                                onClick={() => {
-                                  if (isMergeSelectionMode) {
-                                    setSelectedMeetingIdsToMerge((prev) =>
-                                      prev.includes(m.id) ? prev.filter((id) => id !== m.id) : [...prev, m.id]
-                                    );
-                                  } else {
-                                    handleSelectMeeting(m);
-                                  }
-                                }}
+                                onClick={() => handleSelectMeeting(m)}
                               >
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '6px' }}>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                    {isMergeSelectionMode && (
-                                      <input
-                                        type="checkbox"
-                                        checked={isChecked}
-                                        onChange={() => {}}
-                                        aria-label={`Select ${m.title} for grouping`}
-                                      />
-                                    )}
-                                    <strong style={{ fontSize: '0.86rem', color: '#0f172a' }}>
-                                      Week {m.weekNumber || 1}: {m.title || 'Meeting'}
-                                    </strong>
-                                  </div>
+                                  <strong style={{ fontSize: '0.86rem', color: '#0f172a' }}>
+                                    Week {m.weekNumber || 1}: {m.title || 'Meeting'}
+                                  </strong>
                                   <span className={`meeting-status-dot ${m.status || 'ready'}`}>
                                     {m.status === 'analyzing'
                                       ? '⏳ AI...'
