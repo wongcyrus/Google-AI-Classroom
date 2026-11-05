@@ -312,9 +312,40 @@
   align-items: start;
 }
 
+.sidebar-title-badge {
+  font-size: 0.84rem;
+  font-weight: 700;
+  color: #334155;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.mobile-sidebar-toggle-indicator {
+  font-size: 0.74rem;
+  color: #64748b;
+}
+
+@media (min-width: 961px) {
+  .mobile-sidebar-toggle-indicator {
+    display: none;
+  }
+}
+
 @media (max-width: 960px) {
   .project-meetings-workspace-grid {
     grid-template-columns: 1fr;
+  }
+
+  .meetings-grouped-sidebar.mobile-collapsed .grouped-folders-list,
+  .meetings-grouped-sidebar.mobile-collapsed .sidebar-merge-action-bar,
+  .meetings-grouped-sidebar.mobile-collapsed .empty-meetings-box {
+    display: none;
+  }
+
+  .meetings-grouped-sidebar {
+    padding: 8px 12px;
   }
 }
 

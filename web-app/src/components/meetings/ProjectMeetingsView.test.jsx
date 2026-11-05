@@ -78,6 +78,7 @@ vi.mock('firebase/storage', () => ({
     },
   }),
   getDownloadURL: () => Promise.resolve('https://storage.example.com/voice.webm'),
+  deleteObject: vi.fn(() => Promise.resolve()),
 }));
 
 vi.mock('firebase/functions', () => ({
@@ -913,6 +914,15 @@ Group Beta,New Beta Topic,other@vtc.edu.hk,eva@stu.vtc.edu.hk,Eva Ho,Leader`;
     fireEvent.click(screen.getByRole('button', { name: /👥 Manage \/ Import Groups/i }));
     expect(screen.getByRole('dialog')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    // 7. Toggle mobile sessions accordion and delete a clip part / delete meeting session
+    fireEvent.click(screen.getByLabelText(/Toggle meeting sessions list/i));
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    fireEvent.click(screen.getByRole('button', { name: /🗑️ Delete Part 1/i }));
+    await waitFor(() => {
+      expect(mockUpdateDoc).toHaveBeenCalled();
+    });
+    confirmSpy.mockRestore();
 
     // 8. Group / Merge 2 clips in sidebar
     fireEvent.click(screen.getByRole('button', { name: /🔗 Group Clips/i }));

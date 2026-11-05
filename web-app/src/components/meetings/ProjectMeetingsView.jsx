@@ -11,7 +11,7 @@ import {
   serverTimestamp,
   arrayUnion,
 } from 'firebase/firestore';
-import { ref as storageRef, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
+import { ref as storageRef, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
 import { httpsCallable } from 'firebase/functions';
 import { getSupportedAudioMimeType, injectWebmDuration, formatDuration } from '../../hooks/useLectureRecorder';
 import { normalizeStudentEmail, getStudentProfile } from '../../utils/studentDisplayUtils';
@@ -61,6 +61,7 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
   const [subViewMode, setSubViewMode] = useState('studio'); // 'studio' | 'matrix'
   const [selectedMeetingId, setSelectedMeetingId] = useState(null);
   const [collapsedGroupFolders, setCollapsedGroupFolders] = useState({});
+  const [mobileSidebarExpanded, setMobileSidebarExpanded] = useState(false);
   const [showGroupEditorModal, setShowGroupEditorModal] = useState(false);
 
   // Unified Recording Studio & Master Selection state (Single Source of Truth)
@@ -399,6 +400,7 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
     setSelectedMeetingId(m.id);
     setActiveAudioClipIdx(0);
     setActiveScreenClipIdx(0);
+    setMobileSidebarExpanded(false);
   }, []);
 
   // Ensure selectedMeetingId is always synchronized with the active studioGroupId
@@ -1485,6 +1487,96 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
     });
   };
 
+  // Delete a specific audio clip part (e.g. wrong or accidental recording)
+  const handleDeleteAudioClip = async (clipIdx) => {
+    if (!selectedMeeting) return;
+    const clips = Array.isArray(selectedMeeting.audioClips) ? selectedMeeting.audioClips : [];
+    const clipToDelete = clips[clipIdx];
+    if (!clipToDelete) return;
+
+    const clipLabel = clipToDelete.label || `Part ${clipIdx + 1}`;
+    const confirmMsg = `Delete "${clipLabel}" (${formatDuration(clipToDelete.durationSeconds || 0)})?\nThis will remove this audio recording from the meeting session.`;
+    if (!window.confirm(confirmMsg)) return;
+
+    const remainingClips = clips.filter((_, i) => i !== clipIdx);
+    const newTotalDuration = remainingClips.reduce(
+      (sum, c) => sum + (Number(c.durationSeconds) || 0),
+      0
+    );
+
+    if (clipToDelete.storagePath) {
+      deleteObject(storageRef(storage, clipToDelete.storagePath)).catch((err) => {
+        console.warn('[ProjectMeetingsView] Could not delete clip from storage:', err);
+      });
+    }
+
+    const meetingRef = doc(db, `classes/${classId}/projectMeetings/${selectedMeeting.id}`);
+    await updateDoc(meetingRef, {
+      audioClips: remainingClips,
+      audioStoragePath: remainingClips[0]?.storagePath || '',
+      audioDownloadUrl: remainingClips[0]?.downloadUrl || '',
+      recordingSegmentsCount: remainingClips.length,
+      durationSeconds: newTotalDuration,
+      updatedAt: serverTimestamp(),
+    });
+
+    setActiveAudioClipIdx((prev) => Math.max(0, Math.min(prev, remainingClips.length - 1)));
+    showToastMessage(`🗑️ Deleted ${clipLabel}`);
+  };
+
+  // Delete a specific student PC screen clip
+  const handleDeleteScreenClip = async (clipIdx) => {
+    if (!selectedMeeting) return;
+    const clips = Array.isArray(selectedMeeting.screenClips) ? selectedMeeting.screenClips : [];
+    const clipToDelete = clips[clipIdx];
+    if (!clipToDelete) return;
+
+    const clipLabel = clipToDelete.label || clipToDelete.studentName || `Screen ${clipIdx + 1}`;
+    if (!window.confirm(`Delete screen recording "${clipLabel}"?`)) return;
+
+    const remainingClips = clips.filter((_, i) => i !== clipIdx);
+    if (clipToDelete.storagePath) {
+      deleteObject(storageRef(storage, clipToDelete.storagePath)).catch((err) => {
+        console.warn('[ProjectMeetingsView] Could not delete screen clip from storage:', err);
+      });
+    }
+
+    await updateDoc(doc(db, `classes/${classId}/projectMeetings/${selectedMeeting.id}`), {
+      screenClips: remainingClips,
+      updatedAt: serverTimestamp(),
+    });
+
+    setActiveScreenClipIdx((prev) => Math.max(0, Math.min(prev, remainingClips.length - 1)));
+    showToastMessage(`🗑️ Deleted screen recording ${clipLabel}`);
+  };
+
+  // Permanently delete an entire meeting session
+  const handleDeleteMeeting = async (meetingId) => {
+    if (!meetingId) return;
+    const mtg = meetings.find((m) => m.id === meetingId) || selectedMeeting;
+    if (!mtg) return;
+
+    const confirmMsg = `Are you sure you want to permanently delete this meeting session?\n\n"${mtg.groupName || 'Group'} — Week ${mtg.weekNumber || 1}: ${mtg.title}"\n\nAll recorded voice and screen clips for this session will be removed. This cannot be undone.`;
+    if (!window.confirm(confirmMsg)) return;
+
+    (mtg.audioClips || []).forEach((c) => {
+      if (c.storagePath) {
+        deleteObject(storageRef(storage, c.storagePath)).catch(() => {});
+      }
+    });
+    (mtg.screenClips || []).forEach((c) => {
+      if (c.storagePath) {
+        deleteObject(storageRef(storage, c.storagePath)).catch(() => {});
+      }
+    });
+
+    await deleteDoc(doc(db, `classes/${classId}/projectMeetings/${meetingId}`));
+    if (selectedMeetingId === meetingId) {
+      setSelectedMeetingId(null);
+    }
+    showToastMessage(`🗑️ Deleted meeting session "${mtg.title}"`);
+  };
+
   // Save inline edited student work / action items / weekly feedback / log quality score
   const handleSaveStudentContributionEdit = async (studentUidOrEmail) => {
     if (!selectedMeeting) return;
@@ -2560,18 +2652,30 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
       ) : (
         <div className="project-meetings-workspace-grid">
           {/* Left Panel: Hierarchical Grouped Recordings Sidebar (By Project Group -> By Weekly Meeting) */}
-          <div className="meetings-grouped-sidebar">
-            <div className="sidebar-group-filter-row">
-              <span style={{ fontSize: '0.84rem', fontWeight: 700, color: '#334155' }}>
+          <div className={`meetings-grouped-sidebar ${mobileSidebarExpanded ? 'mobile-expanded' : 'mobile-collapsed'}`}>
+            <div
+              className="sidebar-group-filter-row"
+              onClick={() => setMobileSidebarExpanded((prev) => !prev)}
+              role="button"
+              tabIndex={0}
+              aria-label="Toggle meeting sessions list"
+              style={{ cursor: 'pointer' }}
+            >
+              <span className="sidebar-title-badge" style={{ fontSize: '0.84rem', fontWeight: 700, color: '#334155', display: 'flex', alignItems: 'center', gap: '6px' }}>
                 📂 Meeting Sessions ({filteredMeetings.length})
+                <span className="mobile-sidebar-toggle-indicator" style={{ fontSize: '0.74rem', color: '#64748b' }}>
+                  {mobileSidebarExpanded ? '▲' : '▼'}
+                </span>
               </span>
 
               <button
                 type="button"
                 className="btn-merge-mode-toggle"
-                onClick={() => {
+                onClick={(e) => {
+                  e.stopPropagation();
                   setIsMergeSelectionMode((prev) => !prev);
                   setSelectedMeetingIdsToMerge([]);
+                  setMobileSidebarExpanded(true);
                 }}
                 title="Select 2 or more recordings to group/merge into a single meeting"
               >
@@ -2779,6 +2883,25 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
                     >
                       📋 Copy Minutes
                     </button>
+
+                    <button
+                      type="button"
+                      className="btn-delete-meeting-session"
+                      onClick={() => handleDeleteMeeting(selectedMeeting.id)}
+                      title="Permanently delete this entire meeting session"
+                      style={{
+                        padding: '6px 10px',
+                        borderRadius: '6px',
+                        border: '1px solid #fecaca',
+                        background: '#fef2f2',
+                        color: '#b91c1c',
+                        fontSize: '0.82rem',
+                        cursor: 'pointer',
+                        fontWeight: 600,
+                      }}
+                    >
+                      🗑️ Delete Session
+                    </button>
                   </div>
                 </div>
 
@@ -2797,6 +2920,27 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
                           🎙️ {c.label || `Part ${idx + 1}`} ({formatDuration(c.durationSeconds || 0)})
                         </button>
                       ))}
+                      {(selectedMeeting.audioClips || []).length > 0 && (
+                        <button
+                          type="button"
+                          className="btn-delete-clip-part"
+                          title={`Delete ${activeAudioClip?.label || `Part ${activeAudioClipIdx + 1}`} (wrong recording)`}
+                          onClick={() => handleDeleteAudioClip(activeAudioClipIdx)}
+                          style={{
+                            fontSize: '0.74rem',
+                            padding: '4px 8px',
+                            borderRadius: '6px',
+                            border: '1px solid #fecaca',
+                            background: '#fff1f2',
+                            color: '#be123c',
+                            cursor: 'pointer',
+                            fontWeight: 600,
+                            marginLeft: '4px',
+                          }}
+                        >
+                          🗑️ Delete {activeAudioClip?.label || `Part ${activeAudioClipIdx + 1}`}
+                        </button>
+                      )}
                     </div>
 
                     {(selectedMeeting.screenClips || []).length > 0 && (
@@ -2812,6 +2956,25 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
                             💻 {sc.label || sc.studentName || `Screen ${idx + 1}`}
                           </button>
                         ))}
+                        <button
+                          type="button"
+                          className="btn-delete-clip-part"
+                          title="Delete selected student PC screen clip"
+                          onClick={() => handleDeleteScreenClip(activeScreenClipIdx)}
+                          style={{
+                            fontSize: '0.74rem',
+                            padding: '4px 8px',
+                            borderRadius: '6px',
+                            border: '1px solid #fecaca',
+                            background: '#fff1f2',
+                            color: '#be123c',
+                            cursor: 'pointer',
+                            fontWeight: 600,
+                            marginLeft: '4px',
+                          }}
+                        >
+                          🗑️ Delete Screen
+                        </button>
                         <label style={{ fontSize: '0.78rem', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
                           <input
                             type="checkbox"
