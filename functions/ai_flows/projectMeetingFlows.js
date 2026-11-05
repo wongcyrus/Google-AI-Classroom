@@ -1090,7 +1090,11 @@ Respond strictly with valid JSON matching this exact structure:
       jobType: 'analyzeProjectMeeting',
       status: 'completed',
       promptText: reasoningPrompt.slice(0, 2000),
-      mediaPaths: rawClips.map((c) => c.storagePath).filter(Boolean),
+      mediaPaths: [
+        ...rawClips.map((c) => c.storagePath),
+        ...(meetingData.photos || []).map((p) => p.storagePath),
+        ...screenClips.map((sc) => sc.storagePath),
+      ].filter(Boolean),
       usage: {
         inputTokens: totalInputTokens,
         outputTokens: totalOutputTokens,
@@ -1102,6 +1106,9 @@ Respond strictly with valid JSON matching this exact structure:
         meetingId,
         presentCount: attendanceRecord.filter((a) => a.status === 'present' || a.status === 'late').length,
         overallGroupProgress: keyInsights.overallGroupProgress,
+        voiceClipsCount: rawClips.length,
+        photosCount: (meetingData.photos || []).length,
+        demoClipsCount: screenClips.length,
       }),
     });
 

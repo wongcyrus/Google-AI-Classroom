@@ -4,6 +4,53 @@
 **System**: Google AI Classroom  
 **Production URL**: `https://it114115-2627.web.app`
 
+## 0.0.0.0.0.0.0.0.0.0.3.5 Streamlined Project Demo Capture (Eliminating Student PC Screen Capture for Direct Mobile 720p Video & Photos) & FinOps Storage Quota Tracking
+
+**Date**: November 5, 2026  
+**Status**: Implemented, Verified with Passing Unit Tests (`ProjectMeetingsView.test.jsx` 16/16, `StudentView.test.jsx` 53/53, `AiCostReportView.test.jsx` 8/8, `storageQuota.test.js` 23/23, `projectMeetingFlows.test.js` 20/20 with >93% Line Coverage), Production Build Passing, and Deployed to `it114115-2627`  
+**Primary Files**:
+- [`web-app/src/components/meetings/ProjectMeetingsView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/meetings/ProjectMeetingsView.jsx) & [`web-app/src/components/meetings/ProjectMeetingsView.test.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/meetings/ProjectMeetingsView.test.jsx)
+- [`web-app/src/components/StudentView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/StudentView.jsx) & [`web-app/src/components/StudentView.test.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/StudentView.jsx)
+- [`functions/storage_triggers/storageQuota.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/storage_triggers/storageQuota.js) & [`functions/storage_triggers/storageQuota.test.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/storage_triggers/storageQuota.test.js)
+- [`web-app/src/utils/aiCostAggregator.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/utils/aiCostAggregator.js) & [`web-app/src/components/AiCostReportView.test.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/AiCostReportView.test.jsx)
+- [`functions/ai_flows/projectMeetingFlows.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/projectMeetingFlows.js) & [`functions/ai_flows/projectMeetingFlows.test.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/projectMeetingFlows.test.js)
+- [`docs/project-group-meetings-and-weekly-log-user-guide.md`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/docs/project-group-meetings-and-weekly-log-user-guide.md)
+
+### Architectural Overview & Workflow Simplification:
+
+```mermaid
+flowchart TD
+    subgraph SimplifiedStudio ["Streamlined Supervisor Mobile Studio"]
+        AUD["🎙️ Continuous Voice Consultation\n(Always running in background)"]
+        P_SNAP["📸 Snap Photo (0.1s)\n• Max 1280px JPEG @ 0.85\n• Whiteboards, IoT Circuits, Terminal Errors\n• ZERO voice recording pause!"]
+        V_DEMO["📹 Record Demo Video (720p)\n• 1280x720 @ 24/30 FPS (~1.5 Mbps)\n• Mobile rear/front camera\n• Auto-Slicing: Voice Part 1 -> Demo -> Voice Part 2"]
+    end
+
+    subgraph Elimination ["Eliminated Student PC Signaling"]
+        NO_SIG["❌ No activeMeetingCaptures writes\n❌ No StudentView purple prompt banner\n❌ No student getDisplayMedia waiting"]
+    end
+
+    subgraph FinOpsStorage ["FinOps & Storage Quota Tracking"]
+        SQ["storageQuota.js:\n• parts[0] === 'projectMeetings'\n• storageUsageProjectMeetings metric"]
+        AGG["aiCostAggregator.js:\n• 👥 Project Meeting Audio, Demos & Photos\n• Itemized tokens, mediaPaths & counts"]
+    end
+
+    AUD & P_SNAP & V_DEMO --> SQ --> AGG
+```
+
+1. **Eliminating Student PC Screen Capture Overhead**:
+   - Replaced cross-device `activeMeetingCaptures` signaling and student prompt banners with direct mobile capture.
+   - Studio dropdown updated to `👤 Presenting Member (Optional)` (`👥 Whole Group / Unassigned` default); choosing a member sets active speaker and default attendance without triggering any PC capture or signaling.
+   - Removed `studentPcCaptureStatus` listeners and purple banner from `StudentView.jsx`.
+2. **FinOps Storage Quota Tracking & Itemized AI Billing**:
+   - Added `storageUsageProjectMeetings` tracking in `functions/storage_triggers/storageQuota.js`.
+   - Updated `web-app/src/utils/aiCostAggregator.js` to categorize project meeting media under `👥 Project Meeting Audio, Demos & Photos`.
+   - Logged media paths and counts (`voiceClipsCount`, `demoClipsCount`, `photosCount`) in `aiJobs` for `analyzeProjectMeeting`.
+3. **Full Legacy Backward Compatibility**:
+   - Meetings with existing voice recordings or historical student PC screencasts continue to load and play seamlessly in Inspector and Student Records Portal.
+
+---
+
 ## 0.0.0.0.0.0.0.0.0.0.3.4 Stale Analysis Auto-Invalidation on Moved Audio Clips, Smart Batch AI Mode 1 Queuing & Multimodal STT Resilience
 
 **Date**: November 5, 2026  

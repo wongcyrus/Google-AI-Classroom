@@ -1,7 +1,7 @@
 # 📖 Step-by-Step User Guide: Project Group Meetings, Weekly Log Auditing & Individual Student Contribution Profiles
 
 > **Who is this guide for?**  
-> This guide provides a complete, step-by-step operational manual for **Main Supervisors**, **Co-Supervisors**, and **Students** on how to run weekly project consultations, ingest and audit **Public Weekly Log Google Sheets**, challenge **vague or AI-generated fake logs**, record **20+ minute live meetings** (Teacher Mobile Voice + Student PC Screen Demo), and grade **Individual Student Contribution Profiles**.
+> This guide provides a complete, step-by-step operational manual for **Main Supervisors**, **Co-Supervisors**, and **Students** on how to run weekly project consultations, ingest and audit **Public Weekly Log Google Sheets**, challenge **vague or AI-generated fake logs**, record **20+ minute live meetings** (Teacher Mobile Voice, 720p Video Demo & Photos), and grade **Individual Student Contribution Profiles**.
 
 ---
 
@@ -16,10 +16,10 @@
    - [2.1 Run On-Demand Incremental Log Sync Before Class](#21-run-on-demand-incremental-log-sync-before-class)
    - [2.2 Inspect Individual Student Contribution Profiles & Log Quality Grades](#22-inspect-individual-student-contribution-profiles--log-quality-grades)
    - [2.3 Generate Pre-Meeting AI Challenge Questions](#23-generate-pre-meeting-ai-challenge-questions)
-4. [Part 3: During the Meeting — Live Dual-Device Recording (Mobile Voice + Student PC Screen)](#part-3-during-the-meeting--live-dual-device-recording-mobile-voice--student-pc-screen)
+4. [Part 3: During the Meeting — Live Recording Studio (Teacher Mobile Voice, 720p Video Demo & Photos)](#part-3-during-the-meeting--live-recording-studio-teacher-mobile-voice-720p-video-demo--photos)
    - [3.1 For Supervisors (Mobile Phone or Tablet)](#31-for-supervisors-mobile-phone-or-tablet)
    - [3.2 Mobile Demo Video (720p) & Photo Artifact Capture on Teacher's Phone](#32-mobile-demo-video-720p--photo-artifact-capture-on-teachers-phone)
-   - [3.3 For the Presenting Student (PC Screen Demo)](#33-for-the-presenting-student-pc-screen-demo)
+   - [3.3 Simplified Student Workflow (No PC Screen Capture Needed)](#33-simplified-student-workflow-no-pc-screen-capture-needed)
    - [3.4 For Co-Supervisors (Multiple Meetings in the Same Week)](#34-for-co-supervisors-multiple-meetings-in-the-same-week)
 5. [Part 4: After the Meeting — 2-Stage AI Analysis, Weekly Feedback & Excel Exports](#part-4-after-the-meeting--2-stage-ai-analysis-weekly-feedback--excel-exports)
    - [4.1 Run 2-Stage Gemini Analysis (Diarization + Real Work Verification)](#41-run-2-stage-gemini-analysis-diarization--real-work-verification)
@@ -28,6 +28,7 @@
    - [4.4 Email Supervision Reports to Students & Multi-Touchpoint Dispatch](#44-email-supervision-reports-to-students--multi-touchpoint-dispatch)
    - [4.5 1-Click Whole-Class Weekly Report Dispatch (All Project Groups)](#45-1-click-whole-class-weekly-report-dispatch-all-project-groups-of-the-week)
    - [4.6 Moving Audio Clips Between Groups & Automatic Analysis Invalidation](#46-moving-audio-clips-between-groups--automatic-analysis-invalidation)
+   - [4.7 FinOps Storage Quota & AI Cost Transparency](#47-finops-storage-quota--ai-cost-transparency)
 6. [Part 5: Student Portal — "👥 Project Meetings" Tab (`/student/records`)](#part-5-student-portal--project-meetings-tab-studentrecords)
    - [5.1 Accessing Project Group Meeting Records](#51-accessing-project-group-meeting-records)
    - [5.2 Attendance Tracking & "🕒 Late" Status](#52-attendance-tracking--late-status)
@@ -122,11 +123,11 @@ Click **`👤 Student Profiles & Log Audit`** in the view switcher (or click any
 
 ---
 
-## Part 3: During the Meeting — Live Dual-Device Recording (Mobile Voice + Student PC Screen)
+## Part 3: During the Meeting — Live Recording Studio (Teacher Mobile Voice, 720p Video Demo & Photos)
 
 > [!IMPORTANT]
 > **Live Recording Only (No Manual File Uploads)**  
-> To prevent students or teachers from uploading unknown, pre-recorded, or fabricated media files, **direct file uploads are disabled** for both teachers and students. All meeting voice recordings and student PC demonstrations must be captured live during the meeting.
+> To prevent students or teachers from uploading unknown, pre-recorded, or fabricated media files, **direct file uploads are disabled** for both teachers and students. All meeting voice recordings, 720p demo videos, and photo artifacts must be captured live during the meeting.
 
 ### 3.1 For Supervisors (Mobile Phone or Tablet)
 1. Open **`👥 Project Group Meetings`** on your **Mobile Phone** (or desktop/tablet).
@@ -134,20 +135,21 @@ Click **`👤 Student Profiles & Log Audit`** in the view switcher (or click any
 2. Select:
    - **📁 Project Group**: e.g., `A11`
    - **📅 Week #**: e.g., `Week 8 (Oct 19 – Oct 25)`
-   - **💻 Presenter Student PC Screen**: Select the group member who is demonstrating their work on their PC (e.g., `💻 Record Chan Tai Man's PC Screen (250105348@stu.vtc.edu.hk)`), or leave on `🎙️ Voice Only` if no screen demo is needed.
-3. Tap **`🔴 Start Voice Recording`**:
-   - If you selected a Presenter Student, a live status pill (`📡 Waiting for Student PC Screen...` → `🟢 Student PC Screen Recording Live`) shows whether the student's PC has started capturing.
+   - **👤 Presenting Member (Optional)**: Defaults to `👥 Whole Group / Unassigned`. If a specific student is presenting, selecting them tags them as the active speaker and marks them present without requiring any complex cross-device PC screen setup.
+3. Tap **`🔴 Start Meeting Recording`**:
+   - The microphone begins recording the room consultation audio.
 4. **During the Discussion & Demo**:
    - **1-Tap `"🗣️ Speaking Now"` Voice Anchors**: Whenever a student starts speaking into your shared phone microphone, tap their **`🗣️ [Student Name]`** chip once. This stamps a timestamp anchor (`voiceAnchors[]`) so Gemini knows which voice belongs to which student.
-   - **Switch Presenter PC Anytime**: If Student B wants to show their screen after Student A finishes, simply change the **💻 Presenter Student PC Screen** dropdown while recording—Student A's screen recording stops and uploads automatically, and Student B's PC is prompted to share immediately!
-5. When finished, tap **`⏹️ Stop & Save Clip`**.
+   - **Snap Photos Anytime**: Tap **`📸 Snap Photo`** to capture whiteboard designs, circuit schematics, or screen errors with **zero pause** in voice recording.
+   - **Record 720p Video Demos**: Tap **`📹 Record Demo (720p)`** to film live student software or hardware demonstrations. Voice is seamlessly auto-sliced into Part 1 $\to$ Demo $\to$ Part 2!
+5. When finished, tap **`⏹️ Stop & Analyze with Gemini`** (or **`💾 Save Part`** if recording multiple segments).
    - If you pause for a break and record another clip for the same group and week, the studio automatically groups all clips into the same meeting session (`🔗 Grouping into A11 — Week 8`).
 
 ### 3.2 Mobile Demo Video (720p) & Photo Artifact Capture on Teacher's Phone
 
-Students frequently present physical deliverables that cannot be screencasted—such as whiteboard system architecture diagrams, IoT breadboard circuits, mobile apps running on physical phones, or terminal error logs on a laptop screen.
+Students frequently present deliverables on laptops, mobile phones, or physical IoT breadboards—making student PC screen capture unnecessary and cumbersome.
 
-The supervisor's mobile phone can capture visual evidence directly during the consultation:
+The supervisor's mobile phone captures all visual evidence directly during the consultation:
 
 ```mermaid
 flowchart TD
@@ -178,24 +180,22 @@ flowchart TD
    - The photo is automatically clamped client-side to max `1280px` JPEG at `0.85` quality (~200–350 KB) and uploaded to Cloud Storage.
    - **Continuous Consultation Audio**: Taking a photo runs alongside voice recording with **zero pause or interruption**.
 2. **On-Demand Mobile Video Demo (`📹 Record Demo (720p)`)**:
-   - Tap **`📹 Record Demo (720p)`** when a student demonstrates hardware, an IoT device, or a mobile app.
+   - Tap **`📹 Record Demo (720p)`** when a student demonstrates software on their screen, IoT hardware, or a mobile app.
    - **Optimized 720p HD Default**: Clamped to `1280x720` at 24/30 FPS and ~1.5 Mbps bitrate. A 2-minute demo is only ~20 MB (fast 5G/Wi-Fi upload, low storage footprint, and battery-friendly).
    - **Auto-Slicing Architecture**: To prevent iOS WebKit/Safari and Android Chrome audio driver lockups, the system automatically slices consultation voice into Part 1, films the demo (capturing synchronized video + speech), and upon saving, **automatically resumes voice recording as Part 2**.
    - **Flip Camera**: Includes a 1-tap `🔄 Flip Camera` button to switch between rear and front cameras.
 3. **Backward Compatibility for Legacy Data**:
-   - Legacy meeting sessions with voice recordings only (`audioClips` with no `photos` or `screenClips`) continue to load, play, and analyze 100% seamlessly.
+   - Legacy meeting sessions with voice recordings only (`audioClips` with no `photos` or `screenClips`) or historical student PC screen recordings continue to load, play, and analyze 100% seamlessly.
 
-### 3.3 For the Presenting Student (PC Screen Demo)
-1. Log in to the Student Portal (`/student`) on your PC using **Google Chrome** and your `@stu.vtc.edu.hk` account. (You do **not** need a scheduled class to be in session.)
-2. As soon as your supervisor selects your name in **💻 Presenter Student PC Screen** and starts recording, a purple **Project Group Meeting Banner** appears at the top of your screen:
-   - Click **`🖥️ Share My PC Screen for Meeting Demo`** and choose **Entire Screen** (or the application window you are demonstrating).
-   - Your status changes to **`🔴 Recording PC Screen (MM:SS)`**.
-3. Demonstrate your code, database, or prototype while answering your supervisor's questions.
-4. When your supervisor stops the meeting on their phone (or switches to another presenter), your PC screen recording stops, uploads to Cloud Storage, and links to the meeting dossier automatically.
+### 3.3 Simplified Student Workflow (No PC Screen Capture Needed)
+1. **Zero Setup for Students**: Students no longer need to log in to the student portal on their laptops, manage screen-sharing permissions, or wait for cross-device triggers during consultations.
+2. **Natural Demonstration**: Students simply run their application, show their code, explain their database, or demonstrate their IoT prototype directly in front of the supervisor.
+3. **Direct Capture**: The supervisor captures the demonstration via their phone camera (720p video or photo artifacts) in seconds.
+4. **Historical Legacy Support**: If a class has historical meetings containing PC screen recordings from earlier in the term, those video clips remain fully accessible in both the Teacher Meeting Inspector and the Student Self-Service Portal.
 
 ### 3.4 For Co-Supervisors (Multiple Meetings in the Same Week)
 If a group meets with their **Main Supervisor** on Tuesday and a **Co-Supervisor** on Thursday in the same week:
-1. The Co-Supervisor simply logs in with their own teacher account, selects the **Group** and **Week #**, and taps **`🔴 Start Voice Recording`**.
+1. The Co-Supervisor simply logs in with their own teacher account, selects the **Group** and **Week #**, and taps **`🔴 Start Meeting Recording`**.
 2. Because the system checks `supervisorEmail === currentUserEmail`, the Co-Supervisor's recording **automatically creates a separate meeting entry** (`👨‍🏫 {Co-Supervisor Name}`) for that week—it **never overwrites** the Main Supervisor's meeting.
 3. In **Student Contribution Profiles** and the **Weekly Matrix**, both meetings in that week are **automatically aggregated** (combining attendance, verified tasks, and prefixing each supervisor's feedback with `[Supervisor Name]`).
 
@@ -372,6 +372,17 @@ flowchart TD
    - The Stage 1 diarization pipeline in [`projectMeetingFlows.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/projectMeetingFlows.js) sanitizes all storage paths (including Firebase Storage download URLs) to resolve proper Google Cloud Storage URIs (`gs://`).
    - If `gemini-3.5-transcribe-preview` returns empty text on short, low-volume, or accented clips, the backend automatically triggers an immediate fallback to multimodal `gemini-3.8-flash` to transcribe and diarize the recording.
 
+### 4.7 FinOps Storage Quota & AI Cost Transparency
+
+Managing project meetings creates three distinct media assets: audio clips, 720p demo videos, and still photo artifacts. The platform provides end-to-end FinOps transparency:
+
+1. **Cloud Storage Quota Tracking (`storageQuota.js`)**:
+   - Every file uploaded to `/projectMeetings/{classId}/{groupId}/{meetingId}/...` is tracked by Cloud Storage triggers.
+   - It automatically updates the class's dedicated storage metric: `storageUsageProjectMeetings` (in addition to total `storageUsage`).
+2. **AI Cost Report View (`AiCostReportView.jsx`)**:
+   - Under the Storage Breakdown, **`👥 Project Meeting Audio, Demos & Photos`** displays the exact cumulative bytes and estimated monthly Cloud Storage cost.
+   - Project meeting AI invocations (`analyzeProjectMeeting` and `prepareProjectLogQuestions`) are itemized in the AI Cost report with full token usage, model tiering (`gemini-3.5-transcribe-preview` and `gemini-3.8-flash`), input media paths, and media counts (`voiceClipsCount`, `demoClipsCount`, `photosCount`).
+
 ---
 
 ## Part 5: Student Portal — "👥 Project Meetings" Tab (`/student/records`)
@@ -408,10 +419,11 @@ Selecting any meeting card opens the detailed supervision dossier:
 5. **Next Week Action Items**:
    - Deliverables and tasks assigned for completion before the next consultation.
 
-### 5.4 Multi-Stream Audio & Video Demonstration Playback
+### 5.4 Multi-Stream Audio & Demonstration Playback
 Under the **Meeting Recordings & Demos** panel:
 - **Room Audio**: Listen to the supervisor's mobile voice recording clips (`audio/webm` or `audio/mp4`) capturing the consultation discussion.
-- **Student PC Screen Demo**: Watch the recorded screencast of the student who demonstrated their code, system architecture, or UI prototype during the session.
+- **Mobile Video Demos & Screen Clips**: Watch the recorded 720p demonstration videos filmed by your supervisor or historical screencasts of student demonstrations.
+- **Photo Artifacts**: Inspect full-resolution photos of whiteboard diagrams, IoT circuits, or error logs captured during the session.
 
 ### 5.5 Google Form Weekly Logs Subview
 Click the sub-tab **`📋 Weekly Logs (Form Responses 2)`** to review your submitted weekly logs:
@@ -429,7 +441,7 @@ Click the sub-tab **`📋 Weekly Logs (Form Responses 2)`** to review your submi
 | **What if a student types their Student ID wrong on the Google Form?** | If a student makes a 1-digit typo (e.g., `20231955` instead of `250231955`), [`isWithinOneDigitTypo`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/utils/projectGroupUtils.js#L661-L693) matches their name against the roster/previous submissions, heals the ID to `250231955@stu.vtc.edu.hk` so their profile never splits in two, and flags `✏️ Healed Student ID Typo`. |
 | **Can I ingest all historical logs even if I haven't recorded any meetings yet?** | **Yes!** Clicking **`🔄 Sync & Ingest New Logs`** builds and saves all student contribution profiles (`Week 1` → `Current`) into Firestore immediately, even when `meetings.length === 0`. |
 | **Will Mobile Voice Mode work reliably for a 20+ minute meeting?** | **Yes.** Voice recording uses Opus audio compression (~15–20 MB for 20 minutes), requests an OS **Screen Wake Lock** so your phone doesn't sleep, warns against accidental tab closure, and uses a **540-second (9-minute) `2GiB` Cloud Function** (`analyzeProjectMeeting`) for 2-stage transcription and analysis. |
-| **Why are manual audio/video file uploads disabled?** | To prevent unknown, pre-recorded, or fabricated files from being uploaded by students or teachers, all meeting voice clips and student PC screen demos must be recorded live inside the studio. |
+| **Why are manual audio/video file uploads disabled?** | To prevent unknown, pre-recorded, or fabricated files from being uploaded by students or teachers, all meeting voice clips, 720p demo videos, and photos must be recorded live inside the studio. |
 
 ---
 

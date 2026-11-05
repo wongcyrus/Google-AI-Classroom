@@ -1171,19 +1171,20 @@ Switch to **`👤 Student Profiles & Log Audit`** (or review the **Pre-Meeting W
 3. **Export Student Contribution Profiles (`.xlsx`)**:
    - Click **`📥 Export Student Profiles (.xlsx)`** to download a 2-sheet Excel workbook (**Sheet 1: Student Contribution Summary**, **Sheet 2: Weekly Logs & Challenge Audit**).
 
-### 19.4 Recording a Weekly Meeting (Teacher Mobile Voice + Student PC Screen & Co-Supervisors)
+### 19.4 Recording a Weekly Meeting (Teacher Mobile Voice, 720p Video Demo & Photos)
 Supervisors and co-supervisors can host meetings at **any period** without enabling class-wide `Start Capture`:
-1. Open **`👥 Project Meetings`** on your **Mobile Phone** (or desktop/tablet), select the **Project Group**, choose **`📅 Week #`**, and optionally select a **💻 Presenter Student PC Screen** (`{studentId}@stu.vtc.edu.hk`).
+1. Open **`👥 Project Meetings`** on your **Mobile Phone** (or desktop/tablet), select the **Project Group**, choose **`📅 Week #`**, and optionally select a **👤 Presenting Member** (`{studentId}@stu.vtc.edu.hk`). No student PC screen sharing setup is required!
 2. **Multiple Meetings per Week (Main Supervisor + Co-Supervisor)**:
    - When a **Co-Supervisor** records a meeting for the same group in the same week, the Studio automatically creates a **separate meeting entry** attributed to that Co-Supervisor (`👨‍🏫 {supervisorName}`) without overwriting the main supervisor's recording.
    - Both **Student Contribution Profiles** and the **Weekly Matrix** automatically aggregate all supervisor and co-supervisor meetings held in the same week (`Meetings (2): PRESENT • Dr. Wong, Ir. CoSup`).
-3. Tap **`🔴 Start Voice Recording`**:
-   - **Teacher's Mobile Phone**: Records the room conversation (`audio/webm` or `audio/mp4`) with **Screen Wake Lock** and accidental-reload protection (`beforeunload`) for 20+ minute meetings.
-   - **Student's PC**: Receives a real-time signal on `activeMeetingCaptures/{studentUid}` and `activeMeetingCaptures/{studentEmail}`. Clicking **`🖥️ Share My PC Screen for Meeting Demo`** on the student's PC records and uploads their live screen demonstration directly into the meeting dossier.
+3. Tap **`🔴 Start Meeting Recording`**:
+   - **Teacher's Mobile Phone**: Records consultation room conversation (`audio/webm` or `audio/mp4`) with **Screen Wake Lock** and accidental-reload protection (`beforeunload`) for 20+ minute meetings.
+   - **Capture Deliverables Live on Mobile**: Tap **`📸 Snap Photo`** to document whiteboard diagrams, circuits, or error messages with zero audio interruption, or tap **`📹 Record Demo (720p)`** to film student software or hardware demos (auto-slicing voice seamlessly).
    - **1-Tap `"🗣️ Speaking Now"` Voice Anchors**: Tap a student's chip when they begin speaking to log a timestamp anchor (`voiceAnchors[]`) for speaker diarization.
-4. Tap **`⏹️ Stop & Save Clip`**, then click **`🤖 Run 2-Stage AI Analysis`**:
+4. Tap **`⏹️ Stop & Analyze with Gemini`** (or **`💾 Save Part`**), then click **`🤖 Run 2-Stage AI Analysis`**:
    - **Stage 1 (`gemini-3.5-transcribe-preview`)**: Verbatim multilingual speaker diarization across all audio clips.
    - **Stage 2 (`gemini-3.8-flash`)**: Synthesizes attendance, key insights, per-student completed work, **Log Quality Score (`1–10`)**, **Real Work Score (`1–10`)**, and **Post-Meeting Weekly Feedback** (`weeklyFeedback`), which can also be edited inline by the supervisor (`✏️ Edit Work / Feedback`).
+   - **FinOps Costing**: Project meeting media storage is tracked under `storageUsageProjectMeetings` (`👥 Project Meeting Audio, Demos & Photos`) with transparent itemized AI spend in the FinOps report.
 
 ### 19.5 Emailing Meeting Reports to Students & 1-Click Whole-Class Weekly Dispatch
 Once meeting analysis and evaluations are reviewed, supervisors can dispatch individualized reports to students:

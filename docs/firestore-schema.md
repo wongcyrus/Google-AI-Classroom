@@ -944,7 +944,7 @@ Stores information about each class.
             *   `weeklyTimeline`: (array of objects) Per-week merged dossier combining weekly log audits, challenge questions, multi-supervisor meeting attendance (`meetingsCount`, `supervisorsLabel`), and post-meeting `weeklyFeedback`.
             *   `lastSyncedAt` / `updatedAt`: (timestamp) Incremental sync timestamps.
         *   **Security Rules**: Enrolled teachers have full read/write access (`isTeacherInClass(classId)`). Enrolled students can read their own profile.
-    *   **`classes/{classId}/activeMeetingCaptures`**: Real-time cross-device signaling documents coordinating dual-device live recording between the Supervisor's Mobile Phone and the Presenting Student's PC.
+    *   **`classes/{classId}/activeMeetingCaptures`** *(Legacy / Deprecated)*: Real-time cross-device signaling documents previously coordinating dual-device live recording between the Supervisor's Mobile Phone and Presenting Student's PC. Superseded by direct teacher mobile 720p video demos and photo artifact capture.
         *   **Document ID**: `studentKey` (string, either `studentUid` or canonical `studentEmail` `@stu.vtc.edu.hk`).
         *   **Fields**: `classId`, `meetingId`, `groupId`, `groupName`, `weekNumber`, `title`, `supervisorUid`, `supervisorEmail`, `supervisorName`, `studentUid`, `studentEmail`, `studentName`, `status` (`'recording'` | `'stopping'`), `studentPcState` (`'awaiting_permission'` | `'recording_screen'` | `'uploading'` | `'completed'`), `startedAt`, `updatedAt`.
         *   **Security Rules**: Teachers can create, update, and delete capture signals; the targeted student can read and update their own capture status.

@@ -241,8 +241,9 @@ export function aggregateAiCost(jobs = [], options = {}) {
     const usageIrregularities = Math.max(0, Number(storageData.storageUsageIrregularities) || 0);
     const usageTasks = Math.max(0, Number(storageData.storageUsageTasks) || 0);
     const usageReports = Math.max(0, Number(storageData.storageUsageReports) || 0);
+    const usageProjectMeetings = Math.max(0, Number(storageData.storageUsageProjectMeetings) || 0);
 
-    const categorySum = usageShots + usageAudio + usageVideos + usageRecordings + usageZips + usageIrregularities + usageTasks + usageReports;
+    const categorySum = usageShots + usageAudio + usageVideos + usageRecordings + usageZips + usageIrregularities + usageTasks + usageReports + usageProjectMeetings;
     const totalStorageBytes = Math.max(0, Number(storageData.storageUsage) || 0, categorySum);
 
     const gibBytes = 1024 * 1024 * 1024;
@@ -261,6 +262,7 @@ export function aggregateAiCost(jobs = [], options = {}) {
       { key: 'irregularities', label: '⚠️ Invigilation Flagged Clips', bytes: usageIrregularities },
       { key: 'tasks', label: '📝 Lab Tasks & Submissions', bytes: usageTasks },
       { key: 'reports', label: '📑 Incident Dossier Reports', bytes: usageReports },
+      { key: 'projectMeetings', label: '👥 Project Meeting Audio, Demos & Photos', bytes: usageProjectMeetings },
     ];
 
     const byStorageCategory = categories.map(cat => {

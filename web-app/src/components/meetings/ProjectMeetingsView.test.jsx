@@ -745,11 +745,10 @@ Group Beta,New Beta Topic,other@vtc.edu.hk,eva@stu.vtc.edu.hk,Eva Ho,Leader`;
 
     fireEvent.change(screen.getByLabelText(/📁 Project Group:/i), { target: { value: 'grp_1' } });
 
-    // Select Presenter Student PC Screen & set Meeting Title & Force separate meeting doc
-    fireEvent.change(screen.getByLabelText(/💻 Presenter Student PC Screen:/i), {
+    // Select Presenting Member & set Meeting Title & Force separate meeting doc
+    fireEvent.change(screen.getByLabelText(/👤 Presenting Member/i), {
       target: { value: 'stu_1' },
     });
-    expect(await screen.findByText(/PC Screen Recording Active/i)).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText(/📝 Meeting Title \/ Agenda:/i), {
       target: { value: 'Custom Demo Session' },
@@ -763,8 +762,8 @@ Group Beta,New Beta Topic,other@vtc.edu.hk,eva@stu.vtc.edu.hk,Eva Ho,Leader`;
       expect(screen.getByRole('button', { name: /⏸️ Pause/i })).toBeInTheDocument();
     });
 
-    // Switch Presenter Student PC mid-recording
-    fireEvent.change(screen.getByLabelText(/💻 Presenter Student PC Screen:/i), {
+    // Switch Presenting Member mid-recording
+    fireEvent.change(screen.getByLabelText(/👤 Presenting Member/i), {
       target: { value: 'stu_2' },
     });
 

@@ -43,6 +43,8 @@ export function getStorageCategoryAndClass(filePath) {
     return { classId, usageField: 'storageUsageTasks' };
   } else if (parts[0] === 'reports') {
     return { classId, usageField: 'storageUsageReports' };
+  } else if (parts[0] === 'projectMeetings') {
+    return { classId, usageField: 'storageUsageProjectMeetings' };
   }
 
   return null;

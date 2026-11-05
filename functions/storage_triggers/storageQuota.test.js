@@ -96,6 +96,7 @@ describe('Storage Quota Calculations (functions/storage_triggers/storageQuota.js
       expect(getStorageCategoryAndClass('tasks/CLASS_1/task1/material.pdf')).toEqual({ classId: 'CLASS_1', usageField: 'storageUsageTasks' });
       expect(getStorageCategoryAndClass('submissions/CLASS_1/task1/student1/work.zip')).toEqual({ classId: 'CLASS_1', usageField: 'storageUsageTasks' });
       expect(getStorageCategoryAndClass('reports/CLASS_1/job1/dossier.docx')).toEqual({ classId: 'CLASS_1', usageField: 'storageUsageReports' });
+      expect(getStorageCategoryAndClass('projectMeetings/CLASS_1/grp_1/mtg_1/photos/p1.jpg')).toEqual({ classId: 'CLASS_1', usageField: 'storageUsageProjectMeetings' });
       expect(getStorageCategoryAndClass('untracked/file.txt')).toBeNull();
       expect(getStorageCategoryAndClass('screenshots/only_two_parts.jpg')).toBeNull();
       expect(getStorageCategoryAndClass(null)).toBeNull();

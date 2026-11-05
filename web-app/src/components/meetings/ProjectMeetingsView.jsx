@@ -195,7 +195,6 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
   const [recordingState, setRecordingState] = useState('idle'); // 'idle' | 'recording' | 'paused' | 'uploading'
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [uploadProgress, setUploadProgress] = useState(0);
-  const [studentPcCaptureStatus, setStudentPcCaptureStatus] = useState(null);
   const [studioError, setStudioError] = useState('');
   const [studioToast, setStudioToast] = useState('');
   const [micSuspendedWarning, setMicSuspendedWarning] = useState(false);
@@ -626,27 +625,6 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
     () => meetings.find((m) => m.id === selectedMeetingId) || null,
     [meetings, selectedMeetingId]
   );
-
-  // Listen to `activeMeetingCaptures/{presenterStudentUid}` when a presenter student PC is selected
-  useEffect(() => {
-    if (!classId || !presenterStudentUid) {
-      setStudentPcCaptureStatus(null);
-      return;
-    }
-    const ref = doc(db, `classes/${classId}/activeMeetingCaptures/${presenterStudentUid}`);
-    const unsub = onSnapshot(
-      ref,
-      (snap) => {
-        if (snap.exists()) {
-          setStudentPcCaptureStatus(snap.data());
-        } else {
-          setStudentPcCaptureStatus(null);
-        }
-      },
-      () => {}
-    );
-    return () => unsub();
-  }, [classId, presenterStudentUid]);
 
   const showToastMessage = useCallback((msg) => {
     setStudioToast(msg);
@@ -1222,73 +1200,13 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
     showToastMessage(`Saved ${draftGroups.length} Project Group(s)!`);
   };
 
-  // Signal Presenter Student's PC to start or stop local screen recording (supports both Firebase UID and @stu.vtc.edu.hk email)
-  const signalStudentPcScreenCapture = useCallback(
-    async ({ studentUid, status, meetingId, clipId, groupObj }) => {
-      if (!classId || !studentUid) return;
-      const member = (groupObj?.members || []).find(
-        (m) => m.uid === studentUid || normalizeStudentEmail(m.email) === normalizeStudentEmail(studentUid)
-      );
-      const memberEmail = toVtcStudentEmail(member?.email || (String(studentUid).includes('@') ? studentUid : ''));
-      const payload = {
-        classId,
-        groupId: groupObj?.id || studioGroupId || 'default',
-        groupName: groupObj?.name || 'Project Group',
-        meetingId,
-        clipId,
-        studentUid,
-        studentEmail: memberEmail || member?.email || '',
-        studentName: member?.name || memberEmail || 'Student',
-        supervisorEmail: currentUserEmail,
-        status,
-        updatedAt: serverTimestamp(),
-        ...(status === 'recording' ? { startedAt: new Date().toISOString() } : {}),
-      };
-
-      const targetKeys = [...new Set([studentUid, memberEmail].filter(Boolean))];
-      await Promise.all(
-        targetKeys.map((key) =>
-          setDoc(doc(db, `classes/${classId}/activeMeetingCaptures/${key}`), payload, {
-            merge: true,
-          }).catch((err) => {
-            console.warn('[ProjectMeetingsView] Could not signal student PC screen capture:', err);
-          })
-        )
-      );
-    },
-    [classId, studioGroupId, currentUserEmail]
-  );
-
-  // Switch Presenter Student PC mid-recording!
-  const handleChangePresenterStudent = async (newStudentUid) => {
-    const prevUid = activePresenterUidRef.current;
+  // Change presenting member (attributes active speaker and marks attendance)
+  const handleChangePresenterStudent = (newStudentUid) => {
     setPresenterStudentUid(newStudentUid);
     activePresenterUidRef.current = newStudentUid;
-
-    if (recordingState === 'recording' && activeMeetingIdRef.current) {
-      if (prevUid && prevUid !== newStudentUid) {
-        await signalStudentPcScreenCapture({
-          studentUid: prevUid,
-          status: 'stopping',
-          meetingId: activeMeetingIdRef.current,
-          clipId: activeClipIdRef.current,
-          groupObj: activeStudioGroup,
-        });
-      }
-      if (newStudentUid) {
-        const nextClipId = `clip_${Date.now()}`;
-        await signalStudentPcScreenCapture({
-          studentUid: newStudentUid,
-          status: 'recording',
-          meetingId: activeMeetingIdRef.current,
-          clipId: nextClipId,
-          groupObj: activeStudioGroup,
-        });
-      }
-    }
   };
 
-  // Start Voice Recording (on Teacher Mobile / Laptop) + Signal Student PC Screen Recording
+  // Start Voice Recording (on Teacher Mobile / Laptop)
   const handleStartRecording = async () => {
     setStudioError('');
     if (!studioGroupId || !activeStudioGroup) {
@@ -1363,17 +1281,6 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
       }
 
       setSelectedMeetingId(targetMeetingId);
-
-      // If a Presenter Student PC is selected, signal their PC to start recording its screen!
-      if (presenterStudentUid) {
-        await signalStudentPcScreenCapture({
-          studentUid: presenterStudentUid,
-          status: 'recording',
-          meetingId: targetMeetingId,
-          clipId,
-          groupObj: activeStudioGroup,
-        });
-      }
 
       // Listen for OS/browser microphone stream mute events (e.g. iOS screen lock or backgrounding)
       try {
@@ -1452,17 +1359,6 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
     setRecordingState('uploading');
     setUploadProgress(0);
     setMicSuspendedWarning(false);
-
-    // Signal Student PC to stop & upload its screen recording
-    if (activePresenterUidRef.current && targetMeetingId) {
-      await signalStudentPcScreenCapture({
-        studentUid: activePresenterUidRef.current,
-        status: 'stopping',
-        meetingId: targetMeetingId,
-        clipId,
-        groupObj: activeStudioGroup,
-      });
-    }
 
     await new Promise((resolve) => {
       rec.onstop = () => resolve();
@@ -2925,7 +2821,7 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
             )}
           </div>
           <span className="project-meetings-subtitle">
-            Parallel Multi-Supervisor Any-Period Recording • 📱 Mobile Voice + 💻 Student PC Screen • Gemini 3.5 Diarization
+            Parallel Multi-Supervisor Any-Period Recording • 📱 Mobile Voice, 📹 720p Video Demo &amp; 📸 Photos • Gemini 3.5 Diarization
           </span>
         </div>
 
@@ -3204,16 +3100,16 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
           </div>
 
           <div className="studio-field">
-            <label htmlFor="studio-presenter-select">💻 Presenter Student PC Screen:</label>
+            <label htmlFor="studio-presenter-select">👤 Presenting Member (Optional):</label>
             <select
               id="studio-presenter-select"
               value={presenterStudentUid}
               onChange={(e) => handleChangePresenterStudent(e.target.value)}
             >
-              <option value="">🎙️ Voice Only (No Student PC Screen)</option>
+              <option value="">👥 Whole Group / Unassigned</option>
               {(activeStudioGroup?.members || []).map((m) => (
                 <option key={m.uid || m.email} value={m.uid || m.email}>
-                  💻 Record {m.name}&apos;s PC Screen ({m.email})
+                  👤 {m.name} ({m.email})
                 </option>
               ))}
             </select>
@@ -3254,20 +3150,6 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
               />
               Separate meeting entry
             </label>
-
-            {presenterStudentUid && studentPcCaptureStatus && (
-              <span
-                className={`pc-screen-status-pill ${studentPcCaptureStatus.studentPcState || 'idle'}`}
-              >
-                {studentPcCaptureStatus.studentPcState === 'recording_screen'
-                  ? `🟢 ${studentPcCaptureStatus.studentName || 'Student'}'s PC Screen Recording Active`
-                  : studentPcCaptureStatus.studentPcState === 'waiting_for_screen_share'
-                  ? `🟡 Waiting for ${studentPcCaptureStatus.studentName || 'Student'} to Share PC Screen`
-                  : studentPcCaptureStatus.studentPcState === 'uploading'
-                  ? `☁️ Uploading ${studentPcCaptureStatus.studentName || 'Student'}'s PC Screen...`
-                  : `💻 PC Screen Linked (${studentPcCaptureStatus.studentName || 'Student'})`}
-              </span>
-            )}
           </div>
 
           <div className="studio-record-buttons">

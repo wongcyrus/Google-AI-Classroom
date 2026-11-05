@@ -236,7 +236,8 @@ describe('aiCostAggregator utility', () => {
     expect(summary.storageSummary.totalStorageCostMonthly).toBeCloseTo(0.023, 4);
     expect(summary.storageSummary.storageQuotaCostMonthly).toBeCloseTo(0.115, 4);
     expect(summary.storageSummary.storageQuotaPercentage).toBeCloseTo(20.0, 1);
-    expect(summary.storageSummary.byStorageCategory).toHaveLength(8);
+    expect(summary.storageSummary.byStorageCategory).toHaveLength(9);
+    expect(summary.storageSummary.byStorageCategory.some(c => c.key === 'projectMeetings')).toBe(true);
     expect(summary.combinedTotalMonthlyCost).toBeCloseTo(1.50 + 0.023, 4);
   });
 });
