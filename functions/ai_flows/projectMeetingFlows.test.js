@@ -883,5 +883,251 @@ describe('projectMeetingFlows', () => {
         })
       );
     });
+
+    it('enforces authentication and authorization in batchEmailProjectMeetingReports callable', async () => {
+      // 1. Unauthenticated
+      await expect(
+        batchEmailProjectMeetingReports.run({ auth: null, data: {} })
+      ).rejects.toThrow(/User must be authenticated/);
+
+      // 2. Unauthorized student
+      mockDocGet.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({ teacherEmails: ['teacher@vtc.edu.hk'], teachers: {} }),
+      });
+      await expect(
+        batchEmailProjectMeetingReports.run({
+          auth: { uid: 'stu_1', token: { email: 'stu@stu.vtc.edu.hk', role: 'student' } },
+          data: { classId: 'c1', weekNumber: 8 },
+        })
+      ).rejects.toThrow(/Only teachers and project supervisors can email meeting reports/);
+
+      // 3. Authorized via class teacherUid
+      process.env.SMTP_PASSWORD = 'password123';
+      mockDocGet.mockImplementation(async (path) => {
+        if (path === 'classes/c1') {
+          return {
+            exists: true,
+            data: () => ({ teacherUid: 'supervisor_1' }),
+          };
+        }
+        if (path === 'classes/c1/projectMeetings/m_wk8_1') {
+          return {
+            exists: true,
+            data: () => ({
+              groupId: 'grp_1',
+              weekNumber: 8,
+              groupName: 'Group 1',
+              attendanceRecord: [{ uid: 'u1', email: 'u1@stu.vtc.edu.hk', status: 'present' }],
+            }),
+          };
+        }
+        if (path === 'classes/c1/projectGroups/grp_1') {
+          return {
+            exists: true,
+            data: () => ({
+              name: 'Group 1',
+              members: [{ uid: 'u1', email: 'u1@stu.vtc.edu.hk', name: 'User 1' }],
+            }),
+          };
+        }
+        return { exists: false };
+      });
+
+      mockCollectionWhereGet.mockResolvedValueOnce({
+        docs: [
+          {
+            id: 'm_wk8_1',
+            data: () => ({
+              groupId: 'grp_1',
+              weekNumber: 8,
+              groupName: 'Group 1',
+              attendanceRecord: [{ uid: 'u1', email: 'u1@stu.vtc.edu.hk', status: 'present' }],
+            }),
+          },
+        ],
+      });
+
+      const callRes = await batchEmailProjectMeetingReports.run({
+        auth: { uid: 'supervisor_1', token: { email: 'supervisor@vtc.edu.hk' } },
+        data: { classId: 'c1', weekNumber: 8 },
+      });
+      expect(callRes.success).toBe(true);
+      expect(callRes.totalDelivered).toBe(1);
+
+      delete process.env.SMTP_PASSWORD;
+    });
+
+    it('handles filters, empty targets, and per-meeting catch errors in handleBatchEmailProjectMeetingReports', async () => {
+      process.env.SMTP_PASSWORD = 'password123';
+
+      // 1. Returns empty summary if no meetings found
+      mockCollectionWhereGet.mockResolvedValueOnce({ docs: [] });
+      const emptyRes = await handleBatchEmailProjectMeetingReports({ classId: 'c1', weekNumber: 12 });
+      expect(emptyRes.totalMeetingsProcessed).toBe(0);
+      expect(emptyRes.totalDelivered).toBe(0);
+
+      // 2. Filters by onlyAnalyzed: true and meetingIds: [...]
+      mockCollectionWhereGet.mockResolvedValueOnce({
+        docs: [
+          {
+            id: 'm_analyzed',
+            data: () => ({
+              groupId: 'grp_a',
+              weekNumber: 8,
+              analyzedAt: '2026-11-05T00:00:00Z',
+              attendanceRecord: [{ uid: 'u1', email: 'u1@stu.vtc.edu.hk', status: 'present' }],
+            }),
+          },
+          {
+            id: 'm_unanalyzed',
+            data: () => ({
+              groupId: 'grp_b',
+              weekNumber: 8,
+            }),
+          },
+        ],
+      });
+
+      mockDocGet.mockImplementation(async (path) => {
+        if (path === 'classes/c1/projectMeetings/m_analyzed') {
+          return {
+            exists: true,
+            data: () => ({
+              groupId: 'grp_a',
+              weekNumber: 8,
+              analyzedAt: '2026-11-05T00:00:00Z',
+              attendanceRecord: [{ uid: 'u1', email: 'u1@stu.vtc.edu.hk', status: 'present' }],
+            }),
+          };
+        }
+        if (path === 'classes/c1/projectGroups/grp_a') {
+          return {
+            exists: true,
+            data: () => ({
+              name: 'Group A',
+              members: [{ uid: 'u1', email: 'u1@stu.vtc.edu.hk', name: 'User 1' }],
+            }),
+          };
+        }
+        return { exists: false };
+      });
+
+      const filteredRes = await handleBatchEmailProjectMeetingReports({
+        classId: 'c1',
+        weekNumber: 8,
+        onlyAnalyzed: true,
+        meetingIds: ['m_analyzed'],
+      });
+      expect(filteredRes.success).toBe(true);
+      expect(filteredRes.totalMeetingsProcessed).toBe(1);
+
+      // 3. Handles error in single meeting dispatch without crashing the entire batch
+      mockCollectionWhereGet.mockResolvedValueOnce({
+        docs: [
+          {
+            id: 'm_broken',
+            data: () => ({
+              groupId: 'grp_missing',
+              weekNumber: 8,
+            }),
+          },
+        ],
+      });
+
+      // Group doc does not exist -> handleEmailProjectMeetingReport throws
+      mockDocGet.mockImplementation(async (path) => {
+        if (path === 'classes/c1/projectMeetings/m_broken') {
+          return {
+            exists: true,
+            data: () => ({
+              groupId: 'grp_missing',
+              weekNumber: 8,
+            }),
+          };
+        }
+        return { exists: false };
+      });
+
+      const brokenRes = await handleBatchEmailProjectMeetingReports({
+        classId: 'c1',
+        weekNumber: 8,
+      });
+      expect(brokenRes.success).toBe(false);
+      expect(brokenRes.errors).toHaveLength(1);
+      expect(brokenRes.results[0].success).toBe(false);
+
+      delete process.env.SMTP_PASSWORD;
+    });
+
+    it('handles edge cases in handleEmailProjectMeetingReport and emailProjectMeetingReport authorization', async () => {
+      // 1. Missing classId or meetingId throws invalid-argument
+      await expect(
+        handleEmailProjectMeetingReport({ classId: '', meetingId: '' })
+      ).rejects.toThrow(/Missing required classId or meetingId/);
+
+      // 2. Meeting document not found throws not-found
+      mockDocGet.mockResolvedValueOnce({ exists: false });
+      await expect(
+        handleEmailProjectMeetingReport({ classId: 'c1', meetingId: 'm_nonexistent' })
+      ).rejects.toThrow(/Meeting m_nonexistent not found/);
+
+      // 3. Group has no recipient members throws failed-precondition
+      process.env.SMTP_PASSWORD = 'password123';
+      mockDocGet.mockImplementation(async (path) => {
+        if (path === 'classes/c1/projectMeetings/m_no_members') {
+          return {
+            exists: true,
+            data: () => ({ groupId: 'grp_empty', weekNumber: 1 }),
+          };
+        }
+        if (path === 'classes/c1/projectGroups/grp_empty') {
+          return {
+            exists: true,
+            data: () => ({ name: 'Empty Group', members: [] }),
+          };
+        }
+        return { exists: false };
+      });
+
+      await expect(
+        handleEmailProjectMeetingReport({ classId: 'c1', meetingId: 'm_no_members' })
+      ).rejects.toThrow(/No student recipients found/);
+
+      // 4. Authorization via cData.teachers[uid] or cData.ownerUid in emailProjectMeetingReport callable
+      mockDocGet.mockImplementation(async (path) => {
+        if (path === 'classes/c1') {
+          return {
+            exists: true,
+            data: () => ({ teachers: { teacher_owner: { name: 'Owner Teacher' } }, ownerUid: 'teacher_owner' }),
+          };
+        }
+        if (path === 'classes/c1/projectMeetings/m_auth_test') {
+          return {
+            exists: true,
+            data: () => ({ groupId: 'grp_test', weekNumber: 2 }),
+          };
+        }
+        if (path === 'classes/c1/projectGroups/grp_test') {
+          return {
+            exists: true,
+            data: () => ({
+              name: 'Test Group',
+              members: [{ uid: 'stu_1', email: 'stu1@stu.vtc.edu.hk', name: 'Student 1' }],
+            }),
+          };
+        }
+        return { exists: false };
+      });
+
+      const authCallableRes = await emailProjectMeetingReport.run({
+        auth: { uid: 'teacher_owner', token: { email: 'owner@vtc.edu.hk' } },
+        data: { classId: 'c1', meetingId: 'm_auth_test' },
+      });
+      expect(authCallableRes.success).toBe(true);
+      expect(authCallableRes.count).toBe(1);
+
+      delete process.env.SMTP_PASSWORD;
+    });
   });
 });

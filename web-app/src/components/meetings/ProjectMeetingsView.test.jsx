@@ -1181,4 +1181,115 @@ Group Beta,New Beta Topic,other@vtc.edu.hk,eva@stu.vtc.edu.hk,Eva Ho,Leader`;
       })
     ).toBe(true);
   });
+
+  it('supports moving entire meeting to another group, deleting screen clip, and toggling attendance override', async () => {
+    mockGroupsSnapshotDocs = [
+      {
+        id: 'grp_1',
+        data: () => ({
+          id: 'grp_1',
+          name: 'Group A01',
+          projectTopic: 'Healthcare Bot',
+          supervisorUid: 'sup_1',
+          supervisorEmail: 'sup1@vtc.edu.hk',
+          supervisorName: 'Supervisor 1',
+          members: [{ uid: 'u1', email: 'u1@stu.vtc.edu.hk', name: 'User 1' }],
+        }),
+      },
+      {
+        id: 'grp_2',
+        data: () => ({
+          id: 'grp_2',
+          name: 'Group A04',
+          projectTopic: 'Smart Campus',
+          supervisorUid: 'sup_2',
+          supervisorEmail: 'sup2@vtc.edu.hk',
+          supervisorName: 'Supervisor 2',
+          members: [{ uid: 'u2', email: 'u2@stu.vtc.edu.hk', name: 'User 2' }],
+        }),
+      },
+    ];
+
+    mockMeetingsSnapshotDocs = [
+      {
+        id: 'mtg_move_test',
+        data: () => ({
+          id: 'mtg_move_test',
+          groupId: 'grp_1',
+          groupName: 'Group A01',
+          weekNumber: 10,
+          title: 'Week 10 Supervision Meeting',
+          status: 'ready',
+          needsReanalysis: true,
+          audioClips: [
+            { clipId: 'clip_1', label: 'Part 1', durationSeconds: 120, storagePath: 'voice.webm' },
+          ],
+          screenClips: [
+            { clipId: 'scr_1', label: 'Screen 1', studentName: 'User 1', storagePath: 'screen.webm' },
+          ],
+          attendanceRecord: [
+            { uid: 'u1', email: 'u1@stu.vtc.edu.hk', name: 'User 1', status: 'present', speakingContribution: 'high' },
+          ],
+          rawDiarizedTranscript: '[00:05] Speaker 1: Discussion...',
+          keyInsights: { executiveSummary: 'Meeting summary' },
+        }),
+      },
+    ];
+
+    render(
+      <ProjectMeetingsView
+        classId="it114115"
+        classInfo={{ name: 'IT114115 Capstone', teacherEmails: ['sup1@vtc.edu.hk'] }}
+        user={{ uid: 'sup_1', email: 'sup1@vtc.edu.hk', displayName: 'Supervisor 1' }}
+      />
+    );
+
+    // Verify amber banner for needsReanalysis renders
+    expect(screen.getByText(/Audio Recordings Modified \(Re-analysis Recommended\)/i)).toBeInTheDocument();
+
+    // Click Re-analysis button on banner
+    fireEvent.click(screen.getByRole('button', { name: /✨ Run Gemini Analysis Now/i }));
+    await waitFor(() => {
+      expect(mockHttpsCallable).toHaveBeenCalled();
+    });
+
+    // 1-Click attendance toggle override
+    const absentChip = screen.getByRole('button', { name: /Absent/i });
+    fireEvent.click(absentChip);
+    await waitFor(() => {
+      expect(mockUpdateDoc).toHaveBeenCalledWith(
+        expect.objectContaining({ path: 'classes/it114115/projectMeetings/mtg_move_test' }),
+        expect.objectContaining({
+          attendanceRecord: expect.arrayContaining([
+            expect.objectContaining({ status: 'absent' }),
+          ]),
+        })
+      );
+    });
+
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+    // Delete screen clip
+    const delScreenBtn = screen.getByRole('button', { name: /🗑️ Delete Screen/i });
+    fireEvent.click(delScreenBtn);
+    await waitFor(() => {
+      expect(mockUpdateDoc).toHaveBeenCalled();
+    });
+
+    // Move entire meeting to Group A04
+    const moveMeetingSelect = screen.getByLabelText(/Move entire session to another group/i);
+    fireEvent.change(moveMeetingSelect, { target: { value: 'grp_2' } });
+    await waitFor(() => {
+      expect(mockUpdateDoc).toHaveBeenCalledWith(
+        expect.objectContaining({ path: 'classes/it114115/projectMeetings/mtg_move_test' }),
+        expect.objectContaining({
+          groupId: 'grp_2',
+          groupName: 'Group A04',
+          needsReanalysis: true,
+        })
+      );
+    });
+
+    confirmSpy.mockRestore();
+  });
 });
