@@ -2561,10 +2561,10 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
       {batchAnalysisProgress && (
         <div className="batch-analysis-progress-banner" role="status" aria-live="polite">
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1 }}>
-            <span style={{ fontSize: '1.25rem', animation: 'spin 1.5s linear infinite' }}>⏳</span>
+            <span style={{ fontSize: '1.25rem' }}>⚡</span>
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#1e3a8a', marginBottom: '4px' }}>
-                ⚡ Batch Analyzing Week {batchAnalysisProgress.weekNumber || studioWeekNumber} ({batchAnalysisProgress.mode === 'missing_only' ? 'Missing Only' : 'All Groups'}): [{batchAnalysisProgress.current} of {batchAnalysisProgress.total}] Group <strong>{batchAnalysisProgress.groupName}</strong>
+                Batch Analyzing Week {batchAnalysisProgress.weekNumber || studioWeekNumber} ({batchAnalysisProgress.mode === 'missing_only' ? 'Missing Only' : 'All Groups'}): [{batchAnalysisProgress.current} of {batchAnalysisProgress.total}] Group <strong>{batchAnalysisProgress.groupName}</strong>
               </div>
               <div style={{ width: '100%', height: '8px', background: '#bfdbfe', borderRadius: '4px', overflow: 'hidden' }}>
                 <div
@@ -3934,7 +3934,6 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
 
             {batchAnalysisProgress ? (
               <div className="batch-ai-modal-body" style={{ textAlign: 'center', padding: '24px 20px', gap: '18px' }}>
-                <div style={{ fontSize: '2.5rem', animation: 'spin 1.5s linear infinite' }}>⏳</div>
                 <div>
                   <h4 style={{ margin: '0 0 6px 0', fontSize: '1.15rem', color: '#1e3a8a' }}>
                     Batch Gemini Analysis in Progress (Week {batchAnalysisProgress.weekNumber || studioWeekNumber})
@@ -3962,27 +3961,6 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
 
                 <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '12px 14px', fontSize: '0.82rem', color: '#475569', textAlign: 'left', lineHeight: 1.5 }}>
                   💡 <strong>Autonomous Job:</strong> Each meeting takes ~60–90 seconds to transcribe audio, diarize student speakers, verify student Google Form weekly logs, and grade contributions. You can minimize this modal or leave it open; the job runs reliably in the background.
-                </div>
-
-                <div style={{ display: 'flex', justifyContent: 'center', gap: '12px', marginTop: '6px' }}>
-                  <button
-                    type="button"
-                    className="btn-cancel-batch-analysis"
-                    style={{ padding: '8px 16px', fontSize: '0.86rem' }}
-                    onClick={() => {
-                      cancelBatchAnalysisRef.current = true;
-                    }}
-                  >
-                    ⏹️ Stop Batch Job
-                  </button>
-                  <button
-                    type="button"
-                    className="btn-modal-cancel"
-                    style={{ padding: '8px 16px', fontSize: '0.86rem' }}
-                    onClick={() => setShowBatchAiModal(false)}
-                  >
-                    Run in Background (Minimize)
-                  </button>
                 </div>
               </div>
             ) : (
@@ -4125,14 +4103,37 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
               </div>
             )}
 
-            <div className="batch-ai-modal-footer">
-              <button
-                type="button"
-                className="btn-modal-cancel"
-                onClick={() => setShowBatchAiModal(false)}
-              >
-                {batchAnalysisProgress ? 'Run in Background (Minimize)' : 'Close'}
-              </button>
+            <div className="batch-ai-modal-footer" style={{ display: 'flex', justifyContent: batchAnalysisProgress ? 'space-between' : 'flex-end', alignItems: 'center' }}>
+              {batchAnalysisProgress ? (
+                <>
+                  <button
+                    type="button"
+                    className="btn-cancel-batch-analysis"
+                    style={{ padding: '8px 16px', fontSize: '0.86rem' }}
+                    onClick={() => {
+                      cancelBatchAnalysisRef.current = true;
+                    }}
+                  >
+                    ⏹️ Stop Batch Job
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-modal-cancel"
+                    style={{ padding: '8px 16px', fontSize: '0.86rem' }}
+                    onClick={() => setShowBatchAiModal(false)}
+                  >
+                    Run in Background (Minimize)
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  className="btn-modal-cancel"
+                  onClick={() => setShowBatchAiModal(false)}
+                >
+                  Close
+                </button>
+              )}
             </div>
           </div>
         </div>
