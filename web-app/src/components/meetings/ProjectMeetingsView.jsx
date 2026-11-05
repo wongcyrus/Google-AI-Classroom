@@ -2988,7 +2988,9 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
                                         : m.keyInsights?.overallGroupProgress === 'at_risk' ||
                                           m.keyInsights?.overallGroupProgress === 'behind'
                                         ? '⚠️ At Risk'
-                                        : '✅ Ready'}
+                                        : m.analyzedAt || m.aiModelUsed || m.rawDiarizedTranscript
+                                        ? '✨ Analyzed'
+                                        : '🎙️ Recorded'}
                                     </span>
                                   </div>
 
@@ -3040,6 +3042,13 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
                     <div style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '4px', display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
                       <span>📅 {selectedMeeting.meetingDate ? new Date(selectedMeeting.meetingDate).toLocaleString() : 'Recent'}</span>
                       <span>👨‍🏫 Supervisor: <strong>{selectedMeeting.supervisorEmail}</strong></span>
+                      {selectedMeeting.analyzedAt ? (
+                        <span>✨ Analyzed: <strong>{new Date(selectedMeeting.analyzedAt.toDate?.() || selectedMeeting.analyzedAt).toLocaleTimeString()}</strong></span>
+                      ) : selectedMeeting.rawDiarizedTranscript ? (
+                        <span>✨ Analyzed</span>
+                      ) : (
+                        <span style={{ color: '#d97706', fontWeight: 600 }}>🎙️ Recorded (Pending AI Analysis)</span>
+                      )}
                       {selectedMeeting.aiModelUsed && (
                         <span>🤖 Model: <strong>{selectedMeeting.aiModelUsed}</strong></span>
                       )}
@@ -3069,7 +3078,9 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
                     >
                       {isAnalyzing || selectedMeeting.status === 'analyzing'
                         ? '⏳ Analyzing Diarization & Insights...'
-                        : '✨ Re-Run Gemini Analysis'}
+                        : selectedMeeting.analyzedAt || selectedMeeting.aiModelUsed || selectedMeeting.rawDiarizedTranscript
+                        ? '✨ Re-Run Gemini Analysis'
+                        : '✨ Run Gemini Analysis'}
                     </button>
 
                     <button
@@ -3295,6 +3306,24 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
                     <div style={{ fontSize: '0.82rem', color: '#64748b' }}>No voice recording uploaded yet.</div>
                   )}
                 </div>
+
+                {/* Notice banner if meeting has audio clips but has not yet been processed by Gemini */}
+                {!selectedMeeting.analyzedAt && !selectedMeeting.rawDiarizedTranscript && (
+                  <div style={{ padding: '10px 14px', background: '#fefce8', border: '1px solid #fef08a', borderRadius: '8px', color: '#854d0e', fontSize: '0.84rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', marginBottom: '14px' }}>
+                    <span>
+                      🎙️ <strong>Audio Recorded (Pending AI Analysis):</strong> Gemini has not processed this meeting yet. Click <strong>&quot;Run Gemini Analysis&quot;</strong> to diarize speakers, verify weekly logs, and attribute attendance.
+                    </span>
+                    <button
+                      type="button"
+                      className="btn-run-gemini-meeting"
+                      style={{ padding: '6px 12px', fontSize: '0.8rem' }}
+                      onClick={() => handleRunGeminiAnalysis(selectedMeeting.id)}
+                      disabled={isAnalyzing || selectedMeeting.status === 'analyzing'}
+                    >
+                      {isAnalyzing || selectedMeeting.status === 'analyzing' ? '⏳ Analyzing...' : '✨ Run Gemini Analysis Now'}
+                    </button>
+                  </div>
+                )}
 
                 {/* Section 1: Attendance Record Strip with 1-Click Teacher Override */}
                 <div className="inspector-section-card">
