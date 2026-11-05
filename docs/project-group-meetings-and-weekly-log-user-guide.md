@@ -196,9 +196,9 @@ Once the meeting analysis and feedback are verified, supervisors can dispatch in
    - All enrolled group members (`members[]`) are displayed with checkboxes (defaulted to checked).
    - Supervisors can toggle specific teammates or leave all selected.
    - *(Optional)* Add a **Supervisor Note / Remarks** in the textarea (e.g., *"Great progress on the database schema this week. Please push your commits to main before Thursday's code review."*).
-3. **Automated Serverless Dispatch via AWS SES**:
+3. **Automated Serverless Dispatch via Secure SMTP Relay**:
    - Click **`🚀 Send Report Emails`**.
-   - Invokes Cloud Function [`emailProjectMeetingReport`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/projectMeetingFlows.js), which retrieves the SMTP password securely from **Google Cloud Secret Manager** (`SMTP_PASSWORD`) and connects to **AWS SES SMTP** (`email-smtp.us-east-1.amazonaws.com:465` TLS) using verified sender `t-cywong@stu.vtc.edu.hk`.
+   - Invokes Cloud Function [`emailProjectMeetingReport`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/projectMeetingFlows.js), which retrieves the SMTP password securely from **Google Cloud Secret Manager** (`SMTP_PASSWORD`) and connects to the configured **SMTP Server** over secure TLS using verified sender `t-cywong@stu.vtc.edu.hk`.
    - Each student receives a cleanly formatted, responsive HTML email containing:
      - Meeting metadata: Group ID, Week #, Title, Date, and Host Supervisor.
      - Executive Summary & Key Decisions.

@@ -261,7 +261,7 @@ The repository enforces a multi-layered barrier against secret leaks to GitHub:
   - Integrated via repository-level configuration (`git config core.hooksPath .githooks`).
   - Automatically executes on `git commit` to block commits containing:
     1. Sensitive filenames (e.g., any staged file with `.env`, `.tfstate`, `.secret`, `credentials.json`, `serviceAccount`).
-    2. High-entropy patterns in staged diffs: AWS Access Key IDs (`AKIA[0-9A-Z]{16}`), PEM/RSA private key headers, assignment regexes for passwords/secrets/tokens (`PASSWORD=`, `SECRET=`, `API_KEY=`), and authorization bearer tokens.
+    2. High-entropy patterns in staged diffs: Cloud access key IDs, PEM/RSA private key headers, assignment regexes for passwords/secrets/tokens (`PASSWORD=`, `SECRET=`, `API_KEY=`), and authorization bearer tokens.
 
 ### 2. Google Cloud Secret Manager & Terraform State Decoupling
 To eliminate secrets from Terraform state files (`terraform.tfstate`), backend credentials are decoupled from Terraform infrastructure definitions:
@@ -304,14 +304,14 @@ Because `@vtc.edu.hk` and `@stu.vtc.edu.hk` are hosted on **Microsoft 365 Exchan
    - **Security:** `SSL`
 4. Click **Save**.
 
-### AWS SES SMTP Relay for Project Group Meeting Reports:
-For automated weekly consultation reports dispatched via [`emailProjectMeetingReport`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/projectMeetingFlows.js), the backend uses **Amazon Simple Email Service (AWS SES)** over secure TLS SMTP:
-- **SMTP Host:** `email-smtp.us-east-1.amazonaws.com`
+### Custom SMTP Relay for Project Group Meeting Reports:
+For automated weekly consultation reports dispatched via [`emailProjectMeetingReport`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/projectMeetingFlows.js), the backend uses an **authenticated SMTP relay** over secure TLS:
+- **SMTP Host:** Configured via `SMTP_HOST` environment variable (e.g. `email-smtp.us-east-1.amazonaws.com` or custom relay).
 - **SMTP Port:** `465` (SSL / TLS)
-- **SMTP Username:** AWS SES IAM SMTP credentials username (`AKIA...`)
+- **SMTP Username:** Configured via `SMTP_USERNAME` environment variable.
 - **SMTP Password:** Fetched dynamically at runtime via Google Cloud Secret Manager (`SMTP_PASSWORD`).
-- **Verified Sender:** `t-cywong@stu.vtc.edu.hk` (AWS SES verified domain identity).
-- **1-Click Outlook / Mailto Fallback:** If SES sending limits are reached or a teacher prefers their desktop mail client, the UI provides a 1-click **"Open in Mail Client"** button with pre-filled student emails, subject, and meeting summary.
+- **Verified Sender:** `t-cywong@stu.vtc.edu.hk` (configured via `SMTP_FROM_EMAIL`).
+- **1-Click Outlook / Mailto Fallback:** If SMTP rate limits are reached or a teacher prefers their desktop mail client, the UI provides a 1-click **"Open in Mail Client"** button with pre-filled student emails, subject, and meeting summary.
 
 ### Instant Admin CLI Verification (No Email Wait Needed):
 ```bash

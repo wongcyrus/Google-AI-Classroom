@@ -1021,7 +1021,7 @@ Group Beta,New Beta Topic,other@vtc.edu.hk,eva@stu.vtc.edu.hk,Eva Ho,Leader`;
     );
 
     // Click Send Email Report
-    fireEvent.click(screen.getByRole('button', { name: /Send Email Report \(AWS SES \/ SMTP\)/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Send Email Report \(SMTP\)/i }));
 
     await waitFor(() => {
       expect(mockHttpsCallable).toHaveBeenCalledWith(

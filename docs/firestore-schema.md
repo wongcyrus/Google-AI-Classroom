@@ -913,13 +913,13 @@ Stores information about each class.
                 *   `studentContributions`: (array of objects) `{ studentUid, name, email, role, workDone[], demonstratedOnScreen[], blockers[], actionItemsNextWeek[], previousActionStatus, contributionSummary, evidenceTimestamp, logQualityAssessment ('genuine_verified' | 'vague_useless' | 'suspected_ai_fake' | 'suspected_ai_unverified' | 'inactive_no'), logQualityScore (1..10), realWorkScore (1..10), challengeQuestions[], weeklyFeedback }`.
                 *   `transcriptSegments`: (array of objects) `{ startTime, endTime, speakerLabel, speakerRole, studentUid, text }`.
             *   `supervisorNotes`: (string) Editable teacher follow-up notes and remarks.
-            *   `emailDispatch`: (map | null) Audit log of email reports sent to students via AWS SES SMTP:
+            *   `emailDispatch`: (map | null) Audit log of email reports sent to students via SMTP relay:
                 *   `sentAt`: (string) ISO timestamp of email dispatch.
                 *   `sentBy`: (string) Email of the supervisor who dispatched the report.
                 *   `recipientCount`: (number) Total recipient count.
                 *   `recipients`: (array of strings) Recipient student email addresses.
                 *   `subject`: (string) Email subject line.
-                *   `messageIds`: (array of strings) AWS SES message IDs returned by SMTP transport.
+                *   `messageIds`: (array of strings) Message IDs returned by SMTP transport.
         *   **Security Rules**: Enrolled teachers have full read/write access; enrolled students can read meeting records and append their own uploaded screen clips (`screenClips`) during active sessions.
     *   **`classes/{classId}/projectStudentProfiles`**: Stores longitudinal Individual Student Contribution Profiles and incrementally ingested weekly logs (`Week 1` → `Current`) from the class's public Google Sheet (`classes/{classId}.projectLogSheetUrl`), even when 0 weekly meetings have been recorded.
         *   **Document ID**: `studentEmail` (string, canonical normalized `@stu.vtc.edu.hk` email, e.g. `250105348@stu.vtc.edu.hk`).

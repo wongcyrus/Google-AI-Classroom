@@ -4,7 +4,7 @@
 **System**: Google AI Classroom  
 **Production URL**: `https://it114115-2627.web.app`
 
-## 0.0.0.0.0.0.0.0.0.0.3.2 Student Project Meeting Records View (with Late Status), AWS SES Email Dispatch via Secret Manager & Airtight Git Secret Safeguards
+## 0.0.0.0.0.0.0.0.0.0.3.2 Student Project Meeting Records View (with Late Status), SMTP Email Dispatch via Secret Manager & Airtight Git Secret Safeguards
 
 **Date**: November 5, 2026  
 **Status**: Implemented, Verified with Passing Unit Tests (`StudentRecordsView.test.jsx` 54/54, `ProjectMeetingsView.test.jsx` 11/11, `projectMeetingFlows.test.js` 14/14), and Deployed to `it114115-2627` (Production: Hosting & Cloud Functions Gen 2 `asia-east2`)  
@@ -27,10 +27,10 @@
      - **Embedded Media Playback**: Integrated audio player for supervisor voice recordings and video player for student PC screen demonstrations.
      - **Google Form Weekly Logs Subview**: Sub-tab enabling students to inspect their submitted Google Form logs (`Form Responses 2`) for the corresponding week.
 
-2. **Supervisor Meeting Report Emailing Pipeline via AWS SES SMTP (`ProjectMeetingsView.jsx`, `projectMeetingFlows.js`)**:
+2. **Supervisor Meeting Report Emailing Pipeline via SMTP Relay (`ProjectMeetingsView.jsx`, `projectMeetingFlows.js`)**:
    - **Email Meeting Report Modal**: Added an **`📧 Email Report`** action button in `ProjectMeetingsView.jsx` presenting supervisors with student teammate selection checkboxes (default all selected) and an optional supervisor note field.
    - **Cloud Function `emailProjectMeetingReport`**: Serverless Gen 2 HTTPS callable in `functions/ai_flows/projectMeetingFlows.js` (region `asia-east2`) that parses meeting metadata, student evaluations, scores, and feedback into a clean, responsive HTML email.
-   - **AWS SES SMTP Transport**: Connects via `nodemailer` to AWS SES (`email-smtp.us-east-1.amazonaws.com:465` TLS, username `AKIA...`, verified sender `t-cywong@stu.vtc.edu.hk`).
+   - **SMTP Transport**: Connects via `nodemailer` to the configured SMTP host over secure TLS (`SMTP_HOST:SMTP_PORT`), authenticating with `SMTP_USERNAME` and Google Secret Manager `SMTP_PASSWORD`, using verified sender `t-cywong@stu.vtc.edu.hk`.
    - **1-Click Outlook / Mailto Fallback**: Provided a client-side **`📨 Open in Mail Client (Outlook / Mailto)`** button with pre-filled recipient list, subject, and encoded body, plus a **`📋 Copy Student Emails`** helper.
    - **Firestore Audit Logging**: Records `emailDispatch: { sentAt, sentBy, recipientCount, recipients, subject, messageIds }` on `classes/{classId}/projectMeetings/{meetingId}`.
 
@@ -44,7 +44,7 @@
    - **Recursive `.gitignore` Hardening**: Enforced wildcard patterns across all subdirectories (`**/.env*`, `**/*.secret*`, `**/*.tfvars*`, `**/*.tfstate*`, `**/*credentials*.json`, `**/*serviceAccountKey*.json`).
    - **Active Pre-Commit Secret Scanner**: Hardened `.githooks/pre-commit` (configured via `git config core.hooksPath .githooks`) to:
      - Block staged files matching sensitive names (`.env`, `.tfstate`, `.secret`, etc.).
-     - Scan staged diffs against high-entropy secret patterns (AWS access key IDs `AKIA[0-9A-Z]{16}`, RSA/EC private keys, assignment patterns for `PASSWORD=`, `SECRET=`, `API_KEY=`, and bearer tokens).
+     - Scan staged diffs against high-entropy secret patterns (cloud provider access key IDs, RSA/EC private keys, assignment patterns for `PASSWORD=`, `SECRET=`, `API_KEY=`, and bearer tokens).
    - **Git Audit Verification**: Verified 0 tracked secrets exist across Git trees.
 
 ---

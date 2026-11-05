@@ -40,10 +40,10 @@ HAS_SECRET=0
 GOOGLE_KEY_REGEX='AIza[0-9A-Za-z_-]{35}'
 # Private Keys
 PRIVATE_KEY_REGEX='-----BEGIN[ A-Z0-9_-]*PRIVATE KEY-----'
-# AWS Access Keys
-AWS_KEY_REGEX='(A3T[A-Z0-9]|AKIA|AGPA|AIDA|AROA|AIPA|ANPA|ANVA|ASIA)[A-Z0-9]{16}'
-# AWS Secret Access Keys / SMTP Passwords
-SECRET_ASSIGNMENT_REGEX='(aws_secret_access_key|smtp_password|api_secret)[[:space:]]*[:=][[:space:]]*["'\'']?[A-Za-z0-9/+=]{20,}["'\'']?'
+# Cloud Provider Access Keys
+CLOUD_KEY_REGEX='(A3T[A-Z0-9]|AKIA|AGPA|AIDA|AROA|AIPA|ANPA|ANVA|ASIA)[A-Z0-9]{16}'
+# Secret Access Keys / SMTP Passwords
+SECRET_ASSIGNMENT_REGEX='(secret_access_key|smtp_password|api_secret)[[:space:]]*[:=][[:space:]]*["'\'']?[A-Za-z0-9/+=]{20,}["'\'']?'
 # GitHub Tokens
 GITHUB_PAT_REGEX='(ghp_[0-9a-zA-Z]{36}|github_pat_[0-9a-zA-Z_]{82})'
 # Slack Tokens
@@ -95,9 +95,9 @@ for FILE in $STAGED_FILES; do
     HAS_SECRET=1
   fi
 
-  # Check AWS Keys
-  if echo "$ADDED_LINES" | grep -E -q -- "$AWS_KEY_REGEX"; then
-    echo -e "${RED}${BOLD}🛑 SECRET LEAK BLOCKED:${NC} AWS Access Key ID detected in ${BOLD}$FILE${NC}"
+  # Check Cloud Provider Access Keys
+  if echo "$ADDED_LINES" | grep -E -q -- "$CLOUD_KEY_REGEX"; then
+    echo -e "${RED}${BOLD}🛑 SECRET LEAK BLOCKED:${NC} Cloud Access Key ID detected in ${BOLD}$FILE${NC}"
     HAS_SECRET=1
   fi
 

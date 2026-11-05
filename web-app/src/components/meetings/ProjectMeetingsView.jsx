@@ -4577,7 +4577,7 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
                   gap: '6px',
                 }}
               >
-                {isSendingEmail ? '⏳ Sending Email Report...' : '🚀 Send Email Report (AWS SES / SMTP)'}
+                {isSendingEmail ? '⏳ Sending Email Report...' : '🚀 Send Email Report (SMTP)'}
               </button>
             </div>
           </div>

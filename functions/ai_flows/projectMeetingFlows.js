@@ -1264,7 +1264,7 @@ export async function handleEmailProjectMeetingReport({
   }
 
   const smtpUser = process.env.SMTP_USER || process.env.SMTP_USERNAME || process.env.OTP_SMTP_USERNAME || 'noreply@vtc.edu.hk';
-  const smtpHost = process.env.SMTP_HOST || process.env.OTP_SMTP_HOST || 'email-smtp.us-east-1.amazonaws.com';
+  const smtpHost = process.env.SMTP_HOST || process.env.OTP_SMTP_HOST || 'smtp.gmail.com';
   const smtpPort = parseInt(process.env.SMTP_PORT || process.env.OTP_SMTP_PORT || '465', 10);
   const isSecure = process.env.SMTP_SECURE !== undefined
     ? process.env.SMTP_SECURE === 'true'
