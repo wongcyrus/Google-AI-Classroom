@@ -27,3 +27,8 @@ output "google_drive_api" {
   value       = "drive.googleapis.com"
   description = "Google Drive API service enabled"
 }
+
+output "smtp_secret_id" {
+  value       = google_secret_manager_secret.smtp_password.secret_id
+  description = "Google Secret Manager Secret ID for SMTP password"
+}

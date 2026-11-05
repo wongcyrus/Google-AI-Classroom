@@ -50,3 +50,28 @@ variable "custom_domains" {
   description = "Optional list of custom domains to authorize in Identity Platform (set via terraform.tfvars)"
   default     = []
 }
+
+variable "smtp_user" {
+  type        = string
+  description = "SMTP sender username (e.g. noreply@vtc.edu.hk)"
+  default     = "noreply@vtc.edu.hk"
+}
+
+variable "smtp_host" {
+  type        = string
+  description = "SMTP server hostname"
+  default     = "smtp.gmail.com"
+}
+
+variable "smtp_port" {
+  type        = number
+  description = "SMTP server port (e.g. 465 for SSL, 587 for TLS)"
+  default     = 465
+}
+
+variable "smtp_password" {
+  type        = string
+  description = "Google Workspace App Password for SMTP (optional; stored in Secret Manager if provided)"
+  default     = ""
+  sensitive   = true
+}

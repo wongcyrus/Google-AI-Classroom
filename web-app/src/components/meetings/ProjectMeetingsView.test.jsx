@@ -980,4 +980,58 @@ Group Beta,New Beta Topic,other@vtc.edu.hk,eva@stu.vtc.edu.hk,Eva Ho,Leader`;
       expect(mockHttpsCallable).toHaveBeenCalled();
     });
   });
+
+  it('supports emailing supervision report via Cloud Function and mail client fallback', async () => {
+    const mockWindowOpen = vi.fn();
+    window.open = mockWindowOpen;
+
+    mockHttpsCallable.mockResolvedValueOnce({
+      data: { success: true, count: 2, recipients: ['alice@stu.vtc.edu.hk', 'bob@stu.vtc.edu.hk'] },
+    });
+
+    render(
+      <ProjectMeetingsView
+        classId="it114115"
+        classInfo={{
+          name: 'Capstone Project',
+          teacherEmails: ['cywong@vtc.edu.hk'],
+          studentEmails: ['alice@stu.vtc.edu.hk', 'bob@stu.vtc.edu.hk'],
+        }}
+        user={{ uid: 't_1', email: 'cywong@vtc.edu.hk', displayName: 'Dr. Wong' }}
+      />
+    );
+
+    // Select Group 1
+    fireEvent.change(screen.getByLabelText(/📁 Project Group:/i), { target: { value: 'grp_1' } });
+
+    // Click "📧 Email Report" button
+    const emailBtn = screen.getByRole('button', { name: /📧 Email Report/i });
+    expect(emailBtn).toBeInTheDocument();
+    fireEvent.click(emailBtn);
+
+    // Verify modal is open
+    expect(screen.getByText(/📧 Email Supervision Minutes & Feedback/i)).toBeInTheDocument();
+    expect(screen.getByText(/Select Recipients/i)).toBeInTheDocument();
+
+    // Click Open in Mail Client (mailto:)
+    fireEvent.click(screen.getByRole('button', { name: /Open in Mail Client/i }));
+    expect(mockWindowOpen).toHaveBeenCalledWith(
+      expect.stringContaining('mailto:'),
+      '_blank'
+    );
+
+    // Click Send via noreply@vtc.edu.hk
+    fireEvent.click(screen.getByRole('button', { name: /Send via noreply@vtc\.edu\.hk/i }));
+
+    await waitFor(() => {
+      expect(mockHttpsCallable).toHaveBeenCalledWith(
+        expect.objectContaining({
+          classId: 'it114115',
+          meetingId: 'mtg_1_wk3',
+        })
+      );
+    });
+
+    expect(screen.getByText(/Successfully sent email reports to 2 student\(s\)/i)).toBeInTheDocument();
+  });
 });

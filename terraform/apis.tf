@@ -26,7 +26,8 @@ locals {
     "iam.googleapis.com",
     "iamcredentials.googleapis.com",
     "cloudtasks.googleapis.com",
-    "drive.googleapis.com"
+    "drive.googleapis.com",
+    "secretmanager.googleapis.com"
   ]
 }
 

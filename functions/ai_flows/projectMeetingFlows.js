@@ -2,6 +2,7 @@ import './firebase.js';
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
+import nodemailer from 'nodemailer';
 import {
   CORS_ORIGINS,
   FUNCTION_REGION,
@@ -1063,6 +1064,361 @@ export const analyzeProjectMeeting = onCall(
       groupName,
       projectTopic,
       weekNumber,
+      auth: request.auth,
+    });
+  }
+);
+
+/**
+ * Generates an accessible, responsive HTML email report for a student's supervision meeting.
+ */
+export function generateMeetingEmailHtml({
+  meeting,
+  group,
+  student,
+  attendance,
+  contribution,
+  portalUrl = 'https://it114115-2627.web.app',
+}) {
+  const weekNum = meeting.weekNumber || 1;
+  const title = meeting.title || 'Supervision Meeting';
+  const meetingDateStr = meeting.meetingDate
+    ? new Date(meeting.meetingDate).toLocaleString('en-US', {
+        dateStyle: 'full',
+        timeStyle: 'short',
+      })
+    : 'Recent';
+  const supervisor = meeting.supervisorName || meeting.supervisorEmail || 'Supervisor';
+  const groupName = group?.name || 'Project Group';
+  const topic = group?.projectTopic || 'Capstone Project';
+  const studentName = student?.name || student?.email || 'Student';
+
+  const attStatus = attendance?.status || 'pending';
+  const attLabel =
+    attStatus === 'present'
+      ? '✅ Present'
+      : attStatus === 'late'
+      ? '🕒 Late'
+      : attStatus === 'absent'
+      ? '❌ Absent'
+      : '⏳ Pending';
+  const attBg =
+    attStatus === 'present'
+      ? '#dcfce7'
+      : attStatus === 'late'
+      ? '#fef3c7'
+      : attStatus === 'absent'
+      ? '#fee2e2'
+      : '#f1f5f9';
+  const attColor =
+    attStatus === 'present'
+      ? '#15803d'
+      : attStatus === 'late'
+      ? '#b45309'
+      : attStatus === 'absent'
+      ? '#b91c1c'
+      : '#475569';
+
+  const realScore = contribution?.realWorkScore;
+  const logScore = contribution?.logQualityScore ?? contribution?.weeklyLogScore;
+  const feedback = contribution?.weeklyFeedback || contribution?.supervisorFeedback;
+  const challengeQs = Array.isArray(contribution?.challengeQuestions) ? contribution.challengeQuestions : [];
+  const workDone = Array.isArray(contribution?.workCompleted || contribution?.workDone || contribution?.verifiedTasks)
+    ? (contribution.workCompleted || contribution.workDone || contribution.verifiedTasks)
+    : [];
+  const actionItems = Array.isArray(contribution?.actionItemsNextWeek || contribution?.actionItems)
+    ? (contribution.actionItemsNextWeek || contribution.actionItems)
+    : [];
+  const groupFeedback = meeting?.keyInsights?.weeklyGroupFeedback;
+
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Week ${weekNum} Capstone Supervision Meeting Report</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; line-height: 1.5; color: #1e293b; background-color: #f8fafc; margin: 0; padding: 20px; }
+    .container { max-width: 620px; margin: 0 auto; background: #ffffff; border-radius: 12px; border: 1px solid #e2e8f0; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); }
+    .header { background: linear-gradient(135deg, #1e3a8a, #2563eb); color: #ffffff; padding: 24px; }
+    .header h1 { margin: 0 0 6px; font-size: 1.25rem; font-weight: 700; color: #ffffff; }
+    .header p { margin: 0; font-size: 0.9rem; opacity: 0.9; color: #eff6ff; }
+    .badge { display: inline-block; padding: 4px 12px; border-radius: 9999px; font-size: 0.82rem; font-weight: 700; margin-top: 10px; }
+    .content { padding: 24px; }
+    .card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+    .score-badge { display: inline-block; background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; font-weight: 700; padding: 4px 10px; border-radius: 6px; margin-right: 8px; font-size: 0.85rem; }
+    .feedback-quote { background: #fefce8; border-left: 4px solid #eab308; padding: 12px 14px; margin: 12px 0 0; font-style: italic; color: #713f12; border-radius: 0 6px 6px 0; }
+    ul { margin: 6px 0; padding-left: 20px; }
+    li { margin-bottom: 4px; }
+    .btn { display: inline-block; background: #2563eb; color: #ffffff !important; text-decoration: none; font-weight: 600; padding: 12px 20px; border-radius: 8px; text-align: center; margin: 16px 0; font-size: 0.95rem; }
+    .footer { text-align: center; font-size: 0.75rem; color: #94a3b8; padding: 16px; border-top: 1px solid #f1f5f9; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>👥 Week ${weekNum}: ${title}</h1>
+      <p><strong>${groupName}</strong> &bull; ${topic}</p>
+      <div>
+        <span class="badge" style="background: ${attBg}; color: ${attColor};">${attLabel}</span>
+      </div>
+    </div>
+    <div class="content">
+      <p>Hello <strong>${studentName}</strong>,</p>
+      <p>Here is your official supervision meeting record and personalized feedback from <strong>${supervisor}</strong> for Week ${weekNum} (${meetingDateStr}).</p>
+
+      <div class="card">
+        <h3 style="margin: 0 0 10px; font-size: 1rem; color: #0f172a;">📊 Weekly Evaluation &amp; Scores</h3>
+        <div>
+          ${realScore !== undefined && realScore !== null ? `<span class="score-badge">🛠️ Real Work Score: ${realScore}/10</span>` : ''}
+          ${logScore !== undefined && logScore !== null ? `<span class="score-badge">📄 Log Quality Score: ${logScore}/10</span>` : ''}
+        </div>
+        ${feedback ? `<div class="feedback-quote"><strong>💬 Supervisor Feedback:</strong><br>&ldquo;${feedback}&rdquo;</div>` : ''}
+      </div>
+
+      ${challengeQs.length > 0 ? `
+      <div class="card">
+        <h3 style="margin: 0 0 8px; font-size: 0.95rem; color: #0f172a;">🎯 Challenge Questions to Answer</h3>
+        <ul>
+          ${challengeQs.map((q) => `<li>${q}</li>`).join('')}
+        </ul>
+      </div>` : ''}
+
+      ${workDone.length > 0 ? `
+      <div class="card">
+        <h3 style="margin: 0 0 8px; font-size: 0.95rem; color: #0f172a;">✅ Verified Work Completed</h3>
+        <ul>
+          ${workDone.map((w) => `<li>${w}</li>`).join('')}
+        </ul>
+      </div>` : ''}
+
+      ${actionItems.length > 0 ? `
+      <div class="card" style="border-left: 4px solid #3b82f6;">
+        <h3 style="margin: 0 0 8px; font-size: 0.95rem; color: #1e3a8a;">📋 Action Items for Next Week</h3>
+        <ul>
+          ${actionItems.map((a) => `<li><strong>${a}</strong></li>`).join('')}
+        </ul>
+      </div>` : ''}
+
+      ${groupFeedback ? `
+      <div class="card">
+        <h3 style="margin: 0 0 8px; font-size: 0.95rem; color: #0f172a;">👥 Overall Group Feedback</h3>
+        <p style="margin: 0; color: #334155;">${groupFeedback}</p>
+      </div>` : ''}
+
+      <div style="text-align: center;">
+        <a href="${portalUrl}/student/records" class="btn" target="_blank">
+          🎧 View Audio Clips &amp; Full Records on Portal
+        </a>
+      </div>
+    </div>
+    <div class="footer">
+      Google AI Classroom Assistant &bull; Hong Kong Institute of Information Technology (HKIIT)<br>
+      This is an automated academic supervision report. Please do not reply directly to this email.
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
+/**
+ * Handles sending supervision meeting report emails to students via SMTP.
+ */
+export async function handleEmailProjectMeetingReport({
+  classId,
+  meetingId,
+  studentUids,
+  sendToAllTeammates = true,
+  portalUrl = 'https://it114115-2627.web.app',
+  auth,
+}) {
+  if (!classId || !meetingId) {
+    throw new HttpsError('invalid-argument', 'Missing required classId or meetingId.');
+  }
+
+  // Load meeting doc
+  const meetingRef = db.doc(`classes/${classId}/projectMeetings/${meetingId}`);
+  const meetingSnap = await meetingRef.get();
+  if (!meetingSnap.exists) {
+    throw new HttpsError('not-found', `Meeting ${meetingId} not found in class ${classId}.`);
+  }
+  const meetingData = meetingSnap.data() || {};
+
+  // Load group doc
+  const groupId = meetingData.groupId;
+  let groupData = null;
+  if (groupId) {
+    const groupSnap = await db.doc(`classes/${classId}/projectGroups/${groupId}`).get();
+    if (groupSnap.exists) {
+      groupData = groupSnap.data() || {};
+    }
+  }
+
+  // Check SMTP credentials
+  const smtpPassword = process.env.SMTP_PASSWORD;
+  if (!smtpPassword) {
+    throw new HttpsError(
+      'failed-precondition',
+      'SMTP password is not configured in Google Secret Manager (SMTP_PASSWORD). Please configure it via Terraform or Firebase Console.'
+    );
+  }
+
+  const smtpUser = process.env.SMTP_USER || 'noreply@vtc.edu.hk';
+  const smtpHost = process.env.SMTP_HOST || 'smtp.gmail.com';
+  const smtpPort = parseInt(process.env.SMTP_PORT || '465', 10);
+  const isSecure = smtpPort === 465;
+
+  const transporter = nodemailer.createTransport({
+    host: smtpHost,
+    port: smtpPort,
+    secure: isSecure,
+    auth: {
+      user: smtpUser,
+      pass: smtpPassword,
+    },
+  });
+
+  // Resolve target members
+  const members = Array.isArray(groupData?.members) ? groupData.members : [];
+  let targetMembers = members;
+  if (Array.isArray(studentUids) && studentUids.length > 0) {
+    targetMembers = members.filter((m) => studentUids.includes(m.uid) || studentUids.includes(m.email));
+  } else if (!sendToAllTeammates) {
+    targetMembers = [];
+  }
+
+  if (targetMembers.length === 0) {
+    // Fallback: collect unique emails from attendanceRecord or studentContributions
+    const emailsMap = new Map();
+    (meetingData.attendanceRecord || []).forEach((a) => {
+      if (a.email) emailsMap.set(a.email.toLowerCase(), { email: a.email, name: a.name || a.email });
+    });
+    (meetingData.studentContributions || []).forEach((c) => {
+      if (c.email) emailsMap.set(c.email.toLowerCase(), { email: c.email, name: c.name || c.email });
+    });
+    targetMembers = Array.from(emailsMap.values());
+  }
+
+  if (targetMembers.length === 0) {
+    throw new HttpsError('failed-precondition', 'No student recipients found for this project meeting.');
+  }
+
+  const deliveredRecipients = [];
+  const errors = [];
+
+  for (const student of targetMembers) {
+    const studentEmail = (student.email || '').trim().toLowerCase();
+    if (!studentEmail || !studentEmail.includes('@')) continue;
+
+    const att = (meetingData.attendanceRecord || []).find(
+      (a) => (a.email || '').trim().toLowerCase() === studentEmail || (student.uid && a.uid === student.uid)
+    );
+    const contrib = (meetingData.studentContributions || []).find(
+      (c) =>
+        (c.email || '').trim().toLowerCase() === studentEmail ||
+        (student.uid && (c.studentUid === student.uid || c.uid === student.uid))
+    );
+
+    const html = generateMeetingEmailHtml({
+      meeting: meetingData,
+      group: groupData,
+      student,
+      attendance: att,
+      contribution: contrib,
+      portalUrl,
+    });
+
+    const weekNum = meetingData.weekNumber || 1;
+    const groupName = groupData?.name || 'Project Group';
+    const subject = `[Week ${weekNum}] Capstone Supervision Minutes & Feedback - ${groupName}`;
+
+    try {
+      const sendResult = await transporter.sendMail({
+        from: `"HKIIT Capstone Assistant" <${smtpUser}>`,
+        to: student.email,
+        subject,
+        html,
+        text: `Week ${weekNum} Meeting Report for ${student.name || student.email}. Please view on portal: ${portalUrl}/student/records`,
+      });
+
+      deliveredRecipients.push({
+        email: student.email,
+        name: student.name || student.email,
+        messageId: sendResult?.messageId || 'sent',
+      });
+    } catch (err) {
+      errors.push({
+        email: student.email,
+        error: err.message,
+      });
+    }
+  }
+
+  if (deliveredRecipients.length > 0) {
+    await meetingRef.update({
+      emailDispatch: {
+        lastEmailedAt: FieldValue.serverTimestamp(),
+        emailedBy: auth?.token?.email || auth?.uid || 'supervisor',
+        recipients: deliveredRecipients.map((r) => r.email),
+        totalSent: deliveredRecipients.length,
+      },
+    });
+  }
+
+  return {
+    success: deliveredRecipients.length > 0,
+    count: deliveredRecipients.length,
+    recipients: deliveredRecipients,
+    errors,
+  };
+}
+
+/**
+ * Callable Cloud Function: emailProjectMeetingReport
+ */
+export const emailProjectMeetingReport = onCall(
+  {
+    region: FUNCTION_REGION,
+    cors: CORS_ORIGINS,
+    cpu: 1,
+    memory: '512MiB',
+    timeoutSeconds: 120,
+    secrets: ['SMTP_PASSWORD'],
+  },
+  async (request) => {
+    if (!request.auth) {
+      throw new HttpsError('unauthenticated', 'User must be authenticated.');
+    }
+
+    const { classId, meetingId, studentUids, sendToAllTeammates, portalUrl } = request.data || {};
+    let isAuthorized = request.auth.token?.role === 'teacher' || request.auth.token?.role === 'admin';
+
+    if (!isAuthorized && classId) {
+      const classSnap = await db.doc(`classes/${classId}`).get();
+      if (classSnap.exists) {
+        const cData = classSnap.data() || {};
+        const userEmail = (request.auth.token?.email || '').toLowerCase();
+        if (
+          (Array.isArray(cData.teacherEmails) && cData.teacherEmails.map((e) => e.toLowerCase()).includes(userEmail)) ||
+          (cData.teachers && cData.teachers[request.auth.uid]) ||
+          cData.ownerUid === request.auth.uid ||
+          cData.teacherUid === request.auth.uid
+        ) {
+          isAuthorized = true;
+        }
+      }
+    }
+
+    if (!isAuthorized) {
+      throw new HttpsError('permission-denied', 'Only teachers and project supervisors can email meeting reports.');
+    }
+
+    return await handleEmailProjectMeetingReport({
+      classId,
+      meetingId,
+      studentUids,
+      sendToAllTeammates,
+      portalUrl,
       auth: request.auth,
     });
   }

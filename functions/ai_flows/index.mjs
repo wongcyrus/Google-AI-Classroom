@@ -584,4 +584,10 @@ import { processLectureSubtitles, processLectureSubtitleJob, handleReconcileLect
 export { processLectureSubtitles, processLectureSubtitleJob, handleReconcileLectureRecordings };
 export { extractTaskDemoSteps } from './extractTaskDemoSteps.js';
 export { evaluateTaskSubmission, evaluateTaskSubmissionTask, enqueueTaskEvaluation } from './evaluateTaskSubmission.js';
-export { analyzeProjectMeeting, handleAnalyzeProjectMeeting } from './projectMeetingFlows.js';
+export {
+  analyzeProjectMeeting,
+  handleAnalyzeProjectMeeting,
+  emailProjectMeetingReport,
+  handleEmailProjectMeetingReport,
+  generateMeetingEmailHtml,
+} from './projectMeetingFlows.js';

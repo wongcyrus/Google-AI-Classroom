@@ -43,6 +43,17 @@ vi.mock('./jobLogger.js', () => ({
   logJob: vi.fn().mockResolvedValue(true),
 }));
 
+const mockSendMail = vi.fn().mockResolvedValue({ messageId: 'msg-123' });
+const mockCreateTransport = vi.fn(() => ({
+  sendMail: (...args) => mockSendMail(...args),
+}));
+
+vi.mock('nodemailer', () => ({
+  default: {
+    createTransport: (...args) => mockCreateTransport(...args),
+  },
+}));
+
 import {
   formatSecondsToMmSs,
   parseTimestampToSeconds,
@@ -53,6 +64,9 @@ import {
   handlePrepareProjectLogQuestions,
   handleAnalyzeProjectMeeting,
   analyzeProjectMeeting,
+  generateMeetingEmailHtml,
+  handleEmailProjectMeetingReport,
+  emailProjectMeetingReport,
 } from './projectMeetingFlows.js';
 
 describe('projectMeetingFlows', () => {
@@ -557,5 +571,151 @@ describe('projectMeetingFlows', () => {
       },
     });
     expect(okRes.success).toBe(true);
+  });
+
+  describe('emailProjectMeetingReport and HTML generation', () => {
+    it('generates HTML email report containing scores, attendance, and feedback', () => {
+      const html = generateMeetingEmailHtml({
+        meeting: {
+          weekNumber: 10,
+          title: 'Sprint Review',
+          meetingDate: '2026-11-01T10:00:00Z',
+          supervisorName: 'Dr. Alan Turing',
+          keyInsights: { weeklyGroupFeedback: 'Group is making steady progress' },
+        },
+        group: {
+          name: 'Group A10',
+          projectTopic: 'AI Classroom Assistant',
+        },
+        student: {
+          name: 'Alice Wong',
+          email: 'alice@stu.vtc.edu.hk',
+        },
+        attendance: {
+          status: 'late',
+        },
+        contribution: {
+          realWorkScore: 9,
+          logQualityScore: 8,
+          weeklyFeedback: 'Excellent architecture diagrams and Dockerfile setup.',
+          challengeQuestions: ['How will container scaling be handled?'],
+          workCompleted: ['Configured Docker Compose', 'Integrated Auth'],
+          actionItemsNextWeek: ['Deploy to Cloud Run'],
+        },
+      });
+
+      expect(html).toContain('Week 10');
+      expect(html).toContain('Sprint Review');
+      expect(html).toContain('Group A10');
+      expect(html).toContain('AI Classroom Assistant');
+      expect(html).toContain('Alice Wong');
+      expect(html).toContain('Dr. Alan Turing');
+      expect(html).toContain('🕒 Late');
+      expect(html).toContain('Real Work Score: 9/10');
+      expect(html).toContain('Log Quality Score: 8/10');
+      expect(html).toContain('Excellent architecture diagrams and Dockerfile setup.');
+      expect(html).toContain('How will container scaling be handled?');
+      expect(html).toContain('Configured Docker Compose');
+      expect(html).toContain('Deploy to Cloud Run');
+      expect(html).toContain('Group is making steady progress');
+      expect(html).toContain('/student/records');
+    });
+
+    it('rejects handleEmailProjectMeetingReport when SMTP_PASSWORD is not configured', async () => {
+      const origPass = process.env.SMTP_PASSWORD;
+      delete process.env.SMTP_PASSWORD;
+
+      mockDocGet.mockImplementation(async (path) => {
+        if (path === 'classes/c1/projectMeetings/m1') {
+          return {
+            exists: true,
+            data: () => ({ groupId: 'grp_1', weekNumber: 10 }),
+          };
+        }
+        return { exists: false };
+      });
+
+      await expect(
+        handleEmailProjectMeetingReport({
+          classId: 'c1',
+          meetingId: 'm1',
+          auth: { uid: 'sup_1', token: { email: 'sup@vtc.edu.hk', role: 'teacher' } },
+        })
+      ).rejects.toThrow(/SMTP password is not configured/);
+
+      if (origPass) process.env.SMTP_PASSWORD = origPass;
+    });
+
+    it('dispatches emails via nodemailer and records dispatch in meeting doc', async () => {
+      process.env.SMTP_PASSWORD = 'mock-app-password';
+
+      mockDocGet.mockImplementation(async (path) => {
+        if (path === 'classes/c1/projectMeetings/m1') {
+          return {
+            exists: true,
+            data: () => ({
+              groupId: 'grp_1',
+              weekNumber: 10,
+              title: 'Sprint Review',
+              attendanceRecord: [{ email: 'bob@stu.vtc.edu.hk', status: 'present' }],
+              studentContributions: [{ email: 'bob@stu.vtc.edu.hk', realWorkScore: 9, weeklyFeedback: 'Great job!' }],
+            }),
+          };
+        }
+        if (path === 'classes/c1/projectGroups/grp_1') {
+          return {
+            exists: true,
+            data: () => ({
+              name: 'Group A10',
+              members: [{ name: 'Bob', email: 'bob@stu.vtc.edu.hk' }],
+            }),
+          };
+        }
+        return { exists: false };
+      });
+
+      const res = await handleEmailProjectMeetingReport({
+        classId: 'c1',
+        meetingId: 'm1',
+        auth: { uid: 'teacher_1', token: { email: 'teacher@vtc.edu.hk', role: 'teacher' } },
+      });
+
+      expect(res.success).toBe(true);
+      expect(res.count).toBe(1);
+      expect(mockCreateTransport).toHaveBeenCalled();
+      expect(mockSendMail).toHaveBeenCalledWith(
+        expect.objectContaining({
+          to: 'bob@stu.vtc.edu.hk',
+          subject: expect.stringContaining('Week 10'),
+        })
+      );
+      expect(mockDocUpdate).toHaveBeenCalledWith(
+        'classes/c1/projectMeetings/m1',
+        expect.objectContaining({
+          emailDispatch: expect.objectContaining({
+            recipients: ['bob@stu.vtc.edu.hk'],
+            totalSent: 1,
+          }),
+        })
+      );
+
+      delete process.env.SMTP_PASSWORD;
+    });
+
+    it('enforces authentication and authorization in emailProjectMeetingReport callable', async () => {
+      await expect(emailProjectMeetingReport.run({ auth: null, data: {} })).rejects.toThrow(/User must be authenticated/);
+
+      mockDocGet.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({ teacherEmails: ['teacher@vtc.edu.hk'], ownerUid: 'teacher_1' }),
+      });
+
+      await expect(
+        emailProjectMeetingReport.run({
+          auth: { uid: 'stu_1', token: { email: 'stu@stu.vtc.edu.hk', role: 'student' } },
+          data: { classId: 'c1', meetingId: 'm1' },
+        })
+      ).rejects.toThrow(/Only teachers and project supervisors can email meeting reports/);
+    });
   });
 });

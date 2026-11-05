@@ -96,6 +96,14 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
   const [isEditingGroupFeedback, setIsEditingGroupFeedback] = useState(false);
   const [groupFeedbackDraft, setGroupFeedbackDraft] = useState('');
 
+  // Email Report Modal state
+  const [showEmailReportModal, setShowEmailReportModal] = useState(false);
+  const [emailReportTargetMeeting, setEmailReportTargetMeeting] = useState(null);
+  const [emailRecipientUids, setEmailRecipientUids] = useState([]);
+  const [isSendingEmail, setIsSendingEmail] = useState(false);
+  const [emailErrorMessage, setEmailErrorMessage] = useState('');
+  const [emailSuccessMessage, setEmailSuccessMessage] = useState('');
+
   // Public Weekly Log Google Sheet (stored per-class in classes/{classId}.projectLogSheetUrl) & Student Contribution Profile state
   const [logSheetUrl, setLogSheetUrl] = useState(
     () => classInfo?.projectLogSheetUrl || ''
@@ -1741,6 +1749,87 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
     showToastMessage(`🗑️ Deleted meeting session "${mtg.title}"`);
   };
 
+  // Open Email Report Modal for a meeting
+  const handleOpenEmailModal = (meeting) => {
+    if (!meeting) return;
+    setEmailReportTargetMeeting(meeting);
+    const grp = groups.find((g) => g.id === meeting.groupId) || selectedGroup;
+    const memberIds = (grp?.members || []).map((m) => m.uid || m.email);
+    setEmailRecipientUids(memberIds);
+    setEmailErrorMessage('');
+    setEmailSuccessMessage('');
+    setShowEmailReportModal(true);
+  };
+
+  // Toggle recipient in email modal
+  const handleToggleEmailRecipient = (id) => {
+    setEmailRecipientUids((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  };
+
+  // Send email via Cloud Function (nodemailer / noreply@vtc.edu.hk)
+  const handleSendBackendEmail = async () => {
+    if (!emailReportTargetMeeting) return;
+    setIsSendingEmail(true);
+    setEmailErrorMessage('');
+    setEmailSuccessMessage('');
+    try {
+      const callEmail = httpsCallable(functions, 'emailProjectMeetingReport', { timeout: 120000 });
+      const res = await callEmail({
+        classId,
+        meetingId: emailReportTargetMeeting.id,
+        studentUids: emailRecipientUids,
+        sendToAllTeammates: emailRecipientUids.length === 0,
+        portalUrl: window.location.origin,
+      });
+
+      if (res.data?.success) {
+        showToastMessage(`📧 Emailed report to ${res.data.count} student(s)!`);
+        setEmailSuccessMessage(`Successfully sent email reports to ${res.data.count} student(s) via noreply@vtc.edu.hk.`);
+      } else {
+        throw new Error(res.data?.errors?.[0]?.error || 'Failed to dispatch emails.');
+      }
+    } catch (err) {
+      console.error('Email report error:', err);
+      const msg = err.message || 'Failed to send email.';
+      if (msg.includes('SMTP password is not configured') || err.code === 'failed-precondition') {
+        setEmailErrorMessage(
+          '⚠️ Backend SMTP password is not configured in Google Secret Manager (SMTP_PASSWORD) yet. You can launch your mail client below or configure it via Terraform.'
+        );
+      } else {
+        setEmailErrorMessage(`Failed to send email: ${msg}`);
+      }
+    } finally {
+      setIsSendingEmail(false);
+    }
+  };
+
+  // Launch client-side mail draft (mailto:) pre-filled with minutes and recipients
+  const handleOpenMailtoDraft = () => {
+    if (!emailReportTargetMeeting) return;
+    const grp = groups.find((g) => g.id === emailReportTargetMeeting.groupId) || selectedGroup;
+    const members = grp?.members || [];
+    const targetMembers = members.filter((m) => emailRecipientUids.includes(m.uid || m.email));
+    const toEmails = (targetMembers.length > 0 ? targetMembers : members)
+      .map((m) => m.email)
+      .filter(Boolean)
+      .join(';');
+
+    const weekNum = emailReportTargetMeeting.weekNumber || 1;
+    const groupName = grp?.name || 'Project Group';
+    const topic = grp?.projectTopic || 'Capstone Project';
+    const subject = `[Week ${weekNum}] Capstone Supervision Minutes & Feedback - ${groupName}`;
+
+    const mdMinutes = generateMeetingMarkdownMinutes(emailReportTargetMeeting);
+    const portalLink = `${window.location.origin}/student/records`;
+    const bodyText = `Dear Teammates (${groupName}),\n\nHere are your official supervision meeting minutes and feedback for Week ${weekNum} (${topic}).\n\nView recordings, grades, and full records on the student portal:\n${portalLink}\n\n========================================\n\n${mdMinutes}`;
+
+    const mailtoUrl = `mailto:${toEmails}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(bodyText)}`;
+    window.open(mailtoUrl, '_blank');
+    showToastMessage('📧 Opened email draft in your mail client!');
+  };
+
   // Move a specific audio clip part to a different Project Group (e.g. accidentally recorded under the wrong group)
   const handleMoveAudioClipToGroup = async (clipIdx, targetGroupId) => {
     if (!selectedMeeting || !targetGroupId || targetGroupId === selectedMeeting.groupId) return;
@@ -3258,6 +3347,33 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
 
                     <button
                       type="button"
+                      className="btn-email-meeting-report"
+                      onClick={() => handleOpenEmailModal(selectedMeeting)}
+                      title="Email meeting minutes, attendance, scores and supervisor feedback to students"
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '6px 12px',
+                        borderRadius: '6px',
+                        border: '1px solid #bfdbfe',
+                        background: '#eff6ff',
+                        color: '#1d4ed8',
+                        fontSize: '0.82rem',
+                        cursor: 'pointer',
+                        fontWeight: 600,
+                      }}
+                    >
+                      📧 Email Report
+                      {selectedMeeting.emailDispatch?.lastEmailedAt && (
+                        <span style={{ fontSize: '0.72rem', background: '#dbeafe', padding: '1px 5px', borderRadius: '4px' }}>
+                          ✓ Sent
+                        </span>
+                      )}
+                    </button>
+
+                    <button
+                      type="button"
                       className="btn-delete-meeting-session"
                       onClick={() => handleDeleteMeeting(selectedMeeting.id)}
                       title="Permanently delete this entire meeting session"
@@ -4298,6 +4414,170 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
                 onClick={() => handleSaveStudentContributionEdit(editingStudentUid)}
               >
                 💾 Save Student Record &amp; Feedback
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Email Report Modal */}
+      {showEmailReportModal && emailReportTargetMeeting && (
+        <div
+          className="student-edit-modal-backdrop"
+          onClick={() => !isSendingEmail && setShowEmailReportModal(false)}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="email-report-modal-title"
+        >
+          <div
+            className="student-edit-modal-card"
+            style={{ maxWidth: '580px' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="student-edit-modal-header">
+              <div>
+                <h3
+                  id="email-report-modal-title"
+                  style={{
+                    margin: 0,
+                    fontSize: '1.15rem',
+                    color: '#0f172a',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                  }}
+                >
+                  📧 Email Supervision Minutes &amp; Feedback
+                </h3>
+                <div style={{ margin: '4px 0 0', fontSize: '0.82rem', color: '#64748b' }}>
+                  <strong>Week {emailReportTargetMeeting.weekNumber || 1}:</strong> {emailReportTargetMeeting.title || 'Supervision Meeting'} • {groups.find((g) => g.id === emailReportTargetMeeting.groupId)?.name || 'Project Group'}
+                </div>
+              </div>
+              <button
+                type="button"
+                className="btn-modal-close"
+                onClick={() => !isSendingEmail && setShowEmailReportModal(false)}
+                aria-label="Close"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="student-edit-modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div style={{ background: '#f8fafc', padding: '12px 14px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '0.88rem' }}>
+                <p style={{ margin: '0 0 6px', color: '#334155' }}>
+                  Each student will receive a formatted email with their <strong>attendance status</strong>, <strong>supervisor scores</strong>, <strong>personalized feedback quote</strong>, <strong>challenge questions</strong>, and <strong>next week action items</strong>.
+                </p>
+                {emailReportTargetMeeting.emailDispatch?.lastEmailedAt && (
+                  <div style={{ marginTop: '8px', padding: '6px 10px', background: '#dcfce7', color: '#15803d', borderRadius: '6px', fontSize: '0.8rem', fontWeight: 600 }}>
+                    ✓ Previously emailed: {formatDate(emailReportTargetMeeting.emailDispatch.lastEmailedAt)} to {emailReportTargetMeeting.emailDispatch.recipients?.join(', ')}
+                  </div>
+                )}
+              </div>
+
+              {/* Recipient Selection */}
+              <div>
+                <label style={{ display: 'block', fontWeight: 700, fontSize: '0.85rem', color: '#0f172a', marginBottom: '6px' }}>
+                  Select Recipients ({emailRecipientUids.length}):
+                </label>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '160px', overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '10px' }}>
+                  {(groups.find((g) => g.id === emailReportTargetMeeting.groupId)?.members || []).map((m) => {
+                    const id = m.uid || m.email;
+                    const isChecked = emailRecipientUids.includes(id);
+                    return (
+                      <label key={id} style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', cursor: 'pointer', color: '#1e293b' }}>
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => handleToggleEmailRecipient(id)}
+                          disabled={isSendingEmail}
+                        />
+                        <span>
+                          <strong>{m.name || m.email}</strong> {m.email && `<${m.email}>`}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Status messages */}
+              {emailErrorMessage && (
+                <div style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#b91c1c', padding: '10px 12px', borderRadius: '8px', fontSize: '0.85rem', lineHeight: 1.4 }}>
+                  {emailErrorMessage}
+                </div>
+              )}
+
+              {emailSuccessMessage && (
+                <div style={{ background: '#dcfce7', border: '1px solid #bbf7d0', color: '#15803d', padding: '10px 12px', borderRadius: '8px', fontSize: '0.85rem', fontWeight: 600 }}>
+                  {emailSuccessMessage}
+                </div>
+              )}
+
+              {/* Fallback & Copy Bar */}
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', paddingTop: '6px', borderTop: '1px solid #f1f5f9' }}>
+                <button
+                  type="button"
+                  onClick={handleOpenMailtoDraft}
+                  style={{
+                    background: '#f8fafc',
+                    border: '1px solid #cbd5e1',
+                    color: '#334155',
+                    borderRadius: '6px',
+                    padding: '6px 12px',
+                    fontSize: '0.82rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                  }}
+                  title="Open a pre-filled draft in your desktop Outlook / Gmail client"
+                >
+                  📨 Open in Mail Client (Outlook / Mailto)
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const md = generateMeetingMarkdownMinutes(emailReportTargetMeeting);
+                    navigator.clipboard?.writeText(md);
+                    showToastMessage('📋 Copied Markdown minutes to clipboard!');
+                  }}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: '#2563eb',
+                    fontSize: '0.82rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    textDecoration: 'underline',
+                  }}
+                >
+                  📋 Copy Text
+                </button>
+              </div>
+            </div>
+
+            <div className="student-edit-modal-footer">
+              <button
+                type="button"
+                className="btn-cancel-edit"
+                onClick={() => setShowEmailReportModal(false)}
+                disabled={isSendingEmail}
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                className="btn-save-student-work"
+                onClick={handleSendBackendEmail}
+                disabled={isSendingEmail || emailRecipientUids.length === 0}
+                style={{
+                  background: isSendingEmail ? '#94a3b8' : '#2563eb',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                }}
+              >
+                {isSendingEmail ? '⏳ Sending via noreply@vtc.edu.hk...' : '🚀 Send via noreply@vtc.edu.hk'}
               </button>
             </div>
           </div>
