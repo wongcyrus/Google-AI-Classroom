@@ -72,8 +72,6 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
   const [recordingState, setRecordingState] = useState('idle'); // 'idle' | 'recording' | 'paused' | 'uploading'
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [uploadProgress, setUploadProgress] = useState(0);
-  const [liveVoiceAnchors, setLiveVoiceAnchors] = useState([]);
-  const [activeSpeakingUid, setActiveSpeakingUid] = useState('');
   const [studentPcCaptureStatus, setStudentPcCaptureStatus] = useState(null);
   const [studioError, setStudioError] = useState('');
   const [studioToast, setStudioToast] = useState('');
@@ -1025,46 +1023,6 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
     }
   };
 
-  // 1-Tap "Speaking Now" Student Anchor button on Supervisor's Mobile Phone
-  const handleTapSpeakingNowAnchor = async (member) => {
-    if (!member) return;
-    const secs = recordingState === 'recording' || recordingState === 'paused' ? recordingSecondsRef.current : 0;
-    const ts = formatDuration(secs);
-    const clipIdx = existingTargetMeeting ? (existingTargetMeeting.audioClips || []).length : 0;
-
-    const anchor = {
-      timeSeconds: secs,
-      timestamp: ts,
-      studentUid: member.uid || member.email,
-      email: normalizeStudentEmail(member.email),
-      name: member.name || member.email,
-      clipIndex: clipIdx,
-      tappedAt: new Date().toISOString(),
-    };
-
-    setActiveSpeakingUid(member.uid || member.email);
-    setLiveVoiceAnchors((prev) => [...prev, anchor]);
-    showToastMessage(`🗣️ Logged Speaker Anchor: ${member.name} at [${ts}]`);
-
-    // If a meeting is already selected or active, persist immediately
-    const targetId = activeMeetingIdRef.current || selectedMeetingId;
-    if (targetId && classId) {
-      const targetMtg = meetings.find((m) => m.id === targetId);
-      // Guard: Only write anchor if target meeting belongs to the active studio group
-      if (targetMtg && targetMtg.groupId && targetMtg.groupId !== studioGroupId) {
-        console.warn(
-          `[ProjectMeetingsView] Suppressed voice anchor for mismatched meeting: ${targetMtg.groupId} vs ${studioGroupId}`
-        );
-        return;
-      }
-      const mRef = doc(db, `classes/${classId}/projectMeetings/${targetId}`);
-      await updateDoc(mRef, {
-        voiceAnchors: arrayUnion(anchor),
-        updatedAt: serverTimestamp(),
-      }).catch(() => {});
-    }
-  };
-
   // Start Voice Recording (on Teacher Mobile / Laptop) + Signal Student PC Screen Recording
   const handleStartRecording = async () => {
     setStudioError('');
@@ -1085,7 +1043,6 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
       recordedChunksRef.current = [];
       recordingSecondsRef.current = 0;
       setRecordingSeconds(0);
-      setLiveVoiceAnchors([]);
 
       // Resolve target meetingId (keep grouping for recordings in the same group + week!)
       const sessionGroupId = `${classId}_${studioGroupId}_wk${studioWeekNumber}`;
@@ -1300,7 +1257,6 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
 
       setRecordingState('idle');
       setRecordingSeconds(0);
-      setActiveSpeakingUid('');
       showToastMessage(`Saved ${newClip.label} under ${activeStudioGroup?.name} (Week ${studioWeekNumber})!`);
 
       if (autoTriggerAi) {
@@ -1527,21 +1483,6 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
       attendanceRecord: updatedAttendance,
       updatedAt: serverTimestamp(),
     });
-  };
-
-  // Reassign Meeting to a Different Project Group
-  const handleReassignMeetingGroup = async (newGroupId) => {
-    if (!selectedMeeting || !newGroupId) return;
-    const targetGrp = groups.find((g) => g.id === newGroupId);
-    if (!targetGrp) return;
-    await updateDoc(doc(db, `classes/${classId}/projectMeetings/${selectedMeeting.id}`), {
-      groupId: targetGrp.id,
-      groupName: targetGrp.name,
-      projectTopic: targetGrp.projectTopic || '',
-      sessionGroupId: `${classId}_${targetGrp.id}_wk${selectedMeeting.weekNumber || 1}`,
-      updatedAt: serverTimestamp(),
-    });
-    showToastMessage(`Moved recording to ${targetGrp.name}`);
   };
 
   // Save inline edited student work / action items / weekly feedback / log quality score
@@ -2029,33 +1970,13 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
           </div>
         </div>
 
-        {/* 1-Tap "Speaking Now" Student Voice Anchor Bar (Solves gemini-3.5-transcribe-preview Speaker 1..N identity!) */}
-        {activeStudioGroup && (activeStudioGroup.members || []).length > 0 && (
-          <div className="speaker-anchor-tap-bar">
-            <span className="speaker-anchor-label">
-              🗣️ <strong>Tap Who Is Speaking Now</strong> (Anchors <code>gemini-3.5-transcribe-preview</code> Speaker ID &amp; Attendance):
-            </span>
-            <div className="speaker-anchor-chips">
-              {activeStudioGroup.members.map((m) => {
-                const isSpeakingNow = activeSpeakingUid === (m.uid || m.email);
-                const anchorCount = liveVoiceAnchors.filter(
-                  (a) => a.studentUid === (m.uid || m.email) || a.email === normalizeStudentEmail(m.email)
-                ).length;
-                return (
-                  <button
-                    key={m.email}
-                    type="button"
-                    className={`btn-speaker-anchor-chip ${isSpeakingNow ? 'active-speaker' : ''}`}
-                    onClick={() => handleTapSpeakingNowAnchor(m)}
-                  >
-                    🗣️ {m.name}
-                    {anchorCount > 0 && <span className="anchor-count-badge">✓ {anchorCount}</span>}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
+        {/* Hands-Free Attendance Self-Introduction Banner */}
+        <div className="studio-intro-tip-banner" style={{ padding: '8px 14px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '0.82rem', color: '#475569', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span style={{ fontSize: '1.05rem' }}>💡</span>
+          <span>
+            <strong>Hands-Free Attendance:</strong> Have each student introduce themselves briefly at the start of the meeting (e.g. &quot;Hi, I&apos;m Alex...&quot;) so Gemini automatically attributes their voice, attendance, and weekly work.
+          </span>
+        </div>
 
         {/* Pre-Meeting Weekly Log Review & AI Fake-Log Challenge Questions Briefing Panel */}
         {activeStudioGroup && studioGroupWeekLogCards.length > 0 && (
@@ -2811,35 +2732,6 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
                       <h3 style={{ margin: 0 }}>
                         {selectedMeeting.groupName} — Week {selectedMeeting.weekNumber || 1}: {selectedMeeting.title}
                       </h3>
-                      {groups.length > 1 && (
-                        <select
-                          aria-label="Reassign meeting to another group"
-                          value=""
-                          onChange={(e) => {
-                            if (e.target.value) {
-                              handleReassignMeetingGroup(e.target.value);
-                            }
-                          }}
-                          style={{
-                            fontSize: '0.78rem',
-                            padding: '3px 8px',
-                            borderRadius: '6px',
-                            border: '1px solid #cbd5e1',
-                            background: '#f8fafc',
-                            cursor: 'pointer',
-                          }}
-                          title="Move this recording session to another group"
-                        >
-                          <option value="" disabled>
-                            ↪️ Move to another group...
-                          </option>
-                          {groups.map((g) => (
-                            <option key={g.id} value={g.id}>
-                              Move to {g.name} ({g.projectTopic || 'Project'})
-                            </option>
-                          ))}
-                        </select>
-                      )}
                     </div>
                     <div style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '4px', display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
                       <span>📅 {selectedMeeting.meetingDate ? new Date(selectedMeeting.meetingDate).toLocaleString() : 'Recent'}</span>

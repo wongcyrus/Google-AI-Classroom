@@ -797,7 +797,7 @@ Group Beta,New Beta Topic,other@vtc.edu.hk,eva@stu.vtc.edu.hk,Eva Ho,Leader`;
     expect(await screen.findByText(/Could not access microphone: Permission denied/i)).toBeInTheDocument();
   });
 
-  it('supports inspector editing (group feedback, student contribution, transcript drawer, media sync, merge clips, reassign group, matrix navigation)', async () => {
+  it('supports inspector editing (group feedback, student contribution, transcript drawer, media sync, merge clips, matrix navigation)', async () => {
     render(
       <ProjectMeetingsView
         classId="it114115"
@@ -814,12 +814,8 @@ Group Beta,New Beta Topic,other@vtc.edu.hk,eva@stu.vtc.edu.hk,Eva Ho,Leader`;
     fireEvent.click(screen.getByRole('button', { name: /👤 My Supervised Groups/i }));
     fireEvent.click(screen.getByRole('button', { name: /🌐 All Class Groups/i }));
 
-    // 1b. Tap "Speaking Now" anchor chip & 1-Click Attendance Status Override
+    // 1b. 1-Click Attendance Status Override
     fireEvent.change(screen.getByLabelText(/📁 Project Group:/i), { target: { value: 'grp_1' } });
-    fireEvent.click(screen.getByRole('button', { name: /🗣️ Alice Chan/i }));
-    await waitFor(() => {
-      expect(mockUpdateDoc).toHaveBeenCalled();
-    });
     const presentBtns = screen.getAllByRole('button', { name: /✅ Present/i });
     fireEvent.click(presentBtns[1]);
     await waitFor(() => {
@@ -917,17 +913,6 @@ Group Beta,New Beta Topic,other@vtc.edu.hk,eva@stu.vtc.edu.hk,Eva Ho,Leader`;
     fireEvent.click(screen.getByRole('button', { name: /👥 Manage \/ Import Groups/i }));
     expect(screen.getByRole('dialog')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
-
-    // 7. Reassign meeting to Group 2
-    fireEvent.change(screen.getByLabelText(/Reassign meeting to another group/i), {
-      target: { value: 'grp_2' },
-    });
-    await waitFor(() => {
-      expect(mockUpdateDoc).toHaveBeenCalledWith(
-        expect.objectContaining({ path: 'classes/it114115/projectMeetings/mtg_1_wk3' }),
-        expect.objectContaining({ groupId: 'grp_2' })
-      );
-    });
 
     // 8. Group / Merge 2 clips in sidebar
     fireEvent.click(screen.getByRole('button', { name: /🔗 Group Clips/i }));

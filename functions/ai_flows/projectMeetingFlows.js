@@ -785,7 +785,7 @@ ${combinedDiarizedTranscript}
 
 ## Task Instructions
 Using the Stage 1 Diarized Audio Transcript, the Deterministic Speaker Anchors, and the Students' Submitted Weekly Logs above:
-1. Resolve anonymous speaker labels (Speaker 1, Speaker 2, etc.) to the exact students in the Enrolled Group Student Roster or the Supervisor.
+1. Resolve anonymous speaker labels (Speaker 1, Speaker 2, etc.) to the exact students in the Enrolled Group Student Roster or the Supervisor. Students are required to introduce themselves at the start of the meeting (e.g. "Hi, I'm Alex..."). Use these opening self-introductions, their discussed project tasks matching their submitted weekly logs, and any student PC screen demonstrations to decisively attribute each speaker.
 2. Determine the Attendance Record for every student in the roster ('present', 'late', or 'absent'), their speakingContribution ('high', 'moderate', 'low', 'none'), a concise evidence string with [MM:SS] timestamp, and firstHeardTimestamp ('MM:SS').
 3. Extract Key Meeting Insights (executiveSummary, overallGroupProgress: 'on_track' | 'ahead' | 'at_risk' | 'behind', keyDecisions[], blockersAndRisks[], supervisorFeedback[], and weeklyGroupFeedback: a 2-4 sentence constructive post-meeting weekly feedback message for the group).
 4. Cross-verify each student's **Submitted Weekly Log** against what they **actually discussed/demonstrated in the meeting**:
