@@ -42,16 +42,18 @@ GOOGLE_KEY_REGEX='AIza[0-9A-Za-z_-]{35}'
 PRIVATE_KEY_REGEX='-----BEGIN[ A-Z0-9_-]*PRIVATE KEY-----'
 # AWS Access Keys
 AWS_KEY_REGEX='(A3T[A-Z0-9]|AKIA|AGPA|AIDA|AROA|AIPA|ANPA|ANVA|ASIA)[A-Z0-9]{16}'
+# AWS Secret Access Keys / SMTP Passwords
+SECRET_ASSIGNMENT_REGEX='(?i)(aws_secret_access_key|smtp_password|api_secret)\s*[:=]\s*["'\'']?[A-Za-z0-9/+=]{20,}["'\'']?'
 # GitHub Tokens
 GITHUB_PAT_REGEX='(ghp_[0-9a-zA-Z]{36}|github_pat_[0-9a-zA-Z_]{82})'
 # Slack Tokens
 SLACK_TOKEN_REGEX='xox[baprs]-[0-9a-zA-Z]{10,48}'
 
 for FILE in $STAGED_FILES; do
-  # Never allow committing sensitive env files (except .env.example)
-  if [[ "$FILE" =~ \.env(\..+)?$ ]] && [[ "$FILE" != *".env.example" ]]; then
-    echo -e "${RED}${BOLD}🛑 SECRET LEAK BLOCKED:${NC} Attempting to commit an environment file: ${BOLD}$FILE${NC}"
-    echo -e "${YELLOW}   Environment files must remain strictly untracked (.gitignore).${NC}"
+  # Never allow committing sensitive env, secret, credentials, or state files (except .env.example)
+  if [[ "$FILE" =~ (\.env|\.secret|\.tfstate|\.tfvars|serviceAccount|service-account|credentials\.json|sp\.json|client_secret) ]] && [[ "$FILE" != *".env.example" ]]; then
+    echo -e "${RED}${BOLD}🛑 SECRET LEAK BLOCKED:${NC} Attempting to commit a sensitive credential/state file: ${BOLD}$FILE${NC}"
+    echo -e "${YELLOW}   This file type must remain strictly untracked (.gitignore).${NC}"
     HAS_SECRET=1
     continue
   fi
@@ -66,6 +68,12 @@ for FILE in $STAGED_FILES; do
 
   if [ -z "$ADDED_LINES" ]; then
     continue
+  fi
+
+  # Check Google Service Account JSON
+  if echo "$ADDED_LINES" | grep -q '"type": *"service_account"' && echo "$ADDED_LINES" | grep -q '"private_key":'; then
+    echo -e "${RED}${BOLD}🛑 SECRET LEAK BLOCKED:${NC} Google Cloud Service Account JSON detected in ${BOLD}$FILE${NC}"
+    HAS_SECRET=1
   fi
 
   # Check Google API Key
@@ -90,6 +98,12 @@ for FILE in $STAGED_FILES; do
   # Check AWS Keys
   if echo "$ADDED_LINES" | grep -E -q -- "$AWS_KEY_REGEX"; then
     echo -e "${RED}${BOLD}🛑 SECRET LEAK BLOCKED:${NC} AWS Access Key ID detected in ${BOLD}$FILE${NC}"
+    HAS_SECRET=1
+  fi
+
+  # Check Secret Key Assignments
+  if echo "$ADDED_LINES" | grep -E -q -- "$SECRET_ASSIGNMENT_REGEX"; then
+    echo -e "${RED}${BOLD}🛑 SECRET LEAK BLOCKED:${NC} Secret password / access key assignment detected in ${BOLD}$FILE${NC}"
     HAS_SECRET=1
   fi
 

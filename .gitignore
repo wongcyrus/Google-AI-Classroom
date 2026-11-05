@@ -20,33 +20,64 @@ firestore-debug.log*
 ui-debug.log*
 pubsub-debug.log*
 
-# Environment & Secrets
-.env
-.env.*
+# Environment & Secrets (Airtight Defense-in-Depth)
+**/.env
+**/.env.*
+**/.env.local
+**/.env.development.local
+**/.env.test.local
+**/.env.production.local
 !.env.example
-*.secret.local
-.secret.local
-*.pem
-*.key
-sp.json
-admin/sp.json
-service-account*.json
-serviceAccountKey.json
+!web-app/.env.example
+**/*.secret.local
+**/.secret.local
+**/secrets.*
+**/secret.*
+**/*.secret
+**/*.secrets
+**/*.pem
+**/*.key
+**/*.crt
+**/*.p12
+**/*.pfx
+**/*.pkcs12
+**/id_rsa*
+**/id_ed25519*
+**/sp.json
+**/admin/sp.json
+**/service-account*.json
+**/serviceAccount*.json
+**/serviceAccountKey.json
+**/*credentials*.json
+**/*credential*.json
+**/client_secret*.json
+**/oauth*.json
+**/*.token
+**/*.token.json
+**/.aws/
+**/.gcloud/
+**/.azure/
+**/.docker/
+**/.kube/
 
 # Firebase runtime & cache
-.firebase/
-.firebaserc.local
-.genkit/
+**/.firebase/
+**/.firebaserc.local
+**/.genkit/
 
-# Terraform
-terraform/.terraform/
-terraform/.terraform.lock.hcl
-terraform/*.tfstate
-terraform/*.tfstate.*
-terraform/*.tfvars
-terraform/*.tfvars.json
-terraform/.terraform.tfstate.lock.info
-terraform/crash.log
+# Terraform (Airtight State & Variables Prevention)
+**/.terraform/
+**/.terraform.lock.hcl
+**/*.tfstate
+**/*.tfstate.*
+**/*.tfvars
+**/*.tfvars.json
+**/.terraform.tfstate.lock.info
+**/crash.log
+**/override.tf
+**/override.tf.json
+**/*_override.tf
+**/*_override.tf.json
 
 # Function copied config files
 functions/ai_flows/config.js
