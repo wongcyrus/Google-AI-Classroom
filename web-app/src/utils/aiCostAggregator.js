@@ -151,10 +151,19 @@ export function aggregateAiCost(jobs = [], options = {}) {
     byModelMap[modelKey].outputTokens += outputTokens;
 
     // By Student
-    const isInstructorTask = job.studentUid === 'instructor' || job.studentUid === 'teacher' || job.jobType === 'processLectureSubtitles';
+    const isInstructorTask =
+      job.studentUid === 'instructor' ||
+      job.studentUid === 'teacher' ||
+      job.jobType === 'processLectureSubtitles' ||
+      job.jobType === 'analyzeProjectMeeting' ||
+      job.jobType === 'prepareProjectLogQuestions';
     const sUid = isInstructorTask ? 'instructor' : (job.studentUid || job.uid || job.userId || 'class_wide');
-    const sEmail = job.studentEmail || job.email || job.userEmail || job.studentMail || (isInstructorTask ? 'Instructor (Lecture Subtitles & CC)' : (sUid === 'class_wide' ? 'Class-Wide Task' : (sUid.includes('@') ? sUid : 'Unknown Student')));
-    const sName = isInstructorTask ? '👨‍🏫 Instructor / Lecture' : (job.displayName || job.studentName || job.name || (sEmail !== 'Unknown Student' ? sEmail : 'Unknown Student'));
+    const sEmail = isInstructorTask
+      ? (job.studentEmail ? `${job.studentEmail} (Supervisor)` : 'Supervisor / Instructor (FYP & Lectures)')
+      : (job.studentEmail || job.email || job.userEmail || job.studentMail || (sUid === 'class_wide' ? 'Class-Wide Task' : (sUid.includes('@') ? sUid : 'Unknown Student')));
+    const sName = isInstructorTask
+      ? '👨‍🏫 Instructor / Project Supervisor'
+      : (job.displayName || job.studentName || job.name || (sEmail !== 'Unknown Student' ? sEmail : 'Unknown Student'));
     const sClass = job.studentClass || job.cohort || job.class || job.className || '';
     const sProg = job.programme || job.program || '';
     if (!byStudentMap[sUid]) {

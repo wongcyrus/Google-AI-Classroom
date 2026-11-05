@@ -22,6 +22,8 @@ export const JOB_TYPE_LABELS = {
   evaluateTaskSubmission: '📋 Lab Task Automated Evaluation',
   extractTaskDemoSteps: '🎬 Task Demo Video Step Extraction',
   batchVideoAnalysis: '🎞️ Batch Video Analysis Job',
+  analyzeProjectMeeting: '👥 Project Meeting Supervision & Diarization',
+  prepareProjectLogQuestions: '📝 Pre-Meeting Weekly Log Audit',
   other: '⚙️ General AI Processing',
 };
 

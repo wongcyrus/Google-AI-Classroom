@@ -1987,12 +1987,34 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
     return null;
   }, [selectedMeeting, activeScreenClipIdx]);
 
+  const totalMeetingsAiCost = useMemo(() => {
+    return meetings.reduce((sum, m) => sum + (Number(m.aiCost) || 0), 0);
+  }, [meetings]);
+
   return (
     <div className="project-meetings-container">
       {/* Top Supervisor Filter & Module Toolbar */}
       <div className="project-meetings-top-bar">
         <div className="project-meetings-title-block">
-          <h2>👥 Project Group Meetings & Supervision Studio</h2>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+            <h2 style={{ margin: 0 }}>👥 Project Group Meetings & Supervision Studio</h2>
+            {totalMeetingsAiCost > 0 && (
+              <span
+                style={{
+                  fontSize: '0.8rem',
+                  fontWeight: 700,
+                  color: '#4338ca',
+                  background: '#e0e7ff',
+                  border: '1px solid #c7d2fe',
+                  padding: '2px 8px',
+                  borderRadius: '12px',
+                }}
+                title="Total AI spend across all analyzed project supervision meetings in this class"
+              >
+                💰 Total Meetings AI Spend: {formatAiCost(totalMeetingsAiCost)}
+              </span>
+            )}
+          </div>
           <span className="project-meetings-subtitle">
             Parallel Multi-Supervisor Any-Period Recording • 📱 Mobile Voice + 💻 Student PC Screen • Gemini 3.5 Diarization
           </span>
