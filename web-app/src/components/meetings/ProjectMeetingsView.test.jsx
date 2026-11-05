@@ -964,10 +964,15 @@ Group Beta,New Beta Topic,other@vtc.edu.hk,eva@stu.vtc.edu.hk,Eva Ho,Leader`;
     // Open Batch AI modal via Studio trigger (single source of truth)
     fireEvent.click(screen.getByRole('button', { name: /⚡ Batch AI/i }));
 
-    // Modal should be visible
+    // Modal should be visible with week title
     expect(screen.getByText(/⚡ Batch Gemini Analysis — Week 2/i)).toBeInTheDocument();
     expect(screen.getByText(/Mode 1: Run Missing Only/i)).toBeInTheDocument();
     expect(screen.getByText(/Mode 2: Re-Run All/i)).toBeInTheDocument();
+
+    // Verify in-modal week selector exists
+    const modalWeekSelect = screen.getByLabelText(/📅 Select Supervision Week:/i);
+    expect(modalWeekSelect).toBeInTheDocument();
+    expect(modalWeekSelect.value).toBe('2');
 
     // Trigger Mode 2: Re-Run All
     fireEvent.click(screen.getByRole('button', { name: /🔄 Re-Analyze All/i }));
