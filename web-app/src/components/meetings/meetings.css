@@ -819,6 +819,181 @@
   cursor: pointer;
 }
 
+/* Student Contribution & Feedback Edit Modal */
+.student-edit-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(2px);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1300;
+  padding: 16px;
+  overscroll-behavior: contain;
+}
+
+.student-edit-modal-card {
+  background: #ffffff;
+  border-radius: 14px;
+  width: 100%;
+  max-width: 680px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 20px 45px rgba(0, 0, 0, 0.25);
+  animation: modalScaleIn 0.16s ease-out;
+}
+
+@keyframes modalScaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.student-edit-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 16px 20px;
+  border-bottom: 1px solid #e2e8f0;
+  background: #f8fafc;
+}
+
+.student-edit-modal-body {
+  padding: 18px 20px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-height: calc(90vh - 130px);
+}
+
+.student-edit-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 12px 20px;
+  border-top: 1px solid #e2e8f0;
+  background: #f8fafc;
+}
+
+.student-edit-ref-box {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 12px 14px;
+  font-size: 0.82rem;
+  color: #334155;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.student-edit-scores-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+@media (max-width: 600px) {
+  .student-edit-scores-grid {
+    grid-template-columns: 1fr;
+  }
+  .student-edit-modal-card {
+    max-height: 95vh;
+  }
+}
+
+.student-edit-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.student-edit-field label {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.student-edit-field input,
+.student-edit-field textarea {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 0.88rem;
+  font-family: inherit;
+  color: #0f172a;
+  background: #ffffff;
+  box-sizing: border-box;
+}
+
+.student-edit-field input:focus,
+.student-edit-field textarea:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+
+.btn-edit-student-work {
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  color: #334155;
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-edit-student-work:hover {
+  background: #eff6ff;
+  border-color: #93c5fd;
+  color: #1d4ed8;
+}
+
+.btn-cancel-edit {
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  color: #475569;
+  border-radius: 8px;
+  padding: 8px 16px;
+  font-weight: 600;
+  font-size: 0.84rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-cancel-edit:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+.btn-save-student-work {
+  background: #16a34a;
+  color: #ffffff;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 18px;
+  font-weight: 700;
+  font-size: 0.84rem;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.btn-save-student-work:hover {
+  background: #15803d;
+}
+
 /* Modal Styles */
 .project-group-modal-backdrop {
   position: fixed;

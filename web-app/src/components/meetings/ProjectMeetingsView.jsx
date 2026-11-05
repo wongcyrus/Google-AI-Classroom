@@ -726,6 +726,50 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
     });
   }, [rawLogCsvText, persistedProfiles, enrolledStudents, groups, classInfo, semesterStartMonday]);
 
+  // Currently selected student contribution being edited in Modal
+  const editingStudentContrib = useMemo(() => {
+    if (!editingStudentUid || !selectedMeeting) return null;
+    return (
+      (selectedMeeting.studentContributions || []).find(
+        (sc) => (sc.uid || sc.email) === editingStudentUid
+      ) || null
+    );
+  }, [editingStudentUid, selectedMeeting]);
+
+  const editingMatchingSheetLog = useMemo(() => {
+    if (!editingStudentContrib || !selectedMeeting) return null;
+    const mtgGrpCode = String(selectedMeeting.groupName || '')
+      .replace(/^group\s+/i, '')
+      .trim()
+      .toUpperCase();
+    const mtgGwKey = `${mtgGrpCode}__wk${selectedMeeting.weekNumber || 1}`;
+    return (
+      (weeklyLogData.byGroupAndWeek?.[mtgGwKey] || []).find(
+        (l) =>
+          normalizeStudentEmail(l.email) === normalizeStudentEmail(editingStudentContrib.email) ||
+          l.studentId === String(editingStudentContrib.email || '').split('@')[0]
+      ) || null
+    );
+  }, [editingStudentContrib, selectedMeeting, weeklyLogData]);
+
+  const editingLogStatusClass = useMemo(() => {
+    if (!editingStudentContrib) return 'inactive';
+    const status =
+      editingStudentContrib.logQualityAssessment && editingStudentContrib.logQualityAssessment !== 'not_submitted'
+        ? editingStudentContrib.logQualityAssessment
+        : editingMatchingSheetLog?.qualityStatus || 'not_submitted';
+    if (
+      status === 'suspected_ai_fake' ||
+      status === 'suspected_ai_unverified' ||
+      status === 'contradicted_in_meeting'
+    ) {
+      return 'suspected-ai';
+    }
+    if (status === 'vague_useless') return 'vague';
+    if (status === 'genuine' || status === 'genuine_verified') return 'genuine';
+    return 'inactive';
+  }, [editingStudentContrib, editingMatchingSheetLog]);
+
   // Auto-select latest week from log sheet on initial sync if studio is idle on Week 1
   const hasAutoSetWeekRef = useRef(false);
   useEffect(() => {
@@ -3605,27 +3649,23 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
                               type="button"
                               className="btn-edit-student-work"
                               onClick={() => {
-                                if (isEditing) {
-                                  setEditingStudentUid(null);
-                                } else {
-                                  setEditingStudentUid(sc.uid || sc.email);
-                                  setEditWorkDraft((sc.workCompleted || []).join('\n'));
-                                  setEditActionDraft((sc.actionItemsNextWeek || []).join('\n'));
-                                  setEditWeeklyFeedbackDraft(sc.weeklyFeedback || '');
-                                  setEditLogQualityScoreDraft(
-                                    effectiveLogQualityScore !== null && effectiveLogQualityScore !== undefined
-                                      ? String(effectiveLogQualityScore)
-                                      : ''
-                                  );
-                                  setEditRealWorkScoreDraft(
-                                    sc.realWorkScore !== null && sc.realWorkScore !== undefined
-                                      ? String(sc.realWorkScore)
-                                      : ''
-                                  );
-                                }
+                                setEditingStudentUid(sc.uid || sc.email);
+                                setEditWorkDraft((sc.workCompleted || []).join('\n'));
+                                setEditActionDraft((sc.actionItemsNextWeek || []).join('\n'));
+                                setEditWeeklyFeedbackDraft(sc.weeklyFeedback || '');
+                                setEditLogQualityScoreDraft(
+                                  effectiveLogQualityScore !== null && effectiveLogQualityScore !== undefined
+                                    ? String(effectiveLogQualityScore)
+                                    : ''
+                                );
+                                setEditRealWorkScoreDraft(
+                                  sc.realWorkScore !== null && sc.realWorkScore !== undefined
+                                    ? String(sc.realWorkScore)
+                                    : ''
+                                );
                               }}
                             >
-                              {isEditing ? 'Cancel' : '✏️ Edit'}
+                              ✏️ Edit
                             </button>
                           </div>
 
@@ -3656,63 +3696,7 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
                             </div>
                           )}
 
-                          {isEditing ? (
-                            <div className="student-contrib-edit-form">
-                              <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                                <label style={{ flex: 1 }}>
-                                  📗 Log Quality Score (/10):
-                                  <input
-                                    type="number"
-                                    min="0"
-                                    max="10"
-                                    step="0.5"
-                                    value={editLogQualityScoreDraft}
-                                    onChange={(e) => setEditLogQualityScoreDraft(e.target.value)}
-                                    style={{ width: '100%', padding: '5px', marginTop: '3px' }}
-                                  />
-                                </label>
-                                <label style={{ flex: 1 }}>
-                                  🛠️ Real Work Score (/10):
-                                  <input
-                                    type="number"
-                                    min="0"
-                                    max="10"
-                                    step="0.5"
-                                    value={editRealWorkScoreDraft}
-                                    onChange={(e) => setEditRealWorkScoreDraft(e.target.value)}
-                                    style={{ width: '100%', padding: '5px', marginTop: '3px' }}
-                                  />
-                                </label>
-                              </div>
-                              <label>✅ Work Completed (1 item per line):</label>
-                              <textarea
-                                rows={3}
-                                value={editWorkDraft}
-                                onChange={(e) => setEditWorkDraft(e.target.value)}
-                              />
-                              <label>🎯 Action Items for Next Week (1 item per line):</label>
-                              <textarea
-                                rows={3}
-                                value={editActionDraft}
-                                onChange={(e) => setEditActionDraft(e.target.value)}
-                              />
-                              <label>📝 Weekly Feedback for Student:</label>
-                              <textarea
-                                rows={3}
-                                value={editWeeklyFeedbackDraft}
-                                onChange={(e) => setEditWeeklyFeedbackDraft(e.target.value)}
-                                placeholder="Constructive weekly feedback on technical progress and log quality..."
-                              />
-                              <button
-                                type="button"
-                                className="btn-save-student-work"
-                                onClick={() => handleSaveStudentContributionEdit(sc.uid || sc.email)}
-                              >
-                                💾 Save Student Record &amp; Feedback
-                              </button>
-                            </div>
-                          ) : (
-                            <>
+
                               <div className="contrib-block">
                                 <strong>✅ Work Completed Since Last Meeting:</strong>
                                 <ul>
@@ -3795,8 +3779,6 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
                                   ))}
                                 </div>
                               )}
-                            </>
-                          )}
                         </div>
                       );
                     })}
@@ -3962,6 +3944,171 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
                 disabled={Boolean(batchAnalysisProgress)}
               >
                 Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Student Record & Feedback Modal */}
+      {editingStudentContrib && (
+        <div
+          className="student-edit-modal-backdrop"
+          onClick={() => setEditingStudentUid(null)}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="student-edit-modal-title"
+        >
+          <div
+            className="student-edit-modal-card"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="student-edit-modal-header">
+              <div>
+                <h3 id="student-edit-modal-title" style={{ margin: 0, fontSize: '1.15rem', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  ✏️ Edit Student Contribution &amp; Feedback
+                </h3>
+                <div style={{ margin: '4px 0 0', fontSize: '0.82rem', color: '#64748b' }}>
+                  <strong>👤 {editingStudentContrib.name}</strong> ({editingStudentContrib.email}) • {selectedMeeting?.groupName || 'Group'} — Week {selectedMeeting?.weekNumber || 1}
+                </div>
+              </div>
+              <button
+                type="button"
+                className="btn-modal-close"
+                onClick={() => setEditingStudentUid(null)}
+                aria-label="Close"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="student-edit-modal-body">
+              {/* Reference box: Google Form Submitted Log + AI Quality Status */}
+              {editingMatchingSheetLog && (
+                <div className="student-edit-ref-box">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '6px' }}>
+                    <span style={{ fontWeight: 700 }}>📗 Submitted Week {selectedMeeting?.weekNumber || 1} Google Form Log:</span>
+                    <span className={`log-quality-pill ${editingLogStatusClass}`}>
+                      {editingLogStatusClass === 'suspected-ai'
+                        ? '🟠 Suspected AI / Unverified Log'
+                        : editingLogStatusClass === 'vague'
+                        ? '🔴 Vague / Useless Log'
+                        : editingLogStatusClass === 'genuine'
+                        ? '🟢 High-Quality Log'
+                        : '⚪ Submitted'}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: '0.82rem', color: '#1e293b', marginTop: '6px' }}>
+                    {editingMatchingSheetLog.isDoingSomething ? (
+                      <>
+                        <div><strong>Done:</strong> "{editingMatchingSheetLog.workDone}"</div>
+                        <div style={{ marginTop: '2px' }}><strong>Next:</strong> "{editingMatchingSheetLog.nextPlan}"</div>
+                      </>
+                    ) : (
+                      <div>Reported "No" work ({editingMatchingSheetLog.inactiveReason || 'no reason'})</div>
+                    )}
+                  </div>
+                  {Array.isArray(editingMatchingSheetLog.suggestedChallengeQuestions) && editingMatchingSheetLog.suggestedChallengeQuestions.length > 0 && (
+                    <div style={{ marginTop: '6px', fontSize: '0.8rem', color: '#581c87', background: '#faf5ff', padding: '6px 10px', borderRadius: '6px' }}>
+                      <strong>🎯 AI Suggested Challenge Questions:</strong>
+                      <ul style={{ margin: '2px 0 0', paddingLeft: '18px' }}>
+                        {editingMatchingSheetLog.suggestedChallengeQuestions.map((q, idx) => (
+                          <li key={idx}>{q}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Two Grading Scores */}
+              <div className="student-edit-scores-grid">
+                <div className="student-edit-field">
+                  <label htmlFor="edit-log-quality-score">📗 Log Quality Score (/10):</label>
+                  <input
+                    id="edit-log-quality-score"
+                    aria-label="📗 Log Quality Score (/10):"
+                    type="number"
+                    min="0"
+                    max="10"
+                    step="0.5"
+                    value={editLogQualityScoreDraft}
+                    onChange={(e) => setEditLogQualityScoreDraft(e.target.value)}
+                    placeholder="e.g. 8.5"
+                  />
+                  <span style={{ fontSize: '0.72rem', color: '#64748b' }}>
+                    Evaluates completeness, technical detail, and genuineness of weekly log.
+                  </span>
+                </div>
+
+                <div className="student-edit-field">
+                  <label htmlFor="edit-real-work-score">🛠️ Real Work Score (/10):</label>
+                  <input
+                    id="edit-real-work-score"
+                    aria-label="🛠️ Real Work Score (/10):"
+                    type="number"
+                    min="0"
+                    max="10"
+                    step="0.5"
+                    value={editRealWorkScoreDraft}
+                    onChange={(e) => setEditRealWorkScoreDraft(e.target.value)}
+                    placeholder="e.g. 9.0"
+                  />
+                  <span style={{ fontSize: '0.72rem', color: '#64748b' }}>
+                    Evaluates verified technical output and code demonstrated in meeting.
+                  </span>
+                </div>
+              </div>
+
+              {/* Textareas */}
+              <div className="student-edit-field">
+                <label htmlFor="edit-work-completed">✅ Work Completed Since Last Meeting (1 item per line):</label>
+                <textarea
+                  id="edit-work-completed"
+                  rows={4}
+                  value={editWorkDraft}
+                  onChange={(e) => setEditWorkDraft(e.target.value)}
+                  placeholder="Implemented user authentication&#10;Added Firestore integration"
+                />
+              </div>
+
+              <div className="student-edit-field">
+                <label htmlFor="edit-action-items">🎯 Action Items for Next Week (1 item per line):</label>
+                <textarea
+                  id="edit-action-items"
+                  rows={4}
+                  value={editActionDraft}
+                  onChange={(e) => setEditActionDraft(e.target.value)}
+                  placeholder="Write unit tests for authentication&#10;Connect live camera API"
+                />
+              </div>
+
+              <div className="student-edit-field">
+                <label htmlFor="edit-weekly-feedback">💬 Constructive Weekly Feedback for Student:</label>
+                <textarea
+                  id="edit-weekly-feedback"
+                  rows={4}
+                  value={editWeeklyFeedbackDraft}
+                  onChange={(e) => setEditWeeklyFeedbackDraft(e.target.value)}
+                  placeholder="Constructive weekly feedback on technical progress and log quality..."
+                />
+              </div>
+            </div>
+
+            <div className="student-edit-modal-footer">
+              <button
+                type="button"
+                className="btn-cancel-edit"
+                onClick={() => setEditingStudentUid(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn-save-student-work"
+                onClick={() => handleSaveStudentContributionEdit(editingStudentUid)}
+              >
+                💾 Save Student Record &amp; Feedback
               </button>
             </div>
           </div>
