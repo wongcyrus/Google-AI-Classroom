@@ -4,6 +4,47 @@
 **System**: Google AI Classroom  
 **Production URL**: `https://it114115-2627.web.app`
 
+## 0.0.0.0.0.0.0.0.0.0.3.6 Cascading Class Deletion for Project Meetings Media (Voice, 720p Video Demos, Photos) & Subcollections
+
+**Date**: November 6, 2026  
+**Status**: Implemented, Verified with Passing Unit & Coverage Tests (`cleanupTriggers.test.js` 21/21 with 94.21% Line Coverage, `storageQuota.test.js` 23/23, `functions` suite 100% passing), Production Build Passing, and Deployed to `it114115-2627`  
+**Primary Files**:
+- [`functions/storage_triggers/cleanupTriggers.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/storage_triggers/cleanupTriggers.js) & [`functions/storage_triggers/cleanupTriggers.test.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/storage_triggers/cleanupTriggers.test.js)
+- [`docs/data-retention-and-storage-lifecycle.md`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/docs/data-retention-and-storage-lifecycle.md)
+
+### Architectural Overview & Cascading Purge:
+
+```mermaid
+flowchart TD
+    DEL["Teacher Deletes Class in UI\ndeleteDoc('classes/classId')"] --> TRIG["onClassDocDeleted Function\n(cleanupTriggers.js)"]
+    
+    subgraph StoragePurge ["1. Cloud Storage Cascading Purge"]
+        TRIG --> S1["Purge projectMeetings/classId/*\n• Voice Audio Recordings\n• 720p Mobile Demo Videos\n• Photo Artifacts"]
+        TRIG --> S2["Purge screenshots, videos, audio, recordings, tasks, submissions, reports, zips"]
+    end
+    
+    subgraph Subcollections ["2. Subcollection Batch Purge (500-Item Batches)"]
+        TRIG --> SUB1["deleteSubcollectionByPath:\n• projectMeetings\n• projectGroups\n• projectStudentProfiles\n• activeMeetingCaptures"]
+        TRIG --> SUB2["• lectureRecordings, tasks/submissions, bingoSessions, status\n• lessons, bingoRecords, attendanceAdjustments, properties"]
+    end
+    
+    subgraph GlobalCollections ["3. Top-Level Firestore Collections & Unlinking"]
+        TRIG --> G1["deleteCollectionByClassId:\n• aiJobs\n• videoJobs, zipJobs, irregularities, progress, etc."]
+        TRIG --> G2["removeClassFromProfiles:\n• teacherProfiles\n• studentProfiles"]
+    end
+```
+
+1. **Cloud Storage `projectMeetings` Prefix Purge**:
+   - Added `projectMeetings/${classId}/` to `prefixes` in `onClassDocDeleted`.
+   - Now deletes all voice audio (`audio/webm`, `audio/mp4`), 720p demo videos (`video/webm`), and still photo artifacts (`image/jpeg`) stored under that class.
+2. **Subcollection Batch Purge (`deleteSubcollectionByPath`)**:
+   - Implemented `deleteSubcollectionByPath` to recursively query and batch-delete in 500-document batches.
+   - Now completely purges `projectMeetings`, `projectGroups`, `projectStudentProfiles`, `activeMeetingCaptures`, `lessons`, `bingoRecords`, `attendanceAdjustments`, `studentProperties`, `classProperties`, `passkeyBypassRequests`, `screenBroadcastViewers`, `messages`, `audio_audits`, `irregularities`, and `questionBank`.
+3. **AI Jobs Cleanup**:
+   - Added `'aiJobs'` to `collectionsToClean` so orphaned AI job logs associated with the deleted class are cleaned up.
+
+---
+
 ## 0.0.0.0.0.0.0.0.0.0.3.5 Streamlined Project Demo Capture (Eliminating Student PC Screen Capture for Direct Mobile 720p Video & Photos) & FinOps Storage Quota Tracking
 
 **Date**: November 5, 2026  

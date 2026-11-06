@@ -212,6 +212,10 @@ describe('Cleanup Triggers & Retention Calculation (functions/storage_triggers/c
         prefix: 'recordings/CLASS_EXP_1/',
         force: true,
       });
+      expect(mockBucket.deleteFiles).toHaveBeenCalledWith({
+        prefix: 'projectMeetings/CLASS_EXP_1/',
+        force: true,
+      });
     });
   });
 
@@ -525,8 +529,26 @@ describe('Cleanup Triggers & Retention Calculation (functions/storage_triggers/c
             }),
           };
         }
-        if (col.includes('lectureRecordings') || col.includes('bingoSessions') || col.includes('status')) {
+        if (
+          col.includes('lectureRecordings') ||
+          col.includes('bingoSessions') ||
+          col.includes('status') ||
+          col.includes('project') ||
+          col.includes('activeMeetingCaptures') ||
+          col.includes('lessons') ||
+          col.includes('bingoRecords') ||
+          col.includes('attendanceAdjustments') ||
+          col.includes('studentProperties') ||
+          col.includes('classProperties') ||
+          col.includes('passkeyBypassRequests') ||
+          col.includes('screenBroadcastViewers') ||
+          col.includes('messages') ||
+          col.includes('audio_audits') ||
+          col.includes('irregularities') ||
+          col.includes('questionBank')
+        ) {
           return {
+            limit: vi.fn().mockReturnThis(),
             get: vi.fn().mockResolvedValue({
               empty: false,
               size: 1,
@@ -556,6 +578,9 @@ describe('Cleanup Triggers & Retention Calculation (functions/storage_triggers/c
 
       await onClassDocDeleted({ params: { classId: 'CLASS_SUBCOLS' } });
 
+      expect(mockDb.collection).toHaveBeenCalledWith('classes/CLASS_SUBCOLS/projectMeetings');
+      expect(mockDb.collection).toHaveBeenCalledWith('classes/CLASS_SUBCOLS/projectGroups');
+      expect(mockDb.collection).toHaveBeenCalledWith('classes/CLASS_SUBCOLS/projectStudentProfiles');
       expect(mockBatch.delete).toHaveBeenCalled();
       expect(mockBatch.commit).toHaveBeenCalled();
     });

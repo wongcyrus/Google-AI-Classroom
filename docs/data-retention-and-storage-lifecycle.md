@@ -122,20 +122,24 @@ flowchart TD
         C --> St3[Purge audio/classId/*]
         C --> St4[Purge recordings/classId/*]
         C --> St5[Purge zips/classId/*]
+        C --> St6[Purge projectMeetings/classId/*<br>Voice, 720p Demos, Photos]
+        C --> St7[Purge tasks, submissions, reports, taskDemos]
     end
     
     subgraph S2 [Stage 2: Firestore Batch Purge in 500s]
-        C --> F1[screenshots where classId == id]
-        C --> F2[videoJobs where classId == id]
-        C --> F3[zipJobs where classId == id]
-        C --> F4[videoAnalysisJobs where classId == id]
-        C --> F5[irregularities & progress where classId == id]
-        C --> F6[propertyUploadJobs where classId == id]
+        C --> F1[screenshots, audio where classId == id]
+        C --> F2[videoJobs, zipJobs where classId == id]
+        C --> F3[videoAnalysisJobs, irregularities, progress]
+        C --> F4[propertyUploadJobs, lectureMerge/SubtitleJobs]
+        C --> F5[aiJobs where classId == id]
     end
     
-    subgraph S3 [Stage 3: Subcollection Cleanup]
+    subgraph S3 [Stage 3: Subcollection Cleanup in Batches]
         C --> M1[Delete classes/classId/metadata/storage]
-        C --> M2[Delete subcollections: lectureRecordings, screenBroadcast, liveSubtitles]
+        C --> M2[Purge projectMeetings, projectGroups, projectStudentProfiles]
+        C --> M3[Purge lectureRecordings, tasks/submissions, bingoSessions, status]
+        C --> M4[Purge lessons, bingoRecords, attendanceAdjustments, properties]
+        C --> M5[Delete screenBroadcast, liveSubtitles ephemeral docs]
     end
     
     subgraph S4 [Stage 4: Profile Unlinking]
@@ -146,18 +150,40 @@ flowchart TD
 
 ### Stage Details:
 1. **Stage 1 (Cloud Storage Purge)**:
-   Purges all file prefixes under the class directory (`screenshots/{classId}/`, `videos/{classId}/`, `audio/{classId}/`, `recordings/{classId}/`, `zips/{classId}/`).
+   Purges all file prefixes under the class directory:
+   * `projectMeetings/{classId}/` (Opus voice recordings, 720p mobile demo videos, still photo artifacts)
+   * `screenshots/{classId}/`
+   * `videos/{classId}/`
+   * `audio/{classId}/`
+   * `recordings/{classId}/`
+   * `zips/{classId}/`
+   * `subtitles/{classId}/`
+   * `irregularities/{classId}/`
+   * `classes/{classId}/`
+   * `tasks/{classId}/`
+   * `submissions/{classId}/`
+   * `reports/{classId}/`
+   * `taskDemos/{classId}/`
 2. **Stage 2 (Firestore Collection Batch Purge)**:
    Queries and batch-deletes all documents linked by `classId` in 500-item chunks across:
    * `screenshots`
+   * `audio`
    * `videoJobs`
    * `zipJobs`
    * `videoAnalysisJobs`
    * `irregularities`
    * `progress`
    * `propertyUploadJobs`
-3. **Stage 3 (Subcollection Purge)**:
-   Deletes `classes/{classId}/metadata/storage` tracking doc.
+   * `lectureMergeJobs`
+   * `lectureSubtitleJobs`
+   * `aiJobs`
+3. **Stage 3 (Subcollection Batch Purge)**:
+   Batch-deletes all class subcollections in 500-item chunks to guarantee zero orphaned documents in Firestore:
+   * `projectMeetings`, `projectGroups`, `projectStudentProfiles`, `activeMeetingCaptures`
+   * `lectureRecordings`, `tasks` (and nested `submissions`), `bingoSessions`, `status`
+   * `lessons`, `bingoRecords`, `attendanceAdjustments`, `studentProperties`, `classProperties`
+   * `passkeyBypassRequests`, `screenBroadcastViewers`, `messages`, `audio_audits`, `irregularities`, `questionBank`
+   * Ephemeral session/liveFrame documents and `metadata/storage` tracking doc.
 4. **Stage 4 (User Profile Unlinking)**:
    Queries `teacherProfiles` and `studentProfiles` where `classes` array contains `classId` and calls `FieldValue.arrayRemove(classId)`.
 

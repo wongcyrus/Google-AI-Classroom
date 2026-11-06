@@ -34,6 +34,31 @@ async function deleteCollectionByClassId(collectionName, classId) {
 }
 
 /**
+ * Helper to delete all documents in a subcollection under a path in batches.
+ */
+async function deleteSubcollectionByPath(subcollectionPath) {
+  const BATCH_SIZE = 500;
+  let totalDeleted = 0;
+  let hasMore = true;
+
+  while (hasMore) {
+    const snap = await db.collection(subcollectionPath)
+      .limit(BATCH_SIZE)
+      .get();
+
+    if (snap.empty) break;
+
+    const batch = db.batch();
+    snap.docs.forEach((doc) => batch.delete(doc.ref));
+    await batch.commit();
+
+    totalDeleted += snap.size;
+    if (snap.size < BATCH_SIZE) hasMore = false;
+  }
+  return totalDeleted;
+}
+
+/**
  * Helper to unassign deleted class from user profiles (teacherProfiles & studentProfiles).
  */
 async function removeClassFromProfiles(collectionName, classId) {
@@ -168,7 +193,8 @@ export const onClassDocDeleted = onDocumentDeleted({
     `tasks/${classId}/`,
     `submissions/${classId}/`,
     `reports/${classId}/`,
-    `taskDemos/${classId}/`
+    `taskDemos/${classId}/`,
+    `projectMeetings/${classId}/`
   ];
 
   for (const prefix of prefixes) {
@@ -191,7 +217,8 @@ export const onClassDocDeleted = onDocumentDeleted({
     'progress',
     'propertyUploadJobs',
     'lectureMergeJobs',
-    'lectureSubtitleJobs'
+    'lectureSubtitleJobs',
+    'aiJobs'
   ];
 
   for (const col of collectionsToClean) {
@@ -210,19 +237,40 @@ export const onClassDocDeleted = onDocumentDeleted({
     logger.warn(`Could not delete storage metadata for class ${classId}:`, err);
   }
 
-  try {
-    const lectureSnap = await db.collection(`classes/${classId}/lectureRecordings`).get();
-    if (!lectureSnap.empty) {
-      const batch = db.batch();
-      lectureSnap.docs.forEach((d) => batch.delete(d.ref));
-      await batch.commit();
-      logger.info(`Purged ${lectureSnap.size} lecture recording docs for class ${classId}.`);
+  // Purge standard subcollections (including project group meetings, groups, student profiles, etc.)
+  const subcollectionsToPurge = [
+    'projectMeetings',
+    'projectGroups',
+    'projectStudentProfiles',
+    'activeMeetingCaptures',
+    'lectureRecordings',
+    'bingoSessions',
+    'status',
+    'lessons',
+    'bingoRecords',
+    'attendanceAdjustments',
+    'studentProperties',
+    'classProperties',
+    'passkeyBypassRequests',
+    'screenBroadcastViewers',
+    'messages',
+    'audio_audits',
+    'irregularities',
+    'questionBank'
+  ];
+
+  for (const subcol of subcollectionsToPurge) {
+    try {
+      const count = await deleteSubcollectionByPath(`classes/${classId}/${subcol}`);
+      if (count > 0) {
+        logger.info(`Purged ${count} documents from subcollection '${subcol}' for class ${classId}.`);
+      }
+    } catch (err) {
+      logger.warn(`Could not delete subcollection '${subcol}' for class ${classId}:`, err);
     }
-  } catch (err) {
-    logger.warn(`Could not delete lectureRecordings subcollection for class ${classId}:`, err);
   }
 
-  // Purge tasks and their submissions
+  // Purge tasks and their submissions (nested subcollection)
   try {
     const tasksSnap = await db.collection(`classes/${classId}/tasks`).get();
     for (const taskDoc of tasksSnap.docs) {
@@ -239,31 +287,6 @@ export const onClassDocDeleted = onDocumentDeleted({
     }
   } catch (err) {
     logger.warn(`Could not delete tasks subcollection for class ${classId}:`, err);
-  }
-
-  // Purge bingoSessions
-  try {
-    const bingoSnap = await db.collection(`classes/${classId}/bingoSessions`).get();
-    if (!bingoSnap.empty) {
-      const bBatch = db.batch();
-      bingoSnap.docs.forEach(bDoc => bBatch.delete(bDoc.ref));
-      await bBatch.commit();
-      logger.info(`Purged ${bingoSnap.size} bingo sessions for class ${classId}.`);
-    }
-  } catch (err) {
-    logger.warn(`Could not delete bingoSessions subcollection for class ${classId}:`, err);
-  }
-
-  // Purge status
-  try {
-    const statusSnap = await db.collection(`classes/${classId}/status`).get();
-    if (!statusSnap.empty) {
-      const sBatch = db.batch();
-      statusSnap.docs.forEach(sDoc => sBatch.delete(sDoc.ref));
-      await sBatch.commit();
-    }
-  } catch (err) {
-    logger.warn(`Could not delete status subcollection for class ${classId}:`, err);
   }
 
   try {
