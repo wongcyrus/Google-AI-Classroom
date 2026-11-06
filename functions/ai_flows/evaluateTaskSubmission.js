@@ -283,7 +283,7 @@ Respond strictly with valid JSON conforming to this schema:
 
 Return ONLY raw JSON. Do not wrap in markdown code fence blocks (\`\`\`json).`;
 
-  const preferredModel = model || 'gemini-3.8-flash';
+  const preferredModel = model || taskData.model || 'gemini-3.8-flash';
   const generateConfig = {
     prompt: [
       { text: promptText },

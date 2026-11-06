@@ -56,6 +56,7 @@ const TaskEditorModal = ({
   const [selectedPromptText, setSelectedPromptText] = useState('');
   const [showPromptPreview, setShowPromptPreview] = useState(false);
   const [promptGuidelines, setPromptGuidelines] = useState('');
+  const [aiModel, setAiModel] = useState(initialTask?.model || 'gemini-3.8-flash');
   const [isExtracting, setIsExtracting] = useState(false);
   const [extractionSuccess, setExtractionSuccess] = useState(null);
 
@@ -129,6 +130,7 @@ const TaskEditorModal = ({
       setSelectedPromptId(initialTask.selectedPromptId || '');
       setSelectedPromptText(initialTask.selectedPromptText || '');
       setPromptGuidelines(initialTask.promptGuidelines || '');
+      setAiModel(initialTask.model || 'gemini-3.8-flash');
 
       const c = initialTask.constraints || {};
       const t = c.timing || {};
@@ -181,6 +183,7 @@ const TaskEditorModal = ({
       setSelectedPromptId('');
       setSelectedPromptText('');
       setPromptGuidelines('');
+      setAiModel('gemini-3.8-flash');
       setErrorMessage(null);
       setExtractionSuccess(null);
 
@@ -375,6 +378,7 @@ const TaskEditorModal = ({
         promptGuidelines: promptGuidelines || description,
         promptText: selectedPromptText,
         maxScore: Number(maxScore) || 100,
+        model: aiModel || 'gemini-3.8-flash',
       });
 
       const data = res.data;
@@ -443,6 +447,7 @@ const TaskEditorModal = ({
         selectedPromptId: selectedPromptId || null,
         selectedPromptText: selectedPromptText || null,
         promptGuidelines: promptGuidelines.trim() || null,
+        model: aiModel || 'gemini-3.8-flash',
         rubricSteps,
         constraints: {
           timing: {
@@ -1112,6 +1117,22 @@ const TaskEditorModal = ({
                       )}
                     </div>
                   )}
+
+                  <div>
+                    <label htmlFor="task-ai-model-select" className="block text-xs font-semibold text-gray-700 mb-1">
+                      🤖 Gemini Model for Rubric Synthesis &amp; Grading:
+                    </label>
+                    <select
+                      id="task-ai-model-select"
+                      value={aiModel}
+                      onChange={(e) => setAiModel(e.target.value)}
+                      className="w-full px-3 py-2 border border-purple-300 rounded-lg bg-white text-gray-900 text-sm font-medium focus:ring-2 focus:ring-purple-500 shadow-sm mb-2"
+                    >
+                      <option value="gemini-4-argon">🧠 Gemini 4 Argon (Flagship Reasoning &amp; 1M Context — $2.00 / $10.00 per 1M)</option>
+                      <option value="gemini-3.8-flash">✨ Gemini 3.8 Flash (Recommended Multimodal — $0.75 / $3.75 per 1M)</option>
+                      <option value="gemini-3.5-flash-lite">⚡ Gemini 3.5 Flash-Lite (Fastest &amp; Low Cost — $0.30 / $2.50 per 1M)</option>
+                    </select>
+                  </div>
 
                   <div>
                     <label htmlFor="task-prompt-guidelines" className="block text-xs font-semibold text-gray-700 mb-1">

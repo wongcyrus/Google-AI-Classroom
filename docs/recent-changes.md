@@ -4,6 +4,31 @@
 **System**: Google AI Classroom  
 **Production URL**: `https://it114115-2627.web.app`
 
+## 0.0.0.0.0.0.0.0.0.0.3.7 Universal Gemini 4 (`gemini-4-argon`) Selection Across All Teacher AI Workflows
+
+**Date**: November 6, 2026  
+**Status**: Implemented & Verified with Passing Unit Tests (`tasks.test.jsx` 32/32, `BingoQuestionBankModal.test.jsx` 11/11, `PromptFormAndList.test.jsx` 6/6, `PromptManagement.test.jsx` 10/10, `TeacherSubtitleControlModal.test.jsx` 16/16, `evaluateTaskSubmission.test.js` 30/30, `bingoFlows.test.js` 38/38, `subtitleFlows.test.js` 23/23)  
+**Primary Files**:
+- [`web-app/src/components/tasks/TaskEditorModal.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/tasks/TaskEditorModal.jsx), [`web-app/src/components/tasks/TaskGradingMatrixView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/tasks/TaskGradingMatrixView.jsx), [`web-app/src/components/tasks/TasksManagementView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/tasks/TasksManagementView.jsx), & [`functions/ai_flows/evaluateTaskSubmission.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/evaluateTaskSubmission.js)
+- [`web-app/src/components/BingoQuestionBankModal.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/BingoQuestionBankModal.jsx) & [`functions/ai_flows/bingoFlows.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/bingoFlows.js)
+- [`web-app/src/components/prompt/PromptForm.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/prompt/PromptForm.jsx) & [`web-app/src/components/PromptManagement.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/PromptManagement.jsx)
+- [`web-app/src/components/subtitles/TeacherSubtitleControlModal.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/subtitles/TeacherSubtitleControlModal.jsx) & [`functions/ai_flows/subtitleFlows.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/subtitleFlows.js)
+
+### Summary of Enhancements:
+1. **Practical Tasks Creation & Rubric Synthesis (`TaskEditorModal.jsx`)**:
+   - Added `#task-ai-model-select` (`gemini-4-argon`, `gemini-3.8-flash`, `gemini-3.5-flash-lite`) in Tab 2 (`2. Demo Video & AI`), passing `model: aiModel` to `extractTaskDemoSteps` and persisting `model` on the task document.
+2. **Practical Tasks Grading Matrix & Backend Evaluation (`TaskGradingMatrixView.jsx`, `evaluateTaskSubmission.js`)**:
+   - Added `Grading AI Model` selector in the Grading Matrix header toolbar to let teachers run single or batch evaluations with `gemini-4-argon`, `gemini-3.8-flash`, or `gemini-3.5-flash-lite`.
+   - Updated `evaluateTaskSubmission.js` (`const preferredModel = model || taskData.model || 'gemini-3.8-flash';`) so automatic post-compilation task evaluations also honor the task's configured model.
+3. **Bingo Question Bank AI Studio (`BingoQuestionBankModal.jsx`, `bingoFlows.js`)**:
+   - Added `Bingo AI Model` selector (`gemini-4-argon`, `gemini-3.8-flash`, `gemini-3.5-flash-lite`) in the AI Question Generator bar and wired `model` through `generateQuestionBankAi` and `generateBingoQuestionBank`.
+4. **Prompt Studio Meta-Optimizer (`PromptForm.jsx`, `PromptManagement.jsx`)**:
+   - Added `Prompt Optimizer Model` selector (`gemini-4-argon`, `gemini-3.8-flash`, `gemini-3.5-flash-lite`) next to `✨ Optimize` to allow deep prompt synthesis with Gemini 4 Argon.
+5. **Live Subtitles Cloud Translation (`subtitleFlows.js`, `TeacherSubtitleControlModal.jsx`)**:
+   - Enabled `translateTeacherSpeech` to accept optional `model` override (`gemini-4-argon`, `gemini-3.8-flash`, `gemini-3.5-flash-lite`) with automatic parameter sanitization via `generateWithResilience`.
+
+---
+
 ## 0.0.0.0.0.0.0.0.0.0.3.6 Cascading Class Deletion for Project Meetings Media (Voice, 720p Video Demos, Photos) & Subcollections
 
 **Date**: November 6, 2026  

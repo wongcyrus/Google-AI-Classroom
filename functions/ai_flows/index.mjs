@@ -151,8 +151,8 @@ export const generateQuestionBankAi = onCall(callOptions, async (request) => {
   if (request.auth?.token?.role !== 'teacher') {
     throw new HttpsError('permission-denied', 'Only teachers can generate question banks.');
   }
-  const { topic, count, classId } = request.data || {};
-  return await generateBingoQuestionBank({ topic, count, classId });
+  const { topic, count, classId, model } = request.data || {};
+  return await generateBingoQuestionBank({ topic, count, classId, model });
 });
 
 export const translateTeacherSpeech = onCall(callOptions, async (request) => {
@@ -185,7 +185,7 @@ export const translateTeacherSpeech = onCall(callOptions, async (request) => {
   if (!isTeacher) {
     throw new HttpsError('permission-denied', 'Only teachers can request live subtitle translation.');
   }
-  const { text, sourceLang, targetLangs, context, customPrompt, historyText } = request.data || {};
+  const { text, sourceLang, targetLangs, context, customPrompt, historyText, model } = request.data || {};
   return await translateTeacherSpeechInternal({
     classId,
     teacherUid: request.auth.uid,
@@ -196,6 +196,7 @@ export const translateTeacherSpeech = onCall(callOptions, async (request) => {
     context,
     customPrompt,
     historyText,
+    model,
   });
 });
 

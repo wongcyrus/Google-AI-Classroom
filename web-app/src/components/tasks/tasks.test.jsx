@@ -1125,12 +1125,15 @@ describe('Tasks Component Suite', () => {
         expect(mockTriggerEval).toHaveBeenCalledWith('charlie_uid', 1);
       });
 
-      // Click Grade All Pending
+      // Switch Grading AI Model to Gemini 4 Argon and Click Grade All Pending
+      const gradingModelSelect = screen.getByLabelText(/Grading AI Model/i);
+      fireEvent.change(gradingModelSelect, { target: { value: 'gemini-4-argon' } });
+
       const gradeAllBtn = screen.getByRole('button', { name: /Grade All Pending/i });
       fireEvent.click(gradeAllBtn);
 
       await waitFor(() => {
-        expect(mockTriggerEval).toHaveBeenCalled();
+        expect(mockTriggerEval).toHaveBeenCalledWith('charlie_uid', 1, undefined, 'gemini-4-argon');
       });
     });
 

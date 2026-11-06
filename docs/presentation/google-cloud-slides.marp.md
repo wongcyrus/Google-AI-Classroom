@@ -251,8 +251,8 @@ async function generateWithResilience(generateConfig, preferredModel = 'gemini-3
   - **Videos:** Two-Stage Map-Reduce Coursework Rubric Synthesizer.
   - **Audios:** Speech intent classification (collusion, unauthorized talk, teacher inquiry) & diarization.
   - **subtitles:** Code-switching subtitle engine preserving programming terms (`useState`, `Docker`).
-- **Modality-Specific AI Prompt Optimizers (`✨ Optimize`):**
-  - Built-in Gemini meta-prompts specifically tuned for each modality (e.g. `subtitleOptimizerPrompt`, `visionOptimizerPrompt`).
+- **Modality-Specific AI Prompt Optimizers (`✨ Optimize` with Selectable Gemini 4 Argon / 3.8 Flash / 3.5 Flash-Lite):**
+  - Built-in Gemini meta-prompts specifically tuned for each modality (e.g. `subtitleOptimizerPrompt`, `visionOptimizerPrompt`) with selectable `Prompt Optimizer Model` (`gemini-4-argon`, `gemini-3.8-flash`, `gemini-3.5-flash-lite`).
   - Automatically converts brief teacher notes into production-ready prompts with strict JSON schemas, few-shot edge cases, and anti-hallucination guardrails.
 - **In-App FinOps Testing Sandbox:**
   - Real-time test runs against Gemini models with live execution latency (ms), token usage counters, and dollar cost estimations before classroom deployment.
@@ -378,7 +378,7 @@ const processFrame = async (now, metadata) => {
 ![bg right:60% 95%](images/slide_bingo_active_presence.png)
 
 - **AI Question Bank Generator (`generateQuestionBankAi`):**
-  - Gemini 3.5 Flash-Lite / 3.8 Flash autonomously drafts batches of domain-tailored multiple choice questions with 4 options, answer keys, and pedagogical rationales.
+  - **Gemini 4 Argon / 3.8 Flash / 3.5 Flash-Lite** autonomously drafts batches of domain-tailored multiple choice questions with 4 options, answer keys, and pedagogical rationales.
   - Teachers bulk import via Aiken format (`ANSWER: X`) or generate on the fly from lecture topics.
 - **3 Sourced FinOps Verification Modes:**
   - **Question Bank ($0.00 zero-AI):** Instant local dispatch from class question pool.
@@ -467,13 +467,13 @@ const processFrame = async (now, metadata) => {
 ---
 
 ## Real-Time Live Subtitles & Multilingual Captions Engine
-### Dual-Engine Architecture: Serverless Genkit (Gemini 3.5/3.8) & Edge LiteRT Gemma 4 E2B
+### Dual-Engine Architecture: Serverless Genkit (Gemini 4 / 3.8 / 3.5) & Edge LiteRT Gemma 4 E2B
 
 ![bg right:60% 95%](images/slide_live_subtitles_multilingual.png)
 
 - **Mode 1: 🟣 Server Model (Recommended · 100% Cross-Platform Reliable):**
   - Local LiteRT Whisper (`openai/whisper-tiny`) + Cloud Function `translateTeacherSpeech`.
-  - Powered by **Gemini 3.5 Flash-Lite / 3.8 Flash** generating subtitles in **9 languages** (`zh-Hant`, `zh-Hans`, `en`, `ja`, `ko`, `es`, `fr`, `de`, `vi` — ~$0.01/lecture).
+  - Powered by **Gemini 3.5 Flash-Lite / 3.8 Flash / 4 Argon** generating subtitles in **9 languages** (`zh-Hant`, `zh-Hans`, `en`, `ja`, `ko`, `es`, `fr`, `de`, `vi` — ~$0.01/lecture).
   - Preserves Cantonese-English technical code-switching (`useState`, `Docker`) with 350ms debounced Firestore sync.
 - **Mode 2: ⚪ Client Model (LiteRT.js + Gemma 4 E2B · $0.00 Cloud Cost):**
   - Local LiteRT Whisper STT paired with on-device **LiteRT-LM Gemma 4 E2B (~1.9 GB)** in WebGPU/WASM Web Workers, with explicit desktop opt-in download & iOS/mobile OOM guard.
@@ -640,7 +640,7 @@ const processFrame = async (now, metadata) => {
 - **Event-Driven Cloud Storage Cleanup (`storage_triggers/`):**
   - `onScreenshotDocDeleted`, `onVideoJobDocDeleted`, `onZipJobDocDeleted`, `onAudioDocDeleted`, and `onLectureRecordingDeleted` purge GCS blobs immediately.
 - **4-Stage Cascading Class Deletion (`onClassDocDeleted`):**
-  - Single teacher delete action cascades across screenshots, videos, audio, recordings, zip archives, subcollections (`properties`, `status`, `broadcast`, `lectureRecordings`, `screenBroadcast`, `liveSubtitles`), and student profiles. Auto-decrements class storage quotas.
+  - Single teacher delete action cascades across screenshots, videos, audio, recordings, tasks/submissions, **`projectMeetings/${classId}/` (voice, 720p demo videos, photos)**, zip archives, 500-item batched subcollections (`projectMeetings`, `projectGroups`, `projectStudentProfiles`, `lectureRecordings`, `tasks`, `lessons`, `bingoRecords`, `properties`, `status`), `aiJobs`, and student profiles. Auto-decrements class storage quotas.
 
 ---
 
@@ -659,27 +659,28 @@ const processFrame = async (now, metadata) => {
 - **Phase 3: Map (Milestone Evaluation & Subjob Inspection):**
   - Evaluates student videos against synthesized rubric; autonomous tool calls log milestones into `StudentMilestoneMatrix.jsx`.
   - Color-coded heatmap duration badges with RFC 4180 CSV export and `JobResultModal` featuring default word wrapping (`Wrap: ON/OFF`).
-- **Dynamic AI Lab Task Generator & Rubric-Driven Practical Tasks System:**
-  - **`extractTaskDemoSteps`:** Synthesizes structured `steps[]` (`points`, `gradingCriteria`, `timestampRange`) from a demo video, Assessment Prompt template, or task guidelines with **`⚖️ Auto-Balance to {maxScore} pts`**.
-  - **`evaluateTaskSubmission` & `normalizeRubricEvaluation`:** Deterministic rubric reconciliation guaranteeing per-step mark breakdowns (`scoreAwarded / maxPoints`), clickable `[MM:SS]` video seek, and per-step explanations.
+- **Dynamic AI Lab Task Generator & Rubric-Driven Practical Tasks System (Gemini 4 Argon / 3.8 Flash / 3.5 Flash-Lite):**
+  - **`extractTaskDemoSteps`:** Synthesizes structured `steps[]` (`points`, `gradingCriteria`, `timestampRange`) from a demo video, Assessment Prompt template, or task guidelines using teacher-selectable **`gemini-4-argon`**, **`gemini-3.8-flash`**, or **`gemini-3.5-flash-lite`** with **`⚖️ Auto-Balance to {maxScore} pts`**.
+  - **`evaluateTaskSubmission` & `normalizeRubricEvaluation`:** Deterministic rubric reconciliation with selectable Grading Matrix AI model override (`gemini-4-argon` / `gemini-3.8-flash` / `gemini-3.5-flash-lite`), guaranteeing per-step mark breakdowns (`scoreAwarded / maxPoints`), clickable `[MM:SS]` video seek, and per-step explanations.
   - **`TaskGradingMatrixView.jsx`:** Displays per-step mark pills (`S1: 30/30`), interactive **`✏️ Edit Step Marks`** (`stepOverrides`), post-class retroactive session slicing, and rich `.xlsx` mark breakdown exports.
 
 ---
 
 ## Capstone Project Meetings & Multi-Stream AI Supervision
-### Live Dual-Device Capture, 2-Stage Diarization, Fake-Log AI Audit & Whole-Class Dispatch
+### Streamlined Mobile 720p Demo & Photo Studio, 2-Stage Diarization, Fake-Log AI Audit & Whole-Class Dispatch
 
 ![bg right:60% 95%](images/slide_project_meetings_ai_supervision.png)
 
-- **Dual-Device Live Consultation Capture (Anti-Fabrication):**
-  - **Teacher Mobile Voice:** Live recording with browser Screen Wake Lock (`navigator.wakeLock`) and 1-tap `"🗣️ Speaking Now"` timestamp voice anchors (`voiceAnchors[]`).
-  - **Student PC Screen Demo:** Synchronized student screen demo screencast (`screenClips[]`). Direct media uploads disabled to ensure live authenticity.
+- **Streamlined Single-Device Teacher Mobile Studio (Zero Student PC Friction):**
+  - **🎙️ Continuous Mobile Voice:** Live recording with browser Screen Wake Lock (`navigator.wakeLock`) and 1-tap `"🗣️ Speaking Now"` timestamp voice anchors (`voiceAnchors[]`).
+  - **📸 Zero-Pause Photo Snap (0.1s):** Captures 1280px JPEGs of whiteboards, IoT circuits, or screens with **zero interruption** to background voice recording.
+  - **📹 720p Mobile Video Demo (`1280×720`):** 1-tap mobile camera demo capture that automatically slices voice (`Voice Part 1` $\to$ `720p Demo Video` $\to$ `Voice Part 2`), tracked in FinOps (`storageUsageProjectMeetings`).
 - **On-Demand Google Sheets Sync & 4-Tier Authenticity Audit:**
   - Zero-cron incremental delta sync from public Google Sheet (`Form Responses 2`) with 1-digit student ID typo self-healing.
   - Audits written logs (`🟢 Genuine`, `🔴 Vague`, `🟠 Suspected AI/Fake`, `⚪ Inactive`) and auto-generates 2–3 pointed technical AI challenge questions per student before class (`prepareProjectMeetingLogQuestions`).
-- **Resilient 2-Stage Gemini Multimodal Diarization Pipeline (`analyzeProjectMeeting`):**
+- **Resilient 2-Stage Gemini 4 Argon / 3.8 Flash Multimodal Diarization Pipeline (`analyzeProjectMeeting`):**
   - **Stage 1 (`gemini-3.5-transcribe-preview`):** Diarizes multilingual code-switching dialogue, with automatic multimodal `gemini-3.8-flash` fallback on low-volume clips.
-  - **Stage 2 (`gemini-3.8-flash`):** Fuses diarized audio, voice anchors, and student screen demos to verify Real Work (`/10`), Log Quality (`/10`), and attendance (`Present`, `Late`, `Absent`).
+  - **Stage 2 (`gemini-4-argon` / `gemini-3.8-flash`):** Fuses diarized audio, voice anchors, 720p mobile demo videos, and photos to verify Real Work (`/10`), Log Quality (`/10`), and attendance (`Present`, `Late`, `Absent`).
 - **1-Click Whole-Class Weekly Report Dispatch & Student Portal Visibility:**
   - Dispatches individualized HTML reports to the entire class for Week $W$ with overarching supervisor guidance via `batchEmailProjectMeetingReports` (Gen 2 Cloud Function in `asia-east2`).
   - Powered by Google Cloud Secret Manager (`SMTP_PASSWORD`) over Gmail SSL Relay (`smtp.gmail.com:465`, sender `noreply@vtc.edu.hk`), with student portal reflection (`/student/records?tab=meetings`) and rich `.xlsx` matrix exports.

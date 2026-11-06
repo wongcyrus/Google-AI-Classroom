@@ -27,6 +27,7 @@ const PromptManagement = () => {
   const [emailInput, setEmailInput] = useState('');
   const [originalPromptText, setOriginalPromptText] = useState('');
   const [isOptimizing, setIsOptimizing] = useState(false);
+  const [optimizerModel, setOptimizerModel] = useState('gemini-3.8-flash');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isZenMode, setIsZenMode] = useState(false);
 
@@ -312,7 +313,7 @@ const PromptManagement = () => {
         ? new AgentPlatformBackend(location)
         : new VertexAIBackend(location);
       const ai = getAI(app, { backend });
-      const candidateModels = ["gemini-3.8-flash", "gemini-3.5-flash-lite"];
+      const candidateModels = Array.from(new Set([optimizerModel, "gemini-3.8-flash", "gemini-3.5-flash-lite", "gemini-4-argon"].filter(Boolean)));
 
       const imageOptimizerPrompt = `You are an expert prompt engineer, specializing in Google's AI models for **image analysis**. Your task is to rewrite and expand the user's input to create a high-quality, detailed prompt that follows Google's best practices and is ready for reliable execution.
 
@@ -575,6 +576,8 @@ const PromptManagement = () => {
                 handleOptimize={handleOptimize}
                 handleUndo={handleUndo}
                 isOptimizing={isOptimizing}
+                optimizerModel={optimizerModel}
+                setOptimizerModel={setOptimizerModel}
                 originalPromptText={originalPromptText}
                 isZenMode={isZenMode}
                 setIsZenMode={setIsZenMode}

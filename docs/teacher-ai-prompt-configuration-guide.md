@@ -38,7 +38,7 @@ flowchart TD
 
     subgraph RuntimeConsumers ["4. Multimodal Runtime Inference Engines"]
         ClassDoc -->|"Snapshot Listener"| EdgeGemma["Edge Web Worker (litertGemma.worker.js)\nLiteRT-LM Gemma 4 E2B Voice Intent & Client Subtitle Translator"]
-        ClassDoc -->|"Callable API Payload / DB Read"| CFSubtitles["Cloud Function: translateTeacherSpeech / processTeacherSpeechSubtitles\n(functions/ai_flows/subtitleFlows.js)\nGemini 3.5 Flash-Lite / 3.8 Flash Server Subtitle Engine"]
+        ClassDoc -->|"Callable API Payload / DB Read"| CFSubtitles["Cloud Function: translateTeacherSpeech / processTeacherSpeechSubtitles\n(functions/ai_flows/subtitleFlows.js)\nGemini 3.5 Flash-Lite / 3.8 Flash / 4 Argon Server Subtitle Engine"]
         ClassDoc -->|"analyzeFaceFallbackFlow"| CFVision["Cloud Function: analyzeFaceFallbackFlow\n(functions/ai_flows/analysisFlows.js)\nGemini Fallback Face & Gaze Invigilation"]
         ClassDoc -->|"resolveBingoQuestion"| CFBingo["Cloud Function: resolveBingoQuestion\n(functions/ai_flows/bingoFlows.js)\nGemini Attention Verification MCQ"]
         ClassDoc -->|"analyzeAudioChunk & summarizeSessionAudio"| CFAudio["Cloud Functions: analyzeAudioChunk & audioFlows\n(functions/ai_flows/audioFlows.js)\nAcoustic Invigilation & Discussion Summary"]
@@ -175,7 +175,9 @@ sequenceDiagram
    - Interpolates `{{studentUid}}` into the prompt, asking Gemini to verify whether the student is working on the assigned programming task rather than watching videos or idling.
 3. **AI Question Bank Generator (`generateBingoQuestionBank`)**:
    - Interpolates `{{topic}}` and `{{count}}`.
-   - Used by teachers in the Question Bank Studio (`BingoQuestionBankModal.jsx`) to auto-generate multiple-choice questions aligned with specific course rubrics.
+   - Used by teachers in the Question Bank Studio (`BingoQuestionBankModal.jsx`) with a selectable AI model picker (`gemini-4-argon`, `gemini-3.8-flash`, or `gemini-3.5-flash-lite`) to auto-generate multiple-choice questions aligned with specific course rubrics.
+4. **Prompt Studio Meta-Optimizer (`optimizePromptFlow`)**:
+   - In `PromptForm.jsx` / `PromptManagement.jsx`, teachers can select `gemini-4-argon`, `gemini-3.8-flash`, or `gemini-3.5-flash-lite` via the `Prompt Optimizer Model` dropdown next to `✨ Optimize` to rewrite and harden prompt templates while preserving `{{variable}}` placeholders.
 
 ---
 

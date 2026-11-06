@@ -59,14 +59,16 @@ export async function translateTeacherSpeech({
   context = '',
   customPrompt = '',
   historyText = null,
+  model = null,
 }) {
+  const targetModel = model || AI_MODEL;
   const trimmedText = (text || '').trim();
   if (!trimmedText || isSubtitleNoiseOrRefusal(trimmedText)) {
     return {
       originalText: '',
       sourceLang,
       translations: {},
-      modelUsed: AI_MODEL,
+      modelUsed: targetModel,
       cost: 0,
     };
   }
@@ -115,7 +117,7 @@ Guidelines:
 7. Return a JSON mapping with the exact target language codes as keys (e.g. {"en":"...","zh-Hans":"..."}).${customInstructions}`;
 
   // Estimate cost & check quota
-  const estimatedCost = estimateCost(prompt, [], AI_MODEL) + 0.00005;
+  const estimatedCost = estimateCost(prompt, [], targetModel) + 0.00005;
   if (classId) {
     const hasQuota = await checkQuota(classId, estimatedCost);
     if (!hasQuota) {
@@ -128,7 +130,7 @@ Guidelines:
         promptText: trimmedText,
         mediaPaths: [],
         cost: 0,
-        modelUsed: AI_MODEL,
+        modelUsed: targetModel,
       });
       throw new Error('Classroom AI quota exceeded. Cannot translate subtitles.');
     }
@@ -149,7 +151,7 @@ Guidelines:
         translations: translationsSchema.describe('Map of exact target language codes to translated subtitle strings'),
       }),
     },
-  }, AI_MODEL);
+  }, targetModel);
 
   const output = response.output || {};
   const rawTranslations = output.translations || {};

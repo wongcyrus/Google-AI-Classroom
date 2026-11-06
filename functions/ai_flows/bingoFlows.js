@@ -15,7 +15,8 @@ const db = getFirestore();
  * Question Bank Generator
  * Uses Gemini to generate N multiple-choice questions for a given topic/lesson.
  */
-export async function generateBingoQuestionBank({ topic, count = 5, customPrompt = null, classId = null }) {
+export async function generateBingoQuestionBank({ topic, count = 5, customPrompt = null, classId = null, model = null }) {
+  const targetModel = model || AI_MODEL;
   const safeCount = Math.min(Math.max(Number(count) || 5, 1), 15);
   let prompt = customPrompt;
   if (prompt) {
@@ -43,7 +44,7 @@ Keep questions concise, practical, and unambiguous.`;
         ),
       }),
     },
-  }, AI_MODEL);
+  }, targetModel);
 
   const output = response.output;
   if (!output || !Array.isArray(output.questions)) {
@@ -51,7 +52,7 @@ Keep questions concise, practical, and unambiguous.`;
   }
 
   const usage = response?.usage || response?.usageMetadata || {};
-  const cost = calculateCost(usage, modelUsed || AI_MODEL);
+  const cost = calculateCost(usage, modelUsed || targetModel);
   if (classId) {
     try {
       await logJob({
@@ -65,7 +66,7 @@ Keep questions concise, practical, and unambiguous.`;
           outputTokens: usage.outputTokens ?? usage.candidatesTokenCount ?? 0,
         },
         cost,
-        modelUsed: modelUsed || AI_MODEL,
+        modelUsed: modelUsed || targetModel,
         result: `Generated ${output.questions.length} bingo questions on "${topic}"`,
       });
     } catch (logErr) {

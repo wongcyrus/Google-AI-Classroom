@@ -1,0 +1,366 @@
+# Part 9: Gamified "Bingo" Active Presence Verification & Zero-Trust Exam Mode on Google Cloud
+
+**Author:** **Cyrus Wong (黃俊彥)** — *Google Developer Expert (GCP & AI/ML), Senior Lecturer at HKIIT / VTC Hong Kong*  
+[⏮️ Previous: Part 8 — Multimodal Capstone Supervision with Gemini 4](./08-multimodal-capstone-project-supervision-gemini-4.md) | [📚 Series Index](./README.md) | [⏭️ Next: Part 10 — Green AI FinOps, Storage Lifecycle & Terraform IaC](./10-green-ai-finops-storage-lifecycle-and-terraform-iac.md)
+
+---
+
+![Bingo Active Presence & 2-Strike Verification](../presentation/images/slide_bingo_active_presence.png)
+
+## 1. Verifying Active Attention Without Punitive Surveillance or Idle Polling Bills
+
+In a 3-hour coding lab or a 100-student hybrid lecture, passive screen-share telemetry has a classic blind spot: **The Static Screen Decoy**. A student can open VS Code or a lecture slide deck, start screen sharing, and walk away from their workstation for 45 minutes while their screen capture continues uploading identical frames.
+
+However, solving this problem naively introduces three severe trade-offs:
+1. **Psychological Surveillance Fatigue**: Continuous webcam micro-policing during ordinary lectures creates student anxiety and erodes classroom trust.
+2. **Punishing Honest Comprehension Mistakes**: If an instructor sends a pop quiz to check attendance and docks attendance marks when a student selects the wrong answer, students are penalized for struggling with new technical material even though they were sitting attentively at their desks!
+3. **Serverless Polling Bills**: Running a Cloud Scheduler cron job every 60 seconds to scan pending attendance timers across 50 classes burns tens of thousands of idle Firestore reads per month.
+
+In **Part 9** of our Google Developer Expert series, we detail how we engineered two complementary classroom integrity systems:
+- **Gamified "Classroom Bingo" Active Presence Verification** ([`BingoControlBar.jsx`](../../web-app/src/components/BingoControlBar.jsx), [`BingoQuestionBankModal.jsx`](../../web-app/src/components/BingoQuestionBankModal.jsx), [`StudentBingoOverlay.jsx`](../../web-app/src/components/StudentBingoOverlay.jsx), and [`bingoFlows.js`](../../functions/ai_flows/bingoFlows.js)) featuring **3 FinOps-Tiered Verification Modes**, a **Gemini 4 Argon (`gemini-4-argon`) Question Bank AI Studio**, Fisher-Yates positional bias elimination, and an event-driven **Non-Punitive Two-Strike State Machine** powered by **Google Cloud Tasks (`dispatchBingoRetryTask`)**.
+- **Zero-Trust Exam Mode Lockdown & Court-Ready Forensic Dossiers** ([`ExamReadinessWizard.jsx`](../../web-app/src/components/ExamReadinessWizard.jsx), [`storage.rules`](../../storage.rules), [`getStudentVideoPlaybackUrl.js`](../../functions/media_processing/getStudentVideoPlaybackUrl.js), and [`processReportJob.js`](../../functions/media_processing/processReportJob.js)), enforcing full-monitor capture (`displaySurface === 'monitor'`), write-once Cloud Storage metadata locks (`isExam == 'true'`), Student Portal confidentiality shielding during exam windows, and 1-click export of formal **Microsoft Word (`.docx`) & RFC 4180 CSV Incident Dossiers**.
+
+---
+
+## 2. Diagram 1: Three FinOps-Optimized Bingo Verification Modes & The Gemini 4 Question Bank Studio
+
+When a lecturer triggers a Classroom Bingo round (either manually with one click, via a **Staggered Jitter Queue** that challenges random subsets of students every few minutes so neighbours cannot shout out "Option B!", or via **Auto-Bingo** during live screen broadcasts), `resolveBingoQuestion` in [`functions/ai_flows/bingoFlows.js`](../../functions/ai_flows/bingoFlows.js) supports three FinOps-optimized question generation modes—plus hardware WebAuthn passkey QR modes (`mobile_passkey` and `lecture_passkey_qr`):
+
+```mermaid
+flowchart TD
+    subgraph QuestionStudio ["1. Bingo Question Bank Studio (BingoQuestionBankModal.jsx)"]
+        TOPIC["Teacher enters topic (e.g. 'Kubernetes Pod Networking')\n+ Selects Bingo AI Model:\n🧠 Gemini 4 Argon | ⚡ Gemini 3.8 Flash | 🪶 Gemini 3.5 Flash-Lite"]
+        GEN["generateQuestionBankAi (bingoFlows.js)\nGenerates structured 4-option MCQs via Genkit Zod Schema\n+ Fisher-Yates Option Shuffling (Or bulk-imports Aiken format)"]
+        TOPIC --> GEN
+    end
+
+    subgraph ThreeModes ["2. Three FinOps Verification Modes (resolveBingoQuestion)"]
+        M1["Mode 1: 📚 Predefined Question Bank ($0.00 Live AI Cost)\nSamples random MCQ from classes/{id}/classProperties/config"]
+        M2["Mode 2: 🖥️ Teacher Broadcast Screen + Live Subtitles (~$0.00015 / Cohort!)\n1 Gemini multimodal call on screenBroadcast/liveFrame + liveSubtitles/current\nTests if all 50 students are following the teacher's live demo & verbal explanation"]
+        M3["Mode 3: 🔍 Individual Student Screen (+ Anti-Decoy Bank Fallback)\nInspects each student's latestScreenPath via Gemini\nFalls back to Question Bank if student stopped screen sharing!"]
+        GEN --> M1
+    end
+
+    subgraph SecuritySplit ["3. Zero-Leak Payload Sanitization & Fisher-Yates Shuffle"]
+        SECRET["Server-Only Record (contains correctIndex):\nclasses/{classId}/bingoRecords/{bingoId}"]
+        PUBLIC["Sanitized Student Payload (correctIndex stripped!):\nclasses/{classId}/studentProperties/{uid}.activeBingo\nMounted via React createPortal at z-index: 2147483647"]
+        M1 & M2 & M3 --> SECRET & PUBLIC
+    end
+```
+
+### Engineering Highlights of the Bingo Question Engine
+1. **Universal Model Agency in the Question Bank Studio (`BingoQuestionBankModal.jsx`)**: Before class, teachers can open [`BingoQuestionBankModal.jsx`](../../web-app/src/components/BingoQuestionBankModal.jsx), type a lesson topic (or customize the system prompt), and select **🧠 Gemini 4 Argon (`gemini-4-argon`)**, **⚡ Gemini 3.8 Flash (`gemini-3.8-flash`)**, or **🪶 Gemini 3.5 Flash-Lite (`gemini-3.5-flash-lite`)** to generate 1 to 15 multiple-choice questions at once—or bulk-import existing quizzes in standard **Moodle Aiken text format**.
+2. **Eliminating LLM Positional Bias (`shuffleOptionsAndCorrectIndex`)**: When generating 4-option multiple-choice questions, LLMs exhibit a strong statistical bias toward placing the correct answer at index `0` (Option A) or index `1` (Option B). Every question generated by `generateBingoQuestionBank` or `resolveBingoQuestion` passes through a deterministic **Fisher-Yates permutation (`shuffleOptionsAndCorrectIndex`)** that randomizes option order and updates `correctIndex` accordingly.
+3. **Multimodal Teacher Screen + 5-Minute Live Subtitle Fusion (`Mode 2`)**: In `teacher_screen` mode, `resolveBingoQuestion` makes **a single multimodal Gemini call for the entire 50-student class** (`~$0.00015 USD` total cohort cost!). Even better, it fuses the teacher's live broadcast frame (`classes/{classId}/screenBroadcast/liveFrame`) with the last 5 minutes of the teacher's spoken commentary (`classes/{classId}/liveSubtitles/current`) and injects an **Anti-Duplication Rule** containing the last 5 asked questions (`isDuplicateQuestion` with $80\%$ lexical Jaccard similarity rejection) so Gemini never repeats the same question while the teacher stays on a single slide!
+4. **Zero-Leak Client Payload Sanitization**: A savvy computer science student will immediately open Chrome DevTools (`Network` / `Firestore` tab) when a quiz pops up. In [`bingoFlows.js`](../../functions/ai_flows/bingoFlows.js), `correctIndex` is written **exclusively** to `classes/{classId}/bingoRecords/{bingoId}` (which students are blocked from reading in `firestore.rules`). The payload pushed to `studentProperties/{studentUid}.activeBingo` contains only `question`, `options`, and `expiresAtMillis`—making client-side answer inspection impossible.
+
+### Production Code 1: Genkit Structured Schema Generation & Fisher-Yates Positional De-Biasing (`bingoFlows.js`)
+
+Let's inspect `generateBingoQuestionBank` and `shuffleOptionsAndCorrectIndex` in [`functions/ai_flows/bingoFlows.js`](../../functions/ai_flows/bingoFlows.js):
+
+```javascript
+// Source: functions/ai_flows/bingoFlows.js
+export async function generateBingoQuestionBank({ topic, count = 5, customPrompt = null, classId = null, model = null }) {
+  const targetModel = model || AI_MODEL;
+  const safeCount = Math.min(Math.max(Number(count) || 5, 1), 15);
+  const prompt = customPrompt
+    ? customPrompt.replace(/\{\{topic\}\}/g, topic || '').replace(/\{\{count\}\}/g, String(safeCount))
+    : `You are a computer science instructor preparing quick-check multiple choice questions for a lab/lecture.
+Topic / Lesson Material: "${topic}".
+Generate exactly ${safeCount} multiple-choice questions testing immediate comprehension.
+Each question MUST have exactly 4 options and a correctIndex (0, 1, 2, or 3).`;
+
+  const { response, modelUsed } = await generateWithResilience({
+    prompt,
+    output: {
+      schema: z.object({
+        questions: z.array(
+          z.object({
+            question: z.string().describe('The question prompt'),
+            options: z.array(z.string()).length(4).describe('4 multiple choice options'),
+            correctIndex: z.number().min(0).max(3).describe('Index of the correct option (0-3)'),
+          })
+        ),
+      }),
+    },
+  }, targetModel);
+
+  const shuffledQuestions = response.output.questions.map((q) => {
+    const { options, correctIndex } = shuffleOptionsAndCorrectIndex(q.options, q.correctIndex);
+    return { ...q, options, correctIndex };
+  });
+
+  return { questions: shuffledQuestions };
+}
+
+export function shuffleOptionsAndCorrectIndex(options, correctIndex) {
+  const safeCorrectIndex = (typeof correctIndex === 'number' && correctIndex >= 0 && correctIndex < options.length)
+    ? correctIndex
+    : 0;
+  const items = options.map((opt, idx) => ({ text: opt, isCorrect: idx === safeCorrectIndex }));
+
+  // Unbiased Fisher-Yates shuffle eliminates LLM Option-A bias
+  for (let i = items.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [items[i], items[j]] = [items[j], items[i]];
+  }
+
+  return {
+    options: items.map((item) => item.text),
+    correctIndex: items.findIndex((item) => item.isCorrect),
+  };
+}
+```
+
+---
+
+## 3. Diagram 2: The Non-Punitive Two-Strike State Machine with Google Cloud Tasks & 3-Color Attendance Heatmap
+
+What happens after the high-priority `StudentBingoOverlay.jsx` modal (`z-index: 2147483647`, accompanied by an optional Web Audio API chime) appears on the student's screen with a 45-second countdown timer?
+
+Our **Two-Strike State Machine** (`submitBingoResponse`, `enqueueBingoRetryTask`, and `handleDispatchBingoRetry` in [`functions/ai_flows/bingoFlows.js`](../../functions/ai_flows/bingoFlows.js)) strictly decouples **academic comprehension** from **physical desk presence**:
+
+- **Case 1 — Correct Answer (`passed`)**: The student earns base points (`100 pts`), a speed bonus (up to `+50 pts` scaled by remaining time ratio), and a top-3 podium rank bonus (`+50 / +30 / +20 pts`). Any prior strike is cleared (`strikeNumber = 0`).
+- **Case 2 — Wrong Answer (`failed_incorrect`)**: Because the student actively clicked an option within the 45-second window, **physical presence at the workstation is 100% verified!** The student receives instant visual feedback on the correct answer, **zero strikes are triggered, and zero attendance minutes are deducted.**
+- **Case 3 — Strike 1 Timeout (`missed_timeout` on `strikeNumber === 1`)**: What if the student stepped away to the washroom for 2 minutes? Instead of docking attendance on a single missed check, `submitBingoResponse` sets `pendingRetryBingo: true` and enqueues a delayed task in **Google Cloud Tasks** (`locations/asia-east2/functions/dispatchBingoRetryTask`) scheduled for `retryDelayMinutes` later (configurable 1–15 minutes, default 3 minutes, **$0.00 idle polling cost**).
+- **Case 4 — Strike 2 Consecutive Timeout (`missed_timeout` on `strikeNumber >= 2`)**: When the Cloud Task wakes up after 3 minutes, it performs pre-flight idempotency checks (verifying the class is still active and the teacher hasn't cancelled the session) and dispatches a personal **Strike 2 Follow-Up Challenge**. If the student responds to Strike 2 (even with a wrong answer!), presence is recovered. Only if the student **misses both Strike 1 and Strike 2 consecutively** does the backend calculate the elapsed unverified minutes ($\Delta t = t_{\text{Strike 2}} - t_{\text{Strike 1}}$) and write an `attendanceAdjustments` deduction record!
+
+```mermaid
+stateDiagram-v2
+    [*] --> Strike1Dispatched: triggerBingoCheck (Manual / Staggered Jitter / Auto-Bingo)
+
+    state "Strike 1 Active on Student Screen (45s Timer)" as Strike1Dispatched
+    state "🟢 Passed (Full Attendance + Speed/Rank Podium Bonus)" as Passed
+    state "🟡 Wrong Answer — Presence Confirmed (0 Attendance Penalty!)" as WrongButPresent
+    state "⏳ Cloud Tasks Delayed Retry Queue (1–15 Min Grace · $0 Idle Cost)" as CloudTasksWait
+    state "⚠️ Strike 2 Active Follow-Up Challenge" as Strike2Dispatched
+    state "🔴 Confirmed AFK / Absence Deduction (Bitmask Code 2)" as ConfirmedAFK
+    state "⏹️ Teacher Cancelled / Excused (0 Penalty)" as Cancelled
+
+    Strike1Dispatched --> Passed: selectedIndex === correctIndex
+    Strike1Dispatched --> WrongButPresent: selectedIndex !== correctIndex (Human interaction verified!)
+    Strike1Dispatched --> Cancelled: Teacher clicks '⏹️ Cancel' or 'Stop Capture' (cancelActiveBingo)
+
+    Strike1Dispatched --> CloudTasksWait: Timer expires (selectedIndex === null)\nEnqueues dispatchBingoRetryTask (Task ID deduplicated)
+    CloudTasksWait --> Cancelled: Teacher stops session or clears student (Pre-flight idempotency check)
+    CloudTasksWait --> Strike2Dispatched: scheduleDelaySeconds elapses -> Worker dispatches Strike 2
+
+    Strike2Dispatched --> Passed: Student responds correctly to Strike 2 (Recovers presence!)
+    Strike2Dispatched --> WrongButPresent: Student clicks wrong option on Strike 2 (Recovers presence!)
+    Strike2Dispatched --> ConfirmedAFK: Strike 2 also times out!\nCalculates elapsed minutes (t_Strike2 - t_Strike1)\nWrites attendanceAdjustments (Bitmask Code 2 = Red Heatmap)
+```
+
+### Production Code 2: Event-Driven Two-Strike Cloud Tasks Scheduling & Elapsed AFK Deduction (`bingoFlows.js`)
+
+Here is the exact Two-Strike state transition and deterministic Cloud Task deduplication logic inside [`functions/ai_flows/bingoFlows.js`](../../functions/ai_flows/bingoFlows.js):
+
+```javascript
+// Source: functions/ai_flows/bingoFlows.js
+  // 3. Handle Two-Strike Attendance Protocol & Irregularities
+  if (result === 'passed') {
+    updatePayload.strikeNumber = 0;
+    updatePayload.pendingRetryBingo = false;
+  } else if (result === 'failed_incorrect') {
+    // Student was present at desk, answered wrong. Do NOT dock attendance.
+    updatePayload.lastInattentiveAt = FieldValue.serverTimestamp();
+  } else if (result === 'missed_timeout') {
+    const currentStrike = Number(record.strikeNumber) || 1;
+
+    if (currentStrike === 1) {
+      // Strike 1: Schedule follow-up retry in configured delayMinutes (default: 3 mins)
+      updatePayload.pendingRetryBingo = true;
+      updatePayload.retryBingoScheduledAtMillis = Date.now() + (retryDelaySeconds * 1000);
+      updatePayload.priorMissedBingoId = bingoId;
+      updatePayload.retryDelayMinutes = retryDelayMinutes;
+
+      // Enqueue to Google Cloud Tasks for serverless event-driven execution ($0 idle polling)
+      await enqueueBingoRetryTask({
+        classId,
+        studentUid,
+        priorBingoId: bingoId,
+        delaySeconds: retryDelaySeconds,
+      });
+    } else if (currentStrike >= 2) {
+      // Strike 2 Confirmed Absence! Calculate elapsed unverified window (t_Strike2 - t_Strike1)
+      updatePayload.pendingRetryBingo = false;
+      const priorBingoId = record.priorBingoId;
+      let startMillis = record.issuedAtMillis - (retryDelaySeconds * 1000);
+
+      if (priorBingoId) {
+        const priorDoc = await db.doc(`classes/${classId}/bingoRecords/${priorBingoId}`).get();
+        if (priorDoc.exists && priorDoc.data()?.issuedAtMillis) {
+          startMillis = priorDoc.data().issuedAtMillis;
+        }
+      }
+
+      const endMillis = Date.now();
+      const deductedMinutes = Math.max(1, Math.round((endMillis - startMillis) / 60000));
+
+      // Record attendance adjustment (renders as Red Bitmask Code 2 in AttendanceView.jsx)
+      await db.collection(`classes/${classId}/attendanceAdjustments`).add({
+        classId,
+        studentUid,
+        startTime: new Date(startMillis),
+        endTime: new Date(endMillis),
+        startMillis,
+        endMillis,
+        deductedMinutes,
+        voidedMinutesCount: deductedMinutes,
+        reason: `Missed 2 consecutive Bingo checks (AFK/Decoy)`,
+        strike1BingoId: priorBingoId || 'strike_1',
+        strike2BingoId: bingoId,
+        createdAt: FieldValue.serverTimestamp(),
+      });
+    }
+  }
+```
+
+In [`AttendanceView.jsx`](../../web-app/src/components/AttendanceView.jsx), every minute of a lesson is encoded as a **5-State Minute Bitmask (`0`–`4`)**:
+- `1` / `3` / `4` (**🟢 Green**): Verified Active Presence (Screen Shared / Passkey Verified / Teacher Override).
+- `2` (**🔴 Red**): Voided AFK Window (`attendanceAdjustments` from 2 consecutive missed Bingo checks, showing exact tooltip timestamps and a **1-Click Teacher Excuse / Restore (`excused: true`)** button).
+- `0` (**⚪ Grey**): Offline / Disconnected.
+
+---
+
+## 4. Diagram 3: Zero-Trust Exam Mode Lockdown & Court-Ready `.docx` Forensic Dossiers
+
+![Zero-Trust Assessment Security & Live Exam Mode](../presentation/images/slide_exam_mode_zero_trust.png)
+
+While Classroom Bingo keeps daily lectures and labs lively and non-punitive, formal practical examinations require **Zero-Trust Assessment Security**. When a class enters a scheduled `examPeriods` window (or `lessonType === 'exam'`), four defense-in-depth layers activate automatically across the client browser, Cloud Run FFmpeg, Cloud Storage Security Rules, and our Signed URL Broker:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Browser as 🖥️ Student Browser<br/>(ExamReadinessWizard.jsx)
+    participant FFmpeg as 🎬 Cloud Run FFmpeg<br/>(processVideoJob.js)
+    participant GCS as 🔒 Cloud Storage Rules<br/>(storage.rules)
+    participant Broker as 🛡️ Signed URL Broker<br/>(getStudentVideoPlaybackUrl)
+    participant Dossier as 📄 Forensic Dossier Worker<br/>(processReportJob.js)
+
+    Browser->>Browser: Enforce displaySurface === 'monitor'\n(Rejects single-window or browser-tab sharing!)
+    Browser->>GCS: Upload periodic screen/webcam captures + audio chunks
+    Note over GCS: storage.rules blocks student DELETE on all evidence paths\n& blocks student READ if resource.metadata.isExam == 'true'
+
+    FFmpeg->>GCS: Compiles 1-FPS H.264 MP4 & stamps customMetadata: { isExam: 'true' }
+
+    opt Student Attempts to View Exam Recording in StudentRecordsView.jsx
+        Browser->>Broker: getStudentVideoPlaybackUrl(jobId)
+        Broker->>Broker: evaluateStudentRecordingsAccess() checks isExam || isTimestampInExamPeriods()
+        Broker-->>Browser: 🚫 PERMISSION_DENIED ("Confidential to protect assessment questions")
+    end
+
+    opt Instructor Exports Disciplinary Evidence
+        Dossier->>GCS: Aggregates flagged screenshots, 3D gaze angles, Whisper/Gemini transcripts
+        Dossier-->>Dossier: Compiles tamper-evident Microsoft Word (.docx) + RFC 4180 CSV Dossier!
+    end
+```
+
+---
+
+## 5. Deep Dive into the Zero-Trust Exam Code: Storage Metadata Locks, Signed URL Shielding & `.docx` Dossiers
+
+### Production Code 3: Write-Once Exam Metadata Locks in Cloud Storage (`storage.rules`) & Signed URL Broker (`getStudentVideoPlaybackUrl.js`)
+
+During a practical exam, students must not be able to delete uploaded screenshots/videos or replay their own exam recording afterward to leak exam paper questions to another class section.
+
+We enforce this at two independent boundaries:
+1. **Direct Cloud Storage Rules (`storage.rules`)**: Students have `write`-only access to `screenshots/` and `irregularities/` (under `2 MB` / `5 MB` size limits), zero `delete` permissions, and `videos/{classId}/{videoId}` explicitly denies student reads whenever `resource.metadata.isExam == 'true'`:
+
+```protobuf
+// Source: storage.rules
+    match /videos/{classId}/{videoId} {
+      // Allow authenticated teachers to read any video in a class.
+      // Students can only read non-exam videos that belong to them.
+      allow read: if request.auth != null && (
+        request.auth.token.role == 'teacher' ||
+        (
+          resource.metadata != null &&
+          'studentUid' in resource.metadata &&
+          resource.metadata.studentUid == request.auth.uid &&
+          (!('isExam' in resource.metadata) || resource.metadata.isExam != 'true')
+        )
+      );
+      allow delete: if request.auth != null && request.auth.token.role == 'teacher';
+    }
+```
+
+2. **Server-Side Signed URL Broker (`getStudentVideoPlaybackUrl.js`)**: Even if a video was compiled before an instructor retroactively added an `examPeriods` range to the class settings, [`evaluateStudentRecordingsAccess`](../../functions/media_processing/getStudentVideoPlaybackUrl.js) checks both the `jobData.isExam` flag and `isTimestampInExamPeriods(jobData.startTime, examPeriods, timeZone)`:
+
+```javascript
+// Source: functions/media_processing/getStudentVideoPlaybackUrl.js
+export function evaluateStudentRecordingsAccess({
+  examPeriods = [],
+  policy = 'always_enabled',
+  releaseDate = null,
+  jobData = {},
+  timeZone = 'Asia/Hong_Kong',
+}) {
+  // Recordings for exam/test periods or stamped as exam are strictly confidential and not shared
+  const isExam = Boolean(
+    jobData.isExam ||
+    jobData.lessonType === 'exam' ||
+    isTimestampInExamPeriods(jobData.startTime, examPeriods, timeZone) ||
+    isTimestampInExamPeriods(jobData.createdAt, examPeriods, timeZone)
+  );
+
+  if (isExam) {
+    return {
+      allowed: false,
+      reason: 'Screen recordings for exam or test periods are confidential and not shared with students to protect assessment questions.',
+    };
+  }
+  // Also enforces 'disabled' and 'delayed_release' policies
+  return { allowed: true };
+}
+```
+
+---
+
+### Production Code 4: Court-Ready Microsoft Word (`.docx`) & RFC 4180 CSV Forensic Dossier Compiler (`processReportJob.js`)
+
+When an academic integrity board reviews a suspected exam irregularity, raw JSON logs in a database are difficult for non-technical committee members to inspect.
+
+When an instructor clicks **📄 Export Incident Report** in [`IrregularityReportModal.jsx`](../../web-app/src/components/IrregularityReportModal.jsx), [`processReportJob.js`](../../functions/media_processing/processReportJob.js) (`1 vCPU, 2 GiB RAM, 540s timeout`) queries all time-scoped `irregularities`, `audio` transcripts (from Edge Whisper + Gemini verification), and `screenshots` for the class, classifies each student's risk level (`HIGH RISK`, `MODERATE RISK`, `NORMAL / CLEAN`), and uses the `docx` and `csv-stringify` libraries to compile a downloadable **Microsoft Word (`.docx`) Incident Dossier** complete with embedded `ImageRun` evidence snapshots, 3D head-pose/gaze telemetry tables, and verbatim speech transcripts:
+
+```javascript
+// Source: functions/media_processing/processReportJob.js
+export const processReportJob = onDocumentCreated(
+  {
+    document: 'reportJobs/{jobId}',
+    region: FUNCTION_REGION,
+    cpu: 1,
+    memory: '2GiB',
+    timeoutSeconds: 540,
+  },
+  async (event) => {
+    // ... Fetches classData, studentProperties, time-scoped irregularities, audioTranscripts & screenshots
+    const studentReports = targetStudentIds.map((uid) => {
+      const student = studentMap[uid] || { id: uid };
+      const studentIrregs = irregularities.filter((ir) => ir.studentUid === uid || ir.userId === uid);
+      const studentAudios = audioTranscripts.filter((a) => a.studentUid === uid);
+      const studentScreens = screenshots.filter((s) => s.studentUid === uid);
+
+      const highSeverityCount = studentIrregs.filter((i) => i.severity === 'high' || i.type === 'multiple_faces').length;
+      const totalIncidents = studentIrregs.length;
+      const riskLevel = highSeverityCount > 2 ? 'HIGH RISK' : totalIncidents > 3 ? 'MODERATE RISK' : 'NORMAL / CLEAN';
+
+      return { student, irregularities: studentIrregs, audios: studentAudios, screenshots: studentScreens, totalIncidents, highSeverityCount, riskLevel };
+    });
+
+    // Compiles structured Microsoft Word (.docx) with embedded ImageRun evidence & RFC 4180 CSV
+    // Uploads to reports/{classId}/{jobId}/ and updates reportJobs/{jobId} with signed download URLs
+  }
+);
+```
+
+---
+
+## What's Next in Part 10?
+
+We have now explored the entire pedagogical and multimodal AI stack—from Browser Edge AI (`Gemma 4 E2B`, `MediaPipe`, `LiteRT Whisper`) to Cloud Broadcasts, Gemini 4 Argon Video Grading, Capstone Mobile Supervision, and Zero-Trust Exams.
+
+In **Part 10 (our Series Finale)**, we look under the hood at **Day-2 Institutional Operations**: how we keep costs below **$0.02 USD per student-hour** using **Live Google Cloud Billing SKU Sync (`syncGeminiPricing`)**, **9-Category Event-Driven Storage Quota Enforcement (`storageQuota.js`)**, **4-Stage Zero-Orphan Cascading Class Purge (`onClassDocDeleted`)**, **1-Command Terraform Infrastructure-as-Code (`./setup-new-project.sh`)**, and our **2,575+ Assertion Verification Pyramid**.
+
+---
+
+[⏮️ Previous: Part 8 — Multimodal Capstone Supervision with Gemini 4](./08-multimodal-capstone-project-supervision-gemini-4.md) | [📚 Series Index](./README.md) | [⏭️ Continue to Part 10: Green AI FinOps, Storage Lifecycle & 1-Command Terraform IaC →](./10-green-ai-finops-storage-lifecycle-and-terraform-iac.md)

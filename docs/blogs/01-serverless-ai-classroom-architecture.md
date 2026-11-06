@@ -1,0 +1,385 @@
+# Part 1: Solving the $25-Per-Exam Problem — Architecting a Sub-$0.02/Student Serverless AI Classroom with Gemini 4 & Firebase
+
+**Author:** **Cyrus Wong (黃俊彥)** — *Google Developer Expert (GCP & AI/ML), Senior Lecturer at HKIIT / VTC Hong Kong*  
+[📚 Back to GDE Blog Series Index](./README.md) | [⏭️ Next: Part 2 — Browser Edge AI with Gemma 4 E2B](./02-browser-edge-ai-gemma-4-mediapipe-whisper.md)
+
+---
+
+![4-Tier Hybrid Edge-to-Cloud Architecture](../presentation/images/slide_hybrid_architecture.png)
+
+## 1. Problem Statement: The Classroom Trilemma — Integrity vs. Privacy vs. Cloud FinOps
+
+In our computer laboratories at the **Hong Kong Institute of Information Technology (HKIIT / VTC)**, we run hundreds of hands-on Cloud Computing, Cybersecurity, and AI/ML practical sessions every semester. Across higher education globally, every engineering faculty today confronts what we call the **Assessment & Classroom Trilemma**:
+
+1. **Academic Integrity in the AI Copilot Era**: Unsupervised coding labs and practical examinations are easily bypassed via second monitors, screen swapping, remote desktop tunnels, or external AI chat windows. Traditional multiple-choice quizzes no longer measure whether a student can actually configure a Kubernetes cluster, debug a Docker Compose network, or train a PyTorch model.
+2. **Student Biometric Privacy (GDPR / Hong Kong PDPO)**: Legacy commercial proctoring suites require students to install invasive ring-0 kernel drivers and continuously stream raw webcam video and bedroom/lab microphone feeds to third-party cloud servers. This sparks justified student pushback and creates massive institutional liability under the **Hong Kong Personal Data (Privacy) Ordinance (PDPO)** and **EU GDPR**.
+3. **Institutional Cost Sustainability**: Commercial proctoring SaaS platforms charge **$15 to $25 USD per student per exam** ($750–$1,250 USD for a single 50-student cohort). Public universities and vocational institutions simply cannot afford that price tag for daily formative lab exercises, weekly capstone consultations, and continuous assessment.
+
+![The Classroom Assessment Trilemma](../presentation/images/slide_assessment_trilemma.png)
+
+When we set out to replace legacy proctoring and manual lab grading with an open-source, cloud-native platform in `asia-east2` (Hong Kong), we established a strict architectural mandate:
+- **Zero Continuous Raw Video/Audio Streaming to the Cloud**: 95% of high-frequency biometric gaze, posture, object detection, and speech-intent proctoring must execute **100% locally inside the student's browser** using WebGPU and WebAssembly (**LiteRT-LM Gemma 4 E2B** `gemma-4-E2B-it-web.litertlm`, **LiteRT Whisper-Tiny**, and **MediaPipe Tasks-Vision**) at **$0.00 cloud API cost**.
+- **Right-Sized Frontier Cloud Reasoning**: Reserve Google Cloud's frontier models—led by **Gemini 4 Argon (`gemini-4-argon`)**, **Gemini 3.8 Flash (`gemini-3.8-flash`)**, **Gemini 3.5 Flash-Lite (`gemini-3.5-flash-lite`)**, and **Gemini 3.5 Transcribe (`gemini-3.5-transcribe-preview`)**—for event-driven pedagogical synthesis, automated video rubric grading, live multilingual lecture subtitles, and multi-modal capstone supervision.
+- **Scale-to-Zero Serverless FinOps**: Total cloud infrastructure cost must stay **under $0.02 USD per student-hour** during active classes and drop to **$0.00 during weekends and semester breaks**.
+
+---
+
+## 2. Architectural Deep-Dive: The 4-Tier Hybrid Edge-to-Cloud Blueprint
+
+Instead of streaming 50 concurrent 1080p WebRTC video feeds to cloud GPU clusters, we decoupled high-frequency sensory perception (**Tier 1 Browser Edge**) from low-latency signaling (**Tier 2 Firestore & Cloud Storage**), domain-isolated serverless compute (**Tier 3 Cloud Functions Gen 2 / Cloud Run**), and multimodal reasoning (**Tier 4 Vertex AI / Google Genkit**).
+
+```mermaid
+flowchart TB
+    subgraph Tier1 ["Tier 1: Student Browser Edge AI (95% Compute · $0.00 Cloud Cost)"]
+        MP["MediaPipe Tasks-Vision Worker\n478-pt 3D Face Mesh, Iris Depth & Object Detector"]
+        WH["LiteRT Whisper-Tiny Worker\n16kHz Local Bilingual Speech-to-Text"]
+        G4["🧠 LiteRT-LM Gemma 4 E2B Worker\ngemma-4-E2B-it-web.litertlm (~1.9GB WebGPU)\nOn-Device Voice Intent Proctor & Client Live Subtitles"]
+        WH --> G4
+    end
+
+    subgraph Tier2 ["Tier 2: Real-Time Signaling & Storage Backbone (Firebase asia-east2)"]
+        FS_SINGLE["Firestore Single-Stream Channel\nclasses/{classId}/status/{studentUid}\n& studentProperties/{uid}"]
+        FS_SUB["Firestore Live Subtitles & Broadcast\nclasses/{classId}/liveSubtitles/current"]
+        GCS["Cloud Storage (GCS)\nPeriodic JPEG Captures, 1-Min Lecture Chunks,\n720p Mobile Project Demos & 1-FPS Timelapse MP4s"]
+    end
+
+    subgraph Tier3 ["Tier 3: 7 Isolated Cloud Functions Gen 2 Codebases (Cloud Run)"]
+        CF_AI["1. ai-flows (Node 22 · Genkit)\nResilient Multimodal Orchestrator"]
+        CF_MED["2. media-processing (2 vCPU · 8GiB RAM)\nFFmpeg Timelapse & Lecture Merger"]
+        CF_OTH["3. auth-triggers / 4. attendance /\n5. storage-triggers / 6. scheduled-tasks /\n7. property-processing"]
+        CT["Google Cloud Tasks Queues\nThrottled Fan-Out (2–10 dispatches/sec)"]
+    end
+
+    subgraph Tier4 ["Tier 4: Gemini Enterprise Agent Platform (Gemini 4 & 3 Constellation)"]
+        M_ARGON["🧠 Gemini 4 Argon (gemini-4-argon)\n1M Shared Context · Deep Rubric & Code Reasoning\n$2.00 In / $10.00 Out per 1M Tokens"]
+        M_FLASH["⚡ Gemini 3.8 Flash (gemini-3.8-flash)\nBalanced Multimodal Video & Whole-Lecture Audio\n$0.75 In / $3.75 Out per 1M Tokens"]
+        M_LITE["🪶 Gemini 3.5 Flash-Lite (gemini-3.5-flash-lite)\nSub-Second 7-Language Subtitles & Bingo Checks\n$0.30 In / $2.50 Out per 1M Tokens"]
+        M_TRANS["🎙️ Gemini 3.5 Transcribe (gemini-3.5-transcribe-preview)\nMulti-Speaker Capstone Diarization\n$0.50 In / $2.50 Out per 1M Tokens"]
+    end
+
+    MP & G4 -->|"Lightweight JSON Heartbeats\n& Debounced Irregularity Flags"| FS_SINGLE
+    Tier1 -->|"Adaptive Scaled JPEGs\n& Opus Audio Chunks"| GCS
+    FS_SINGLE & GCS --> Tier3
+    CF_AI <--> CT
+    CF_AI --> M_ARGON & M_FLASH & M_LITE & M_TRANS
+    M_ARGON & M_FLASH & M_LITE --> FS_SUB
+```
+
+### How the 4 Tiers Work Together in a Live Lab
+1. **Tier 1 (Student Browser Edge)**: Every frame from the student's webcam is analyzed in a dedicated Web Worker via MediaPipe's 478-point 3D Face Landmarker (including iris rings `468..477`), while ambient microphone audio is gated by an RMS energy detector, transcribed locally by **LiteRT Whisper-Tiny**, and evaluated for exam collusion by **LiteRT-LM Gemma 4 E2B** (`gemma-4-E2B-it-web.litertlm`). Raw video and audio frames are immediately garbage-collected in browser RAM unless a sustained (>3.0s) violation occurs.
+2. **Tier 2 (Firebase Real-Time Backbone)**: Low-frequency screen captures (every 15–30 seconds) and debounced irregularity snapshots are uploaded directly to Google Cloud Storage (`asia-east2`) with signed Firebase Security Rules, while lightweight JSON telemetry updates Firestore.
+3. **Tier 3 (7 Cloud Functions Gen 2 Codebases)**: Event-driven Cloud Run microservices compile 1-FPS time-lapse MP4s via `ffmpeg`, enforce minute-by-minute attendance bitmasks, track 9-category storage quotas, and dispatch rate-limited AI grading tasks through Google Cloud Tasks.
+4. **Tier 4 (Gemini 4 & 3 Model Matrix)**: Teachers can choose **Gemini 4 Argon (`gemini-4-argon`)**, **Gemini 3.8 Flash (`gemini-3.8-flash`)**, or **Gemini 3.5 Flash-Lite (`gemini-3.5-flash-lite`)** across every classroom workflow—from live IDE code inspection and practical task rubric synthesis to post-class cohort Map-Reduce video grading.
+
+---
+
+## 3. Domain-Driven Isolation Across 7 Cloud Functions Gen 2 Codebases
+
+A classic architectural mistake in serverless Firebase applications is dumping every trigger and callable endpoint into a single monolithic `functions/index.js`. When we benchmarked a monolithic deployment early in development, we discovered two severe problems:
+- **Cold-Start Contamination**: Packaging `fluent-ffmpeg`, `@ffmpeg-installer/ffmpeg`, `sharp`, and `@google-cloud/tasks` alongside lightweight Google Cloud Identity Platform (GCIP) blocking functions (`beforeUserCreated`, `beforeUserSignedIn`) inflated container cold starts above 4.2 seconds—causing noticeable login delays for students scanning classroom QR codes.
+- **Blast-Radius & Memory Over-Provisioning**: Video compilation (`compileVideo`) requires **2 vCPUs and 8 GiB of RAM** with a **540-second timeout**, whereas an attendance heartbeat or CSV property upload needs only **256 MiB of RAM**.
+
+![7 Isolated Cloud Functions Gen 2 Codebases](../presentation/images/slide_cloud_functions_gen2.png)
+
+In [`firebase.json`](../../firebase.json), we partitioned our backend into **7 isolated Cloud Functions Gen 2 micro-codebases** running on Node.js 22, each with its own independent `package.json`, dependency tree, memory profile, and CI/CD deployment guard:
+
+```mermaid
+graph LR
+    FB["firebase.json\nMulti-Codebase Router"] --> C1["1. ai-flows (functions/ai_flows)\n• Genkit + Gemini 4 Argon / 3.8 / 3.5\n• WebAuthn Passkeys & Project Meetings\n• 512MiB–1GiB RAM | 60s–300s Timeout"]
+    FB --> C2["2. media-processing (functions/media_processing)\n• FFmpeg + Sharp SVG Telemetry Overlay\n• Student MP4 Compilation & Lecture Merge\n• 2 vCPU | 2GiB–8GiB RAM | 540s Timeout"]
+    FB --> C3["3. auth-triggers (functions/auth_triggers)\n• GCIP beforeUserCreated & checkipaddress\n• 4-Tier Role Resolution & Roster Sync\n• 256MiB RAM | Sub-200ms Cold Start"]
+    FB --> C4["4. attendance (functions/attendance)\n• Minute-by-Minute Bitmask Heatmap\n• 2-Strike Bingo Absence Deduction Math"]
+    FB --> C5["5. storage-triggers (functions/storage_triggers)\n• 9-Category Real-Time Storage Quota\n• 4-Stage Cascading Class Purge (cleanupTriggers)"]
+    FB --> C6["6. scheduled-tasks (functions/scheduled_tasks)\n• Timetable Auto-Capture Start/Stop\n• Daily Cloud Billing SKU Sync (syncGeminiPricing)"]
+    FB --> C7["7. property-processing (functions/property_processing)\n• Bulk CSV Student Property Ingestion\n• Protected Internal Key Guard"]
+```
+
+### Production Code Listing 1: Multi-Codebase & Hosting Build Guard in [`firebase.json`](../../firebase.json)
+
+Notice how [`firebase.json`](../../firebase.json) not only isolates the 7 `nodejs22` function codebases, but also enforces a **predeploy environment verification guard** on Firebase Hosting so a developer can never accidentally deploy a `dev`-configured React bundle to the production project (`it114115-2627`), while serving `.wasm` binaries with proper MIME headers for MediaPipe and LiteRT:
+
+```json
+{
+  "functions": [
+    {
+      "source": "functions/ai_flows",
+      "codebase": "ai-flows",
+      "runtime": "nodejs22",
+      "ignore": ["node_modules", ".git", "firebase-debug.log", "firebase-debug.*.log"]
+    },
+    {
+      "source": "functions/media_processing",
+      "codebase": "media-processing",
+      "runtime": "nodejs22",
+      "ignore": ["node_modules", ".git", "firebase-debug.log", "firebase-debug.*.log"]
+    },
+    {
+      "source": "functions/property_processing",
+      "codebase": "property-processing",
+      "runtime": "nodejs22",
+      "ignore": ["node_modules", ".git", "firebase-debug.log", "firebase-debug.*.log"]
+    },
+    {
+      "source": "functions/scheduled_tasks",
+      "codebase": "scheduled-tasks",
+      "runtime": "nodejs22",
+      "ignore": ["node_modules", ".git", "firebase-debug.log", "firebase-debug.*.log"]
+    },
+    {
+      "source": "functions/auth_triggers",
+      "codebase": "auth-triggers",
+      "runtime": "nodejs22",
+      "ignore": ["node_modules", ".git", "firebase-debug.log", "firebase-debug.*.log"]
+    },
+    {
+      "source": "functions/storage_triggers",
+      "codebase": "storage-triggers",
+      "runtime": "nodejs22",
+      "ignore": ["node_modules", ".git", "firebase-debug.log", "firebase-debug.*.log"]
+    },
+    {
+      "source": "functions/attendance",
+      "codebase": "attendance",
+      "runtime": "nodejs22",
+      "ignore": ["node_modules", ".git", "firebase-debug.log", "firebase-debug.*.log"]
+    }
+  ],
+  "hosting": {
+    "public": "web-app/dist",
+    "predeploy": [
+      "grep -q \"${GCLOUD_PROJECT}.firebaseapp.com\" web-app/dist/assets/index-*.js 2>/dev/null || (echo \"⚠️ [Hosting Guard] Rebuilding web-app/dist for ${GCLOUD_PROJECT}...\" && ./switch-env.sh \"${GCLOUD_PROJECT}\" && if [ \"${GCLOUD_PROJECT}\" = \"it114115-2627\" ]; then npm --prefix web-app run build:prod; else npm --prefix web-app run build:dev; fi)",
+      "grep -q \"${GCLOUD_PROJECT}.firebaseapp.com\" web-app/dist/assets/index-*.js && echo \"✅ [Hosting Guard] Verified web-app/dist matches ${GCLOUD_PROJECT}.\""
+    ],
+    "headers": [
+      {
+        "source": "**/*.wasm",
+        "headers": [{ "key": "Content-Type", "value": "application/wasm" }]
+      },
+      {
+        "source": "/index.html",
+        "headers": [{ "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }]
+      }
+    ]
+  }
+}
+```
+
+---
+
+## 4. Implementation Walkthrough: Defeating the Firestore $O(N^2)$ Read Explosion & Protecting Operational State
+
+In a naive real-time classroom application, if 50 students write their telemetry every 5 seconds to individual documents (`classes/{classId}/students/{studentUid}`) and 3 instructors/TAs open the live monitoring dashboard, a single 3-hour practical exam can trigger **hundreds of thousands of Firestore document reads** and cause React state thrashing on the teacher's browser.
+
+![Teacher Command Center](../presentation/images/slide_teacher_command_center.png)
+
+We solved this with a dual-path telemetry design connecting [`useFaceMonitor.js`](../../web-app/src/hooks/useFaceMonitor.js), [`useClientLiteRTGemma.js`](../../web-app/src/hooks/useClientLiteRTGemma.js), and [`functions/property_processing/index.mjs`](../../functions/property_processing/index.mjs):
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant S1 as 🧑‍🎓 Student 1 Browser<br/>(Gemma 4 + MediaPipe)
+    participant S50 as 🧑‍🎓 Student 50 Browser<br/>(Gemma 4 + MediaPipe)
+    participant FS_STAT as 📄 classes/{classId}/status/{uid}<br/>(Debounced Edge AI Telemetry)
+    participant FS_PROP as 🗄️ studentProperties/{uid}<br/>(Roster, Seat, Bingo & Passkey State)
+    participant CSV as ⚙️ processPropertyUpload<br/>(property_processing/index.mjs)
+    participant T_UI as 👨‍🏫 Teacher Command Center<br/>(MonitorView.jsx)
+
+    par Edge AI State Transitions Only (Debounced >= 3.0s)
+        S1->>FS_STAT: merge: { gemmaAlert, gemmaSeverity, gemmaConfidence, lastGemmaTimestamp }
+        S50->>FS_STAT: merge: { faceStatus, metricDistance, yawAngle }
+    end
+
+    CSV->>FS_PROP: Batch upsert custom CSV columns (Seat, Group, GithubId)<br/>🛡️ isInternalPropertyKey() protects passkey/bingo/attention keys!
+    FS_STAT-->>T_UI: Filtered real-time snapshot updates active tile badges
+    FS_PROP-->>T_UI: Hydrates seat map, group filters & Passkey badges
+```
+
+### Edge Case 1: Preventing Teacher CSV Uploads from Wiping Live Exam State
+
+During live classes, teachers frequently upload a revised CSV spreadsheet (to assign lab seats, project group numbers, or GitHub usernames) into `classes/{classId}/studentProperties/{uid}` using **Sync Mode** (which deletes columns removed from the spreadsheet). Early on, we realized a critical hazard: `studentProperties/{uid}` also stores real-time operational state—such as `activeBingo`, `strikeNumber`, `passkey`, `examReadiness`, and `attention` telemetry!
+
+If Sync Mode blindly deleted every field not present in the teacher's CSV headers, uploading a seat chart mid-exam would wipe out students' WebAuthn Passkey bindings and active Bingo challenges.
+
+### Production Code Listing 2: Protected Internal Key Guard in [`functions/property_processing/index.mjs`](../../functions/property_processing/index.mjs)
+
+Here is how [`isInternalPropertyKey`](../../functions/property_processing/index.mjs) and batched 450-document writes in [`functions/property_processing/index.mjs`](../../functions/property_processing/index.mjs) guarantee that teacher spreadsheet syncs never clobber live telemetry or authentication state:
+
+```javascript
+/**
+ * Identifies internal system/operational keys and profile metadata
+ * that should never be overwritten or deleted by custom property uploads.
+ */
+export const isInternalPropertyKey = (key) => {
+    if (!key || typeof key !== 'string') return true;
+    const lower = key.toLowerCase().trim();
+    const internalPrefixes = [
+        'activebingo', 'pendingretry', 'priormissed', 'retrybingo',
+        'retrydelay', 'lastretry', 'lastbingo', 'retrycancelled',
+        'passkey', 'lastinattentive', 'inattentive', 'attention',
+        'lastattention', 'lastactivity', 'lastseen', 'presence',
+    ];
+    if (internalPrefixes.some((prefix) => lower === prefix || lower.startsWith(prefix))) {
+        return true;
+    }
+    const exactInternalKeys = new Set([
+        'strikenumber', 'bingostats', 'examreadiness', 'retrycancelledreason',
+        'passkeybypass', 'lastinattentiveat', 'status', 'updatedat',
+        'createdat', 'studentname', 'nickname', 'programme', 'program',
+        'studentclass', 'cohort', 'email', 'studentemail',
+    ]);
+    return exactInternalKeys.has(lower);
+};
+```
+
+When `processPropertyUpload` runs in `sync` mode, it strips UTF-8 BOM markers from Excel-exported CSVs, resolves missing student UIDs in 100-user chunks via Firebase Auth (`auth.getUsers`), and selectively deletes only obsolete *custom* columns while leaving every internal operational key untouched:
+
+```javascript
+// In sync mode: if an existing custom property is NOT in the uploaded columns,
+// delete it so that removing columns from the spreadsheet deletes them in Firestore.
+if (isSyncMode) {
+    for (const existingKey of currentKeys) {
+        if (!uploadedPropertyKeys.includes(existingKey)) {
+            updatePayload[existingKey] = FieldValue.delete();
+        }
+    }
+}
+const docRef = db.collection('classes').doc(classId).collection('studentProperties').doc(uid);
+batch.set(docRef, updatePayload, { merge: true });
+```
+
+---
+
+## 5. Edge Cases & Production Failure Modes We Solved: Zero-Orphan Cascading Storage Purge
+
+Another silent cost killer in educational cloud platforms is **orphaned media storage**. Over a 15-week semester, a single class generates thousands of periodic WebP/JPEG screenshots, student audio clips, 1-FPS compiled MP4 videos, lecture recordings, `.vtt`/`.srt` subtitle tracks, and 720p capstone demo videos across 13 Cloud Storage prefixes and 27+ Firestore collections/subcollections.
+
+If a teacher deletes an old class document (`classes/{classId}`) or shortens the class's data-retention window (`retentionDays` / `videoRetentionDays`), standard Firestore deletion leaves every subcollection document and gigabytes of Cloud Storage blobs behind—accumulating perpetual storage bills and violating PDPO data-retention commitments.
+
+![Cloud Storage & FFmpeg TTL Governance](../presentation/images/slide_cloud_storage_ffmpeg_ttl.png)
+
+### Production Code Listing 3: 4-Stage Cascading Class Purge in [`functions/storage_triggers/cleanupTriggers.js`](../../functions/storage_triggers/cleanupTriggers.js)
+
+In [`functions/storage_triggers/cleanupTriggers.js`](../../functions/storage_triggers/cleanupTriggers.js), we implemented `onClassDocDeleted` and `onClassRetentionUpdated`. Whenever a class document is deleted, `onClassDocDeleted` executes a 4-stage cascading cleanup across Cloud Storage and Firestore in 500-document batches:
+
+```javascript
+export const onClassDocDeleted = onDocumentDeleted({
+  document: 'classes/{classId}',
+  region: FUNCTION_REGION,
+  timeoutSeconds: 540,
+  memory: '512MiB',
+}, async (event) => {
+  const classId = event.params.classId;
+  logger.info(`Class ${classId} was deleted. Commencing complete cascading purge...`);
+
+  // Stage 1: Purge all 13 physical Cloud Storage prefixes for this class
+  const bucket = storage.bucket();
+  const prefixes = [
+    `screenshots/${classId}/`, `videos/${classId}/`, `zips/${classId}/`,
+    `audio/${classId}/`, `recordings/${classId}/`, `subtitles/${classId}/`,
+    `irregularities/${classId}/`, `classes/${classId}/`, `tasks/${classId}/`,
+    `submissions/${classId}/`, `reports/${classId}/`, `taskDemos/${classId}/`,
+    `projectMeetings/${classId}/`
+  ];
+  for (const prefix of prefixes) {
+    await bucket.deleteFiles({ prefix, force: true }).catch((err) =>
+      logger.warn(`Could not purge prefix ${prefix}:`, err)
+    );
+  }
+
+  // Stage 2: Purge 11 root Firestore collections matching classId in 500-doc batches
+  const collectionsToClean = [
+    'screenshots', 'audio', 'videoJobs', 'zipJobs', 'videoAnalysisJobs',
+    'irregularities', 'progress', 'propertyUploadJobs',
+    'lectureMergeJobs', 'lectureSubtitleJobs', 'aiJobs'
+  ];
+  for (const col of collectionsToClean) {
+    await deleteCollectionByClassId(col, classId);
+  }
+
+  // Stage 3: Purge 19 class subcollections + nested task submissions
+  const subcollectionsToPurge = [
+    'projectMeetings', 'projectGroups', 'projectStudentProfiles',
+    'activeMeetingCaptures', 'lectureRecordings', 'bingoSessions',
+    'status', 'lessons', 'bingoRecords', 'attendanceAdjustments',
+    'studentProperties', 'classProperties', 'passkeyBypassRequests',
+    'screenBroadcastViewers', 'messages', 'audio_audits',
+    'irregularities', 'questionBank'
+  ];
+  for (const subcol of subcollectionsToPurge) {
+    await deleteSubcollectionByPath(`classes/${classId}/${subcol}`);
+  }
+
+  // Stage 4: Unlink deleted classId from teacherProfiles & studentProfiles arrays
+  await removeClassFromProfiles('teacherProfiles', classId);
+  await removeClassFromProfiles('studentProfiles', classId);
+});
+```
+
+Furthermore, whenever an individual `screenshots/{id}`, `audio/{id}`, `videoJobs/{id}`, or `zipJobs/{id}` document expires via **Firestore Native TTL (`expireAt`)**, dedicated `onDocumentDeleted` triggers (`onScreenshotDocDeleted`, `onAudioDocDeleted`, `onVideoJobDocDeleted`) immediately delete the corresponding physical blob in Cloud Storage—guaranteeing **zero orphaned storage bytes**.
+
+### Production Code Listing 4: 9-Category Real-Time Storage Quota Enforcement & Self-Healing Drift Guard in [`functions/storage_triggers/storageQuota.js`](../../functions/storage_triggers/storageQuota.js)
+
+In addition to cascading deletion, every physical blob uploaded to Cloud Storage is tracked in real time across **9 distinct storage categories** (`storageUsageScreenShots`, `storageUsageVideos`, `storageUsageRecordings`, `storageUsageAudio`, `storageUsageIrregularities`, `storageUsageZips`, `storageUsageTasks`, `storageUsageReports`, and `storageUsageProjectMeetings`). If an upload pushes a class over its configured `storageQuota`, `updateStorageUsageOnUpload` in [`functions/storage_triggers/storageQuota.js`](../../functions/storage_triggers/storageQuota.js) automatically deletes the offending blob and rolls back the atomic `FieldValue.increment` counter:
+
+```javascript
+export function getStorageCategoryAndClass(filePath) {
+  if (!filePath || typeof filePath !== 'string') return null;
+  const parts = filePath.split('/');
+  if (parts.length < 3) return null;
+
+  if (parts[0] === 'classes') {
+    return { classId: parts[1], usageField: 'storageUsageTasks' };
+  }
+
+  const classId = parts[1];
+  if (parts[0] === 'screenshots') return { classId, usageField: 'storageUsageScreenShots' };
+  if (parts[0] === 'videos') return { classId, usageField: 'storageUsageVideos' };
+  if (parts[0] === 'recordings' || parts[0] === 'subtitles') return { classId, usageField: 'storageUsageRecordings' };
+  if (parts[0] === 'audio') return { classId, usageField: 'storageUsageAudio' };
+  if (parts[0] === 'irregularities') return { classId, usageField: 'storageUsageIrregularities' };
+  if (parts[0] === 'zips') return { classId, usageField: 'storageUsageZips' };
+  if (parts[0] === 'tasks' || parts[0] === 'submissions') return { classId, usageField: 'storageUsageTasks' };
+  if (parts[0] === 'reports') return { classId, usageField: 'storageUsageReports' };
+  if (parts[0] === 'projectMeetings') return { classId, usageField: 'storageUsageProjectMeetings' };
+  return null;
+}
+
+// Inside updateStorageUsageOnUpload (onObjectFinalized):
+if (quota > 0 && usage > quota) {
+  console.log(`Quota exceeded for class ${classId}. Usage: ${usage}, Quota: ${quota}. Deleting file: ${filePath}`);
+  await adminStorage.bucket(event.bucket).file(filePath).delete();
+  await storageRef.update({
+    storageUsage: FieldValue.increment(-fileSize),
+    [usageField]: FieldValue.increment(-fileSize),
+  });
+}
+```
+
+---
+
+## 6. Production FinOps & Performance Benchmarks (`asia-east2` Hong Kong)
+
+By executing continuous biometric vision and speech-intent classification inside the student's browser (`Gemma 4 E2B` + `Whisper-Tiny` + `MediaPipe`) and invoking **Gemini 4 Argon (`gemini-4-argon`)**, **Gemini 3.8 Flash (`gemini-3.8-flash`)**, and **Gemini 3.5 Flash-Lite (`gemini-3.5-flash-lite`)** strictly on compact, event-driven artifacts, here is our verified production cost breakdown for a **50-student, 2-hour practical examination**:
+
+| Cost Component | Commercial Proctoring SaaS | Google AI Classroom (`asia-east2`) | Cost Reduction |
+| :--- | :--- | :--- | :--- |
+| **Live Biometric Face, Gaze & Phone Proctoring** | Cloud GPU Video Streaming | **On-Device MediaPipe Web Worker ($0.00)** | **100%** |
+| **Ambient Speech Intent Classification** | Cloud Audio Streaming | **On-Device Whisper + Gemma 4 E2B ($0.00)** | **100%** |
+| **Firestore Signaling & Telemetry** | Dedicated WebSockets Cluster | ~12,000 reads / 8,000 writes (**~$0.02**) | **99.9%** |
+| **Cloud Run FFmpeg 1-FPS MP4 Compilation** | Raw Video Storage (50+ GB) | 50 $\times$ 18 MB MP4s (**~$0.18 compute + storage**) | **95.0%** |
+| **Automated Rubric Video Grading (50 Students)** | Manual Grader (25 Hours) | `gemini-3.8-flash` (**$0.52**) or `gemini-4-argon` (**$1.85**) | **99.8%** |
+| **Idle Cost Outside Scheduled Class Hours** | Annual Seat License Lock-In | **100% Scale-to-Zero ($0.00 / month)** | **100%** |
+| **Total Per-Session Institutional Cost** | **$750.00 – $1,250.00 USD** | **$0.72 – $2.05 USD (<$0.02 / student-hr)** | **99.8% Savings** |
+
+---
+
+## 7. Key Takeaways for Google Cloud & EdTech Builders
+
+1. **Push High-Frequency Perception to the Browser Edge**: Never stream continuous 30-FPS video or raw microphone audio to cloud servers when WebGPU and WebAssembly can run **LiteRT-LM Gemma 4 E2B** and **MediaPipe** locally on the student's machine at $0.00 cost and zero biometric privacy exposure.
+2. **Split Monolithic Cloud Functions by Resource Profile**: Isolating heavy `ffmpeg`/`sharp` workloads (`media-processing`, 8 GiB RAM) from authentication (`auth-triggers`, 256 MiB RAM) and Genkit AI orchestration (`ai-flows`, 1 GiB RAM) in [`firebase.json`](../../firebase.json) eliminates cold-start latency and slashes container memory billing.
+3. **Give Teachers Model Choice Across Every Workflow**: By exposing **Gemini 4 Argon (`gemini-4-argon`)**, **Gemini 3.8 Flash (`gemini-3.8-flash`)**, and **Gemini 3.5 Flash-Lite (`gemini-3.5-flash-lite`)** in every UI picker, educators can use `gemini-3.5-flash-lite` for sub-second live interactions and switch to `gemini-4-argon` when grading complex multi-step code or synthesizing new rubrics.
+4. **Automate Data Lifecycle & Cascading Storage Purges**: Pairing Firestore Native TTL (`expireAt`) with cascading `onDocumentDeleted` Storage triggers in [`cleanupTriggers.js`](../../functions/storage_triggers/cleanupTriggers.js) ensures strict compliance with Hong Kong PDPO and GDPR while preventing silent storage bill creep.
+
+---
+
+[📚 Back to GDE Blog Series Index](./README.md) | [⏭️ Continue to Part 2: Zero-Egress Browser Edge AI with Gemma 4 E2B →](./02-browser-edge-ai-gemma-4-mediapipe-whisper.md)

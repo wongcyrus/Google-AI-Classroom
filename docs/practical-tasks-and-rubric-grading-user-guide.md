@@ -64,13 +64,13 @@
 
 ## Part 2: Teacher Guide — Practical Tasks & Rubric-Driven AI Grading
 
-The **Practical Tasks & Homework** system (`📋 Tasks & Homework` tab inside your Class View) lets you assign hands-on coding or lab exercises, record what students actually do on their screens, and have **Gemini 3.8 Flash** grade every student step-by-step against your rubric—giving each student a **mark breakdown** and **clear explanation** for every rubric milestone.
+The **Practical Tasks & Homework** system (`📋 Tasks & Homework` tab inside your Class View) lets you assign hands-on coding or lab exercises, record what students actually do on their screens, and have **Gemini 4 Argon (`gemini-4-argon`)**, **Gemini 3.8 Flash (`gemini-3.8-flash`)**, or **Gemini 3.5 Flash-Lite (`gemini-3.5-flash-lite`)** grade every student step-by-step against your rubric—giving each student a **mark breakdown** and **clear explanation** for every rubric milestone.
 
 ```mermaid
 flowchart LR
     subgraph Create ["1. Teacher Creates Task & Rubric"]
-        A["Tab 1: Basic Info & Mode"] --> B["Tab 2: Demo Video / AI Prompt"]
-        B -->|✨ Synthesize with Gemini| C["Tab 3: Rubric Milestones\n(Points + Visual Proof + Criteria)"]
+        A["Tab 1: Basic Info & Mode"] --> B["Tab 2: Demo Video / AI Prompt & Model Picker"]
+        B -->|✨ Synthesize with Gemini 4 / 3.8 / 3.5| C["Tab 3: Rubric Milestones\n(Points + Visual Proof + Criteria)"]
         C --> D["Tab 4: Constraints & Policies"]
     end
 
@@ -80,7 +80,7 @@ flowchart LR
     end
 
     subgraph Grade ["3. Rubric-Driven AI Grading"]
-        F --> G["Gemini 3.8 Flash Evaluates Video\nStrictly Against Rubric Steps"]
+        F --> G["Gemini 4 Argon / 3.8 Flash Evaluates Video\nStrictly Against Rubric Steps"]
         G --> H["Deterministic Rubric Reconciliation\n• Per-Step Score (0..maxPoints)\n• Observed Screen Evidence\n• Per-Step Mark Explanation"]
     end
 
@@ -127,8 +127,10 @@ You don't have to type rubric steps by hand! You can give Gemini a **Reference D
 2. **Option B — Select or Write AI Rubric Prompt Guidelines**:
    - **Select Rubric Prompt from AI Prompts Library**: Choose a curated rubric template (or leave on *Manual / Custom Guidelines Only*).
    - **Additional Task-Specific Instructions / Guidelines**: Describe how marks should be broken down (e.g., *"Break into 4 milestones worth 25 marks each. Require terminal verification of `docker ps` and `curl localhost:3000`."*).
-3. Click **`✨ Synthesize Rubric Milestones with Gemini`**:
-   - Gemini 3.8 Flash analyzes your demo video and/or prompt instructions and automatically generates structured rubric milestones with point weights, expected visual proof, and partial-credit marking criteria.
+3. **Select AI Model for Synthesis & Grading**:
+   - Choose **`🧠 Gemini 4 Argon (Flagship Deep Reasoning)`**, **`⚡ Gemini 3.8 Flash (Balanced — Default)`**, or **`🪶 Gemini 3.5 Flash-Lite (Fastest & Lowest Cost)`** from the **AI Model for Synthesis & Grading** selector (`#task-ai-model-select`). This model is persisted on the task (`task.model`) and used as the default for both rubric extraction and student video grading.
+4. Click **`✨ Synthesize Rubric Milestones with Gemini`**:
+   - Your selected Gemini model (`gemini-4-argon`, `gemini-3.8-flash`, or `gemini-3.5-flash-lite`) analyzes your demo video and/or prompt instructions and automatically generates structured rubric milestones with point weights, expected visual proof, and partial-credit marking criteria.
    - Once the green success banner appears, click **`📋 View & Edit Extracted Milestones (Tab 3) →`**.
 
 #### Step 3: `3. Rubric Milestones` Tab (Fine-Tuning Mark Breakdown & Criteria)
@@ -169,7 +171,7 @@ This tab defines the **exact rubric** that Gemini (and teachers) will use to awa
 Once a student submits (or once clips are sliced):
 1. **Video Compilation**: The student's screen frames for that attempt are compiled into an `.mp4` time-lapse video stored in Cloud Storage.
 2. **Rubric-Driven Gemini Evaluation (`evaluateTaskSubmission`)**:
-   - Gemini 3.8 Flash watches the student's `.mp4` recording chronologically alongside your **Required Rubric Milestones**, **Expected Visual Proof**, **Marking Criteria**, and **Custom Prompt Guidelines**.
+   - Your selected Gemini model (**Gemini 4 Argon**, **Gemini 3.8 Flash**, or **Gemini 3.5 Flash-Lite**—configurable on the task or overridden directly in the Grading Matrix header toolbar via the `🤖 Model` selector) watches the student's `.mp4` recording chronologically alongside your **Required Rubric Milestones**, **Expected Visual Proof**, **Marking Criteria**, and **Custom Prompt Guidelines**.
    - For **every single step** in your rubric, Gemini outputs:
      - **`scoreAwarded` / `maxPoints`** (strictly clamped to the step's allocated points)
      - **`status`** (`completed`, `partial`, `error`, or `missing`)

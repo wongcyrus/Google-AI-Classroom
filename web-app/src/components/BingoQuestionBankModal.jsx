@@ -90,6 +90,7 @@ export default function BingoQuestionBankModal({
   // AI Generator State
   const [aiTopic, setAiTopic] = useState('');
   const [aiCount, setAiCount] = useState(5);
+  const [aiModel, setAiModel] = useState('gemini-3.5-flash-lite');
   const [isGenerating, setIsGenerating] = useState(false);
   const [aiGeneratedList, setAiGeneratedList] = useState([]);
   const [selectedAiIndices, setSelectedAiIndices] = useState(new Set());
@@ -142,7 +143,7 @@ export default function BingoQuestionBankModal({
 
     try {
       const generateFn = httpsCallable(functions, 'generateQuestionBankAi');
-      const res = await generateFn({ topic: aiTopic.trim(), count: Number(aiCount), classId });
+      const res = await generateFn({ topic: aiTopic.trim(), count: Number(aiCount), classId, model: aiModel });
       const questions = res.data?.questions || [];
 
       setAiGeneratedList(questions);
@@ -360,6 +361,18 @@ ANSWER: B`;
                   <option value={3}>3 Questions</option>
                   <option value={5}>5 Questions</option>
                   <option value={10}>10 Questions</option>
+                </select>
+                <select
+                  aria-label="Bingo AI Model"
+                  className="bank-select"
+                  value={aiModel}
+                  onChange={(e) => setAiModel(e.target.value)}
+                  disabled={isGenerating}
+                  title="Select Gemini model for generating question bank"
+                >
+                  <option value="gemini-4-argon">🧠 Gemini 4 Argon</option>
+                  <option value="gemini-3.8-flash">✨ Gemini 3.8 Flash</option>
+                  <option value="gemini-3.5-flash-lite">⚡ Gemini 3.5 Flash-Lite</option>
                 </select>
                 <button
                   type="button"

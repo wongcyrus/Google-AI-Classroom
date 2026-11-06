@@ -273,7 +273,7 @@ const TasksManagementView = ({
     }
   };
 
-  const handleTriggerEvaluation = async (studentUid, attemptNumber = 1, compiledVideoPath = undefined) => {
+  const handleTriggerEvaluation = async (studentUid, attemptNumber = 1, compiledVideoPath = undefined, overrideModel = undefined) => {
     if (!classId || !activeTaskForGrading) return;
     try {
       const evaluateFn = httpsCallable(functions, 'evaluateTaskSubmission');
@@ -283,7 +283,7 @@ const TasksManagementView = ({
         studentUid,
         attemptNumber,
         rubricSteps: activeTaskForGrading.rubricSteps || [],
-        model: activeTaskForGrading.model || 'gemini-3.8-flash',
+        model: overrideModel || activeTaskForGrading.model || 'gemini-3.8-flash',
       };
       if (compiledVideoPath) {
         payload.compiledVideoPath = compiledVideoPath;

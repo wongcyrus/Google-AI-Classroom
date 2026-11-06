@@ -1,0 +1,390 @@
+# Part 2: Zero-Egress Browser Edge AI — Running Gemma 4 E2B, MediaPipe 3D Face Mesh & LiteRT Whisper in Web Workers
+
+**Author:** **Cyrus Wong (黃俊彥)** — *Google Developer Expert (GCP & AI/ML), Senior Lecturer at HKIIT / VTC Hong Kong*  
+[⏮️ Previous: Part 1 — 4-Tier Serverless Architecture](./01-serverless-ai-classroom-architecture.md) | [📚 Series Index](./README.md) | [⏭️ Next: Part 3 — Gemini 4 Argon & Genkit Resilience](./03-gemini-4-argon-genkit-multimodal-resilience.md)
+
+---
+
+![Browser-Native Edge Speech & Vision AI](../presentation/images/slide_edge_speech_proctor.png)
+
+## 1. Problem Statement: Why Privacy-by-Design Requires Running LLMs & Vision Models in the Browser
+
+In our Hong Kong computer labs and hybrid examinations at **HKIIT / VTC**, streaming 40 students' webcams and microphones continuously to cloud servers creates three showstopping engineering and legal roadblocks:
+
+1. **Biometric Privacy & Regulatory Liability (PDPO / GDPR)**: Under the Hong Kong Personal Data (Privacy) Ordinance and European GDPR, continuous webcam video and unedited ambient audio from a student's desk or bedroom constitute sensitive biometric personal data. Streaming raw video/audio to cloud servers creates massive compliance friction.
+2. **Campus Wi-Fi Saturation**: 40 concurrent WebRTC or RTMP video streams in a single computer laboratory saturate campus access points—starving students of bandwidth when they need to pull Docker images, clone Git repositories, or interact with cloud consoles during practical exams.
+3. **Runaway Cloud Inference Costs**: Invoking a cloud multimodal API every second for 40 students over a 3-hour lab would require **432,000 API calls per session**.
+
+Using **Google MediaPipe (`@mediapipe/tasks-vision`)**, **Google LiteRT.js (`@litertjs/core` Whisper-Tiny)**, and **LiteRT-LM WebGPU (`@litert-lm/core` Gemma 4 E2B `gemma-4-E2B-it-web.litertlm`)**, we moved **100% of continuous visual and acoustic invigilation inside the student's browser**—achieving **60 FPS UI responsiveness**, **zero raw media egress**, and **$0.00 cloud API cost**.
+
+![Edge Vision Gaze & 3D Face Mesh](../presentation/images/slide_edge_vision_gaze.png)
+
+---
+
+## 2. Architectural Deep-Dive: Off-Main-Thread Web Worker & Hardware Frame Sync Pipeline
+
+Running a 478-point 3D facial landmark detector, an iris-depth estimator, a Chirp-Z log-Mel spectrogram extractor, a Whisper speech-to-text model, and a 2-billion-parameter **Gemma 4 E2B** LLM on the main React thread would freeze the browser UI immediately.
+
+In [`useFaceMonitor.js`](../../web-app/src/hooks/useFaceMonitor.js), [`litertWhisper.worker.js`](../../web-app/src/workers/litertWhisper.worker.js), [`litertGemma.worker.js`](../../web-app/src/workers/litertGemma.worker.js), and [`useClientLiteRTGemma.js`](../../web-app/src/hooks/useClientLiteRTGemma.js), we isolate speech and LLM reasoning inside dedicated Web Workers while synchronizing vision landmark detection to the browser's hardware video decoder via `requestVideoFrameCallback()`:
+
+```mermaid
+flowchart LR
+    subgraph MainThread ["Main Browser Thread (60 FPS React 19 UI)"]
+        VID["<video> Webcam Stream\nrequestVideoFrameCallback()"]
+        FL["MediaPipe FaceLandmarker (WebGL/GPU)\n• 478-Point 3D Mesh + Iris Rings (468..477)\n• Yaw / Pitch / EAR / MAR / Iris Depth (cm)\n• 3.0s Debounce + 600ms Blink Grace Gate"]
+        MIC["Web Audio API 16kHz\nRMS Energy Silence Gate"]
+        HUD["StudentView.jsx HUD\n• 1-Click Neutral Pose Calibration\n• 🧠 Edge AI Status Pill"]
+        VID --> FL --> HUD
+    end
+
+    subgraph SpeechWorker ["Dedicated Whisper Worker (litertWhisper.worker.js)"]
+        FFT_MEL["Chirp-Z Real FFT\n16kHz PCM -> [1, 80, 3000] Log-Mel\n+ Dynamic Peak Auto-Gain"]
+        W_LITERT["@litertjs/core Whisper-Tiny\nWebGPU / WASM Accelerator\nCantonese + Mandarin + English"]
+        FFT_MEL --> W_LITERT
+    end
+
+    subgraph GemmaWorker ["Dedicated Gemma 4 E2B Worker (litertGemma.worker.js)"]
+        G4_LM["🧠 @litert-lm/core WebGPU Engine\ngemma-4-E2B-it-web.litertlm (~1.91GB)\n• Exam Speech Intent Proctor\n• $0.00 Live Subtitle Translator"]
+    end
+
+    subgraph CloudFallback ["Tier-4 Cloud Fallback (When Needed)"]
+        CF_FACE["analyzeFaceFallbackFlow\n(gemini-3.5-flash-lite / gemini-4-argon)"]
+        CF_AUD["analyzeAudioFlow\n(gemini-3.5-transcribe-preview + Gemini)"]
+    end
+
+    MIC -->|"Non-Silent Float32 PCM\n(>80% Silence Dropped)"| FFT_MEL
+    W_LITERT -->|"Recognized Transcript\n+ Dialect Classification"| G4_LM
+    G4_LM -->|"Structured JSON:\n{ isViolation, category, severity, confidence }"| HUD
+    FL -.->|"Only if WebGL/GPU Unavailable"| CF_FACE
+    W_LITERT -.->|"While Gemma 4 Loading or on iOS/Mobile"| CF_AUD
+```
+
+---
+
+## 3. Implementation Walkthrough 1: 478-Point 3D Face Mesh, Iris Metric Depth & The 3-Second Debounce State Machine
+
+Legacy proctoring software is notorious for false-positive alerts: if a student sneezes, blinks, or glances down at their mechanical keyboard for 500 milliseconds, they get flagged for "cheating." Conversely, if a student sits in a corner desk where their webcam is mounted at a $15^\circ$ angle, uncalibrated head-pose detectors flag them continuously.
+
+We solved both problems in [`useFaceMonitor.js`](../../web-app/src/hooks/useFaceMonitor.js) through three mathematical and state-machine innovations:
+1. **1-Click Adaptive Neutral Pose Calibration (`calibrateBaseline`)**: Students click **🎯 Set Center Pose** to zero out their personal baseline head Yaw ($\text{Yaw}_0$) and Pitch ($\text{Pitch}_0$) offsets for off-center monitor mounts.
+2. **Monocular Depth-from-Iris Distance Estimation ($D_{\text{cm}}$)**: Using the anatomical constancy of the human horizontal iris diameter ($d_{\text{iris}} \approx 11.7\text{ mm}$) and MediaPipe's iris boundary landmarks (`469, 471` for left iris; `474, 476` for right iris), we compute physical camera-to-face distance in centimeters without any hardware depth sensor:
+
+$$D_{\text{cm}} = \text{clamp}\left(\text{round}\left(\frac{1.17 \times (0.85 \times W_{\text{px}})}{\frac{1}{2}\left(\|\mathbf{p}_{469} - \mathbf{p}_{471}\|_{\text{px}} + \|\mathbf{p}_{474} - \mathbf{p}_{476}\|_{\text{px}}\right)}\right), 15, 220\right)$$
+
+3. **3-Second Debounce Gate with 600ms Blink/Jitter Grace Window & Lifecycle Incident Tracking**: An anomaly (`looking_away`, `no_face`, `multiple_faces`, `eyes_closed`, `talking`) must persist continuously for `debounceSeconds` (default **3.0 seconds**) before opening a single active incident document in Firestore (`irregularities/{id}`), and automatically updates `endedAt` and `durationSeconds` when the student returns to normal posture!
+
+```mermaid
+stateDiagram-v2
+    [*] --> CalibratedNormal: Student clicks '🎯 Set Center Pose'\nZeros baselineOffsetRef { yaw, pitch }
+
+    state "🟢 Normal Attentive State" as CalibratedNormal
+    state "🟡 Transient Deviation (< 3.0s)" as TransientWarning
+    state "⏱️ 600ms Blink / Jitter Grace Window" as GraceWindow
+    state "🔴 Active Irregularity Incident (>= 3.0s)" as ConfirmedViolation
+
+    CalibratedNormal --> TransientWarning: |Yaw - Yaw0| >= yawThresh (22°)\nOR Pitch < -20° / Pitch > 26°\nOR Iris Gaze Ratio < 0.22 / > 0.78\nOR EAR < 0.18 / MAR > 0.58\nOR Distance < 20cm / > 140cm\nOR faces.length != 1
+
+    TransientWarning --> GraceWindow: Posture normalizes briefly
+    GraceWindow --> TransientWarning: Anomaly resumes within 600ms
+    GraceWindow --> CalibratedNormal: Normal posture sustained > 600ms\n(Zero alert, zero Firestore writes!)
+
+    TransientWarning --> ConfirmedViolation: Continuous deviation >= 3.0s\nstartIncident() captures dual Screen+Webcam JPEGs\n& creates 1 active doc in /irregularities
+
+    ConfirmedViolation --> CalibratedNormal: Student returns gaze > 600ms\nresolveIncident() updates status='resolved'\n& records exact durationSeconds (4s cooldown)
+```
+
+### Production Code Listing 1: 3D Iris Depth, Eye-Gaze Ratio & Anti-Jitter Debounce in [`web-app/src/hooks/useFaceMonitor.js`](../../web-app/src/hooks/useFaceMonitor.js)
+
+Here is the exact real-time biometric geometry and debounce gate running inside [`useFaceMonitor.js`](../../web-app/src/hooks/useFaceMonitor.js):
+
+```javascript
+// MediaPipe Iris: Depth-from-Iris Distance Calculation (11.7mm constant human iris diameter)
+let calculatedDistanceCm = 55;
+if (landmarks[469] && landmarks[471] && landmarks[474] && landmarks[476]) {
+  const leftIrisPx = Math.hypot(landmarks[469].x - landmarks[471].x, landmarks[469].y - landmarks[471].y) * (video.videoWidth || 640);
+  const rightIrisPx = Math.hypot(landmarks[474].x - landmarks[476].x, landmarks[474].y - landmarks[476].y) * (video.videoWidth || 640);
+  const avgIrisPx = (leftIrisPx + rightIrisPx) / 2;
+
+  if (avgIrisPx > 2) {
+    const focalLength = 0.85 * (video.videoWidth || 640);
+    calculatedDistanceCm = Math.round((focalLength * 1.17) / avgIrisPx);
+    calculatedDistanceCm = Math.max(15, Math.min(220, calculatedDistanceCm));
+    setMetricDistance(calculatedDistanceCm);
+  }
+}
+
+// Horizontal Yaw & Vertical Pitch with Adaptive Neutral Baseline Calibration Offset
+const dLeft = Math.hypot(nose.x - leftEyeOuter.x, nose.y - leftEyeOuter.y);
+const dRight = Math.hypot(nose.x - rightEyeOuter.x, nose.y - rightEyeOuter.y);
+const rawYaw = Math.round(((dLeft - dRight) / (dLeft + dRight)) * 100);
+const dNoseChin = chin.y - nose.y;
+const dNoseForehead = nose.y - forehead.y;
+const rawPitch = Math.round(((dNoseChin - dNoseForehead) / (dNoseChin + dNoseForehead)) * 100);
+
+const calculatedYaw = rawYaw - (baselineOffsetRef.current?.yaw || 0);
+const calculatedPitch = rawPitch - (baselineOffsetRef.current?.pitch || 0);
+
+// Anti-Jitter Debounce Gate Logic with 600ms Grace Window
+const now = Date.now();
+if (currentAnomaly) {
+  lastAnomalyTimeRef.current = now;
+  if (!anomalyStartRef.current || anomalyStartRef.current.type !== currentAnomaly) {
+    anomalyStartRef.current = { type: currentAnomaly, startTime: now, details: detailsMessage };
+  } else {
+    const elapsedSeconds = (now - anomalyStartRef.current.startTime) / 1000;
+    if (elapsedSeconds >= debounceSeconds) {
+      setActiveViolation(currentAnomaly);
+      startIncident(currentAnomaly, detailsMessage);
+    }
+  }
+} else {
+  // Grace window of 600ms to tolerate natural blinks or momentary landmark noise
+  const timeSinceLastAnomaly = now - (lastAnomalyTimeRef.current || 0);
+  if (timeSinceLastAnomaly > 600) {
+    anomalyStartRef.current = null;
+    setActiveViolation(null);
+    if (activeIncidentDocRef.current) {
+      resolveIncident();
+    }
+  }
+}
+```
+
+---
+
+## 4. Implementation Walkthrough 2: On-Device Whisper-Tiny Log-Mel DSP & Code-Switching Dialect Detection
+
+In Hong Kong classrooms, students and lecturers naturally code-switch between **Cantonese, Mandarin, and English technical terminology** within a single sentence (e.g., *"唔該阿Sir，呢個 Question 3 個 option B 係咪啱㗎？"*).
+
+To transcribe student speech on-device with zero UI jank, [`litertWhisper.worker.js`](../../web-app/src/workers/litertWhisper.worker.js) runs `@litertjs/core` inside a dedicated Web Worker:
+1. **Dynamic Peak Auto-Gain & 80-Bin Log-Mel Spectrogram via Chirp-Z FFT**: Whisper expects a normalized `[1, 80, 3000]` Float32 tensor representing 30 seconds of 16 kHz audio. Because quiet whispering during an exam often has low amplitude ($0.003 < \text{peak} < 0.25$), `extractAudioFeatures()` applies up to $6\times$ automatic gain normalization before computing a 400-point Hann-windowed Chirp-Z Fast Fourier Transform (`hopLength = 160`) and projecting onto 80 Slaney-normalized Mel filterbanks.
+2. **Automatic WebGPU-to-WASM Delegate Failover**: `compileWhisperModel()` attempts to compile the Whisper graph on `webgpu` first, and transparently falls back to `wasm` if the browser's WebGPU implementation rejects dynamic sequence shapes.
+
+### Production Code Listing 2: WebGPU/WASM Whisper Compilation & Code-Switching Classifier in [`web-app/src/workers/litertWhisper.worker.js`](../../web-app/src/workers/litertWhisper.worker.js)
+
+```javascript
+/**
+ * Identifies mixed code-switching dialect from transcribed text.
+ * @param {string} text 
+ * @returns {'cantonese' | 'mandarin' | 'english' | 'mixed' | 'none'}
+ */
+export function classifyLanguage(text) {
+  if (!text || !text.trim()) return 'none';
+  const hasCantonese = /[唔點喺係嘅咗諗乜嘢睇啱掣緊]/.test(text);
+  const hasMandarin = /[什麼這是在的了看對們會]/.test(text);
+  const hasEnglish = /[a-zA-Z]/.test(text);
+
+  if ((hasCantonese && hasEnglish) || (hasCantonese && hasMandarin) || (hasMandarin && hasEnglish)) {
+    return 'mixed';
+  }
+  if (hasCantonese) return 'cantonese';
+  if (hasMandarin) return 'mandarin';
+  if (hasEnglish) return 'english';
+  return 'mixed';
+}
+
+export async function compileWhisperModel(loadAndCompile, modelBuffer, preferredDelegate) {
+  const compile = (accelerator) => loadAndCompile(
+    new Uint8Array(modelBuffer),
+    { accelerator }
+  );
+
+  if (preferredDelegate !== 'webgpu') {
+    return { model: await compile('wasm'), delegate: 'wasm' };
+  }
+
+  try {
+    return { model: await compile('webgpu'), delegate: 'webgpu' };
+  } catch (webGpuError) {
+    console.warn(
+      '[LiteRTWorker] WebGPU could not compile the dynamic Whisper graph; retrying with WASM:',
+      webGpuError?.message || webGpuError
+    );
+    return { model: await compile('wasm'), delegate: 'wasm' };
+  }
+}
+```
+
+---
+
+## 5. Implementation Walkthrough 3: On-Device Gemma 4 E2B (`gemma-4-E2B-it-web.litertlm`) for Dual Proctoring & Live Translation
+
+Recognizing speech tokens is only half the battle: if a student mutters *"Let me read this question carefully"* (benign self-talk) or raises their hand and says *"Mr. Wong, my Docker daemon crashed"* (legitimate inquiry), a keyword-based detector would falsely accuse them of cheating.
+
+We needed a true **Large Language Model** running locally in the browser to evaluate semantic intent. Using `@litert-lm/core` (`v0.15.0`) and the quantized **Gemma 4 E2B** model (`gemma-4-E2B-it-web.litertlm`, ~1.91 GB in WebGPU), [`litertGemma.worker.js`](../../web-app/src/workers/litertGemma.worker.js) serves **two mission-critical classroom roles at $0.00 API cost**:
+1. **`EVALUATE_TRANSCRIPT` (Exam Acoustic Intent Proctor)**: Classifies student speech transcripts into one of 5 strict categories (`COLLUSION_EXAM`, `EXTERNAL_AI_ASSIST`, `UNAUTHORIZED_TALK`, `LEGITIMATE_INQUIRY`, or `BENIGN`) with severity, confidence, quoted evidence, and rationale—and supports custom teacher prompts (`{{transcript}}`, `{{classId}}`, `{{studentEmail}}`) authored in the AI Prompt Studio!
+2. **`TRANSLATE_TRANSCRIPT` ($0.00 Client-Mode Live Subtitles)**: When a lecturer selects **On-Device Gemma 4 E2B** in the Live Subtitles modal, the same WebGPU worker translates Cantonese/English code-switched lecture speech into up to 7 target languages (`en`, `zh-Hant`, `zh-Hans`, `ja`, `ko`, `es`, `fr`) while preserving technical identifiers like `useEffect`, `Docker`, and `Python`.
+
+### Production Code Listing 3: Gemma 4 E2B WebGPU Initialization & Structured Output Parser in [`web-app/src/workers/litertGemma.worker.js`](../../web-app/src/workers/litertGemma.worker.js)
+
+```javascript
+const GEMMA_OUTPUT_INSTRUCTIONS = `Use exactly one category:
+- COLLUSION_EXAM: asking for, offering, or discussing exam answers, questions, or options
+- EXTERNAL_AI_ASSIST: asking a voice assistant, search engine, phone, or AI tool for help
+- UNAUTHORIZED_TALK: unrelated conversation with another person during a silent exam
+- LEGITIMATE_INQUIRY: procedural or technical help requested from the teacher or proctor
+- BENIGN: self-talk, reading aloud, ambient speech, coughing, or silence
+
+Respond with only one JSON object and no markdown:
+{"isViolation":boolean,"category":"COLLUSION_EXAM|EXTERNAL_AI_ASSIST|UNAUTHORIZED_TALK|LEGITIMATE_INQUIRY|BENIGN","severity":"critical|high|medium|low|none","confidence":number,"evidence":"quoted key phrase","rationale":"short explanation"}`;
+
+async function initializeGemma(modelUrl) {
+  if (gemmaEngine) return { fromCache: gemmaLoadedFromCache };
+  if (initializationPromise) return initializationPromise;
+
+  initializationPromise = (async () => {
+    const ua = self.navigator?.userAgent || '';
+    const isMobileOrIos =
+      /iPhone|iPad|iPod|Android|CriOS|FxiOS/i.test(ua) ||
+      (self.navigator?.platform === 'MacIntel' && Number(self.navigator?.maxTouchPoints) > 1);
+    if (isMobileOrIos) {
+      throw new Error(
+        'On-device Gemma 4 E2B (~1.9 GB) exceeds mobile browser memory limits; using Cloud fallback.'
+      );
+    }
+
+    if (typeof self.navigator?.deviceMemory === 'number' && self.navigator.deviceMemory < 4) {
+      throw new Error(
+        `Device RAM (${self.navigator.deviceMemory} GB) is below the 4 GB minimum for Gemma 4 E2B; using Cloud fallback.`
+      );
+    }
+
+    if (!navigator.gpu) {
+      throw new Error('WebGPU is unavailable on this device');
+    }
+
+    configureLiteRtLmWasmLocation();
+    const { modelStream, fromCache, cacheWritePromise } = await streamModelWithProgress(modelUrl);
+    self.postMessage({ type: 'STATUS', payload: { status: 'loading', progress: 90 } });
+    gemmaEngine = await Engine.create({
+      model: modelStream,
+      mainExecutorSettings: { maxNumTokens: 2048 },
+    }, GEMMA_PROCTOR_SYSTEM_PROMPT);
+    const cached = await cacheWritePromise;
+    gemmaLoadedFromCache = fromCache;
+    return { fromCache, cached: fromCache || cached };
+  })();
+
+  try {
+    return await initializationPromise;
+  } finally {
+    initializationPromise = null;
+  }
+}
+```
+
+---
+
+## 6. Edge Cases & Production Failure Modes We Solved: "DeepFreeze" Lab PCs, iOS Jetsam OOM & Live Hot-Swapping
+
+Deploying a 1.91 GB WebGPU LLM (`gemma-4-E2B-it-web.litertlm`) across university computer labs and BYOD student devices exposed three real-world failure modes that we engineered around in [`gemmaLiteRTLoader.js`](../../web-app/src/utils/gemmaLiteRTLoader.js) and [`useClientLiteRTGemma.js`](../../web-app/src/hooks/useClientLiteRTGemma.js):
+
+1. **"DeepFreeze" Wiped Lab PCs & Step-1 Wizard Pre-Warming**: University lab PCs reboot into a clean image every morning, wiping the browser cache. Instead of blocking the student from entering the exam while 1.91 GB downloads over campus Wi-Fi, [`ExamReadinessWizard.jsx`](../../web-app/src/components/ExamReadinessWizard.jsx) triggers `preloadGemmaModel()` at **Step 1 (Microphone Check)**, requests `navigator.storage.persist()` so Chromium will not evict the `webai-litert-gemma-v1` CacheStorage bucket, and streams the model into `Engine.create({ model: modelStream })` while the student completes Steps 2–4.
+2. **Non-Blocking Cloud-to-Edge Hot-Swap**: If the exam begins while Gemma 4 E2B is still at `55%` download, the student enters the classroom immediately. Any speech detected during the download window is transparently routed to our Cloud Genkit flow (`analyzeAudioFlow` using `gemini-3.5-transcribe-preview` + `gemini-3.5-flash-lite`), and **automatically hot-swaps to 100% local Gemma 4 E2B inference the millisecond the Web Worker emits `INIT_COMPLETE` (`ready: true`)**!
+3. **iOS / iPadOS WebKit Jetsam OOM Guard & Storage Quota Pre-Flight**: Allocating a 1.91 GB ArrayBuffer or WebGPU buffer on an iPhone or iPad (which masquerades as `MacIntel` with `maxTouchPoints > 1` on iPadOS) triggers Apple's kernel Jetsam killer, crashing the browser tab. Similarly, laptops with `< 2.5 GB` free disk space throw `QuotaExceededError` mid-download. Our `isMobileOrIosBrowser()`, `deviceMemory < 4`, and `precheckGemmaViability()` guards fail fast in `< 5ms` and route mobile/low-RAM devices cleanly to Cloud Fallback.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Student as 🧑‍🎓 Student on Lab PC / Laptop
+    participant Wizard as ExamReadinessWizard.jsx
+    participant Hook as useClientLiteRTGemma.js
+    participant Cache as 💾 CacheStorage<br/>(webai-litert-gemma-v1)
+    participant W_Wh as 🎙️ litertWhisper.worker.js
+    participant W_G4 as 🧠 litertGemma.worker.js<br/>(Gemma 4 E2B WebGPU)
+    participant Cloud as ☁️ Cloud Fallback<br/>(analyzeAudioFlow)
+    participant Teacher as 👨‍🏫 Teacher Tile Badge
+
+    Student->>Wizard: Enters Step 1 (Microphone Check)
+    Wizard->>Hook: preloadGemmaModel()
+    Hook->>Hook: Check isMobileOrIosBrowser(), deviceMemory >= 4GB & WebGPU Adapter
+    Hook->>Cache: navigator.storage.persist() + caches.open('webai-litert-gemma-v1')
+    Hook->>W_G4: Stream gemma-4-E2B-it-web.litertlm via ReadableStream
+    W_G4-->>Teacher: Live telemetry pill: "⏳ AI 45%"
+
+    Note over Student,Cloud: Student enters classroom while Gemma 4 E2B is still streaming...
+    Student->>W_Wh: Speaks aloud during exam ("What did you get for question 3?")
+    W_Wh->>W_Wh: Chirp-Z Log-Mel -> Whisper-Tiny local transcription
+    alt Gemma 4 E2B Still Loading (or iOS / <4GB RAM Device)
+        W_Wh->>Cloud: Route transcript to analyzeAudioFlow (gemini-3.5-flash-lite)
+        Cloud-->>Teacher: Flag COLLUSION_EXAM ("☁️ Cloud Fallback")
+    else Gemma 4 E2B Ready in WebGPU (engine === 'litert_lm_gemma_e2b')
+        W_G4-->>Teacher: Live telemetry pill hot-swaps to: "🧠 Edge AI"
+        Hook->>W_G4: postMessage({ type: 'EVALUATE_TRANSCRIPT', transcript, systemPrompt })
+        W_G4->>W_G4: gemmaEngine.createConversation() -> sendMessage(prompt) -> conversation.delete()
+        W_G4-->>Hook: Returns { isViolation: true, category: 'COLLUSION_EXAM', severity: 'high', confidence: 0.94 }
+        Hook->>Teacher: Writes /irregularities & status/{studentUid}.gemmaAlert at $0.00 API cost!
+    end
+```
+
+### Production Code Listing 4: Conversation Lifecycle Hygiene & Dual Firestore Alerting in [`web-app/src/hooks/useClientLiteRTGemma.js`](../../web-app/src/hooks/useClientLiteRTGemma.js)
+
+Notice how [`useClientLiteRTGemma.js`](../../web-app/src/hooks/useClientLiteRTGemma.js) prevents concurrent WebGPU context contention (`evaluationInFlightRef`), logs rich console diagnostics for lab debugging, and writes confirmed violations to both the root `irregularities` collection (for the live Teacher Irregularities feed) and the class subcollection `classes/{classId}/irregularities` (for the automated Incident Dossier generator):
+
+```javascript
+// 1. If Violation: Create record in /irregularities (root & class subcollection)
+const currentClassId = classIdRef.current;
+const currentStudentUid = studentUidRef.current;
+const currentStudentEmail = studentEmailRef.current;
+if (isViolation && currentClassId && currentStudentUid) {
+  const irregPayload = {
+    classId: currentClassId,
+    studentUid: currentStudentUid,
+    email: currentStudentEmail || '',
+    studentEmail: currentStudentEmail || '',
+    title: `AI Speech Alert: ${category.replace(/_/g, ' ')}`,
+    message: rationale || evidence || `Spoken text: "${transcript}"`,
+    type: 'audio',
+    category,
+    severity,
+    confidence,
+    evidence: evidence || '',
+    rationale: rationale || '',
+    transcriptSnippet: transcript,
+    transcript: transcript,
+    source: 'on_device_gemma',
+    timestamp: serverTimestamp(),
+  };
+
+  // Write to root collection (queried by IrregularitiesView) & class subcollection (for Dossier report)
+  await addDoc(collection(db, 'irregularities'), irregPayload);
+  await addDoc(collection(db, 'classes', currentClassId, 'irregularities'), irregPayload);
+}
+
+// 2. Update live teacher tile badge in classes/{classId}/status/{studentUid}
+if (currentClassId && currentStudentUid) {
+  const statusRef = doc(db, 'classes', currentClassId, 'status', currentStudentUid);
+  await setDoc(statusRef, {
+    gemmaAlert: isViolation ? category : null,
+    gemmaSeverity: isViolation ? severity : null,
+    gemmaConfidence: confidence,
+    lastGemmaTimestamp: Date.now(),
+  }, { merge: true });
+}
+```
+
+---
+
+## 7. Browser Edge AI Performance & Memory Benchmarks
+
+We benchmarked our 3-model browser edge stack across standard HKIIT lab hardware (Intel Core i5-12500 / 16 GB RAM integrated UHD 770 GPU, and Apple M2 MacBook Air 8 GB RAM) running Chrome 130+:
+
+| On-Device Edge Model | Runtime & Delegate | Model Size (Cached in `CacheStorage`) | Cold Load (From Cache) | Inference Latency | Main-Thread UI Frame Rate | Cloud API Cost |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **MediaPipe FaceLandmarker (478-pt + Iris)** | `@mediapipe/tasks-vision` (WebGL GPU) | **~3.8 MB** | **180 ms** | **11–16 ms / frame** | **60 FPS** (`requestVideoFrameCallback`) | **$0.00** |
+| **LiteRT Whisper-Tiny (Multilingual)** | `@litertjs/core` (WebGPU / WASM + Chirp-Z FFT) | **~41 MB** | **420 ms** | **280–450 ms / segment** | **60 FPS** (Isolated Worker) | **$0.00** |
+| **LiteRT-LM Gemma 4 E2B (`gemma-4-E2B-it-web.litertlm`)** | `@litert-lm/core` v0.15.0 (WebGPU) | **~1,915 MB (1.91 GB)** | **2.4 s** (Streamed from Cache) | **380–620 ms / JSON eval** | **60 FPS** (Isolated Worker) | **$0.00** |
+| **Cloud Fallback (`analyzeFaceFallback` / `analyzeAudio`)** | Vertex AI Genkit (`gemini-3.5-flash-lite` / `gemini-4-argon`) | **0 MB** | **0 ms** | **650–1,100 ms** | **60 FPS** (Async HTTPS Callable) | **~$0.0002 / check** |
+
+---
+
+## 8. Key Takeaways for Web AI & Google Cloud Builders
+
+1. **Stream Large `.litertlm` Models Directly into `Engine.create()`**: Instead of buffering a 1.91 GB `ArrayBuffer` twice in memory, tee the `fetch` / `CacheStorage` `ReadableStream` directly into `@litert-lm/core` `Engine.create({ model: modelStream })` while reporting live download percentages (`5%..90%`) to the UI.
+2. **Always Dispose Ephemeral LLM Conversations**: Inside a long-running Web Worker, calling `await conversation.delete()` in a `finally` block after every single-turn `EVALUATE_TRANSCRIPT` or `TRANSLATE_TRANSCRIPT` request prevents KV-cache memory leaks over a 3-hour exam.
+3. **Guard Against Mobile/iPadOS OOMs Before Fetching**: Checking `maxTouchPoints > 1` on `MacIntel` (iPadOS), `deviceMemory < 4`, and `navigator.storage.estimate()` before downloading multi-gigabyte weights prevents browser tab crashes and seamlessly routes mobile learners to Cloud Gemini fallback.
+4. **Combine Geometric Heuristics with Debounce Gates**: Pairing MediaPipe's 11.7 mm iris depth estimation and neutral-pose calibration with a 3.0-second debounce gate and 600 ms blink grace window eliminates false-positive cheating flags while catching real irregularities with dual screen-and-webcam visual proof.
+
+---
+
+[⏮️ Previous: Part 1 — 4-Tier Serverless Architecture](./01-serverless-ai-classroom-architecture.md) | [📚 Series Index](./README.md) | [⏭️ Continue to Part 3: Frontier Multimodal Orchestration with Gemini 4 Argon →](./03-gemini-4-argon-genkit-multimodal-resilience.md)

@@ -270,8 +270,9 @@ ANSWER: a`;
       const topicInput = screen.getByPlaceholderText(/Topic \/ Lesson Objectives/);
       fireEvent.change(topicInput, { target: { value: 'React Basics' } });
 
-      const countSelect = screen.getByRole('combobox');
+      const [countSelect, modelSelect] = screen.getAllByRole('combobox');
       fireEvent.change(countSelect, { target: { value: '5' } });
+      fireEvent.change(modelSelect, { target: { value: 'gemini-4-argon' } });
 
       const generateBtn = screen.getByText('✨ Generate with Gemini');
       await act(async () => {
@@ -282,6 +283,7 @@ ANSWER: a`;
         topic: 'React Basics',
         count: 5,
         classId: 'class_react_101',
+        model: 'gemini-4-argon',
       });
 
       expect(screen.getByText('Generated Questions (2)')).toBeInTheDocument();

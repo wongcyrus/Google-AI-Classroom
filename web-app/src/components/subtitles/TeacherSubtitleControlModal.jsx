@@ -379,7 +379,7 @@ export default function TeacherSubtitleControlModal({
                   <span className="engine-badge server-badge">🟣 Server Model (Recommended · 100% Reliable)</span>
                 </div>
                 <div className="engine-card-body">
-                  <strong>Cloud Functions (Gemini 3.5 Flash-Lite / 3.8 Flash)</strong>
+                  <strong>Cloud Functions (Gemini 3.5 Flash-Lite / 3.8 Flash / 4 Argon)</strong>
                   <p>High-accuracy multilingual output, preserving code syntax and technical terminology.</p>
                   <span className="server-status">⚡ 100% cross-platform support (Windows, macOS, Linux, Chrome & Edge) · ~$0.01 per lecture</span>
                 </div>

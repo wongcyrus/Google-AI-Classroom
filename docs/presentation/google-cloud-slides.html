@@ -2520,9 +2520,9 @@ footer, header {
 <li><strong>subtitles:</strong> Code-switching subtitle engine preserving programming terms (<code>useState</code>, <code>Docker</code>).</li>
 </ul>
 </li>
-<li><strong>Modality-Specific AI Prompt Optimizers (<code><img class="emoji" draggable="false" alt="✨" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@17.0.3/assets/svg/2728.svg" data-marp-twemoji=""/> Optimize</code>):</strong>
+<li><strong>Modality-Specific AI Prompt Optimizers (<code><img class="emoji" draggable="false" alt="✨" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@17.0.3/assets/svg/2728.svg" data-marp-twemoji=""/> Optimize</code> with Selectable Gemini 4 Argon / 3.8 Flash / 3.5 Flash-Lite):</strong>
 <ul>
-<li>Built-in Gemini meta-prompts specifically tuned for each modality (e.g. <code>subtitleOptimizerPrompt</code>, <code>visionOptimizerPrompt</code>).</li>
+<li>Built-in Gemini meta-prompts specifically tuned for each modality (e.g. <code>subtitleOptimizerPrompt</code>, <code>visionOptimizerPrompt</code>) with selectable <code>Prompt Optimizer Model</code> (<code>gemini-4-argon</code>, <code>gemini-3.8-flash</code>, <code>gemini-3.5-flash-lite</code>).</li>
 <li>Automatically converts brief teacher notes into production-ready prompts with strict JSON schemas, few-shot edge cases, and anti-hallucination guardrails.</li>
 </ul>
 </li>
@@ -3989,7 +3989,7 @@ footer, header {
 <ul>
 <li><strong>AI Question Bank Generator (<code>generateQuestionBankAi</code>):</strong>
 <ul>
-<li>Gemini 3.5 Flash-Lite / 3.8 Flash autonomously drafts batches of domain-tailored multiple choice questions with 4 options, answer keys, and pedagogical rationales.</li>
+<li><strong>Gemini 4 Argon / 3.8 Flash / 3.5 Flash-Lite</strong> autonomously drafts batches of domain-tailored multiple choice questions with 4 options, answer keys, and pedagogical rationales.</li>
 <li>Teachers bulk import via Aiken format (<code>ANSWER: X</code>) or generate on the fly from lecture topics.</li>
 </ul>
 </li>
@@ -5259,13 +5259,13 @@ footer, header {
 ;--marpit-advanced-background-split:60%;" data-marpit-pagination-total="42" data-marpit-advanced-background="content" data-marpit-advanced-background-split="right">
 <header>Google Cloud Tech Talk | Google AI Classroom | Cyrus Wong (GDE)</header>
 <h2 id="real-time-live-subtitles--multilingual-captions-engine">Real-Time Live Subtitles &amp; Multilingual Captions Engine</h2>
-<h3 id="dual-engine-architecture-serverless-genkit-gemini-3538--edge-litert-gemma-4-e2b">Dual-Engine Architecture: Serverless Genkit (Gemini 3.5/3.8) &amp; Edge LiteRT Gemma 4 E2B</h3>
+<h3 id="dual-engine-architecture-serverless-genkit-gemini-4--38--35--edge-litert-gemma-4-e2b">Dual-Engine Architecture: Serverless Genkit (Gemini 4 / 3.8 / 3.5) &amp; Edge LiteRT Gemma 4 E2B</h3>
 
 <ul>
 <li><strong>Mode 1: <img class="emoji" draggable="false" alt="🟣" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@17.0.3/assets/svg/1f7e3.svg" data-marp-twemoji=""/> Server Model (Recommended · 100% Cross-Platform Reliable):</strong>
 <ul>
 <li>Local LiteRT Whisper (<code>openai/whisper-tiny</code>) + Cloud Function <code>translateTeacherSpeech</code>.</li>
-<li>Powered by <strong>Gemini 3.5 Flash-Lite / 3.8 Flash</strong> generating subtitles in <strong>9 languages</strong> (<code>zh-Hant</code>, <code>zh-Hans</code>, <code>en</code>, <code>ja</code>, <code>ko</code>, <code>es</code>, <code>fr</code>, <code>de</code>, <code>vi</code> — ~$0.01/lecture).</li>
+<li>Powered by <strong>Gemini 3.5 Flash-Lite / 3.8 Flash / 4 Argon</strong> generating subtitles in <strong>9 languages</strong> (<code>zh-Hant</code>, <code>zh-Hans</code>, <code>en</code>, <code>ja</code>, <code>ko</code>, <code>es</code>, <code>fr</code>, <code>de</code>, <code>vi</code> — ~$0.01/lecture).</li>
 <li>Preserves Cantonese-English technical code-switching (<code>useState</code>, <code>Docker</code>) with 350ms debounced Firestore sync.</li>
 </ul>
 </li>
@@ -7335,7 +7335,7 @@ footer, header {
 </li>
 <li><strong>4-Stage Cascading Class Deletion (<code>onClassDocDeleted</code>):</strong>
 <ul>
-<li>Single teacher delete action cascades across screenshots, videos, audio, recordings, zip archives, subcollections (<code>properties</code>, <code>status</code>, <code>broadcast</code>, <code>lectureRecordings</code>, <code>screenBroadcast</code>, <code>liveSubtitles</code>), and student profiles. Auto-decrements class storage quotas.</li>
+<li>Single teacher delete action cascades across screenshots, videos, audio, recordings, tasks/submissions, <strong><code>projectMeetings/${classId}/</code> (voice, 720p demo videos, photos)</strong>, zip archives, 500-item batched subcollections (<code>projectMeetings</code>, <code>projectGroups</code>, <code>projectStudentProfiles</code>, <code>lectureRecordings</code>, <code>tasks</code>, <code>lessons</code>, <code>bingoRecords</code>, <code>properties</code>, <code>status</code>), <code>aiJobs</code>, and student profiles. Auto-decrements class storage quotas.</li>
 </ul>
 </li>
 </ul>
@@ -7591,10 +7591,10 @@ footer, header {
 <li>Color-coded heatmap duration badges with RFC 4180 CSV export and <code>JobResultModal</code> featuring default word wrapping (<code>Wrap: ON/OFF</code>).</li>
 </ul>
 </li>
-<li><strong>Dynamic AI Lab Task Generator &amp; Rubric-Driven Practical Tasks System:</strong>
+<li><strong>Dynamic AI Lab Task Generator &amp; Rubric-Driven Practical Tasks System (Gemini 4 Argon / 3.8 Flash / 3.5 Flash-Lite):</strong>
 <ul>
-<li><strong><code>extractTaskDemoSteps</code>:</strong> Synthesizes structured <code>steps[]</code> (<code>points</code>, <code>gradingCriteria</code>, <code>timestampRange</code>) from a demo video, Assessment Prompt template, or task guidelines with <strong><code>⚖ Auto-Balance to {maxScore} pts</code></strong>.</li>
-<li><strong><code>evaluateTaskSubmission</code> &amp; <code>normalizeRubricEvaluation</code>:</strong> Deterministic rubric reconciliation guaranteeing per-step mark breakdowns (<code>scoreAwarded / maxPoints</code>), clickable <code>[MM:SS]</code> video seek, and per-step explanations.</li>
+<li><strong><code>extractTaskDemoSteps</code>:</strong> Synthesizes structured <code>steps[]</code> (<code>points</code>, <code>gradingCriteria</code>, <code>timestampRange</code>) from a demo video, Assessment Prompt template, or task guidelines using teacher-selectable <strong><code>gemini-4-argon</code></strong>, <strong><code>gemini-3.8-flash</code></strong>, or <strong><code>gemini-3.5-flash-lite</code></strong> with <strong><code>⚖ Auto-Balance to {maxScore} pts</code></strong>.</li>
+<li><strong><code>evaluateTaskSubmission</code> &amp; <code>normalizeRubricEvaluation</code>:</strong> Deterministic rubric reconciliation with selectable Grading Matrix AI model override (<code>gemini-4-argon</code> / <code>gemini-3.8-flash</code> / <code>gemini-3.5-flash-lite</code>), guaranteeing per-step mark breakdowns (<code>scoreAwarded / maxPoints</code>), clickable <code>[MM:SS]</code> video seek, and per-step explanations.</li>
 <li><strong><code>TaskGradingMatrixView.jsx</code>:</strong> Displays per-step mark pills (<code>S1: 30/30</code>), interactive <strong><code>✏ Edit Step Marks</code></strong> (<code>stepOverrides</code>), post-class retroactive session slicing, and rich <code>.xlsx</code> mark breakdown exports.</li>
 </ul>
 </li>
@@ -7829,13 +7829,14 @@ footer, header {
 ;--marpit-advanced-background-split:60%;" data-marpit-pagination-total="42" data-marpit-advanced-background="content" data-marpit-advanced-background-split="right">
 <header>Google Cloud Tech Talk | Google AI Classroom | Cyrus Wong (GDE)</header>
 <h2 id="capstone-project-meetings--multi-stream-ai-supervision">Capstone Project Meetings &amp; Multi-Stream AI Supervision</h2>
-<h3 id="live-dual-device-capture-2-stage-diarization-fake-log-ai-audit--whole-class-dispatch">Live Dual-Device Capture, 2-Stage Diarization, Fake-Log AI Audit &amp; Whole-Class Dispatch</h3>
+<h3 id="streamlined-mobile-720p-demo--photo-studio-2-stage-diarization-fake-log-ai-audit--whole-class-dispatch">Streamlined Mobile 720p Demo &amp; Photo Studio, 2-Stage Diarization, Fake-Log AI Audit &amp; Whole-Class Dispatch</h3>
 
 <ul>
-<li><strong>Dual-Device Live Consultation Capture (Anti-Fabrication):</strong>
+<li><strong>Streamlined Single-Device Teacher Mobile Studio (Zero Student PC Friction):</strong>
 <ul>
-<li><strong>Teacher Mobile Voice:</strong> Live recording with browser Screen Wake Lock (<code>navigator.wakeLock</code>) and 1-tap <code>&quot;🗣 Speaking Now&quot;</code> timestamp voice anchors (<code>voiceAnchors[]</code>).</li>
-<li><strong>Student PC Screen Demo:</strong> Synchronized student screen demo screencast (<code>screenClips[]</code>). Direct media uploads disabled to ensure live authenticity.</li>
+<li><strong><img class="emoji" draggable="false" alt="🎙️" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@17.0.3/assets/svg/1f399.svg" data-marp-twemoji=""/> Continuous Mobile Voice:</strong> Live recording with browser Screen Wake Lock (<code>navigator.wakeLock</code>) and 1-tap <code>&quot;🗣 Speaking Now&quot;</code> timestamp voice anchors (<code>voiceAnchors[]</code>).</li>
+<li><strong><img class="emoji" draggable="false" alt="📸" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@17.0.3/assets/svg/1f4f8.svg" data-marp-twemoji=""/> Zero-Pause Photo Snap (0.1s):</strong> Captures 1280px JPEGs of whiteboards, IoT circuits, or screens with <strong>zero interruption</strong> to background voice recording.</li>
+<li><strong><img class="emoji" draggable="false" alt="📹" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@17.0.3/assets/svg/1f4f9.svg" data-marp-twemoji=""/> 720p Mobile Video Demo (<code>1280×720</code>):</strong> 1-tap mobile camera demo capture that automatically slices voice (<code>Voice Part 1</code> <mjx-container class="MathJax" jax="SVG"><svg style="vertical-align: -0.025ex;" xmlns="http://www.w3.org/2000/svg" width="2.262ex" height="1.181ex" role="img" focusable="false" viewBox="0 -511 1000 522"><g stroke="currentColor" fill="currentColor" stroke-width="0" transform="scale(1,-1)"><g data-mml-node="math"><g data-mml-node="mo"><path data-c="2192" d="M56 237T56 250T70 270H835Q719 357 692 493Q692 494 692 496T691 499Q691 511 708 511H711Q720 511 723 510T729 506T732 497T735 481T743 456Q765 389 816 336T935 261Q944 258 944 250Q944 244 939 241T915 231T877 212Q836 186 806 152T761 85T740 35T732 4Q730 -6 727 -8T711 -11Q691 -11 691 0Q691 7 696 25Q728 151 835 230H70Q56 237 56 250Z"></path></g></g></g></svg></mjx-container> <code>720p Demo Video</code> <mjx-container class="MathJax" jax="SVG"><svg style="vertical-align: -0.025ex;" xmlns="http://www.w3.org/2000/svg" width="2.262ex" height="1.181ex" role="img" focusable="false" viewBox="0 -511 1000 522"><g stroke="currentColor" fill="currentColor" stroke-width="0" transform="scale(1,-1)"><g data-mml-node="math"><g data-mml-node="mo"><path data-c="2192" d="M56 237T56 250T70 270H835Q719 357 692 493Q692 494 692 496T691 499Q691 511 708 511H711Q720 511 723 510T729 506T732 497T735 481T743 456Q765 389 816 336T935 261Q944 258 944 250Q944 244 939 241T915 231T877 212Q836 186 806 152T761 85T740 35T732 4Q730 -6 727 -8T711 -11Q691 -11 691 0Q691 7 696 25Q728 151 835 230H70Q56 237 56 250Z"></path></g></g></g></svg></mjx-container> <code>Voice Part 2</code>), tracked in FinOps (<code>storageUsageProjectMeetings</code>).</li>
 </ul>
 </li>
 <li><strong>On-Demand Google Sheets Sync &amp; 4-Tier Authenticity Audit:</strong>
@@ -7844,10 +7845,10 @@ footer, header {
 <li>Audits written logs (<code><img class="emoji" draggable="false" alt="🟢" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@17.0.3/assets/svg/1f7e2.svg" data-marp-twemoji=""/> Genuine</code>, <code><img class="emoji" draggable="false" alt="🔴" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@17.0.3/assets/svg/1f534.svg" data-marp-twemoji=""/> Vague</code>, <code><img class="emoji" draggable="false" alt="🟠" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@17.0.3/assets/svg/1f7e0.svg" data-marp-twemoji=""/> Suspected AI/Fake</code>, <code><img class="emoji" draggable="false" alt="⚪" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@17.0.3/assets/svg/26aa.svg" data-marp-twemoji=""/> Inactive</code>) and auto-generates 2–3 pointed technical AI challenge questions per student before class (<code>prepareProjectMeetingLogQuestions</code>).</li>
 </ul>
 </li>
-<li><strong>Resilient 2-Stage Gemini Multimodal Diarization Pipeline (<code>analyzeProjectMeeting</code>):</strong>
+<li><strong>Resilient 2-Stage Gemini 4 Argon / 3.8 Flash Multimodal Diarization Pipeline (<code>analyzeProjectMeeting</code>):</strong>
 <ul>
 <li><strong>Stage 1 (<code>gemini-3.5-transcribe-preview</code>):</strong> Diarizes multilingual code-switching dialogue, with automatic multimodal <code>gemini-3.8-flash</code> fallback on low-volume clips.</li>
-<li><strong>Stage 2 (<code>gemini-3.8-flash</code>):</strong> Fuses diarized audio, voice anchors, and student screen demos to verify Real Work (<code>/10</code>), Log Quality (<code>/10</code>), and attendance (<code>Present</code>, <code>Late</code>, <code>Absent</code>).</li>
+<li><strong>Stage 2 (<code>gemini-4-argon</code> / <code>gemini-3.8-flash</code>):</strong> Fuses diarized audio, voice anchors, 720p mobile demo videos, and photos to verify Real Work (<code>/10</code>), Log Quality (<code>/10</code>), and attendance (<code>Present</code>, <code>Late</code>, <code>Absent</code>).</li>
 </ul>
 </li>
 <li><strong>1-Click Whole-Class Weekly Report Dispatch &amp; Student Portal Visibility:</strong>

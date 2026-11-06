@@ -31,6 +31,8 @@ const PromptForm = ({
   handleOptimize,
   handleUndo,
   isOptimizing,
+  optimizerModel = 'gemini-3.8-flash',
+  setOptimizerModel,
   originalPromptText,
   isZenMode = false,
   setIsZenMode,
@@ -141,6 +143,21 @@ const PromptForm = ({
                         </button>
                     )}
                     {selectedPrompt && isOwner && <button type="button" onClick={handleDelete} className="delete-btn">Delete</button>}
+                    {setOptimizerModel && (
+                        <select
+                            aria-label="Prompt Optimizer Model"
+                            value={optimizerModel}
+                            onChange={(e) => setOptimizerModel(e.target.value)}
+                            disabled={isOptimizing || isReadOnly}
+                            className="optimizer-model-select"
+                            title="Select Gemini model for prompt optimization"
+                            style={{ padding: '4px 8px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.82rem', backgroundColor: '#fff' }}
+                        >
+                            <option value="gemini-4-argon">🧠 Gemini 4 Argon</option>
+                            <option value="gemini-3.8-flash">✨ Gemini 3.8 Flash</option>
+                            <option value="gemini-3.5-flash-lite">⚡ Gemini 3.5 Flash-Lite</option>
+                        </select>
+                    )}
                     <button 
                         type="button" 
                         onClick={handleOptimize} 

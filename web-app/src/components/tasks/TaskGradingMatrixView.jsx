@@ -40,6 +40,7 @@ const TaskGradingMatrixView = ({
   const [teacherCommentInput, setTeacherCommentInput] = useState('');
   const [evaluatingUids, setEvaluatingUids] = useState(new Set());
   const [isGradingAll, setIsGradingAll] = useState(false);
+  const [selectedGradingModel, setSelectedGradingModel] = useState(task?.model || 'gemini-3.8-flash');
 
   // Google Drive & Video states
   const [videoJobs, setVideoJobs] = useState([]);
@@ -323,7 +324,12 @@ const TaskGradingMatrixView = ({
     if (!onTriggerEvaluation) return;
     setEvaluatingUids((prev) => new Set(prev).add(sub.studentUid));
     try {
-      await onTriggerEvaluation(sub.studentUid, sub.attemptsCount || 1);
+      const defaultTaskModel = task?.model || 'gemini-3.8-flash';
+      if (selectedGradingModel && selectedGradingModel !== defaultTaskModel) {
+        await onTriggerEvaluation(sub.studentUid, sub.attemptsCount || 1, undefined, selectedGradingModel);
+      } else {
+        await onTriggerEvaluation(sub.studentUid, sub.attemptsCount || 1);
+      }
     } catch (err) {
       alert(`Evaluation failed for ${sub.displayName}: ` + (err.message || err));
     } finally {
@@ -364,7 +370,12 @@ const TaskGradingMatrixView = ({
     for (const sub of pendingSubs) {
       setEvaluatingUids((prev) => new Set(prev).add(sub.studentUid));
       try {
-        await onTriggerEvaluation(sub.studentUid, sub.attemptsCount || 1);
+        const defaultTaskModel = task?.model || 'gemini-3.8-flash';
+        if (selectedGradingModel && selectedGradingModel !== defaultTaskModel) {
+          await onTriggerEvaluation(sub.studentUid, sub.attemptsCount || 1, undefined, selectedGradingModel);
+        } else {
+          await onTriggerEvaluation(sub.studentUid, sub.attemptsCount || 1);
+        }
         queuedCount++;
       } catch (err) {
         console.warn(`Failed to queue evaluation for ${sub.displayName}:`, err);
@@ -767,15 +778,28 @@ const TaskGradingMatrixView = ({
             </span>
           </button>
           {onTriggerEvaluation && (
-            <button
-              onClick={handleGradeAllPending}
-              disabled={isGradingAll}
-              className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white font-bold text-sm rounded-xl shadow-md flex items-center gap-2 transition-all disabled:opacity-50"
-              title="Queue all pending completed submissions for Gemini grading"
-            >
-              <span>{isGradingAll ? '⏳' : '🤖'}</span>
-              <span>{isGradingAll ? 'Queueing...' : 'Grade All Pending'}</span>
-            </button>
+            <div className="flex items-center gap-2">
+              <select
+                aria-label="Grading AI Model"
+                value={selectedGradingModel}
+                onChange={(e) => setSelectedGradingModel(e.target.value)}
+                className="px-3 py-2 border border-purple-300 rounded-xl bg-white text-gray-900 text-xs font-bold focus:ring-2 focus:ring-purple-500 shadow-sm"
+                title="Select Gemini model for practical task video grading"
+              >
+                <option value="gemini-4-argon">🧠 Gemini 4 Argon (Flagship)</option>
+                <option value="gemini-3.8-flash">✨ Gemini 3.8 Flash (Recommended)</option>
+                <option value="gemini-3.5-flash-lite">⚡ Gemini 3.5 Flash-Lite (Fast)</option>
+              </select>
+              <button
+                onClick={handleGradeAllPending}
+                disabled={isGradingAll}
+                className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white font-bold text-sm rounded-xl shadow-md flex items-center gap-2 transition-all disabled:opacity-50"
+                title="Queue all pending completed submissions for Gemini grading"
+              >
+                <span>{isGradingAll ? '⏳' : '🤖'}</span>
+                <span>{isGradingAll ? 'Queueing...' : 'Grade All Pending'}</span>
+              </button>
+            </div>
           )}
           <button
             onClick={handleExportExcel}
