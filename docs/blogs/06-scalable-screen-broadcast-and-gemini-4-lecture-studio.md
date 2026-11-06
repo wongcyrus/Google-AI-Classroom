@@ -31,30 +31,7 @@ In a programming lecture or technical keynote, the presenter's screen (slides, I
 
 ### Diagram 1: 32×18 Pixel-Delta Screen Broadcaster & Zero-Auth PIN Gate (`/live/:classId?pin=XXXX`)
 
-```mermaid
-flowchart LR
-    subgraph Presenter ["👨‍🏫 Presenter Laptop (<2% CPU Overhead)"]
-        CAP["getDisplayMedia({ contentHint: 'detail' })\n480p / 720p / 1080p / Native 1440p"]
-        WORKER["Inline Blob Web Worker Timer\n(Immune to Background Tab Throttling)"]
-        DELTA["32x18 Canvas RGB Pixel Diff\n• Uploads only when >2 pixels change by >10 RGB\n• 2000ms heartbeat keep-alive\n• 1000ms grabFrame() timeout + GPU bitmap.close()"]
-        CAP & WORKER --> DELTA
-    end
-
-    subgraph FirestoreGate ["🗄️ Zero-Auth Firestore PIN Gate"]
-        SESSION["classes/{classId}/screenBroadcast/session\n• savedPublicPin & publicPin\n• 2-Hour Overtime Schedule Protection"]
-        FRAME["classes/{classId}/screenBroadcast/liveFrame\n• <950KB Auto-Scaled JPEG + frameSeq"]
-        SUB["classes/{classId}/liveSubtitles/current\n• 9-Language Real-Time Captions"]
-        RULES["firestore.rules Validation:\nisPublicBroadcastActive(classId) &&\npin == publicPin || pin == savedPublicPin"]
-        DELTA --> FRAME
-        SESSION & FRAME & SUB --- RULES
-    end
-
-    subgraph Spectators ["👥 1,000+ Auditorium / Conference Viewers (/live/:classId?pin=XXXX)"]
-        NO_AUTH["0 Firebase Auth Calls (Bypasses 100/hr NAT IP Limit)\n0 ReCaptcha AppCheck Blocking (Works on Roaming / WeChat)\nAuto-transitions from Waiting Room -> Live Stream + 9-Lang CC"]
-    end
-
-    RULES --> NO_AUTH
-```
+![32×18 Pixel-Delta Screen Broadcaster & Zero-Auth 1,000-Viewer PIN Gate](./images/blog06_diagram1_1000_viewer_broadcast.png)
 
 ### Implementation Walkthrough: 32×18 RGB Pixel Diffing, Hardware `ImageCapture`, & 950 KB Payload Guard
 
@@ -177,33 +154,7 @@ Recording a 3-hour lecture into a single in-memory browser `Blob` is a ticking t
 
 In [`useLectureRecorder.js`](../../web-app/src/hooks/useLectureRecorder.js) and [`functions/media_processing/mergeLectureRecordings.js`](../../functions/media_processing/mergeLectureRecordings.js), we record rolling **1-minute self-contained `.webm` segments** backed by an IndexedDB crash-recovery queue (`lectureRecoveryDb.js`), and merge them post-lecture inside a `2 vCPU, 2GiB RAM` Cloud Run container guarded by a **5-Point Pre-Deletion Integrity Gate**:
 
-```mermaid
-flowchart TD
-    subgraph BrowserRecording ["1. Resilient 1-Minute Rolling Ingestion"]
-        REC["MediaRecorder + Web Audio Hardware Mixer\n(Mixes Display Audio + Teacher Mic)"]
-        SEG["Every 60s: Finalize Complete WebM Segment\n/recordings/{classId}/{groupId}/{segmentId}.webm\n+ IndexedDB Offline Crash Recovery (lectureRecoveryDb.js)"]
-        REC --> SEG
-    end
-
-    subgraph CloudRunMerge ["2. Lossless Cloud Run FFmpeg Concat (mergeLectureRecordings.js)"]
-        SALVAGE["Auto-Salvage & Gap Audit:\nRecovers unlinked GCS segments & computes\nexact interruptionRemarks (lostDurationSeconds)"]
-        ALIGN["Mixed Audio Stream Alignment:\nPads silent clips via lavfi anullsrc=r=48000\nso concat demuxer never desynchronizes"]
-        CONCAT["Zero-Transcoding Stream Copy (~2 Seconds):\nffmpeg -f concat -safe 0 -i list.txt -c copy\n-avoid_negative_ts make_zero -fflags +genpts"]
-        NORM_MP3["48kHz Constant Bitrate MP3 Normalization:\nffmpeg -vn -c:a libmp3lame -b:a 128k -ar 48000\n(Eliminates 1.48x Opus timescale drift!)"]
-        SEG --> SALVAGE --> ALIGN --> CONCAT --> NORM_MP3
-    end
-
-    subgraph SafetyGate ["3. Strict Pre-Deletion Integrity Verification Gate"]
-        G1["Gate 1: Master lecture.webm exists in GCS"]
-        G2["Gate 2: Remote GCS metadata size >= 1,024 bytes"]
-        G3["Gate 3: Probed durationSeconds > 0 & valid streams"]
-        G4["Gate 4: Master combinedDocRef committed in Firestore"]
-        G5["Gate 5: Decoupled lectureSubtitleJobs/{jobId} enqueued"]
-        NORM_MP3 --> G1 --> G2 --> G3 --> G4 --> G5
-        G5 -- "All Gates Pass" --> PURGE_RAW["✅ Safely Delete Raw 1-Min Intermediate Segments"]
-        G5 -- "Any Check Fails" --> KEEP_RAW["🛡️ Abort Deletion! Preserve 100% of Raw 1-Min Segments\nfor 1-Click Teacher Inspection & Re-Merge"]
-    end
-```
+![Resilient 1-Minute Rolling Ingestion & 5-Point Cloud Run FFmpeg Safety Gate](./images/blog06_diagram2_ffmpeg_5point_safety_gate.png)
 
 ### Production Code: Mixed Audio Alignment, 48kHz CBR MP3 Extraction, & Pre-Deletion Gate
 
@@ -294,40 +245,7 @@ In [`ClassManagement.jsx`](../../web-app/src/components/ClassManagement.jsx) and
 
 ### Diagram 3: Two-Stage Whole-Lecture Audio Pipeline, Timescale Calibration & YouTube Studio Packaging
 
-```mermaid
-sequenceDiagram
-    autonumber
-    actor Teacher as 👨‍🏫 Lecturer
-    participant UI as LectureRecordingsView.jsx /<br/>ClassManagement.jsx
-    participant CF as ⚡ processLectureSubtitles.js<br/>(2GiB RAM · 540s Timeout)
-    participant G4 as 🧠 Gemini 4 Argon /<br/>⚡ Gemini 3.8 Flash
-    participant Calib as ⏱️ Timescale Drift Calibrator &<br/>Chromium Cue Guard
-    participant Drive as ☁️ Google Drive & YouTube Package
-
-    Teacher->>UI: Selects Model (🧠 gemini-4-argon / ⚡ gemini-3.8-flash)<br/>& Target Languages (en, zh-Hant, zh-Hans, ja)
-    UI->>CF: processLectureSubtitles({ classId, sessionId, preferredModel })
-    CF->>CF: Ensure EBML Cues Index on Video (ensureIndexedLectureVideo)<br/>& Normalize Audio to 48kHz CBR MP3 (normalizeLectureAudio)
-
-    Note over CF,G4: Stage 1: Single-Pass Verbatim Audio STT + YouTube Chapters
-    CF->>G4: Ingest gs://.../lecture_audio_normalized.mp3\nconfig: { maxOutputTokens: 65536, thinkingConfig: { thinkingBudget: 0 } }
-    G4-->>CF: Returns verbatim Cantonese/English cues + 4–10 YouTube Chapter Milestones
-
-    CF->>Calib: calibrateSubtitleTimeline(segments, chapters, totalDuration)\nFixes linear long-audio timescale compression (>1.05x drift)
-
-    Note over CF,G4: Stage 2: Batched Parallel Language-by-Language Translation (50 Cues/Batch · Concurrency 3)
-    loop For Each Target Language (en, zh-Hant, zh-Hans, ja...)
-        CF->>G4: buildLectureTranslationPrompt(chunk of 50 sentences)
-        G4-->>CF: Returns exact-length JSON array of translated strings
-    end
-
-    Calib->>CF: Enforce end > start (buildWebVTT / buildSRT) + compile youtube_metadata.txt
-    CF-->>UI: Status = 'ready' (Logs FinOps cost to classes/{classId}/aiCosts)
-
-    par 1-Click Publishing & Zero-Egress Backup
-        Teacher->>Drive: Click "📥 Download YouTube Package (.zip)" (WebM/MP4 + .srt + chapters)
-        Teacher->>Drive: Click "☁️ Backup to Google Drive" (Streams directly from browser -> Drive at $0.00 GCP egress!)
-    end
-```
+![Single-Pass Whole-Lecture Audio Subtitles & YouTube Studio Packaging with Gemini 4 Argon](./images/blog06_diagram3_gemini4_lecture_subtitles_sequence.png)
 
 ### Why We Split Whole-Lecture Subtitling into Stage 1 (Single-Pass Audio STT) + Stage 2 (Batched Translation)
 

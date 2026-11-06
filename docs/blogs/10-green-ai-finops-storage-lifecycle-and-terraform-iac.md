@@ -23,26 +23,7 @@ In **Part 10 (the finale of our 10-part Google Developer Expert series)**, we wa
 
 In [`scheduledTasks.js`](../../functions/scheduled_tasks/scheduledTasks.js), [`cost.js`](../../functions/ai_flows/cost.js), [`jobLogger.js`](../../functions/ai_flows/jobLogger.js), [`useCloudPricing.js`](../../web-app/src/hooks/useCloudPricing.js), and [`aiCostAggregator.js`](../../web-app/src/utils/aiCostAggregator.js), every AI invocation and storage event is metered in real time against live Google Cloud Billing Catalog SKU rates:
 
-```mermaid
-flowchart LR
-    subgraph BillingSync ["1. Daily Google Cloud Billing SKU Sync (syncGeminiPricing)"]
-        API["Google Cloud Billing Catalog API\nVertex AI (C7E2-9256-1C43) &\nCloud Storage (95FF-2EF5-5EA1)"]
-        PRICING["Firestore: system_config/pricing\n• gemini-4-argon ($2.00 In / $10.00 Out)\n• gemini-3.8-flash ($0.75 In / $3.75 Out)\n• gemini-3.5-flash-lite ($0.30 In / $2.50 Out)\n• gemini-3.5-transcribe ($0.50 In / $2.50 Out)\n• cloud-storage ($0.023 / GiB-month in asia-east2)"]
-        API --> PRICING
-    end
-
-    subgraph RuntimeMeter ["2. Atomic Per-Job Metering & Pre-Flight Circuit Breaker"]
-        GATE["Pre-Flight Quota Gate:\nisQuotaExceeded(classId)\n(Blocks AI call if aiUsedQuota >= aiQuota)"]
-        JOB["logJob() -> Creates aiJobs/{jobId}\nwith modelUsed, inputTokens, outputTokens,\nmediaPaths & exact USD cost (toFixed(6))"]
-        TRIG["onAiJobCreated Trigger:\nAtomically increments classes/{classId}.aiUsedQuota\nvia FieldValue.increment(cost)"]
-        PRICING --> JOB --> TRIG --> GATE
-    end
-
-    subgraph Dashboard ["3. 18-Category FinOps Analytics (AiCostReportView.jsx)"]
-        AGG["aiCostAggregator.js:\n• Groups AI tokens + 9 Storage Categories\n• Interactive 1–12 Month Storage Holding Slider\n• Per-Class & System-Wide CSV Export"]
-        TRIG --> AGG
-    end
-```
+![Real-Time AI FinOps Pipeline, Live Cloud Billing SKU Sync & Atomic Quota Circuit Breaker](./images/blog10_diagram1_finops_sku_sync_circuit_breaker.png)
 
 ### Production Code 1: Live Google Cloud Billing Catalog SKU Sync (`syncGeminiPricing`) & Multi-Stage Cost Engine (`cost.js`)
 
@@ -219,25 +200,7 @@ In Firestore, deleting a parent document (`classes/{classId}`) does **not** auto
 
 To guarantee **100% Zero-Orphan Cleanup** when a teacher deletes a class at the end of a semester, [`onClassDocDeleted`](../../functions/storage_triggers/cleanupTriggers.js) in [`functions/storage_triggers/cleanupTriggers.js`](../../functions/storage_triggers/cleanupTriggers.js) executes a comprehensive **4-Stage Cascading Purge**:
 
-```mermaid
-flowchart TD
-    DEL["👨‍🏫 Teacher Deletes Class in UI\ndeleteDoc('classes/{classId}')"] --> TRIG["⚡ onClassDocDeleted\n(functions/storage_triggers/cleanupTriggers.js)"]
-
-    subgraph Stage1 ["Stage 1: 13 Cloud Storage Prefix Purges (bucket.deleteFiles)"]
-        GCS1["Purge Physical Media Prefixes:\n• screenshots/{classId}/ & videos/{classId}/\n• audio/{classId}/ & recordings/{classId}/ & subtitles/{classId}/\n• projectMeetings/{classId}/ (Voice, 720p Demos, Photos)\n• classes/{classId}/, tasks/{classId}/, taskDemos/{classId}/, submissions/{classId}/\n• irregularities/{classId}/, reports/{classId}/ & zips/{classId}/"]
-    end
-
-    subgraph Stage2 ["Stage 2: 20+ Subcollection Batch Purges (500-Doc Batches)"]
-        SUB1["deleteSubcollectionByPath:\n• projectMeetings, projectGroups, projectStudentProfiles\n• activeMeetingCaptures, lectureRecordings, tasks (+ nested submissions)\n• lessons, bingoSessions, bingoRecords, attendanceAdjustments, questionBank\n• studentProperties, classProperties, passkeyBypassRequests, audio_audits\n• status, liveSubtitles, screenBroadcast, screenBroadcastViewers, messages, irregularities"]
-    end
-
-    subgraph Stage3 ["Stage 3: 11 Top-Level Job Collections & Stage 4: Profile Unlinking"]
-        TOP1["deleteCollectionByClassId (500-Doc Batches):\n• screenshots, audio, videoJobs, zipJobs, videoAnalysisJobs\n• irregularities, progress, propertyUploadJobs\n• lectureMergeJobs, lectureSubtitleJobs, aiJobs"]
-        PROF["removeClassFromProfiles:\nAtomically FieldValue.arrayRemove(classId)\nfrom teacherProfiles & studentProfiles"]
-    end
-
-    TRIG --> GCS1 & SUB1 & TOP1 & PROF
-```
+![4-Stage Zero-Orphan Cascading Class Purge (onClassDocDeleted)](./images/blog10_diagram2_4stage_cascading_class_purge.png)
 
 Here is the production implementation from [`functions/storage_triggers/cleanupTriggers.js`](../../functions/storage_triggers/cleanupTriggers.js), using 500-document chunked batch commits (`deleteCollectionByClassId` and `deleteSubcollectionByPath`) to respect Firestore's 500-operation batch ceiling:
 
@@ -300,22 +263,7 @@ export const onClassDocDeleted = onDocumentDeleted({
 
 To empower any university, school, or Google Developer Group (GDG) to deploy their own sovereign instance of the Google AI Classroom without clicking through dozens of Cloud Console wizards, [`setup-new-project.sh`](../../setup-new-project.sh), [`terraform/`](../../terraform/), and [`deploy.sh`](../../deploy.sh) automate the entire provisioning and verification lifecycle:
 
-```mermaid
-flowchart TB
-    subgraph TerraformIaC ["1. Zero-Click Terraform Provisioning (./setup-new-project.sh)"]
-        CMD["./setup-new-project.sh <PROJECT_ID> <BILLING_ID> [REGION]"]
-        TF["Terraform IaC (terraform/):\n• Links Billing & Enables 27 Google Cloud / Firebase APIs\n• Provisions Firestore Native & GCS Buckets in asia-east2\n• Configures GCIP Identity Platform & IAM Eventarc Service Agents\n• Auto-generates web-app/.env & functions/config.js across 7 codebases\n• Seeds 24/7 Demo Sandbox (IT114115-Demo) & 13 Default AI System Prompts"]
-        CMD --> TF
-    end
-
-    subgraph VerificationPyramid ["2. The 2,575+ Assertion Verification Pyramid"]
-        L1["Level 1: Frontend Vitest Suite\n1,757+ Unit & Component Tests across 154+ Suites (~90% Line Coverage)"]
-        L2["Level 2: Backend Cloud Functions Suite\n708+ Unit Tests across all 7 Isolated Function Codebases"]
-        L3["Level 3: Real-Token Emulator Security Rules\n75 Isolation Scenarios (Exam Shielding, PIN Gate, Self-Read)"]
-        L4["Level 4: Dual-Env CI/CD Guard (./deploy.sh [dev|prod])\nfirebase.json predeploy bundle verification + 35 Live Smoke Tests"]
-        TF --> L1 --> L2 --> L3 --> L4
-    end
-```
+![1-Command Zero-Click Terraform IaC & The 2,575+ Assertion Verification Pyramid](./images/blog10_diagram3_terraform_verification_pyramid.png)
 
 ### How `./setup-new-project.sh` Eliminates Manual Cloud Console Clicks
 Running `./setup-new-project.sh my-school-ai-2026 01ABCD-23EFGH-45IJKL` executes an end-to-end automated pipeline:

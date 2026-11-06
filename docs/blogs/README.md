@@ -16,18 +16,7 @@ Modern universities, polytechnics, and vocational institutions face the **Classr
 
 This **10-part Google Developer Expert (GDE) technical blog series** provides an end-to-end engineering blueprint—complete with **30+ Mermaid architectural, sequence, and state diagrams ($\ge 3$ diagrams in every single blog post)**, real production code deep-dives from this repository, and empirical FinOps benchmarks—demonstrating how we combined **Browser Edge AI (`LiteRT-LM Gemma 4 E2B`, `MediaPipe 468-pt 3D Face Mesh`, `LiteRT Whisper`)** with **Frontier Cloud Multimodal Reasoning (`Gemini 4 Argon`, `Gemini 3.8 Flash`, `Gemini 3.5 Flash-Lite`, `Gemini 3.5 Transcribe`, `Google Genkit`)** across **7 isolated Cloud Functions Gen 2 / Cloud Run micro-codebases** in `asia-east2` (Hong Kong).
 
-```mermaid
-flowchart LR
-    B1["Part 1:\n4-Tier Serverless\nArchitecture"] --> B2["Part 2:\nBrowser Edge AI\nGemma 4 E2B & MediaPipe"]
-    B2 --> B3["Part 3:\nGemini 4 Argon &\nGenkit Resilience"]
-    B3 --> B4["Part 4:\nWebAuthn Passkeys &\nRotating HMAC QRs"]
-    B4 --> B5["Part 5:\nLive Subtitles &\nCode-Switching"]
-    B5 --> B6["Part 6:\n1,000-Viewer Broadcast\n& YouTube Studio"]
-    B6 --> B7["Part 7:\nGemini 4 Map-Reduce\nVideo & Rubric Grading"]
-    B7 --> B8["Part 8:\nMobile 720p Capstone\nSupervision Studio"]
-    B8 --> B9["Part 9:\nBingo Active Presence\n& Zero-Trust Exam Mode"]
-    B9 --> B10["Part 10:\nGreen AI FinOps, TTL\n& 1-Command Terraform"]
-```
+![10-Part Google Developer Expert (GDE) Technical Blog Series Roadmap](./images/blog_readme_series_roadmap.png)
 
 ---
 

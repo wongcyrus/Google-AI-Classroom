@@ -27,22 +27,7 @@ In **Part 8** of our Google Developer Expert series, we dive deep into the archi
 
 Before the weekly consultation begins, the supervisor clicks **🔄 Sync Weekly Logs** inside [`ProjectMeetingsView.jsx`](../../web-app/src/components/meetings/ProjectMeetingsView.jsx). Rather than running wasteful background cron jobs every 5 minutes, the platform performs an on-demand incremental delta sync against the class's linked Google Form spreadsheet (`Form Responses 2`), fetching only newly appended rows (`startRow = lastSyncedRowCount + 1`).
 
-```mermaid
-flowchart LR
-    subgraph SheetsSync ["1. Self-Healing On-Demand Google Sheets Sync"]
-        FORM["Google Form Responses Sheet\n(Weekly Progress Logbook)"]
-        HAMMING["Incremental Delta Parser\n• Holiday-aware Academic Week Math\n• Auto-heals 1-digit Student ID typos\n  (Hamming Distance == 1)"]
-        FS_LOG["Firestore:\nclasses/{classId}/projectMeetings/{meetingId}\n.weeklyLogs[]"]
-        FORM --> HAMMING --> FS_LOG
-    end
-
-    subgraph PreMeetingAI ["2. Pre-Meeting Weekly Log Auditor (prepareProjectMeetingLogQuestions)"]
-        AUDIT["Gemini 4 Argon / Gemini 3.8 Flash\nCross-checks current log vs. prior week plan"]
-        CLASS["4-Tier Authenticity Classification:\n🟢 genuine (Concrete commits/metrics)\n🔴 vague_useless (Generic filler)\n🟠 suspected_ai_fake (LLM buzzword salad)\n⚪ inactive (No work reported)"]
-        CHALL["Generates 2–3 Pointed Technical\nChallenge Questions per Student\nfor Live Supervisor Grilling!"]
-        FS_LOG --> AUDIT --> CLASS --> CHALL
-    end
-```
+![Self-Healing Google Sheets Sync & Pre-Meeting Fake-Log AI Auditor](./images/blog08_diagram1_sheets_sync_fake_log_audit.png)
 
 ### Why Hamming Distance = 1 Student ID Healing Saved Hours of Manual Fixes
 On mobile Google Forms, students frequently mistype a single digit of their 9-digit VTC Student ID (e.g., typing `250105349` instead of `250105348`) or submit from a personal `@gmail.com` address. A strict string equality check drops those logs as orphaned records.
@@ -128,36 +113,7 @@ To make live supervision effortless with **one thumb**, we eliminated cross-devi
    - It activates the mobile rear/front camera at **`720p` (`1280×720`, `~1.5 Mbps` bitrate)**—sharp enough for Gemini 4 Argon to read laptop UI states and terminal output, yet compact enough (`~11 MB/min`) to upload in seconds over campus Wi-Fi.
    - The instant the supervisor taps **`⏹️ Stop Demo`**, the studio uploads the `720p` demo clip (`type: 'mobile_camera'`) and **automatically resumes `Voice Part N+1`** so not a single second of verbal feedback is lost!
 
-```mermaid
-stateDiagram-v2
-    [*] --> StudioIdle: Supervisor Opens Meeting Card on Smartphone
-
-    state "Streamlined Teacher Mobile Supervision Studio (ProjectMeetingsView.jsx)" as ActiveStudio {
-        state "🎙️ Continuous Voice Consultation (audio/webm)" as VoiceRec
-        state "📸 Zero-Pause Photo Capture (0.1s 1280px JPEG)" as SnapPhoto
-        state "📹 720p Mobile Camera Demo (1280x720 @ 1.5 Mbps)" as DemoVideo
-
-        [*] --> VoiceRec: Tap '🎙️ Start Recording' (Screen Wake Lock Active)
-        VoiceRec --> VoiceRec: Tap Student Pill ('🗣️ Speaking Now')\nStamps { studentUid, timeSeconds } into voiceAnchors[]
-
-        VoiceRec --> SnapPhoto: Tap '📸 Snap Photo'\n(Captures image frame in 0.1s with ZERO voice pause!)
-        SnapPhoto --> VoiceRec: Uploads to projectMeetings/{classId}/.../photo_*.jpg
-
-        VoiceRec --> DemoVideo: Tap '📹 Record Demo Video (720p)'\n1. Auto-saves Voice Part N\n2. Opens 1280x720 mobile camera + mic
-        DemoVideo --> VoiceRec: Tap '⏹️ Stop Demo'\n1. Uploads 720p demo clip (type: 'mobile_camera')\n2. Auto-resumes Voice Part N+1!
-    }
-
-    StudioIdle --> ActiveStudio
-    ActiveStudio --> ClipMoved: Supervisor Moves Misfiled Clip to Another Group/Week
-
-    state "Atomic Stale Analysis Invalidation" as ClipMoved {
-        [*] --> WipeStale: Firestore Batch deletes stale AI fields via deleteField()\n& sets status: 'ready', needsReanalysis: true
-    }
-
-    ActiveStudio --> ReadyForAI: Tap '⏹️ End Consultation'
-    ClipMoved --> ReadyForAI
-    ReadyForAI --> [*]
-```
+![Streamlined Single-Device Teacher Mobile Supervision Studio State Machine](./images/blog08_diagram2_mobile_supervision_studio_state.png)
 
 ### Atomic Stale Analysis Invalidation When Moving Clips Across Groups or Weeks
 During back-to-back consultations with 10 project groups, a supervisor occasionally records Group 3's voice clip or demo video while Group 2's card is still open. In [`ProjectMeetingsView.jsx`](../../web-app/src/components/meetings/ProjectMeetingsView.jsx), we built a **1-Click Clip Reassignment Modal (`➡️ Move Clip to Another Meeting / Week`)**.
@@ -174,38 +130,7 @@ Why split `analyzeProjectMeeting` into **two distinct AI stages** instead of fee
 - **Stage 1 (`gemini-3.5-transcribe-preview` with `gemini-3.8-flash` Resilience Fallbacks)** is dedicated 100% to **verbatim multilingual acoustic speaker diarization** across every audio clip and 720p demo video, shifting timestamps cumulatively (`offsetTranscriptTimestamps`) across `Voice Part 1`, `Demo 1`, and `Voice Part 2`.
 - **Stage 2 (`gemini-4-argon` or `gemini-3.8-flash`)** receives the complete diarized transcript, the supervisor's 1-tap `voiceAnchors[]`, the `720p` mobile demo videos (`screenClips[]`), the whiteboard/hardware photos (`photos[]`), the students' written weekly logs (`weeklyLogs[]`), and last week's assigned action items (`priorWeekContext`) to perform a rigorous **Multimodal Cross-Examination**:
 
-```mermaid
-sequenceDiagram
-    autonumber
-    actor Sup as 👨‍🏫 Project Supervisor
-    participant CF as ⚡ analyzeProjectMeeting<br/>(2GiB RAM · 540s Timeout)
-    participant S1 as 🎙️ Stage 1: Gemini 3.5 Transcribe<br/>(+ 3.8-Flash Multimodal Fallback)
-    participant S2 as 🧠 Stage 2: Gemini 4 Argon /<br/>⚡ Gemini 3.8 Flash
-    participant Fin as 💰 FinOps & Storage Quota<br/>(storageQuota.js & aiCostAggregator.js)
-    participant SMTP as 📧 batchEmailProjectMeetingReports<br/>(Secret Manager SMTP Relay)
-
-    Sup->>CF: Trigger analyzeProjectMeeting(classId, meetingId, preferredModel: 'gemini-4-argon')
-
-    loop Stage 1: Chronological Multi-Clip Acoustic Diarization (Audio + 720p Demo Dialogue)
-        CF->>S1: Pass gs:// URI for each audioClip[i]
-        alt Normal Audio Volume & Full Duration
-            S1-->>CF: Returns verbatim Cantonese/English diarized transcript ([MM:SS] Speaker 1..N)
-        else Quiet Clip (Empty Text) OR Long-Clip Silence Truncation (<45% of duration)
-            CF->>S2: Automatic fallback to multimodal Gemini 3.8 Flash (thinkingBudget: 0)
-        end
-        CF->>CF: Apply cumulative multi-clip timestamp offset (offsetTranscriptTimestamps)
-    end
-
-    CF->>S2: Stage 2 Multimodal Cross-Examination (generateWithResilience):\n• Stage 1 Diarized Transcript + Teacher 'Speaking Now' voiceAnchors[]\n• 720p Mobile Demo Videos (screenClips[]) + Whiteboard/Circuit Photos (photos[])\n• Student Weekly Logs + Pre-Meeting Challenge Questions + Prior Week Action Items
-    Note over S2: Verifies if live 720p demo & spoken answers match written log claims!\nScores Log Quality (/10) & Real Work (/10) per student.
-    S2-->>CF: Structured JSON evaluation
-    CF->>CF: reconcileMeetingRosterResults() guarantees 100% group member coverage
-
-    CF->>Fin: Log itemized tokens + media counts (voiceClipsCount, demoClipsCount, photosCount)\nAttributed under '👥 Project Meeting Audio, Demos & Photos'
-
-    Sup->>SMTP: Click "📧 Email All Week W Reports" (with optional supervisor note)
-    SMTP-->>Sup: Dispatches responsive HTML reports to all groups & logs emailDispatch audit trail!
-```
+![Two-Stage Multimodal Diarization & Gemini 4 Argon Cross-Examination (analyzeProjectMeeting)](./images/blog08_diagram3_two_stage_capstone_diarization.png)
 
 ---
 

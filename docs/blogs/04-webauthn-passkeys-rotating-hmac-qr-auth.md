@@ -31,27 +31,7 @@ On multi-campus educational domains, distinguishing faculty from students at the
 
 In [`functions/auth_triggers/userManagement.js`](../../functions/auth_triggers/userManagement.js), [`functions/auth_triggers/ipRestriction.js`](../../functions/auth_triggers/ipRestriction.js), and [`functions/auth_triggers/config.js`](../../functions/auth_triggers/config.js), our GCIP blocking functions intercept every signup and sign-in request *before* a Firebase JWT is ever minted:
 
-```mermaid
-flowchart TD
-    LOGIN["User Registers or Signs In\n(Google Cloud Identity Platform)"] --> BLOCK_CREATE["beforeUserCreated Blocking Hook\n(functions/auth_triggers/userManagement.js)"]
-
-    subgraph RoleHierarchy ["4-Tier Deterministic Role Resolution"]
-        BLOCK_CREATE --> T1{"Tier 1: Pre-Enrolled in\nclasses.teacherEmails?"}
-        T1 -- Yes --> ROLE_T["Assign role = 'teacher'\nLinkteacherProfiles/{uid}"]
-        T1 -- No --> T2{"Tier 2: Username Regex Match\nSTUDENT_USERNAME_REGEX / TEACHER_USERNAME_REGEX"}
-        T2 -- "Matches Student Regex\n(e.g. ^[0-9]{9}$)" --> ROLE_S["Assign role = 'student'\nLink studentProfiles/{uid}"]
-        T2 -- "Matches Teacher Regex" --> ROLE_T
-        T2 -- "No Regex Match" --> T3{"Tier 3: Subdomain Priority\n@stu.vtc.edu.hk vs @vtc.edu.hk"}
-        T3 -- "@stu.vtc.edu.hk" --> ROLE_S
-        T3 -- "@vtc.edu.hk" --> ROLE_T
-        T3 -- "Same-Domain / Ambiguous" --> T4["Tier 4: Zero-Trust Default\nDEFAULT_TO_STUDENT = true -> 'student'"]
-    end
-
-    ROLE_T & ROLE_S & T4 --> BLOCK_SIGNIN["beforeUserSignedIn (checkipaddress)\n(functions/auth_triggers/ipRestriction.js)"]
-    BLOCK_SIGNIN --> IS_STUDENT{"role !== 'teacher' AND\nin active scheduled class\nwith ipRestrictions?"}
-    IS_STUDENT -- "Yes & Client IP Outside Lab CIDR" --> REJECT["🚫 Block Sign-In (HttpsError: permission-denied)"]
-    IS_STUDENT -- "No or IP Matches Lab CIDR" --> MINT["✅ Mint Firebase JWT with { role } Custom Claim"]
-```
+![4-Tier Deterministic Role Resolution & GCIP Blocking Gate](./images/blog04_diagram1_4tier_role_resolution.png)
 
 ### Implementation Walkthrough: Multi-Domain Role Derivation & Pre-Enrolled Roster Linking
 
@@ -291,33 +271,7 @@ In a 200-seat lecture hall where students do not sit at fixed lab desktops, how 
 
 ### Diagram 2: 15-Second Rotating HMAC Projector QR & Challenge Creation Tolerance
 
-```mermaid
-sequenceDiagram
-    autonumber
-    participant Proj as 📽️ Lecture Hall Projector<br/>(PresentationView.jsx)
-    participant Phone as 📱 Student Smartphone<br/>(Face ID / Touch ID)
-    participant CF as ⚡ passkeyFlows.js<br/>(Cloud Functions Gen 2)
-    participant FS as 🗄️ Firestore<br/>(studentPasskeys & bingoRecords)
-
-    Proj->>CF: createLectureBingoSession(classId, rotationIntervalSeconds=15)
-    CF->>FS: Store 256-bit sessionSecret & initialize responses map
-    loop Every 15 Seconds
-        Proj->>Proj: Compute HMAC-SHA256(sessionSecret, "lecture_qr_bingo_" + t_window)
-    end
-
-    Phone->>Proj: Scans projector QR code with mobile camera
-    Phone->>CF: getLecturePasskeyAuthOptions(classId, bingoId, token)
-    CF->>CF: Verify token via crypto.timingSafeEqual (current + grace window)
-    CF->>FS: Create 2-min challenge doc (stamps createdAt + token)
-    CF-->>Phone: Return WebAuthn Assertion Options (userVerification: 'required')
-
-    Phone->>Phone: Native Biometric Prompt (Apple Secure Enclave / Android Titan)
-    Phone->>CF: verifyLecturePasskeyAuth(challengeId, assertionResponse)
-    CF->>CF: Check isTokenCurrentlyValid OR isTokenValidAtChallengeCreation
-    CF->>FS: Lookup studentPasskeys by credentialID & verify ECDSA signature + counter
-    CF->>FS: Atomic update: bingoRecords/{bingoId}.responses.{uid} = 'passed' (~1.8s!)
-    FS-->>Proj: Live leaderboard & verified student count increments in real time
-```
+![1-Phone = 1-Student FIDO2 Lock & 15s Rotating HMAC Projector QR](./images/blog04_diagram2_rotating_hmac_qr_sequence.png)
 
 ### Edge Case Solved: The "Mid-Biometric QR Rotation" Race Condition
 
@@ -402,22 +356,7 @@ How do teachers and students sign into untrusted shared lab workstations without
 
 ### Diagram 3: Zero-Keystroke Lab PC Login & 3-Tier Emergency Recovery
 
-```mermaid
-flowchart LR
-    subgraph PasswordlessLabLogin ["1. Keylogger-Proof Shared Lab PC Login"]
-        PC["🖥️ Shared Lab PC (/login)\nDisplays 15s Rotating Login QR\n(loginSessions/{sessionId})"]
-        MOB["📱 Paired Smartphone\nScans QR & Verifies Face ID / Touch ID"]
-        MINT_TOK["⚡ verifyDesktopLoginPasskey\nValidates WebAuthn Assertion &\nMints Custom Auth Token"]
-        PC -->|"1. Scan QR"| MOB -->|"2. Signed Assertion"| MINT_TOK -->|"3. onSnapshot signInWithCustomToken()"| UNLOCK["✅ Desktop Signed In\n(0 Keystrokes Typed!)"]
-    end
-
-    subgraph EmergencyRecovery ["2. Three-Tier Emergency Recovery (Dead Battery / Non-GMS Phone)"]
-        E1["Option A: 6-Digit Session PIN\nverifyTeacherPasskeyBypassPin\n(Aisle Walk-Around Entry)"]
-        E2["Option B: 1-Click Teacher Podium Grant\napproveTeacherPasskeyBypass\n(180-Min Lesson Scope)"]
-        E3["Option C: Permanent Non-GMS Exemption\ntoggleStudentPasskeyExemption\n(Phones without Credential Manager)"]
-        E1 & E2 & E3 --> AUDIT["Immutable Audit Trail\npasskeyAuditLogs/{logId}"]
-    end
-```
+![Keylogger-Proof Shared Lab PC Login & 3-Tier Emergency Recovery](./images/blog04_diagram3_lab_pc_qr_login_recovery.png)
 
 ### Zero-Keystroke Custom Token Exchange (`handleVerifyDesktopLoginPasskey`)
 

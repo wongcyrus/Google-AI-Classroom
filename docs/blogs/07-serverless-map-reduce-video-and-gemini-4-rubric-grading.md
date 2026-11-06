@@ -33,28 +33,7 @@ Why record a 30-FPS desktop video stream when a student coding in VS Code or con
 
 Before Gemini ever evaluates a student's work, [`StudentView.jsx`](../../web-app/src/components/StudentView.jsx) and our high-memory Cloud Run worker [`processVideoJob.js`](../../functions/media_processing/processVideoJob.js) (`2 vCPU, 8 GiB RAM, 540s timeout`) transform periodic screenshots into a razor-sharp, tamper-evident **1-FPS H.264 MP4 timelapse** that is **80% smaller** than continuous screen recordings:
 
-```mermaid
-flowchart LR
-    subgraph BrowserScale ["1. Adaptive Client Geometric Scaling (StudentView.jsx)"]
-        RAW["Desktop Screen + Webcam Frame\nMax Width: 1920px (1080p)"]
-        MATH["Single-Pass Geometric Downscale if > maxImageSize:\nscale = sqrt(maxImageSize / blob.size) * 0.9"]
-        GCS_IMG["Cloud Storage\nscreenshots/{classId}/{uid}/"]
-        RAW --> MATH --> GCS_IMG
-    end
-
-    subgraph CloudRunFFmpeg ["2. High-Memory Cloud Run Worker (processVideoJob.js · 2 vCPU, 8GiB RAM)"]
-        BATCH["Memory-Bounded Batching\nBATCH_SIZE = 15 frames per pass\n(Zero Container OOM)"]
-        SHARP["Sharp 40px SVG Security Overlay\nStamps UTC/HKT Timestamp, Class ID, Student Email,\n[SCREEN]/[WEBCAM] & Even Dimensions (w%2==0)"]
-        FFMPEG["FFmpeg H.264 Timelapse Encoder:\n-preset fast -crf 30 -tune stillimage -movflags +faststart\n+ Zero-Trust customMetadata: { isExam: 'true' }"]
-        GCS_IMG --> BATCH --> SHARP --> FFMPEG
-    end
-
-    subgraph OutputMP4 ["3. Compact Forensic MP4 Artifact & Task Slicer"]
-        MP4["videos/{classId}/{videoId}.mp4\n• 2-Hour Lab Session < 20 MB!\n• 90% Lower Gemini Video Token Footprint"]
-        SLICE["slicePendingTaskSubmissions()\nUltrafast FFmpeg Stream Copy (-c copy)\ninto attempt_N.mp4 + Auto-Triggers AI Grading!"]
-        FFMPEG --> MP4 --> SLICE
-    end
-```
+![Adaptive Client Scaling, Sharp 40px SVG Overlay & Cloud Run FFmpeg 1-FPS MP4 Pipeline](./images/blog07_diagram1_ffmpeg_forensic_mp4_pipeline.png)
 
 ### Engineering Highlights of the Cloud Run FFmpeg Pipeline
 1. **Single-Pass Client Geometric Scaling**: On 4K Retina displays, raw canvas captures can exceed `3 MB`. Instead of an expensive multi-pass compression loop in the browser, [`StudentView.jsx`](../../web-app/src/components/StudentView.jsx) computes a single-pass geometric scaling ratio:
@@ -74,33 +53,7 @@ What happens when an instructor runs an open-ended hands-on cloud lab—where st
 
 In [`functions/ai_flows/index.mjs`](../../functions/ai_flows/index.mjs), [`generateLabTaskPrompt.js`](../../functions/ai_flows/generateLabTaskPrompt.js), [`VideoLibrary.jsx`](../../web-app/src/components/VideoLibrary.jsx), and [`VideoAnalysisJobs.jsx`](../../web-app/src/components/VideoAnalysisJobs.jsx), we built a **Serverless Map-Reduce-Map Pipeline** where teachers can select **`gemini-4-argon`**, **`gemini-3.8-flash`**, or **`gemini-3.5-flash-lite`** at both the Map and Reduce stages:
 
-```mermaid
-sequenceDiagram
-    autonumber
-    actor Teacher as 👨‍🏫 Instructor (VideoLibrary.jsx)
-    participant Disp as ⚡ processVideoAnalysisJob<br/>(2s Non-Blocking Dispatcher)
-    participant Queue as 🚦 Google Cloud Tasks<br/>(analyzeSingleVideoTask<br/>maxConcurrent: 4, 2/sec)
-    participant Worker as 🤖 Video AI Worker<br/>(2GiB RAM · 300s Timeout)
-    participant FS as 🗄️ Firestore<br/>(videoAnalysisJobs & aiJobs)
-    participant Reduce as 🧠 generateLabTaskPrompt<br/>(Gemini 4 Argon / 3.8 Flash)
-
-    Teacher->>Disp: Selects 40 Student Videos + Preferred Model (e.g. gemini-4-argon)
-    Disp->>FS: Initialize { totalVideos: 40, processedCount: 0, status: 'processing' }
-    Disp->>Queue: Enqueue 40 isolated video analysis tasks (Exits in ~2 seconds!)
-
-    par Phase 1: Throttled Map Stage (4 Concurrent Workers, Zero HTTP 429 Errors)
-        Queue->>Worker: Dispatch Student 1..40 MP4 (2 tasks/sec rate limit)
-        Worker->>Worker: generateWithResilience(preferredModel)\nextracts chronological activity log & tool calls
-        Worker->>FS: Atomic Transaction (recordTaskResult): processedCount++
-    end
-
-    Teacher->>Reduce: Clicks "✨ Synthesize Cohort Lab Rubric" (Phase 2: Reduce)
-    Reduce->>FS: Aggregates all 40 completed child aiJobs summaries (30-doc FieldPath.documentId() batches)
-    Reduce->>Reduce: Invokes Gemini 4 Argon / 3.8 Flash to discover canonical milestones,\ncommon student blockers & tool-calling rubric prompt
-    Reduce-->>Teacher: Outputs ready-to-run Coursework Milestone Prompt
-
-    Teacher->>Disp: Runs Phase 3 (Milestone Evaluation Map) -> Populates StudentMilestoneMatrix.jsx!
-```
+![Two-Stage Map-Reduce-Map Cohort Video Discovery with Cloud Tasks & Gemini 4 Argon](./images/blog07_diagram2_map_reduce_video_sequence.png)
 
 ### Production Code 1: The Reduce Stage — Synthesizing a Cohort Grading Rubric from 40 Student Videos (`generateLabTaskPrompt.js`)
 
@@ -207,34 +160,7 @@ Teachers have **two independent AI model selection control points** supporting *
 1. **Task Editor Modal (`#task-ai-model-select` in [`TaskEditorModal.jsx`](../../web-app/src/components/tasks/TaskEditorModal.jsx))**: Chooses the default AI model stored on `classes/{classId}/tasks/{taskId}.model` and used by `extractTaskDemoSteps` when watching a teacher's reference demonstration video to synthesize the step-by-step rubric.
 2. **Grading Matrix Toolbar (`Grading AI Model` selector in [`TaskGradingMatrixView.jsx`](../../web-app/src/components/tasks/TaskGradingMatrixView.jsx))**: Allows the teacher to override the evaluation model on the fly when running single-student re-evaluations (`handleTriggerEvaluate`) or batch cohort grading (`handleBatchEvaluatePending` via `batchEvaluateTaskSubmissions`). For example, a teacher can grade formative practice attempts with `gemini-3.5-flash-lite` and switch the toolbar selector to **`gemini-4-argon`** for final high-stakes practical exam grading!
 
-```mermaid
-flowchart TD
-    subgraph CreateRubric ["1. Teacher Creates Task & Synthesizes Rubric (TaskEditorModal.jsx)"]
-        T_REF["Tab 2: Upload Demo Video / Pick Lecture Recording /\nPaste YouTube Link + Rubric Prompt Guidelines"]
-        T_MOD["Select AI Model (#task-ai-model-select):\n🧠 Gemini 4 Argon | ⚡ Gemini 3.8 Flash | 🪶 Gemini 3.5 Flash-Lite"]
-        T_EXT["extractTaskDemoSteps Cloud Function:\nExtracts stepNumber, title, points,\nexpectedEvidence & gradingCriteria"]
-        T_BAL["Tab 3: Review Milestones & Click\n'⚖️ Auto-Balance to 100 pts'"]
-        T_REF & T_MOD --> T_EXT --> T_BAL
-    end
-
-    subgraph CaptureOrSlice ["2. Four Flexible Capture & Slicing Modes"]
-        M_LIVE["🏠 Homework / 🏫 In-Class / 🔄 Flexible:\nStudent works & submits -> FFmpeg compiles attempt MP4"]
-        M_RETRO["⏪ Post-Class Retroactive Slicing:\nForgot to create a task before class?\nSlices [startMin, durationMin] directly from all 40 class videos!"]
-        T_BAL --> M_LIVE & M_RETRO
-    end
-
-    subgraph GradeAndReconcile ["3. Rubric-Driven AI Grading & Deterministic Math (evaluateTaskSubmission.js)"]
-        G_PICK["Resolve Model: overrideModel (from Grading Matrix Toolbar)\n|| taskData.model || 'gemini-3.8-flash'"]
-        G_EVAL["generateWithResilience(preferredModel):\nEvaluates Student MP4 against every rubric step\nOutputs scoreAwarded, status, timestampInVideo [MM:SS],\nevidenceObserved & per-step explanation"]
-        G_DET["normalizeRubricEvaluation() (Deterministic Guard):\n• Clamps every step score strictly to [0, maxPoints]\n• Fills any omitted step as 0/maxPoints ('missing')\n• Computes finalScore = exact sum of step scores"]
-        M_LIVE & M_RETRO --> G_PICK --> G_EVAL --> G_DET
-    end
-
-    subgraph MatrixAndOverride ["4. Teacher Grading Matrix & Student Portal (TaskGradingMatrixView.jsx)"]
-        UI_MAT["📊 Grading Matrix:\n• Hoverable S1: 30/30, S2: 62/70 Pills\n• Click [⏱️ 02:15] to Seek Video to Exact Frame\n• Per-Step Teacher Mark & Explanation Override\n• 1-Click Excel Gradebook (.xlsx) & Google Drive Backup"]
-        G_DET --> UI_MAT
-    end
-```
+![4-Tab Practical Tasks, Retroactive Slicing & Deterministic Rubric Reconciliation](./images/blog07_diagram3_practical_task_rubric_grading.png)
 
 ---
 

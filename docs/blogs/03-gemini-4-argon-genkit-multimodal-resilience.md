@@ -24,41 +24,7 @@ With the arrival of **Gemini 4 (`gemini-4-argon`)** in Vertex AI alongside **Gem
 
 Rather than hardcoding a single model ID across our backend, we built a **5-Model Right-Sizing Architecture** spanning Tier-1 Browser WebGPU Workers and Tier-4 Google Genkit Cloud Functions. Teachers can configure a class-wide default model in [`ClassManagement.jsx`](../../web-app/src/components/ClassManagement.jsx) and override it on the fly inside any feature studio:
 
-```mermaid
-flowchart TD
-    subgraph EdgeTier ["Tier 1: Zero-Cost Browser Edge AI ($0.00 / hr)"]
-        W_MP["MediaPipe Tasks-Vision Worker\n(478-pt 3D Face Mesh & Iris Depth)"]
-        W_WH["LiteRT Whisper-Tiny Worker\n(On-Device Multilingual Speech-to-Text)"]
-        W_G4["🧠 Gemma 4 E2B WebGPU Worker\n(gemma-4-E2B-it-web.litertlm ~1.91GB)\n• Local Exam Voice Intent Classification\n• $0.00 Client-Mode Live Subtitles"]
-        W_WH --> W_G4
-    end
-
-    subgraph TeacherUI ["Tier 2: Universal Teacher Model Pickers (React Frontend)"]
-        UI_CM["ClassManagement.jsx\n• Class Default AI Model (aiModel)\n• Lecture Subtitles Model (lectureAiModel)"]
-        UI_MON["ControlsPanel.jsx & TeacherSubtitleControlModal.jsx\n• Live Monitor Vision AI Picker\n• Live Subtitles Engine Picker"]
-        UI_TASK["TaskEditorModal.jsx & TaskGradingMatrixView.jsx\n• Rubric Synthesis Model (#task-ai-model-select)\n• Grading Matrix Model Override"]
-        UI_VID["VideoLibrary.jsx & VideoAnalysisJobs.jsx\n• Cohort Map-Reduce Video Analysis Picker"]
-        UI_MEET["ProjectMeetingsView.jsx & LectureRecordingsView.jsx\n• Capstone Supervision AI Picker\n• Whole-Lecture CC Regeneration Picker"]
-        UI_STUDIO["BingoQuestionBankModal.jsx & PromptForm.jsx\n• Bingo AI Question Generator Picker\n• Prompt Studio Meta-Optimizer (✨ Optimize)"]
-    end
-
-    subgraph GenkitMiddleware ["Tier 3: Genkit Resilience & FinOps Middleware (functions/ai_flows/)"]
-        RES["generateWithResilience() (analysisFlows.js)\n1. Strip temperature/topP/topK if model.startsWith('gemini-4')\n2. Exponential Backoff + Jitter on HTTP 429/503/ECONNRESET\n3. Automatic Cross-Model Failover Chain"]
-        FIN["checkQuota(), logJob() & calculateCost() (cost.js)\n• Live Cloud Billing SKU Sync (syncPricingFromFirestore)\n• Composite 2-Stage Pipeline Rate Averaging"]
-    end
-
-    subgraph CloudModels ["Tier 4: Vertex AI / Gemini Frontier Model Matrix"]
-        M_G4["🧠 Gemini 4 Argon (gemini-4-argon)\n1M Shared Context | $2.00 In / $10.00 Out per 1M\n• Complex Rubric Synthesis & Multi-Step Code Grading\n• Cohort Map-Reduce Discovery & Prompt Optimization\n• Capstone Demo vs. Weekly Log Cross-Examination"]
-        M_38["⚡ Gemini 3.8 Flash (gemini-3.8-flash)\nBalanced Multimodal Default | $0.75 In / $3.75 Out per 1M\n• Single-Pass 9-Hr Audio Lecture Subtitles & Chapters\n• Standard Practical Task Video Grading"]
-        M_35["🪶 Gemini 3.5 Flash-Lite (gemini-3.5-flash-lite)\nSub-Second High-Throughput | $0.30 In / $2.50 Out per 1M\n• 4s Live Multilingual Subtitles Fan-Out (7 Languages)\n• Live Bingo Screen Check & Cloud Face Fallback"]
-        M_TR["🎙️ Gemini 3.5 Transcribe (gemini-3.5-transcribe-preview)\nAcoustic Speaker Diarization | $0.50 In / $2.50 Out per 1M\n• Stage-1 Multi-Speaker Capstone Consultation STT"]
-    end
-
-    UI_CM & UI_MON & UI_TASK & UI_VID & UI_MEET & UI_STUDIO --> RES
-    W_G4 -.->|"Seamless Cloud Fallback\n(While Loading / Mobile iOS Guard)"| RES
-    RES --> M_G4 & M_38 & M_35 & M_TR
-    M_G4 & M_38 & M_35 & M_TR --> FIN
-```
+![5-Model Edge-to-Cloud Right-Sizing Architecture (Gemini 4 & Gemma 4)](./images/blog03_diagram1_5model_matrix.png)
 
 ### Complete Matrix of Teacher-Selectable Gemini 4 Surfaces
 
@@ -88,39 +54,7 @@ One of the most important engineering lessons when adopting **Gemini 4 (`gemini-
 
 Here is the exact sequence executed by [`generateWithResilience`](../../functions/ai_flows/analysisFlows.js) for every Genkit invocation across our backend:
 
-```mermaid
-sequenceDiagram
-    autonumber
-    participant Caller as ⚡ Classroom AI Flow<br/>(extractTaskDemoSteps /<br/>analyzeSingleVideoFlow /<br/>analyzeProjectMeeting)
-    participant GWR as 🛡️ generateWithResilience<br/>(functions/ai_flows/analysisFlows.js)
-    participant G4 as 🧠 Gemini 4 Argon<br/>(vertexAI.model('gemini-4-argon'))
-    participant G35 as 🪶 Gemini 3.5 Flash-Lite<br/>(vertexAI.model('gemini-3.5-flash-lite'))
-    participant FinOps as 💰 logJob & calculateCost<br/>(functions/ai_flows/cost.js)
-
-    Caller->>GWR: Invoke with preferredModel = 'gemini-4-argon'<br/>generateConfig: { prompt, config: { temperature: 0.2, responseMimeType: 'application/json' } }
-    GWR->>GWR: Build modelsToTry = ['gemini-4-argon', 'gemini-3.5-flash-lite']
-
-    loop Attempt 1..3 on Primary Model ('gemini-4-argon')
-        GWR->>GWR: Check modelName.startsWith('gemini-4')<br/>🧹 Destructure & strip temperature, topP, top_p, topK, top_k!
-        GWR->>G4: ai.generate({ ...effectiveGenerateConfig, model: vertexAI.model('gemini-4-argon') })
-        alt 200 OK (Normal Path)
-            G4-->>GWR: Returns structured response + usage
-            GWR-->>Caller: Returns { response, modelUsed: 'gemini-4-argon' }
-        else Retryable Error (429 / 503 / ECONNRESET / RESOURCE_EXHAUSTED)
-            G4-->>GWR: Throws transient error
-            GWR->>GWR: Sleep min(800 * 2^(attempt-1) + rand(400), 4000) ms
-        end
-    end
-
-    opt Only if Primary Model Exhausted All 3 Attempts
-        GWR->>G35: Failover to vertexAI.model('gemini-3.5-flash-lite')<br/>(Retains standard temperature/topP config)
-        G35-->>GWR: Returns structured response + usage
-        GWR-->>Caller: Returns { response, modelUsed: 'gemini-3.5-flash-lite' }
-    end
-
-    Caller->>FinOps: calculateCost(response.usage, modelUsed) & logJob()
-    FinOps->>FinOps: Bill exact rate of actual modelUsed:<br/>• gemini-4-argon ($2.00 In / $10.00 Out)<br/>• gemini-3.8-flash ($0.75 In / $3.75 Out)<br/>• gemini-3.5-flash-lite ($0.30 In / $2.50 Out)
-```
+![Genkit generateWithResilience: Gemini 4 Sanitization & Self-Healing Failover](./images/blog03_diagram2_genkit_resilience_sequence.png)
 
 ### Production Code Listing 1: `generateWithResilience` in [`functions/ai_flows/analysisFlows.js`](../../functions/ai_flows/analysisFlows.js)
 
@@ -263,24 +197,7 @@ Hardcoding system prompts inside backend code prevents lecturers from adapting A
 
 We solved this in [`PromptForm.jsx`](../../web-app/src/components/prompt/PromptForm.jsx) and `promptRegistry.js` with a **Three-Tier Prompt Governance Architecture** and an in-place **Gemini 4 Prompt Optimizer**:
 
-```mermaid
-flowchart LR
-    subgraph Authoring ["1. Teacher Prompt Studio (PromptForm.jsx)"]
-        DRAFT["Teacher writes rough notes:\n'Check if student ran docker compose up\nand verified port 8080 in terminal'"]
-        CHIPS["Interactive Placeholder Chips\n• Validates required {{tags}}\n• Schema Inspector Snippet Copy"]
-        PICK["Selects Optimizer Model:\n🧠 Gemini 4 Argon (gemini-4-argon)\n✨ Gemini 3.8 Flash\n⚡ Gemini 3.5 Flash-Lite"]
-        META["Meta-Prompt Optimizer\n• Locks {{variable}} template tags\n• Injects anti-hallucination & JSON schema rules\n• One-click Undo buffer"]
-        DRAFT & CHIPS & PICK --> META
-    end
-
-    subgraph Resolution ["2. Three-Tier Runtime Resolution Hierarchy"]
-        T1["Tier 1: Class Custom Override\nclasses/{classId}.{modality}Prompt"]
-        T2["Tier 2: Central Firestore Library\n/prompts/{promptId} (Private / Shared / Public)"]
-        T3["Tier 3: Zero-Latency Code Fallback\nDEFAULT_PROMPTS in promptRegistry.js"]
-        META -->|"Save & Assign to Class"| T1
-        T1 -.->|"If unset"| T2 -.->|"If deleted"| T3
-    end
-```
+![3-Tier Prompt Governance & Gemini 4 Meta-Prompt Optimizer (✨ Optimize)](./images/blog03_diagram3_prompt_governance_optimizer.png)
 
 ### Production Code Listing 3: Optimizer Model Picker & Required Placeholder Validation in [`web-app/src/components/prompt/PromptForm.jsx`](../../web-app/src/components/prompt/PromptForm.jsx)
 

@@ -30,32 +30,7 @@ In [`TeacherSubtitleControlModal.jsx`](../../web-app/src/components/subtitles/Te
 
 ### Diagram 1: Dual-Engine Live Subtitle Architecture (Cloud Gemini 4/3.8/3.5 vs. $0.00 Edge Gemma 4 E2B)
 
-```mermaid
-flowchart TD
-    MIC["🎙️ Teacher Podium Microphone\n16kHz Web Audio API Stream"] --> STT["Hybrid On-Device STT Layer\n• Web Speech API (Desktop/iOS Low-Latency Interim & Final)\n• LiteRT Whisper Worker (litertWhisper.worker.js · whisper-tiny)\n• Firebase AI Logic Audio Fallback"]
-
-    STT --> FILTER["🛡️ Whisper Noise & Hallucination Guard\nisWhisperNoiseArtifact() + 2000ms Dedup Window"]
-    FILTER --> MODE{"Selected Translation Engine\n(TeacherSubtitleControlModal.jsx)"}
-
-    subgraph ServerEngine ["Mode 1: 🟣 Server Model (Recommended · Cross-Platform)"]
-        CF_SUB["Cloud Function: translateTeacherSpeech\n(functions/ai_flows/subtitleFlows.js)\nSelectable: Gemini 3.5 Flash-Lite / 3.8 Flash / 4 Argon"]
-        RES_SUB["generateWithResilience({ thinkingBudget: 0 })\n• Injects Subject Domain Glossary (8 Disciplines)\n• Injects Rolling History (Last 4 Utterances)\n• Enforces Strict Zod Record Schema per Language Code"]
-        CF_SUB --> RES_SUB
-    end
-
-    subgraph ClientEngine ["Mode 2: ⚪ Client Model ($0.00 Cloud Cost · Desktop WebGPU/WASM)"]
-        G4_W["On-Device LiteRT-LM Worker\n(litertGemma.worker.js · gemma-4-E2B-it-web.litertlm)\n• Explicit Desktop Download Guard (~1.9 GB)\n• Cached in CacheStorage (webai-litert-gemma-v1)"]
-        FALLBACK["Automatic Zero-Drop Fallback:\nIf Gemma 4 is unloaded/downloading, on Mobile/iOS,\nor misses a target language -> routes to translateTeacherSpeech"]
-        G4_W -.-> FALLBACK
-    end
-
-    MODE -- "engineMode === 'server'" --> CF_SUB
-    MODE -- "engineMode === 'client'" --> G4_W
-    FALLBACK --> CF_SUB
-
-    RES_SUB & G4_W --> SEQ["Monotonic Sequence Guard (seq >= latestPublishedSeq)\nclasses/{classId}/liveSubtitles/current"]
-    SEQ --> OVERLAY["🧑‍🎓 Student YouTube-Style CC Overlay\n(LiveSubtitleOverlay.jsx)\nOriginal Speech Pill + High-Contrast Yellow (#ffe600) Translation"]
-```
+![Dual-Engine Live Subtitle Architecture: Cloud Gemini 4/3.8/3.5 vs. Edge Gemma 4 E2B](./images/blog05_diagram1_dual_engine_live_subtitles.png)
 
 ---
 
@@ -221,31 +196,7 @@ A single university deployment spans multiple faculties—from **Computer Scienc
 
 When an instructor switches the **Subject Domain** or edits custom prompt instructions inside [`TeacherSubtitleControlModal.jsx`](../../web-app/src/components/subtitles/TeacherSubtitleControlModal.jsx) (or [`ClassManagement.jsx`](../../web-app/src/components/ClassManagement.jsx)), the update propagates to all active inference workers and student screens via Firestore `onSnapshot` with **0ms audio interruption**:
 
-```mermaid
-sequenceDiagram
-    autonumber
-    actor Teacher as 👨‍🏫 Lecturer
-    participant Modal as TeacherSubtitleControlModal.jsx
-    participant FS_Class as 🗄️ Firestore (/classes/{classId})
-    participant Hook as useTeacherLiveSubtitles.js
-    participant AI as 🤖 Gemini 4 / 3.8 / 3.5 or Gemma 4 E2B
-    participant FS_Sub as 📡 liveSubtitles/current
-    participant Student as 🧑‍🎓 Student LiveSubtitleOverlay.jsx
-
-    Teacher->>Modal: Selects Subject Domain & Custom Subtitle Prompt<br/>Clicks "Apply Custom Instructions"
-    Modal->>FS_Class: updateDoc({ subjectDomain, subtitlePrompt })
-    FS_Class-->>Hook: Real-time onSnapshot updates active prompt & glossary context (0ms mic restart!)
-
-    loop Every Spoken Utterance (~3–5 Seconds)
-        Teacher->>Hook: Speaks mixed Cantonese/English sentence
-        Hook->>Hook: Assign monotonic seq = ++seqCounterRef.current
-        Hook->>AI: Send { text, sourceLang, targetLangs, courseContext, historyText, model }
-        Note over AI: Preserves technical tokens (useState, Docker, EBITDA, Dosage)<br/>Translates simultaneously into en, zh-Hant, zh-Hans, ja, ko...
-        AI-->>Hook: Returns structured JSON { translations: { en: "...", "zh-Hant": "...", ja: "..." } }
-        Hook->>FS_Sub: Verify seq >= latestPublishedSeqRef.current -> setDoc(liveSubtitles/current)
-        FS_Sub-->>Student: Renders student's chosen target language in YouTube Yellow (#ffe600)
-    end
-```
+![Discipline Glossary Injection & Zero-Restart Dynamic Prompt Propagation](./images/blog05_diagram2_glossary_propagation_sequence.png)
 
 ---
 
@@ -255,32 +206,7 @@ Building a demo speech-to-text app takes an afternoon; making it survive 3-hour 
 
 ### Diagram 3: Out-of-Tab Microphone Silence Watchdog & Mobile iOS Jetsam OOM Guard
 
-```mermaid
-stateDiagram-v2
-    [*] --> EngineCheck: Teacher Enables Live Subtitles
-
-    state "Mobile / Desktop Memory Guard" as EngineCheck {
-        [*] --> CheckDevice
-        CheckDevice --> ForceServerFallback: Mobile / iOS Detected (isMobileOrIosBrowser)\nOR Gemma 4 Not Yet Loaded in CacheStorage
-        CheckDevice --> LocalGemma4Active: Desktop WebGPU/WASM + Gemma 4 Explicitly Loaded
-    }
-
-    EngineCheck --> AudioWatchdog: Microphone Stream Active
-
-    state "Out-of-Tab Hardware Microphone Watchdog" as AudioWatchdog {
-        [*] --> StreamingHealthy: Normal RMS Audio Energy > 0.015
-        StreamingHealthy --> MutedWarning: primaryAudioTrack.muted / enabled == false for >= 10s
-        StreamingHealthy --> DeadAirWarning: Zero voice activity for >= 45s
-        StreamingHealthy --> ParallelSTT: Voice Active (VAD + Web Speech API)
-
-        ParallelSTT --> DedupAndFilter: Filter Whisper [BLANK_AUDIO] / ♪ hallucinations\n+ 2000ms Duplicate Utterance Guard
-        DedupAndFilter --> StreamingHealthy: Publish monotonic seq to Firestore
-
-        MutedWarning --> FireOSAlert: Trigger Warning Banner + Native OS Notification\non top of Fullscreen PowerPoint / VS Code
-        DeadAirWarning --> FireOSAlert
-        FireOSAlert --> StreamingHealthy: Teacher unmutes / replaces mic battery
-    end
-```
+![Out-of-Tab Microphone Watchdog & Mobile iOS Jetsam OOM Guard](./images/blog05_diagram3_mic_watchdog_ios_guard.png)
 
 ### Edge Case 1: The Mobile iOS WebKit 1.9 GB `Jetsam OOM` Crash Guard
 iOS and iPadOS browsers enforce a strict per-tab WebContent memory ceiling (~1.4 GB–2.0 GB). If an instructor opens the Teacher Dashboard on an iPad Pro and the browser attempts to auto-download and instantiate the ~1.9 GB `gemma-4-E2B-it-web.litertlm` model in WASM/WebGPU memory, iOS WebKit immediately kills and reloads the page (`Jetsam OOM`).

@@ -27,37 +27,7 @@ Running a 478-point 3D facial landmark detector, an iris-depth estimator, a Chir
 
 In [`useFaceMonitor.js`](../../web-app/src/hooks/useFaceMonitor.js), [`litertWhisper.worker.js`](../../web-app/src/workers/litertWhisper.worker.js), [`litertGemma.worker.js`](../../web-app/src/workers/litertGemma.worker.js), and [`useClientLiteRTGemma.js`](../../web-app/src/hooks/useClientLiteRTGemma.js), we isolate speech and LLM reasoning inside dedicated Web Workers while synchronizing vision landmark detection to the browser's hardware video decoder via `requestVideoFrameCallback()`:
 
-```mermaid
-flowchart LR
-    subgraph MainThread ["Main Browser Thread (60 FPS React 19 UI)"]
-        VID["<video> Webcam Stream\nrequestVideoFrameCallback()"]
-        FL["MediaPipe FaceLandmarker (WebGL/GPU)\n• 478-Point 3D Mesh + Iris Rings (468..477)\n• Yaw / Pitch / EAR / MAR / Iris Depth (cm)\n• 3.0s Debounce + 600ms Blink Grace Gate"]
-        MIC["Web Audio API 16kHz\nRMS Energy Silence Gate"]
-        HUD["StudentView.jsx HUD\n• 1-Click Neutral Pose Calibration\n• 🧠 Edge AI Status Pill"]
-        VID --> FL --> HUD
-    end
-
-    subgraph SpeechWorker ["Dedicated Whisper Worker (litertWhisper.worker.js)"]
-        FFT_MEL["Chirp-Z Real FFT\n16kHz PCM -> [1, 80, 3000] Log-Mel\n+ Dynamic Peak Auto-Gain"]
-        W_LITERT["@litertjs/core Whisper-Tiny\nWebGPU / WASM Accelerator\nCantonese + Mandarin + English"]
-        FFT_MEL --> W_LITERT
-    end
-
-    subgraph GemmaWorker ["Dedicated Gemma 4 E2B Worker (litertGemma.worker.js)"]
-        G4_LM["🧠 @litert-lm/core WebGPU Engine\ngemma-4-E2B-it-web.litertlm (~1.91GB)\n• Exam Speech Intent Proctor\n• $0.00 Live Subtitle Translator"]
-    end
-
-    subgraph CloudFallback ["Tier-4 Cloud Fallback (When Needed)"]
-        CF_FACE["analyzeFaceFallbackFlow\n(gemini-3.5-flash-lite / gemini-4-argon)"]
-        CF_AUD["analyzeAudioFlow\n(gemini-3.5-transcribe-preview + Gemini)"]
-    end
-
-    MIC -->|"Non-Silent Float32 PCM\n(>80% Silence Dropped)"| FFT_MEL
-    W_LITERT -->|"Recognized Transcript\n+ Dialect Classification"| G4_LM
-    G4_LM -->|"Structured JSON:\n{ isViolation, category, severity, confidence }"| HUD
-    FL -.->|"Only if WebGL/GPU Unavailable"| CF_FACE
-    W_LITERT -.->|"While Gemma 4 Loading or on iOS/Mobile"| CF_AUD
-```
+![Zero-Copy Off-Main-Thread Browser Edge AI Pipeline](./images/blog02_diagram1_edge_worker_pipeline.png)
 
 ---
 
@@ -73,25 +43,7 @@ $$D_{\text{cm}} = \text{clamp}\left(\text{round}\left(\frac{1.17 \times (0.85 \t
 
 3. **3-Second Debounce Gate with 600ms Blink/Jitter Grace Window & Lifecycle Incident Tracking**: An anomaly (`looking_away`, `no_face`, `multiple_faces`, `eyes_closed`, `talking`) must persist continuously for `debounceSeconds` (default **3.0 seconds**) before opening a single active incident document in Firestore (`irregularities/{id}`), and automatically updates `endedAt` and `durationSeconds` when the student returns to normal posture!
 
-```mermaid
-stateDiagram-v2
-    [*] --> CalibratedNormal: Student clicks '🎯 Set Center Pose'\nZeros baselineOffsetRef { yaw, pitch }
-
-    state "🟢 Normal Attentive State" as CalibratedNormal
-    state "🟡 Transient Deviation (< 3.0s)" as TransientWarning
-    state "⏱️ 600ms Blink / Jitter Grace Window" as GraceWindow
-    state "🔴 Active Irregularity Incident (>= 3.0s)" as ConfirmedViolation
-
-    CalibratedNormal --> TransientWarning: |Yaw - Yaw0| >= yawThresh (22°)\nOR Pitch < -20° / Pitch > 26°\nOR Iris Gaze Ratio < 0.22 / > 0.78\nOR EAR < 0.18 / MAR > 0.58\nOR Distance < 20cm / > 140cm\nOR faces.length != 1
-
-    TransientWarning --> GraceWindow: Posture normalizes briefly
-    GraceWindow --> TransientWarning: Anomaly resumes within 600ms
-    GraceWindow --> CalibratedNormal: Normal posture sustained > 600ms\n(Zero alert, zero Firestore writes!)
-
-    TransientWarning --> ConfirmedViolation: Continuous deviation >= 3.0s\nstartIncident() captures dual Screen+Webcam JPEGs\n& creates 1 active doc in /irregularities
-
-    ConfirmedViolation --> CalibratedNormal: Student returns gaze > 600ms\nresolveIncident() updates status='resolved'\n& records exact durationSeconds (4s cooldown)
-```
+![3-Second Biometric Debounce & 600ms Blink Grace State Machine](./images/blog02_diagram2_biometric_debounce_state.png)
 
 ### Production Code Listing 1: 3D Iris Depth, Eye-Gaze Ratio & Anti-Jitter Debounce in [`web-app/src/hooks/useFaceMonitor.js`](../../web-app/src/hooks/useFaceMonitor.js)
 
@@ -283,39 +235,7 @@ Deploying a 1.91 GB WebGPU LLM (`gemma-4-E2B-it-web.litertlm`) across university
 2. **Non-Blocking Cloud-to-Edge Hot-Swap**: If the exam begins while Gemma 4 E2B is still at `55%` download, the student enters the classroom immediately. Any speech detected during the download window is transparently routed to our Cloud Genkit flow (`analyzeAudioFlow` using `gemini-3.5-transcribe-preview` + `gemini-3.5-flash-lite`), and **automatically hot-swaps to 100% local Gemma 4 E2B inference the millisecond the Web Worker emits `INIT_COMPLETE` (`ready: true`)**!
 3. **iOS / iPadOS WebKit Jetsam OOM Guard & Storage Quota Pre-Flight**: Allocating a 1.91 GB ArrayBuffer or WebGPU buffer on an iPhone or iPad (which masquerades as `MacIntel` with `maxTouchPoints > 1` on iPadOS) triggers Apple's kernel Jetsam killer, crashing the browser tab. Similarly, laptops with `< 2.5 GB` free disk space throw `QuotaExceededError` mid-download. Our `isMobileOrIosBrowser()`, `deviceMemory < 4`, and `precheckGemmaViability()` guards fail fast in `< 5ms` and route mobile/low-RAM devices cleanly to Cloud Fallback.
 
-```mermaid
-sequenceDiagram
-    autonumber
-    actor Student as 🧑‍🎓 Student on Lab PC / Laptop
-    participant Wizard as ExamReadinessWizard.jsx
-    participant Hook as useClientLiteRTGemma.js
-    participant Cache as 💾 CacheStorage<br/>(webai-litert-gemma-v1)
-    participant W_Wh as 🎙️ litertWhisper.worker.js
-    participant W_G4 as 🧠 litertGemma.worker.js<br/>(Gemma 4 E2B WebGPU)
-    participant Cloud as ☁️ Cloud Fallback<br/>(analyzeAudioFlow)
-    participant Teacher as 👨‍🏫 Teacher Tile Badge
-
-    Student->>Wizard: Enters Step 1 (Microphone Check)
-    Wizard->>Hook: preloadGemmaModel()
-    Hook->>Hook: Check isMobileOrIosBrowser(), deviceMemory >= 4GB & WebGPU Adapter
-    Hook->>Cache: navigator.storage.persist() + caches.open('webai-litert-gemma-v1')
-    Hook->>W_G4: Stream gemma-4-E2B-it-web.litertlm via ReadableStream
-    W_G4-->>Teacher: Live telemetry pill: "⏳ AI 45%"
-
-    Note over Student,Cloud: Student enters classroom while Gemma 4 E2B is still streaming...
-    Student->>W_Wh: Speaks aloud during exam ("What did you get for question 3?")
-    W_Wh->>W_Wh: Chirp-Z Log-Mel -> Whisper-Tiny local transcription
-    alt Gemma 4 E2B Still Loading (or iOS / <4GB RAM Device)
-        W_Wh->>Cloud: Route transcript to analyzeAudioFlow (gemini-3.5-flash-lite)
-        Cloud-->>Teacher: Flag COLLUSION_EXAM ("☁️ Cloud Fallback")
-    else Gemma 4 E2B Ready in WebGPU (engine === 'litert_lm_gemma_e2b')
-        W_G4-->>Teacher: Live telemetry pill hot-swaps to: "🧠 Edge AI"
-        Hook->>W_G4: postMessage({ type: 'EVALUATE_TRANSCRIPT', transcript, systemPrompt })
-        W_G4->>W_G4: gemmaEngine.createConversation() -> sendMessage(prompt) -> conversation.delete()
-        W_G4-->>Hook: Returns { isViolation: true, category: 'COLLUSION_EXAM', severity: 'high', confidence: 0.94 }
-        Hook->>Teacher: Writes /irregularities & status/{studentUid}.gemmaAlert at $0.00 API cost!
-    end
-```
+![Step-1 Readiness Pre-Warming & Cloud-to-Edge Live Hot-Swap](./images/blog02_diagram3_gemma4_hotswap_sequence.png)
 
 ### Production Code Listing 4: Conversation Lifecycle Hygiene & Dual Firestore Alerting in [`web-app/src/hooks/useClientLiteRTGemma.js`](../../web-app/src/hooks/useClientLiteRTGemma.js)
 

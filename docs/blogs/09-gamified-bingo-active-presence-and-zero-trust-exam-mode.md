@@ -26,27 +26,7 @@ In **Part 9** of our Google Developer Expert series, we detail how we engineered
 
 When a lecturer triggers a Classroom Bingo round (either manually with one click, via a **Staggered Jitter Queue** that challenges random subsets of students every few minutes so neighbours cannot shout out "Option B!", or via **Auto-Bingo** during live screen broadcasts), `resolveBingoQuestion` in [`functions/ai_flows/bingoFlows.js`](../../functions/ai_flows/bingoFlows.js) supports three FinOps-optimized question generation modes—plus hardware WebAuthn passkey QR modes (`mobile_passkey` and `lecture_passkey_qr`):
 
-```mermaid
-flowchart TD
-    subgraph QuestionStudio ["1. Bingo Question Bank Studio (BingoQuestionBankModal.jsx)"]
-        TOPIC["Teacher enters topic (e.g. 'Kubernetes Pod Networking')\n+ Selects Bingo AI Model:\n🧠 Gemini 4 Argon | ⚡ Gemini 3.8 Flash | 🪶 Gemini 3.5 Flash-Lite"]
-        GEN["generateQuestionBankAi (bingoFlows.js)\nGenerates structured 4-option MCQs via Genkit Zod Schema\n+ Fisher-Yates Option Shuffling (Or bulk-imports Aiken format)"]
-        TOPIC --> GEN
-    end
-
-    subgraph ThreeModes ["2. Three FinOps Verification Modes (resolveBingoQuestion)"]
-        M1["Mode 1: 📚 Predefined Question Bank ($0.00 Live AI Cost)\nSamples random MCQ from classes/{id}/classProperties/config"]
-        M2["Mode 2: 🖥️ Teacher Broadcast Screen + Live Subtitles (~$0.00015 / Cohort!)\n1 Gemini multimodal call on screenBroadcast/liveFrame + liveSubtitles/current\nTests if all 50 students are following the teacher's live demo & verbal explanation"]
-        M3["Mode 3: 🔍 Individual Student Screen (+ Anti-Decoy Bank Fallback)\nInspects each student's latestScreenPath via Gemini\nFalls back to Question Bank if student stopped screen sharing!"]
-        GEN --> M1
-    end
-
-    subgraph SecuritySplit ["3. Zero-Leak Payload Sanitization & Fisher-Yates Shuffle"]
-        SECRET["Server-Only Record (contains correctIndex):\nclasses/{classId}/bingoRecords/{bingoId}"]
-        PUBLIC["Sanitized Student Payload (correctIndex stripped!):\nclasses/{classId}/studentProperties/{uid}.activeBingo\nMounted via React createPortal at z-index: 2147483647"]
-        M1 & M2 & M3 --> SECRET & PUBLIC
-    end
-```
+![Three FinOps Bingo Verification Modes & Gemini 4 Question Bank Studio](./images/blog09_diagram1_bingo_3modes_question_studio.png)
 
 ### Engineering Highlights of the Bingo Question Engine
 1. **Universal Model Agency in the Question Bank Studio (`BingoQuestionBankModal.jsx`)**: Before class, teachers can open [`BingoQuestionBankModal.jsx`](../../web-app/src/components/BingoQuestionBankModal.jsx), type a lesson topic (or customize the system prompt), and select **🧠 Gemini 4 Argon (`gemini-4-argon`)**, **⚡ Gemini 3.8 Flash (`gemini-3.8-flash`)**, or **🪶 Gemini 3.5 Flash-Lite (`gemini-3.5-flash-lite`)** to generate 1 to 15 multiple-choice questions at once—or bulk-import existing quizzes in standard **Moodle Aiken text format**.
@@ -125,30 +105,7 @@ Our **Two-Strike State Machine** (`submitBingoResponse`, `enqueueBingoRetryTask`
 - **Case 3 — Strike 1 Timeout (`missed_timeout` on `strikeNumber === 1`)**: What if the student stepped away to the washroom for 2 minutes? Instead of docking attendance on a single missed check, `submitBingoResponse` sets `pendingRetryBingo: true` and enqueues a delayed task in **Google Cloud Tasks** (`locations/asia-east2/functions/dispatchBingoRetryTask`) scheduled for `retryDelayMinutes` later (configurable 1–15 minutes, default 3 minutes, **$0.00 idle polling cost**).
 - **Case 4 — Strike 2 Consecutive Timeout (`missed_timeout` on `strikeNumber >= 2`)**: When the Cloud Task wakes up after 3 minutes, it performs pre-flight idempotency checks (verifying the class is still active and the teacher hasn't cancelled the session) and dispatches a personal **Strike 2 Follow-Up Challenge**. If the student responds to Strike 2 (even with a wrong answer!), presence is recovered. Only if the student **misses both Strike 1 and Strike 2 consecutively** does the backend calculate the elapsed unverified minutes ($\Delta t = t_{\text{Strike 2}} - t_{\text{Strike 1}}$) and write an `attendanceAdjustments` deduction record!
 
-```mermaid
-stateDiagram-v2
-    [*] --> Strike1Dispatched: triggerBingoCheck (Manual / Staggered Jitter / Auto-Bingo)
-
-    state "Strike 1 Active on Student Screen (45s Timer)" as Strike1Dispatched
-    state "🟢 Passed (Full Attendance + Speed/Rank Podium Bonus)" as Passed
-    state "🟡 Wrong Answer — Presence Confirmed (0 Attendance Penalty!)" as WrongButPresent
-    state "⏳ Cloud Tasks Delayed Retry Queue (1–15 Min Grace · $0 Idle Cost)" as CloudTasksWait
-    state "⚠️ Strike 2 Active Follow-Up Challenge" as Strike2Dispatched
-    state "🔴 Confirmed AFK / Absence Deduction (Bitmask Code 2)" as ConfirmedAFK
-    state "⏹️ Teacher Cancelled / Excused (0 Penalty)" as Cancelled
-
-    Strike1Dispatched --> Passed: selectedIndex === correctIndex
-    Strike1Dispatched --> WrongButPresent: selectedIndex !== correctIndex (Human interaction verified!)
-    Strike1Dispatched --> Cancelled: Teacher clicks '⏹️ Cancel' or 'Stop Capture' (cancelActiveBingo)
-
-    Strike1Dispatched --> CloudTasksWait: Timer expires (selectedIndex === null)\nEnqueues dispatchBingoRetryTask (Task ID deduplicated)
-    CloudTasksWait --> Cancelled: Teacher stops session or clears student (Pre-flight idempotency check)
-    CloudTasksWait --> Strike2Dispatched: scheduleDelaySeconds elapses -> Worker dispatches Strike 2
-
-    Strike2Dispatched --> Passed: Student responds correctly to Strike 2 (Recovers presence!)
-    Strike2Dispatched --> WrongButPresent: Student clicks wrong option on Strike 2 (Recovers presence!)
-    Strike2Dispatched --> ConfirmedAFK: Strike 2 also times out!\nCalculates elapsed minutes (t_Strike2 - t_Strike1)\nWrites attendanceAdjustments (Bitmask Code 2 = Red Heatmap)
-```
+![Non-Punitive Two-Strike Attendance State Machine with Google Cloud Tasks](./images/blog09_diagram2_two_strike_bingo_state_machine.png)
 
 ### Production Code 2: Event-Driven Two-Strike Cloud Tasks Scheduling & Elapsed AFK Deduction (`bingoFlows.js`)
 
@@ -228,32 +185,7 @@ In [`AttendanceView.jsx`](../../web-app/src/components/AttendanceView.jsx), ever
 
 While Classroom Bingo keeps daily lectures and labs lively and non-punitive, formal practical examinations require **Zero-Trust Assessment Security**. When a class enters a scheduled `examPeriods` window (or `lessonType === 'exam'`), four defense-in-depth layers activate automatically across the client browser, Cloud Run FFmpeg, Cloud Storage Security Rules, and our Signed URL Broker:
 
-```mermaid
-sequenceDiagram
-    autonumber
-    participant Browser as 🖥️ Student Browser<br/>(ExamReadinessWizard.jsx)
-    participant FFmpeg as 🎬 Cloud Run FFmpeg<br/>(processVideoJob.js)
-    participant GCS as 🔒 Cloud Storage Rules<br/>(storage.rules)
-    participant Broker as 🛡️ Signed URL Broker<br/>(getStudentVideoPlaybackUrl)
-    participant Dossier as 📄 Forensic Dossier Worker<br/>(processReportJob.js)
-
-    Browser->>Browser: Enforce displaySurface === 'monitor'\n(Rejects single-window or browser-tab sharing!)
-    Browser->>GCS: Upload periodic screen/webcam captures + audio chunks
-    Note over GCS: storage.rules blocks student DELETE on all evidence paths\n& blocks student READ if resource.metadata.isExam == 'true'
-
-    FFmpeg->>GCS: Compiles 1-FPS H.264 MP4 & stamps customMetadata: { isExam: 'true' }
-
-    opt Student Attempts to View Exam Recording in StudentRecordsView.jsx
-        Browser->>Broker: getStudentVideoPlaybackUrl(jobId)
-        Broker->>Broker: evaluateStudentRecordingsAccess() checks isExam || isTimestampInExamPeriods()
-        Broker-->>Browser: 🚫 PERMISSION_DENIED ("Confidential to protect assessment questions")
-    end
-
-    opt Instructor Exports Disciplinary Evidence
-        Dossier->>GCS: Aggregates flagged screenshots, 3D gaze angles, Whisper/Gemini transcripts
-        Dossier-->>Dossier: Compiles tamper-evident Microsoft Word (.docx) + RFC 4180 CSV Dossier!
-    end
-```
+![Zero-Trust Exam Mode Lockdown & Court-Ready .docx Forensic Dossiers](./images/blog09_diagram3_zero_trust_exam_lockdown.png)
 
 ---
 

@@ -28,42 +28,7 @@ When we set out to replace legacy proctoring and manual lab grading with an open
 
 Instead of streaming 50 concurrent 1080p WebRTC video feeds to cloud GPU clusters, we decoupled high-frequency sensory perception (**Tier 1 Browser Edge**) from low-latency signaling (**Tier 2 Firestore & Cloud Storage**), domain-isolated serverless compute (**Tier 3 Cloud Functions Gen 2 / Cloud Run**), and multimodal reasoning (**Tier 4 Vertex AI / Google Genkit**).
 
-```mermaid
-flowchart TB
-    subgraph Tier1 ["Tier 1: Student Browser Edge AI (95% Compute · $0.00 Cloud Cost)"]
-        MP["MediaPipe Tasks-Vision Worker\n478-pt 3D Face Mesh, Iris Depth & Object Detector"]
-        WH["LiteRT Whisper-Tiny Worker\n16kHz Local Bilingual Speech-to-Text"]
-        G4["🧠 LiteRT-LM Gemma 4 E2B Worker\ngemma-4-E2B-it-web.litertlm (~1.9GB WebGPU)\nOn-Device Voice Intent Proctor & Client Live Subtitles"]
-        WH --> G4
-    end
-
-    subgraph Tier2 ["Tier 2: Real-Time Signaling & Storage Backbone (Firebase asia-east2)"]
-        FS_SINGLE["Firestore Single-Stream Channel\nclasses/{classId}/status/{studentUid}\n& studentProperties/{uid}"]
-        FS_SUB["Firestore Live Subtitles & Broadcast\nclasses/{classId}/liveSubtitles/current"]
-        GCS["Cloud Storage (GCS)\nPeriodic JPEG Captures, 1-Min Lecture Chunks,\n720p Mobile Project Demos & 1-FPS Timelapse MP4s"]
-    end
-
-    subgraph Tier3 ["Tier 3: 7 Isolated Cloud Functions Gen 2 Codebases (Cloud Run)"]
-        CF_AI["1. ai-flows (Node 22 · Genkit)\nResilient Multimodal Orchestrator"]
-        CF_MED["2. media-processing (2 vCPU · 8GiB RAM)\nFFmpeg Timelapse & Lecture Merger"]
-        CF_OTH["3. auth-triggers / 4. attendance /\n5. storage-triggers / 6. scheduled-tasks /\n7. property-processing"]
-        CT["Google Cloud Tasks Queues\nThrottled Fan-Out (2–10 dispatches/sec)"]
-    end
-
-    subgraph Tier4 ["Tier 4: Gemini Enterprise Agent Platform (Gemini 4 & 3 Constellation)"]
-        M_ARGON["🧠 Gemini 4 Argon (gemini-4-argon)\n1M Shared Context · Deep Rubric & Code Reasoning\n$2.00 In / $10.00 Out per 1M Tokens"]
-        M_FLASH["⚡ Gemini 3.8 Flash (gemini-3.8-flash)\nBalanced Multimodal Video & Whole-Lecture Audio\n$0.75 In / $3.75 Out per 1M Tokens"]
-        M_LITE["🪶 Gemini 3.5 Flash-Lite (gemini-3.5-flash-lite)\nSub-Second 7-Language Subtitles & Bingo Checks\n$0.30 In / $2.50 Out per 1M Tokens"]
-        M_TRANS["🎙️ Gemini 3.5 Transcribe (gemini-3.5-transcribe-preview)\nMulti-Speaker Capstone Diarization\n$0.50 In / $2.50 Out per 1M Tokens"]
-    end
-
-    MP & G4 -->|"Lightweight JSON Heartbeats\n& Debounced Irregularity Flags"| FS_SINGLE
-    Tier1 -->|"Adaptive Scaled JPEGs\n& Opus Audio Chunks"| GCS
-    FS_SINGLE & GCS --> Tier3
-    CF_AI <--> CT
-    CF_AI --> M_ARGON & M_FLASH & M_LITE & M_TRANS
-    M_ARGON & M_FLASH & M_LITE --> FS_SUB
-```
+![4-Tier Hybrid Edge-to-Cloud Serverless Classroom Architecture](./images/blog01_diagram1_4tier_architecture.png)
 
 ### How the 4 Tiers Work Together in a Live Lab
 1. **Tier 1 (Student Browser Edge)**: Every frame from the student's webcam is analyzed in a dedicated Web Worker via MediaPipe's 478-point 3D Face Landmarker (including iris rings `468..477`), while ambient microphone audio is gated by an RMS energy detector, transcribed locally by **LiteRT Whisper-Tiny**, and evaluated for exam collusion by **LiteRT-LM Gemma 4 E2B** (`gemma-4-E2B-it-web.litertlm`). Raw video and audio frames are immediately garbage-collected in browser RAM unless a sustained (>3.0s) violation occurs.
@@ -83,16 +48,7 @@ A classic architectural mistake in serverless Firebase applications is dumping e
 
 In [`firebase.json`](../../firebase.json), we partitioned our backend into **7 isolated Cloud Functions Gen 2 micro-codebases** running on Node.js 22, each with its own independent `package.json`, dependency tree, memory profile, and CI/CD deployment guard:
 
-```mermaid
-graph LR
-    FB["firebase.json\nMulti-Codebase Router"] --> C1["1. ai-flows (functions/ai_flows)\n• Genkit + Gemini 4 Argon / 3.8 / 3.5\n• WebAuthn Passkeys & Project Meetings\n• 512MiB–1GiB RAM | 60s–300s Timeout"]
-    FB --> C2["2. media-processing (functions/media_processing)\n• FFmpeg + Sharp SVG Telemetry Overlay\n• Student MP4 Compilation & Lecture Merge\n• 2 vCPU | 2GiB–8GiB RAM | 540s Timeout"]
-    FB --> C3["3. auth-triggers (functions/auth_triggers)\n• GCIP beforeUserCreated & checkipaddress\n• 4-Tier Role Resolution & Roster Sync\n• 256MiB RAM | Sub-200ms Cold Start"]
-    FB --> C4["4. attendance (functions/attendance)\n• Minute-by-Minute Bitmask Heatmap\n• 2-Strike Bingo Absence Deduction Math"]
-    FB --> C5["5. storage-triggers (functions/storage_triggers)\n• 9-Category Real-Time Storage Quota\n• 4-Stage Cascading Class Purge (cleanupTriggers)"]
-    FB --> C6["6. scheduled-tasks (functions/scheduled_tasks)\n• Timetable Auto-Capture Start/Stop\n• Daily Cloud Billing SKU Sync (syncGeminiPricing)"]
-    FB --> C7["7. property-processing (functions/property_processing)\n• Bulk CSV Student Property Ingestion\n• Protected Internal Key Guard"]
-```
+![Domain-Driven Isolation: 7 Cloud Functions Gen 2 Codebases](./images/blog01_diagram2_7codebases.png)
 
 ### Production Code Listing 1: Multi-Codebase & Hosting Build Guard in [`firebase.json`](../../firebase.json)
 
@@ -174,25 +130,7 @@ In a naive real-time classroom application, if 50 students write their telemetry
 
 We solved this with a dual-path telemetry design connecting [`useFaceMonitor.js`](../../web-app/src/hooks/useFaceMonitor.js), [`useClientLiteRTGemma.js`](../../web-app/src/hooks/useClientLiteRTGemma.js), and [`functions/property_processing/index.mjs`](../../functions/property_processing/index.mjs):
 
-```mermaid
-sequenceDiagram
-    autonumber
-    participant S1 as 🧑‍🎓 Student 1 Browser<br/>(Gemma 4 + MediaPipe)
-    participant S50 as 🧑‍🎓 Student 50 Browser<br/>(Gemma 4 + MediaPipe)
-    participant FS_STAT as 📄 classes/{classId}/status/{uid}<br/>(Debounced Edge AI Telemetry)
-    participant FS_PROP as 🗄️ studentProperties/{uid}<br/>(Roster, Seat, Bingo & Passkey State)
-    participant CSV as ⚙️ processPropertyUpload<br/>(property_processing/index.mjs)
-    participant T_UI as 👨‍🏫 Teacher Command Center<br/>(MonitorView.jsx)
-
-    par Edge AI State Transitions Only (Debounced >= 3.0s)
-        S1->>FS_STAT: merge: { gemmaAlert, gemmaSeverity, gemmaConfidence, lastGemmaTimestamp }
-        S50->>FS_STAT: merge: { faceStatus, metricDistance, yawAngle }
-    end
-
-    CSV->>FS_PROP: Batch upsert custom CSV columns (Seat, Group, GithubId)<br/>🛡️ isInternalPropertyKey() protects passkey/bingo/attention keys!
-    FS_STAT-->>T_UI: Filtered real-time snapshot updates active tile badges
-    FS_PROP-->>T_UI: Hydrates seat map, group filters & Passkey badges
-```
+![Dual-Path Edge Telemetry & Protected CSV Sync Sequence](./images/blog01_diagram3_single_stream_telemetry.png)
 
 ### Edge Case 1: Preventing Teacher CSV Uploads from Wiping Live Exam State
 
