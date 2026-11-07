@@ -219,7 +219,7 @@ async function main() {
       'teacher',
       t.displayName || t.email.split('@')[0],
       t.password || defaultPasswordEnv,
-      Boolean(process.env.DEMO_PASSWORD)
+      true
     );
     teacherMap[tUser.uid] = t.email;
   }
@@ -229,7 +229,7 @@ async function main() {
   const studentUsers = [];
   for (const s of demoStudents) {
     const displayName = s.studentName || s.nickname || s.email.split('@')[0];
-    const sUser = await getOrCreateUser(s.email, 'student', displayName);
+    const sUser = await getOrCreateUser(s.email, 'student', displayName, defaultPasswordEnv, true);
     studentMap[sUser.uid] = s.email;
     studentProfilesMap[s.email.toLowerCase()] = {
       studentName: s.studentName,
@@ -315,13 +315,15 @@ async function main() {
   }
   console.log(`✅ Demo class '${classId}' configured with co-teaching (teacher1 & teacher2) and 5 students (student1..5 with nicknames & profiles).`);
 
-  // Global Login Policy (Strict Mode by Default - Empty Whitelist)
+  // Global Login Policy (Whitelist demo students in dev/test so desktop password login works without mobile gate)
+  const isDevOrTest = projectId.includes('dev') || projectId.includes('test');
+  const whitelist = isDevOrTest ? demoStudentEmails : [];
   await db.collection('system_config').doc('loginPolicy').set({
-    passwordWhitelist: [],
+    passwordWhitelist: whitelist,
     updatedAt: FieldValue.serverTimestamp(),
     description: 'Allows listed emails to log in directly with password on desktop without mandatory mobile passkey gate'
   }, { merge: true });
-  console.log(`✅ Global Login Policy initialized in strict mode (passwordWhitelist: []).`);
+  console.log(`✅ Global Login Policy initialized (passwordWhitelist: ${JSON.stringify(whitelist)}).`);
 
   console.log(`==========================================================`);
   console.log(`🎉 Demo Data Seeding Complete!`);
