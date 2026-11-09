@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { db } from '../firebase-config';
 import { doc, setDoc } from 'firebase/firestore';
-import { acquireInputDeviceStream } from '../utils/mediaDeviceCapture';
+import { acquireInputDeviceStream, isVideoStreamDarkOrDead } from '../utils/mediaDeviceCapture';
 
 /**
  * 3-Step Guided Pre-Exam Readiness Wizard (Self-Calibration)
@@ -23,8 +23,10 @@ export default function ExamReadinessWizard({
   captureMode = 'dual',
   enableAudioCapture = false,
   audioCaptureMode = 'optional',
+  initialStep = 1,
 }) {
-  const [step, setStep] = useState(1);
+  const [step, setStep] = useState(initialStep || 1);
+  const wasOpenRef = useRef(false);
 
   // --- Step 1: Mic & Audio ---
   const [audioDevices, setAudioDevices] = useState([]);
@@ -55,11 +57,16 @@ export default function ExamReadinessWizard({
   const [videoDevices, setVideoDevices] = useState([]);
   const [selectedCamera, setSelectedCamera] = useState(currentCameraDeviceId || '');
   const [hasCameraHardware, setHasCameraHardware] = useState(true);
+  const [cameraError, setCameraError] = useState('');
+  const [cameraNotice, setCameraNotice] = useState('');
+  const [cameraRetryTick, setCameraRetryTick] = useState(0);
   const [isFaceAligned, setIsFaceAligned] = useState(false);
   const [calibrationData, setCalibrationData] = useState(null);
   const cameraVideoRef = useRef(null);
   const cameraStreamRef = useRef(null);
   const acquiredCamIdRef = useRef('');
+  const cameraRetryTickRef = useRef(0);
+  const darkTriedCamIdsRef = useRef(new Set());
 
   // --- Step 3: Screen Share Check ---
   const [isScreenVerified, setIsScreenVerified] = useState(false);
@@ -87,12 +94,21 @@ export default function ExamReadinessWizard({
 
   useEffect(() => {
     if (isOpen) {
+      if (!wasOpenRef.current) {
+        wasOpenRef.current = true;
+        setStep(initialStep || 1);
+        darkTriedCamIdsRef.current.clear();
+        setCameraError('');
+        setCameraNotice('');
+      }
       if (currentScreenStream && applyScreenVerification(currentScreenStream)) {
         ownsScreenStreamRef.current = false;
       }
       return;
     }
 
+    wasOpenRef.current = false;
+    darkTriedCamIdsRef.current.clear();
     if (ownsScreenStreamRef.current && screenStreamRef.current) {
       screenStreamRef.current.getTracks().forEach((track) => track.stop());
     }
@@ -101,7 +117,7 @@ export default function ExamReadinessWizard({
     screenShareRequestRef.current = false;
     setIsScreenVerified(false);
     setScreenDetails(null);
-  }, [isOpen, currentScreenStream, applyScreenVerification]);
+  }, [isOpen, initialStep, currentScreenStream, applyScreenVerification]);
 
   // 1. Enumerate Audio & Video Devices with friendly labels & permission refresh
   const loadDevices = useCallback(async () => {
@@ -126,16 +142,23 @@ export default function ExamReadinessWizard({
       setHasMicHardware(audios.length > 0);
       setHasCameraHardware(videos.length > 0);
 
-      if (audios.length > 0 && !selectedMic) {
-        setSelectedMic(audios[0].deviceId);
+      if (audios.length > 0) {
+        setSelectedMic((prev) => {
+          if (prev && audios.some((a) => a.deviceId === prev)) return prev;
+          return prev || audios[0].deviceId;
+        });
       }
-      if (videos.length > 0 && !selectedCamera) {
-        setSelectedCamera(videos[0].deviceId);
+      if (videos.length > 0) {
+        setSelectedCamera((prev) => {
+          if (prev && videos.some((v) => v.deviceId === prev)) return prev;
+          const preferredPhysical = videos.find((v) => v.label && !/obs|virtual/i.test(v.label));
+          return prev || (preferredPhysical || videos[0]).deviceId;
+        });
       }
     } catch (err) {
       console.error('Error loading devices in wizard:', err);
     }
-  }, [selectedMic, selectedCamera]);
+  }, []);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -483,6 +506,23 @@ export default function ExamReadinessWizard({
   }, [stopPlayback, stopSpeechTest]);
 
   // --- Step 2: Camera Preview ---
+  const handleSwitchToNextCamera = useCallback(() => {
+    if (videoDevices.length <= 1) {
+      acquiredCamIdRef.current = '';
+      setCameraRetryTick((t) => t + 1);
+      return;
+    }
+    const currentIndex = videoDevices.findIndex((d) => d.deviceId === selectedCamera);
+    const nextIndex = (currentIndex + 1) % videoDevices.length;
+    const nextCamId = videoDevices[nextIndex]?.deviceId;
+    if (nextCamId) {
+      acquiredCamIdRef.current = '';
+      setCameraError('');
+      setCameraNotice('');
+      setSelectedCamera(nextCamId);
+    }
+  }, [videoDevices, selectedCamera]);
+
   useEffect(() => {
     if (!isOpen || step < 2) {
       acquiredCamIdRef.current = '';
@@ -498,13 +538,58 @@ export default function ExamReadinessWizard({
       return;
     }
 
-    if (acquiredCamIdRef.current && selectedCamera === acquiredCamIdRef.current && cameraStreamRef.current) {
+    const isManualRetry = cameraRetryTickRef.current !== cameraRetryTick;
+    cameraRetryTickRef.current = cameraRetryTick;
+
+    if (
+      !isManualRetry &&
+      acquiredCamIdRef.current &&
+      selectedCamera === acquiredCamIdRef.current &&
+      cameraStreamRef.current
+    ) {
       return;
     }
 
     let isMounted = true;
+    let watchdogTimer = null;
+
+    const tryFallbackToNextCamera = async (failedCamId, reasonLabel) => {
+      if (!isMounted) return;
+      if (failedCamId) {
+        darkTriedCamIdsRef.current.add(failedCamId);
+      }
+      try {
+        if (!navigator.mediaDevices?.enumerateDevices) return;
+        const allDevs = await navigator.mediaDevices.enumerateDevices();
+        const videos = allDevs.filter((d) => d.kind === 'videoinput' && d.deviceId && d.deviceId !== 'default');
+        const nextCandidate =
+          videos.find(
+            (d) => !darkTriedCamIdsRef.current.has(d.deviceId) && !/obs|virtual/i.test(d.label || '')
+          ) || videos.find((d) => !darkTriedCamIdsRef.current.has(d.deviceId));
+        if (nextCandidate && isMounted) {
+          if (cameraStreamRef.current) {
+            cameraStreamRef.current.getTracks().forEach((t) => t.stop());
+            cameraStreamRef.current = null;
+          }
+          acquiredCamIdRef.current = '';
+          setCameraError('');
+          setCameraNotice(
+            `Camera feed was ${reasonLabel} (e.g. in use by OBS). Automatically switched to "${nextCandidate.label || 'next camera'}".`
+          );
+          setSelectedCamera(nextCandidate.deviceId);
+          return;
+        }
+      } catch {}
+      if (isMounted) {
+        setCameraError(
+          `Selected camera appears ${reasonLabel} (e.g. locked by OBS). Select another camera above or close OBS.`
+        );
+      }
+    };
+
     const startCamera = async () => {
       try {
+        setCameraError('');
         if (cameraStreamRef.current) {
           cameraStreamRef.current.getTracks().forEach((t) => t.stop());
           cameraStreamRef.current = null;
@@ -524,13 +609,26 @@ export default function ExamReadinessWizard({
         cameraStreamRef.current = stream;
         const activeCamTrack = stream?.getVideoTracks?.()[0];
         const actualCamId = activeCamTrack?.getSettings?.().deviceId;
-        acquiredCamIdRef.current = actualCamId || selectedCamera;
-        if (actualCamId && actualCamId !== 'default' && !selectedCamera) {
+        const effectiveCamId = (actualCamId && actualCamId !== 'default') ? actualCamId : selectedCamera;
+        acquiredCamIdRef.current = effectiveCamId || 'default';
+
+        if (actualCamId && actualCamId !== 'default' && actualCamId !== selectedCamera) {
+          if (selectedCamera) {
+            setCameraNotice('Previous camera was busy (e.g. in use by OBS); automatically switched to an available camera.');
+          }
           setSelectedCamera(actualCamId);
         }
-        if (actualCamId || selectedCamera) {
-          onSelectCameraDevice?.(actualCamId || selectedCamera);
+        if (effectiveCamId) {
+          onSelectCameraDevice?.(effectiveCamId);
         }
+
+        if (activeCamTrack) {
+          activeCamTrack.onended = () => {
+            if (!isMounted || cameraStreamRef.current !== stream) return;
+            tryFallbackToNextCamera(effectiveCamId, 'disconnected or locked by another app');
+          };
+        }
+
         if (cameraVideoRef.current) {
           cameraVideoRef.current.srcObject = stream;
           cameraVideoRef.current.onloadedmetadata = () => {
@@ -544,11 +642,42 @@ export default function ExamReadinessWizard({
         }
 
         setHasCameraHardware(true);
-        loadDevices();
+        await loadDevices();
+
+        const isTestEnv = typeof process !== 'undefined' && process.env?.NODE_ENV === 'test';
+        if (!isTestEnv) {
+          watchdogTimer = setTimeout(() => {
+            if (!isMounted || cameraStreamRef.current !== stream) return;
+            const health = isVideoStreamDarkOrDead(cameraVideoRef.current, stream);
+            if (health.isDeadOrDark) {
+              tryFallbackToNextCamera(
+                effectiveCamId,
+                health.reason === 'all_black_frames' ? 'dark/black' : 'unresponsive'
+              );
+            }
+          }, 1200);
+        }
       } catch (err) {
         console.warn('Wizard camera init failed or unavailable:', err);
-        if (!selectedCamera) {
-          setHasCameraHardware(false);
+        await loadDevices();
+        const isPermErr = err?.name === 'NotAllowedError' || err?.name === 'PermissionDeniedError';
+        setCameraError(
+          isPermErr
+            ? 'Camera permission is blocked. Allow camera access in your browser site settings.'
+            : 'Selected camera is in use by another app (e.g. OBS) or unavailable. Choose another camera from the dropdown.'
+        );
+        if (!navigator.mediaDevices?.enumerateDevices) {
+          if (!selectedCamera) setHasCameraHardware(false);
+        } else {
+          try {
+            const devs = await navigator.mediaDevices.enumerateDevices();
+            const hasAnyVideo = devs.some((d) => d.kind === 'videoinput');
+            if (!hasAnyVideo && !selectedCamera) {
+              setHasCameraHardware(false);
+            }
+          } catch {
+            if (!selectedCamera) setHasCameraHardware(false);
+          }
         }
       }
     };
@@ -557,9 +686,10 @@ export default function ExamReadinessWizard({
 
     return () => {
       isMounted = false;
+      if (watchdogTimer) clearTimeout(watchdogTimer);
       // Note: do not stop camera stream here if advancing to step 3 so it can be handed off
     };
-  }, [isOpen, step, selectedCamera, loadDevices]);
+  }, [isOpen, step, selectedCamera, cameraRetryTick, loadDevices]);
 
   // Calibrate neutral gaze & face position
   const handleCalibrateFace = () => {
@@ -753,6 +883,15 @@ export default function ExamReadinessWizard({
           ].map((s) => (
             <div
               key={s.num}
+              role="button"
+              tabIndex={0}
+              onClick={() => setStep(s.num)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  setStep(s.num);
+                }
+              }}
               style={{
                 padding: '0.5rem',
                 borderRadius: '8px',
@@ -761,6 +900,7 @@ export default function ExamReadinessWizard({
                 fontWeight: '600',
                 backgroundColor: step === s.num ? '#2563eb' : step > s.num ? '#059669' : '#334155',
                 color: '#ffffff',
+                cursor: 'pointer',
                 transition: 'all 0.2s',
               }}
             >
@@ -966,12 +1106,37 @@ export default function ExamReadinessWizard({
           <div>
             {videoDevices.length > 0 ? (
               <>
-                <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '500', marginBottom: '0.5rem' }}>
-                  Select Camera
-                </label>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                  <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '500' }}>
+                    Select Camera
+                  </label>
+                  {videoDevices.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={handleSwitchToNextCamera}
+                      style={{
+                        padding: '0.28rem 0.65rem',
+                        borderRadius: '6px',
+                        backgroundColor: '#334155',
+                        color: '#e2e8f0',
+                        border: '1px solid #475569',
+                        fontSize: '0.75rem',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      🔄 Switch Camera
+                    </button>
+                  )}
+                </div>
                 <select
                   value={selectedCamera}
-                  onChange={(e) => setSelectedCamera(e.target.value)}
+                  onChange={(e) => {
+                    acquiredCamIdRef.current = '';
+                    setCameraError('');
+                    setCameraNotice('');
+                    setSelectedCamera(e.target.value);
+                  }}
                   style={{
                     width: '100%',
                     padding: '0.6rem',
@@ -979,7 +1144,7 @@ export default function ExamReadinessWizard({
                     backgroundColor: '#0f172a',
                     color: '#fff',
                     border: '1px solid #334155',
-                    marginBottom: '1rem',
+                    marginBottom: '0.75rem',
                   }}
                 >
                   {videoDevices.map((d) => (
@@ -988,6 +1153,60 @@ export default function ExamReadinessWizard({
                     </option>
                   ))}
                 </select>
+
+                {cameraNotice && !cameraError && (
+                  <div
+                    style={{
+                      backgroundColor: 'rgba(59, 130, 246, 0.15)',
+                      border: '1px solid rgba(59, 130, 246, 0.4)',
+                      color: '#93c5fd',
+                      padding: '0.5rem 0.75rem',
+                      borderRadius: '8px',
+                      fontSize: '0.78rem',
+                      marginBottom: '0.75rem',
+                    }}
+                  >
+                    ℹ️ {cameraNotice}
+                  </div>
+                )}
+
+                {cameraError && (
+                  <div
+                    role="alert"
+                    style={{
+                      backgroundColor: 'rgba(239, 68, 68, 0.15)',
+                      border: '1px solid rgba(248, 113, 113, 0.45)',
+                      color: '#fca5a5',
+                      padding: '0.6rem 0.75rem',
+                      borderRadius: '8px',
+                      fontSize: '0.78rem',
+                      marginBottom: '0.75rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: '0.5rem',
+                      flexWrap: 'wrap',
+                    }}
+                  >
+                    <span>⚠️ {cameraError}</span>
+                    <button
+                      type="button"
+                      onClick={handleSwitchToNextCamera}
+                      style={{
+                        padding: '0.3rem 0.65rem',
+                        borderRadius: '6px',
+                        backgroundColor: '#dc2626',
+                        color: '#fff',
+                        border: 'none',
+                        fontSize: '0.75rem',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {videoDevices.length > 1 ? '🔄 Switch to Next Camera' : '🔄 Retry Camera'}
+                    </button>
+                  </div>
+                )}
 
                 <div
                   style={{

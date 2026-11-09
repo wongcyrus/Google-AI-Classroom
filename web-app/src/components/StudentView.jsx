@@ -32,7 +32,7 @@ import UnenrolledStudentView from './UnenrolledStudentView';
 import { saveToOfflineQueue, flushOfflineQueue, getOfflineQueueCount } from '../utils/offlineBufferManager';
 import { decodeAudioBlobToPcm } from '../utils/audioDecoder';
 import { isGoogleChrome, isMobileDevice, isHandheldPhone } from '../utils/browserDetection';
-import { acquireInputDeviceStream } from '../utils/mediaDeviceCapture';
+import { acquireInputDeviceStream, isVideoStreamDarkOrDead } from '../utils/mediaDeviceCapture';
 import {
   allowsLocalVoiceAi,
   normalizeVoiceAiMode,
@@ -203,6 +203,7 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
   const [directMessages, setDirectMessages] = useState([]);
   const [classMessages, setClassMessages] = useState([]);
   const [isReadinessWizardOpen, setIsReadinessWizardOpen] = useState(false);
+  const [wizardInitialStep, setWizardInitialStep] = useState(1);
   const [isExamReadyLocal, setIsExamReadyLocal] = useState(false);
   const [isViewingTeacherScreen, setIsViewingTeacherScreen] = useState(false);
 
@@ -210,6 +211,8 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
   const [availableWebcams, setAvailableWebcams] = useState([]);
   const [selectedWebcamId, setSelectedWebcamId] = useState('');
   const [primaryStream, setPrimaryStream] = useState('screen'); // 'screen' | 'webcam'
+  const darkTriedWebcamsRef = useRef(new Set());
+  const webcamWatchdogTimerRef = useRef(null);
 
   const handleSwapFeeds = useCallback(() => {
     setPrimaryStream(prev => (prev === 'screen' ? 'webcam' : 'screen'));
@@ -1338,7 +1341,8 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
       if (videoDevices.length > 0) {
         setSelectedWebcamId(prev => {
           if (prev && videoDevices.some(d => d.deviceId === prev)) return prev;
-          return videoDevices[0].deviceId;
+          const preferredPhysical = videoDevices.find(d => d.label && !/obs|virtual/i.test(d.label));
+          return (preferredPhysical || videoDevices[0]).deviceId;
         });
       }
     } catch (err) {
@@ -1356,6 +1360,8 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
     }
   }, [refreshWebcams]);
 
+  const startWebcamRef = useRef(null);
+
   /**
    * Initializes and starts the webcam video stream.
    * Requests generic camera access first so Chrome can show its permission prompt,
@@ -1365,6 +1371,11 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       console.warn("Webcam is not supported by your browser.");
       return;
+    }
+
+    if (webcamWatchdogTimerRef.current) {
+      clearTimeout(webcamWatchdogTimerRef.current);
+      webcamWatchdogTimerRef.current = null;
     }
 
     // Stop existing webcam track if any and different from existingStream
@@ -1406,18 +1417,62 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
       setIsWebcamSharing(true);
 
       const activeTrack = stream.getVideoTracks()[0];
-      if (activeTrack) {
-        activeTrack.onended = () => {
-          stopWebcamRef.current?.();
-        };
-      }
-
       const trackDeviceId = activeTrack?.getSettings?.().deviceId;
       const actualDeviceId = (trackDeviceId && trackDeviceId !== 'default') ? trackDeviceId : deviceIdToUse;
       if (actualDeviceId) setSelectedWebcamId(actualDeviceId);
 
+      const startedAtMs = Date.now();
+      const attemptAutoRecoveryFromObs = async (failedId, reasonText) => {
+        if (failedId) {
+          darkTriedWebcamsRef.current.add(failedId);
+        }
+        try {
+          if (navigator.mediaDevices?.enumerateDevices) {
+            const devs = await navigator.mediaDevices.enumerateDevices();
+            const videos = devs.filter(d => d.kind === 'videoinput' && d.deviceId && d.deviceId !== 'default');
+            const nextCam =
+              videos.find(d => !darkTriedWebcamsRef.current.has(d.deviceId) && !/obs|virtual/i.test(d.label || '')) ||
+              videos.find(d => !darkTriedWebcamsRef.current.has(d.deviceId));
+            if (nextCam) {
+              console.warn(`[StudentView] Camera "${failedId}" ${reasonText}; auto-switching to "${nextCam.label || nextCam.deviceId}"`);
+              setSelectedWebcamId(nextCam.deviceId);
+              startWebcamRef.current?.(nextCam.deviceId);
+              return true;
+            }
+          }
+        } catch {}
+        setWebcamError(
+          `Selected camera feed is ${reasonText} (e.g. in use by OBS). Switch camera using the dropdown or click Retry Camera.`
+        );
+        return false;
+      };
+
+      if (activeTrack) {
+        activeTrack.onended = async () => {
+          if (Date.now() - startedAtMs < 2500) {
+            const switched = await attemptAutoRecoveryFromObs(actualDeviceId, 'disconnected or locked');
+            if (switched) return;
+          }
+          stopWebcamRef.current?.();
+        };
+      }
+
       // Re-enumerate to get human-readable labels now that camera permission is granted
       refreshWebcams();
+
+      const isTestEnv = typeof process !== 'undefined' && process.env?.NODE_ENV === 'test';
+      if (!isTestEnv) {
+        webcamWatchdogTimerRef.current = setTimeout(() => {
+          if (webcamStreamRef.current !== stream) return;
+          const health = isVideoStreamDarkOrDead(webcamVideoRef.current, stream);
+          if (health.isDeadOrDark) {
+            attemptAutoRecoveryFromObs(
+              actualDeviceId,
+              health.reason === 'all_black_frames' ? 'dark/black' : 'unresponsive'
+            );
+          }
+        }, 1200);
+      }
 
       const activeStreams = [
         'webcam',
@@ -1429,6 +1484,7 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
       await updateCaptureStatus(activeStreams);
     } catch (err) {
       console.warn("Webcam unavailable or permission not granted:", err);
+      refreshWebcams();
       const permissionDenied = err?.name === 'NotAllowedError' || err?.name === 'PermissionDeniedError';
       setWebcamError(permissionDenied
         ? 'Camera access is blocked. Allow Camera from Chrome site settings, then try again.'
@@ -1438,8 +1494,27 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
     }
   }, [selectedWebcamId, availableWebcams, isScreenSharing, enableAudioCapture, isAudioUserEnabled, hasMicPermission, audioError, updateCaptureStatus, stopWebcam, refreshWebcams]);
 
+  useEffect(() => {
+    startWebcamRef.current = startWebcam;
+  }, [startWebcam]);
+
+  const openReadinessWizard = useCallback((stepToOpen = 1) => {
+    if (webcamWatchdogTimerRef.current) {
+      clearTimeout(webcamWatchdogTimerRef.current);
+      webcamWatchdogTimerRef.current = null;
+    }
+    if (webcamStreamRef.current) {
+      webcamStreamRef.current.getTracks().forEach(track => track.stop());
+      webcamStreamRef.current = null;
+      setIsWebcamSharing(false);
+    }
+    setWizardInitialStep(stepToOpen);
+    setIsReadinessWizardOpen(true);
+  }, []);
+
   const handleWebcamChange = (e) => {
     const newDeviceId = e.target.value;
+    darkTriedWebcamsRef.current.clear();
     setSelectedWebcamId(newDeviceId);
     if (isWebcamSharing || isSharing) {
       startWebcam(newDeviceId);
@@ -2815,7 +2890,7 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
                 <div className="setup-hero-actions">
                   <button
                     type="button"
-                    onClick={() => setIsReadinessWizardOpen(true)}
+                    onClick={() => openReadinessWizard(1)}
                     className="btn-start-setup-wizard"
                   >
                     🚀 Start Setup & Readiness Test
@@ -2848,7 +2923,7 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
 
                   <div
                     className="summary-item summary-item-clickable"
-                    onClick={() => setIsReadinessWizardOpen(true)}
+                    onClick={() => openReadinessWizard(2)}
                     title="Click to check camera and calibrate gaze in Setup Wizard"
                     style={{ cursor: 'pointer' }}
                   >
@@ -3059,10 +3134,21 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
                     </select>
                   )}
 
+                  {!isWebcamSharing && availableWebcams.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => startWebcam(selectedWebcamId)}
+                      className="active-tool-button"
+                      title="Start or retry webcam stream"
+                    >
+                      📷 Start Camera
+                    </button>
+                  )}
+
                   {/* Re-Open Setup / Calibration Wizard */}
                   <button
                     type="button"
-                    onClick={() => setIsReadinessWizardOpen(true)}
+                    onClick={() => openReadinessWizard(1)}
                     className="active-tool-button btn-retest"
                     title="Open Setup & Device Calibration"
                   >
@@ -3875,12 +3961,18 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
       <ExamReadinessWizard
         isOpen={isReadinessWizardOpen}
         onClose={() => setIsReadinessWizardOpen(false)}
+        initialStep={wizardInitialStep}
         user={user}
         classId={activeClass}
         currentMicDeviceId={selectedMicDeviceId}
-        onSelectMicDevice={(id) => setSelectedMicDeviceId(id)}
+        onSelectMicDevice={(id) => {
+          setSelectedMicDeviceId(id);
+          setIsAudioUserEnabled(true);
+        }}
         currentCameraDeviceId={selectedWebcamId}
-        onSelectCameraDevice={(id) => setSelectedWebcamId(id)}
+        onSelectCameraDevice={(id) => {
+          setSelectedWebcamId(id);
+        }}
         currentScreenStream={screenStreamRef.current}
         captureMode={captureMode}
         enableAudioCapture={enableAudioCapture}
@@ -3912,18 +4004,6 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
           } catch (screenErr) {
             console.warn('[StudentView] Screen share start error:', screenErr);
           }
-        }}
-        user={user}
-        classId={activeClass}
-        currentMicDeviceId={selectedMicDeviceId}
-        onSelectMicDevice={(id) => {
-          setSelectedMicDeviceId(id);
-          setIsAudioUserEnabled(true);
-        }}
-        currentCameraDeviceId={selectedWebcamId}
-        currentScreenStream={screenStreamRef.current}
-        onSelectCameraDevice={(id) => {
-          setSelectedWebcamId(id);
         }}
       />
 

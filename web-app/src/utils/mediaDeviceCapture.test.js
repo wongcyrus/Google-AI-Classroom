@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { acquireInputDeviceStream, resetWarnedMissingDevices } from './mediaDeviceCapture';
+import {
+  acquireInputDeviceStream,
+  isVideoStreamDarkOrDead,
+  resetWarnedMissingDevices,
+} from './mediaDeviceCapture';
 
 function createStream(kind, deviceId) {
   const track = {
@@ -210,5 +214,77 @@ describe('acquireInputDeviceStream', () => {
       deviceId: 'new-usb-id',
       groupId: 'jabra-group',
     });
+  });
+
+  it('automatically falls back to second camera when default camera is locked by OBS (NotReadableError)', async () => {
+    const busyErr = new Error('Could not start video source');
+    busyErr.name = 'NotReadableError';
+    const secondCam = createStream('video', 'cam-2');
+
+    const getUserMedia = vi.fn().mockImplementation(async (constraints) => {
+      const exactId = constraints?.video?.deviceId?.exact;
+      if (exactId === 'cam-2') {
+        return secondCam.stream;
+      }
+      throw busyErr;
+    });
+
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: {
+        getUserMedia,
+        enumerateDevices: vi.fn().mockResolvedValue([
+          { kind: 'videoinput', deviceId: 'cam-1', label: 'Integrated Camera (In use by OBS)' },
+          { kind: 'videoinput', deviceId: 'cam-2', label: 'Logitech USB Webcam' },
+        ]),
+      },
+    });
+
+    const result = await acquireInputDeviceStream('video', 'cam-1');
+    expect(result).toBe(secondCam.stream);
+    expect(secondCam.track.stop).not.toHaveBeenCalled();
+  });
+
+  it('binds a labeled secondary camera directly without probing the OBS-locked default camera first', async () => {
+    const secondCam = createStream('video', 'cam-2');
+    const getUserMedia = vi.fn().mockResolvedValueOnce(secondCam.stream);
+
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: {
+        getUserMedia,
+        enumerateDevices: vi.fn().mockResolvedValue([
+          { kind: 'videoinput', deviceId: 'cam-1', label: 'Default Camera (OBS)' },
+          { kind: 'videoinput', deviceId: 'cam-2', label: 'External USB Camera' },
+        ]),
+      },
+    });
+
+    const result = await acquireInputDeviceStream('video', 'cam-2');
+
+    expect(getUserMedia).toHaveBeenCalledTimes(1);
+    expect(getUserMedia).toHaveBeenCalledWith({
+      audio: false,
+      video: { deviceId: { exact: 'cam-2' } },
+    });
+    expect(result).toBe(secondCam.stream);
+  });
+
+  it('detects ended or pitch-black OBS video streams in isVideoStreamDarkOrDead', () => {
+    const endedTrack = { readyState: 'ended', enabled: true };
+    expect(
+      isVideoStreamDarkOrDead(null, { getVideoTracks: () => [endedTrack] })
+    ).toEqual({ isDeadOrDark: true, reason: 'track_ended' });
+
+    const liveTrack = { readyState: 'live', enabled: true };
+    const zeroDimVideo = {
+      dataset: { forceFrameCheck: 'true' },
+      readyState: 0,
+      videoWidth: 0,
+      videoHeight: 0,
+    };
+    expect(
+      isVideoStreamDarkOrDead(zeroDimVideo, { getVideoTracks: () => [liveTrack] })
+    ).toEqual({ isDeadOrDark: true, reason: 'no_video_frames' });
   });
 });

@@ -129,7 +129,9 @@ async function acquireSpecificDeviceStream(kind, targetDeviceId, trackConstraint
             : false,
         });
       } catch (retryExactErr) {
-        if (isPermissionDeniedError(retryExactErr)) throw retryExactErr;
+        if (isPermissionDeniedError(retryExactErr) || isDeviceBusyError(retryExactErr)) {
+          throw retryExactErr;
+        }
       }
     }
 
@@ -144,7 +146,7 @@ async function acquireSpecificDeviceStream(kind, targetDeviceId, trackConstraint
           : false,
       });
     } catch (directErr) {
-      if (isPermissionDeniedError(directErr)) {
+      if (isPermissionDeniedError(directErr) || isDeviceBusyError(directErr)) {
         throw directErr;
       }
       console.warn(`[mediaDeviceCapture] Direct ${kind} constraint failed; retrying with ideal constraint:`, directErr);
@@ -161,7 +163,13 @@ async function acquireSpecificDeviceStream(kind, targetDeviceId, trackConstraint
 }
 
 async function acquireFirstAvailableFallbackDevice(kind, devices, excludedIds, trackConstraints = {}) {
-  for (const candidate of devices) {
+  const sortedCandidates = [...devices].sort((a, b) => {
+    const aIsVirtual = /obs|virtual/i.test(a?.label || '') ? 1 : 0;
+    const bIsVirtual = /obs|virtual/i.test(b?.label || '') ? 1 : 0;
+    return aIsVirtual - bIsVirtual;
+  });
+
+  for (const candidate of sortedCandidates) {
     const candidateId = candidate?.deviceId;
     if (!candidateId || candidateId === 'default' || candidateId === '(default)' || excludedIds.has(candidateId)) {
       continue;
@@ -185,13 +193,71 @@ async function acquireFirstAvailableFallbackDevice(kind, devices, excludedIds, t
 }
 
 /**
+ * Checks whether an active video stream or <video> element is dead (ended track, 0x0 frames)
+ * or outputting 100% digital-zero black frames (common when a webcam is locked by OBS on Windows).
+ */
+export function isVideoStreamDarkOrDead(videoEl, stream) {
+  const activeStream = stream || videoEl?.srcObject;
+  const track = activeStream?.getVideoTracks?.()[0];
+  if (!track || track.readyState === 'ended' || track.enabled === false) {
+    return { isDeadOrDark: true, reason: 'track_ended' };
+  }
+
+  const isTestEnv = typeof process !== 'undefined' && process.env?.NODE_ENV === 'test';
+  if (isTestEnv && !videoEl?.dataset?.forceFrameCheck) {
+    return { isDeadOrDark: false, reason: 'test_env' };
+  }
+
+  if (!videoEl) {
+    return { isDeadOrDark: false, reason: 'no_video_element' };
+  }
+
+  if (videoEl.readyState < 2 || !videoEl.videoWidth || !videoEl.videoHeight) {
+    return { isDeadOrDark: true, reason: 'no_video_frames' };
+  }
+
+  try {
+    if (typeof document === 'undefined') {
+      return { isDeadOrDark: false, reason: 'no_dom' };
+    }
+    const canvas = document.createElement('canvas');
+    canvas.width = 16;
+    canvas.height = 16;
+    const ctx = canvas.getContext?.('2d');
+    if (!ctx || typeof ctx.drawImage !== 'function' || typeof ctx.getImageData !== 'function') {
+      return { isDeadOrDark: false, reason: 'canvas_unavailable' };
+    }
+    ctx.drawImage(videoEl, 0, 0, 16, 16);
+    const data = ctx.getImageData(0, 0, 16, 16)?.data;
+    if (!data || data.length === 0) {
+      return { isDeadOrDark: false, reason: 'no_image_data' };
+    }
+    let maxChannel = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      const r = data[i];
+      const g = data[i + 1];
+      const b = data[i + 2];
+      if (r > maxChannel) maxChannel = r;
+      if (g > maxChannel) maxChannel = g;
+      if (b > maxChannel) maxChannel = b;
+      if (maxChannel > 3) {
+        return { isDeadOrDark: false, reason: 'frames_ok' };
+      }
+    }
+    return { isDeadOrDark: true, reason: 'all_black_frames' };
+  } catch {
+    return { isDeadOrDark: false, reason: 'canvas_error' };
+  }
+}
+
+/**
  * Requests permission without a device constraint, then binds the selected input exactly.
  * This prevents an exact constraint from blocking Chrome's initial permission prompt while
  * ensuring an ideal constraint cannot silently substitute the default device.
  * If the default device is locked/in-use by another application (e.g. OBS), gracefully
  * bypasses the locked default device and binds the requested or next available device.
  */
-export async function acquireInputDeviceStream(kind, deviceId = '', trackConstraints = {}) {
+export async function acquireInputDeviceStream(kind, deviceId = '', trackConstraints = {}, options = {}) {
   if (kind !== 'audio' && kind !== 'video') {
     throw new TypeError(`Unsupported media input kind: ${kind}`);
   }
@@ -206,8 +272,50 @@ export async function acquireInputDeviceStream(kind, deviceId = '', trackConstra
   };
   const devicesBeforePermission = deviceId ? await listInputDevices(kind) : [];
 
+  // When switching or opening a specific known video camera (where permission is already granted
+  // and labels are visible, or caller requested direct binding), bind the target camera directly
+  // without probing the system default camera first (which may be locked by OBS).
+  const canBindVideoDirectly =
+    kind === 'video' &&
+    hasExplicitDeviceId &&
+    (Boolean(options?.preferDirectDevice) ||
+      devicesBeforePermission.some(d => d.deviceId === deviceId && Boolean(d.label)));
+
+  let directBindError = null;
+  if (canBindVideoDirectly) {
+    try {
+      const directStream = await acquireSpecificDeviceStream(kind, deviceId, trackConstraints);
+      storeDeviceIdentity(
+        kind,
+        devicesBeforePermission.find(device => device.deviceId === deviceId) || { deviceId }
+      );
+      return directStream;
+    } catch (directErr) {
+      if (isPermissionDeniedError(directErr)) {
+        throw directErr;
+      }
+      directBindError = directErr;
+      console.warn(
+        `[mediaDeviceCapture] Direct ${kind} binding for "${deviceId}" failed (${directErr?.name || 'Error'}: ${directErr?.message || 'device busy'}); trying fallback devices...`
+      );
+      // If we already have labeled devices (permission granted), try remaining available cameras directly
+      // without probing generic { video: {} } if the requested camera was busy!
+      if (devicesBeforePermission.some(d => Boolean(d.label))) {
+        const fallbackFromKnown = await acquireFirstAvailableFallbackDevice(
+          kind,
+          devicesBeforePermission,
+          new Set([deviceId]),
+          trackConstraints
+        );
+        if (fallbackFromKnown) {
+          return fallbackFromKnown;
+        }
+      }
+    }
+  }
+
   let permissionStream = null;
-  let permissionError = null;
+  let permissionError = directBindError;
 
   try {
     permissionStream = await navigator.mediaDevices.getUserMedia(permissionConstraints);
