@@ -1,6 +1,6 @@
 # Part 5: Real-Time Multilingual Live Subtitles & Hong Kong Code-Switching with Gemini 4 / 3.8 & On-Device Gemma 4 E2B
 
-**Author:** **Cyrus Wong (黃俊彥)** — *Google Developer Expert (GCP & AI/ML), Senior Lecturer at HKIIT / VTC Hong Kong*  
+**Author:** [**Cyrus Wong (黃俊彥)**](https://www.linkedin.com/in/cyruswong/) — *Google Developer Expert - Cloud (AI), Senior Lecturer at HKIIT*  
 [⏮️ Previous: Part 4 — WebAuthn Passkeys & Rotating HMAC QRs](./04-webauthn-passkeys-rotating-hmac-qr-auth.md) | [📚 Series Index](./README.md) | [⏭️ Next: Part 6 — 1,000-Viewer Broadcast & Gemini 4 Lecture Studio](./06-scalable-screen-broadcast-and-gemini-4-lecture-studio.md)
 
 ---

@@ -1,6 +1,6 @@
 # Part 9: Gamified "Bingo" Active Presence Verification & Zero-Trust Exam Mode on Google Cloud
 
-**Author:** **Cyrus Wong (黃俊彥)** — *Google Developer Expert (GCP & AI/ML), Senior Lecturer at HKIIT / VTC Hong Kong*  
+**Author:** [**Cyrus Wong (黃俊彥)**](https://www.linkedin.com/in/cyruswong/) — *Google Developer Expert - Cloud (AI), Senior Lecturer at HKIIT*  
 [⏮️ Previous: Part 8 — Multimodal Capstone Supervision with Gemini 4](./08-multimodal-capstone-project-supervision-gemini-4.md) | [📚 Series Index](./README.md) | [⏭️ Next: Part 10 — Green AI FinOps, Storage Lifecycle & Terraform IaC](./10-green-ai-finops-storage-lifecycle-and-terraform-iac.md)
 
 ---
@@ -17,7 +17,7 @@ However, solving this problem naively introduces three severe trade-offs:
 3. **Serverless Polling Bills**: Running a Cloud Scheduler cron job every 60 seconds to scan pending attendance timers across 50 classes burns tens of thousands of idle Firestore reads per month.
 
 In **Part 9** of our Google Developer Expert series, we detail how we engineered two complementary classroom integrity systems:
-- **Gamified "Classroom Bingo" Active Presence Verification** ([`BingoControlBar.jsx`](../../web-app/src/components/BingoControlBar.jsx), [`BingoQuestionBankModal.jsx`](../../web-app/src/components/BingoQuestionBankModal.jsx), [`StudentBingoOverlay.jsx`](../../web-app/src/components/StudentBingoOverlay.jsx), and [`bingoFlows.js`](../../functions/ai_flows/bingoFlows.js)) featuring **3 FinOps-Tiered Verification Modes**, a **Gemini 4 Argon (`gemini-4-argon`) Question Bank AI Studio**, Fisher-Yates positional bias elimination, and an event-driven **Non-Punitive Two-Strike State Machine** powered by **Google Cloud Tasks (`dispatchBingoRetryTask`)**.
+- **Gamified "Classroom Bingo" Active Presence Verification** ([`BingoModal.jsx`](../../web-app/src/components/BingoModal.jsx), [`BingoQuestionBankModal.jsx`](../../web-app/src/components/BingoQuestionBankModal.jsx), [`BingoResultsView.jsx`](../../web-app/src/components/BingoResultsView.jsx), [`LectureQrBingoModal.jsx`](../../web-app/src/components/monitor/LectureQrBingoModal.jsx), and [`bingoFlows.js`](../../functions/ai_flows/bingoFlows.js)) featuring **3 FinOps-Tiered Verification Modes**, a **Gemini 4 Argon (`gemini-4-argon`) Question Bank AI Studio**, Fisher-Yates positional bias elimination, and an event-driven **Non-Punitive Two-Strike State Machine** powered by **Google Cloud Tasks (`dispatchBingoRetryTask`)**.
 - **Zero-Trust Exam Mode Lockdown & Court-Ready Forensic Dossiers** ([`ExamReadinessWizard.jsx`](../../web-app/src/components/ExamReadinessWizard.jsx), [`storage.rules`](../../storage.rules), [`getStudentVideoPlaybackUrl.js`](../../functions/media_processing/getStudentVideoPlaybackUrl.js), and [`processReportJob.js`](../../functions/media_processing/processReportJob.js)), enforcing full-monitor capture (`displaySurface === 'monitor'`), write-once Cloud Storage metadata locks (`isExam == 'true'`), Student Portal confidentiality shielding during exam windows, and 1-click export of formal **Microsoft Word (`.docx`) & RFC 4180 CSV Incident Dossiers**.
 
 ---
@@ -96,7 +96,7 @@ export function shuffleOptionsAndCorrectIndex(options, correctIndex) {
 
 ## 3. Diagram 2: The Non-Punitive Two-Strike State Machine with Google Cloud Tasks & 3-Color Attendance Heatmap
 
-What happens after the high-priority `StudentBingoOverlay.jsx` modal (`z-index: 2147483647`, accompanied by an optional Web Audio API chime) appears on the student's screen with a 45-second countdown timer?
+What happens after the high-priority [`BingoModal.jsx`](../../web-app/src/components/BingoModal.jsx) (`z-index: 2147483647`, accompanied by an optional Web Audio API chime) appears on the student's screen with a 45-second countdown timer?
 
 Our **Two-Strike State Machine** (`submitBingoResponse`, `enqueueBingoRetryTask`, and `handleDispatchBingoRetry` in [`functions/ai_flows/bingoFlows.js`](../../functions/ai_flows/bingoFlows.js)) strictly decouples **academic comprehension** from **physical desk presence**:
 
@@ -252,7 +252,7 @@ export function evaluateStudentRecordingsAccess({
 
 When an academic integrity board reviews a suspected exam irregularity, raw JSON logs in a database are difficult for non-technical committee members to inspect.
 
-When an instructor clicks **📄 Export Incident Report** in [`IrregularityReportModal.jsx`](../../web-app/src/components/IrregularityReportModal.jsx), [`processReportJob.js`](../../functions/media_processing/processReportJob.js) (`1 vCPU, 2 GiB RAM, 540s timeout`) queries all time-scoped `irregularities`, `audio` transcripts (from Edge Whisper + Gemini verification), and `screenshots` for the class, classifies each student's risk level (`HIGH RISK`, `MODERATE RISK`, `NORMAL / CLEAN`), and uses the `docx` and `csv-stringify` libraries to compile a downloadable **Microsoft Word (`.docx`) Incident Dossier** complete with embedded `ImageRun` evidence snapshots, 3D head-pose/gaze telemetry tables, and verbatim speech transcripts:
+When an instructor clicks **📄 Export Formal Dossier (.docx)** in [`IncidentDossierExportModal.jsx`](../../web-app/src/components/IncidentDossierExportModal.jsx) (accessed via [`IrregularitiesView.jsx`](../../web-app/src/components/IrregularitiesView.jsx)), [`processReportJob.js`](../../functions/media_processing/processReportJob.js) (`1 vCPU, 2 GiB RAM, 540s timeout`) queries all time-scoped `irregularities`, `audio` transcripts (from Edge Whisper + Gemini verification), and `screenshots` for the class, classifies each student's risk level (`HIGH RISK`, `MODERATE RISK`, `NORMAL / CLEAN`), and uses the `docx` and `csv-stringify` libraries to compile a downloadable **Microsoft Word (`.docx`) Incident Dossier** complete with embedded `ImageRun` evidence snapshots, 3D head-pose/gaze telemetry tables, and verbatim speech transcripts:
 
 ```javascript
 // Source: functions/media_processing/processReportJob.js

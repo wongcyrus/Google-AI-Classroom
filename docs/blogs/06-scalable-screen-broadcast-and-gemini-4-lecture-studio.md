@@ -1,6 +1,6 @@
 # Part 6: Scaling Classroom Screen Broadcasting to 1,000+ Viewers & Single-Pass Whole-Lecture Subtitles with Gemini 4 Argon
 
-**Author:** **Cyrus Wong (黃俊彥)** — *Google Developer Expert (GCP & AI/ML), Senior Lecturer at HKIIT / VTC Hong Kong*  
+**Author:** [**Cyrus Wong (黃俊彥)**](https://www.linkedin.com/in/cyruswong/) — *Google Developer Expert - Cloud (AI), Senior Lecturer at HKIIT*  
 [⏮️ Previous: Part 5 — Real-Time Multilingual Live Subtitles](./05-realtime-live-subtitles-code-switching-gemini-4-gemma-4.md) | [📚 Series Index](./README.md) | [⏭️ Next: Part 7 — Gemini 4 Map-Reduce Video & Rubric Grading](./07-serverless-map-reduce-video-and-gemini-4-rubric-grading.md)
 
 ---

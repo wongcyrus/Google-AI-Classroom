@@ -178,10 +178,10 @@ For complete architectural details and coverage reports, see the **[🧪 Testing
 
 ## 👨‍💻 Author & Acknowledgments
 
-**Cyrus Wong (黃俊彥)**  
-* Google Developer Expert (GCP & AI/ML)  
+[**Cyrus Wong (黃俊彥)**](https://www.linkedin.com/in/cyruswong/)  
+* Google Developer Expert - Cloud (AI)  
 * Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocational Training Council (VTC) Hong Kong  
-* Email: `cywong@vtc.edu.hk` | GitHub: [@wongcyrus](https://github.com/wongcyrus)
+* Email: `cywong@vtc.edu.hk` | GitHub: [@wongcyrus](https://github.com/wongcyrus) | LinkedIn: [cyruswong](https://www.linkedin.com/in/cyruswong/)
 
 ---
 

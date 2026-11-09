@@ -1,6 +1,6 @@
 # Part 3: Frontier Multimodal Orchestration — Right-Sizing Gemini 4 Argon (`gemini-4-argon`), Gemini 3.8 Flash & On-Device Gemma 4 E2B with Google Genkit
 
-**Author:** **Cyrus Wong (黃俊彥)** — *Google Developer Expert (GCP & AI/ML), Senior Lecturer at HKIIT / VTC Hong Kong*  
+**Author:** [**Cyrus Wong (黃俊彥)**](https://www.linkedin.com/in/cyruswong/) — *Google Developer Expert - Cloud (AI), Senior Lecturer at HKIIT*  
 [⏮️ Previous: Part 2 — Browser Edge AI with Gemma 4 E2B](./02-browser-edge-ai-gemma-4-mediapipe-whisper.md) | [📚 Series Index](./README.md) | [⏭️ Next: Part 4 — WebAuthn Passkeys & Rotating HMAC QRs](./04-webauthn-passkeys-rotating-hmac-qr-auth.md)
 
 ---

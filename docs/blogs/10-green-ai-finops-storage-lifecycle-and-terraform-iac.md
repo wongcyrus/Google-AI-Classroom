@@ -1,6 +1,6 @@
 # Part 10: Green AI FinOps, Self-Cleaning Storage Lifecycles & 1-Command Terraform IaC for Multi-School Deployment
 
-**Author:** **Cyrus Wong (黃俊彥)** — *Google Developer Expert (GCP & AI/ML), Senior Lecturer at HKIIT / VTC Hong Kong*  
+**Author:** [**Cyrus Wong (黃俊彥)**](https://www.linkedin.com/in/cyruswong/) — *Google Developer Expert - Cloud (AI), Senior Lecturer at HKIIT*  
 [⏮️ Previous: Part 9 — Gamified Bingo & Zero-Trust Exam Mode](./09-gamified-bingo-active-presence-and-zero-trust-exam-mode.md) | [📚 Back to GDE Blog Series Index](./README.md)
 
 ---
@@ -280,11 +280,11 @@ Across this 10-part architectural deep dive, we have shared every layer of the *
 
 | Part | Architectural Focus | Key Google AI & Cloud Technologies |
 | :--- | :--- | :--- |
-| **[Part 1](./01-introduction-and-pedagogical-vision.md)** | Pedagogical Vision & Hybrid Edge-Cloud Architecture | Gemini 4 Argon, Gemma 4 E2B, Firebase Gen 2 |
-| **[Part 2](./02-7-codebase-serverless-microservices-architecture.md)** | 7-Codebase Serverless Microservices & Isolation | Cloud Run Gen 2, Eventarc, Cloud Tasks |
-| **[Part 3](./03-privacy-first-edge-ai-mediapipe-litert-whisper.md)** | Privacy-First Browser Visual & Acoustic Edge AI | MediaPipe FaceLandmarker, WebGPU LiteRT Whisper |
-| **[Part 4](./04-on-device-gemma-4-e2b-webgpu-desktop-inspector.md)** | Zero-Cost On-Device VLM Screen Inspection & Help Co-Pilot | Gemma 4 E2B (`onnx-community/gemma-4-E2B-it-ONNX`) |
-| **[Part 5](./05-genkit-resilience-cascades-and-bilingual-tutor.md)** | 4-Tier Resilience Cascades & Bilingual Help Tutor | Google Genkit, Gemini 4 Argon / 3.8 Flash / 3.5 Lite |
+| **[Part 1](./01-serverless-ai-classroom-architecture.md)** | Solving the $25-Per-Exam Problem: Serverless Architecture | Gemini 4 Argon, Gemma 4 E2B, Firebase Gen 2 |
+| **[Part 2](./02-browser-edge-ai-gemma-4-mediapipe-whisper.md)** | Zero-Egress Browser Edge AI (Gemma 4 E2B, MediaPipe, Whisper) | WebGPU Gemma 4 E2B, MediaPipe 3D Mesh, LiteRT Whisper |
+| **[Part 3](./03-gemini-4-argon-genkit-multimodal-resilience.md)** | Frontier Multimodal Orchestration with Gemini 4 & Genkit | `gemini-4-argon`, `3.8-flash`, `3.5-lite`, Google Genkit |
+| **[Part 4](./04-webauthn-passkeys-rotating-hmac-qr-auth.md)** | WebAuthn Passkeys, Rotating HMAC QRs & GCIP Blocking | FIDO2 WebAuthn, GCIP Blocking Hooks, 15s HMAC QR |
+| **[Part 5](./05-realtime-live-subtitles-code-switching-gemini-4-gemma-4.md)** | Real-Time Multilingual Live Subtitles & Code-Switching | Gemini 4/3.8, LiteRT Gemma 4 E2B, Audio Worklet |
 | **[Part 6](./06-scalable-screen-broadcast-and-gemini-4-lecture-studio.md)** | 1,000-Viewer Screen Broadcast & Lecture Recording Studio | Firestore WebP Delta Sync, Gemini 3.5 Transcribe + Gemini 4 |
 | **[Part 7](./07-serverless-map-reduce-video-and-gemini-4-rubric-grading.md)** | Map-Reduce-Map Video Intelligence & Practical Task Grading | Cloud Run FFmpeg, Cloud Tasks, Gemini 4 Rubric Engine |
 | **[Part 8](./08-multimodal-capstone-project-supervision-gemini-4.md)** | Streamlined Mobile 720p Capstone Supervision & Log Auditing | Single-Device Mobile Studio, 2-Stage Diarization + Gemini 4 |

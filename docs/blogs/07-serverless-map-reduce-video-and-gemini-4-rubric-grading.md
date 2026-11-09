@@ -1,6 +1,6 @@
 # Part 7: Serverless Map-Reduce-Map Video Intelligence & Rubric-Driven Practical Task Auto-Grading with Gemini 4 Argon
 
-**Author:** **Cyrus Wong (黃俊彥)** — *Google Developer Expert (GCP & AI/ML), Senior Lecturer at HKIIT / VTC Hong Kong*  
+**Author:** [**Cyrus Wong (黃俊彥)**](https://www.linkedin.com/in/cyruswong/) — *Google Developer Expert - Cloud (AI), Senior Lecturer at HKIIT*  
 [⏮️ Previous: Part 6 — 1,000-Viewer Broadcast & Gemini 4 Lecture Studio](./06-scalable-screen-broadcast-and-gemini-4-lecture-studio.md) | [📚 Series Index](./README.md) | [⏭️ Next: Part 8 — Multimodal Capstone Supervision with Gemini 4](./08-multimodal-capstone-project-supervision-gemini-4.md)
 
 ---
@@ -146,7 +146,7 @@ export const generateLabTaskPrompt = onCall(
 );
 ```
 
-When the teacher runs **Phase 3 (the Milestone Evaluation Map)** using that synthesized prompt, each Cloud Tasks worker invokes Genkit tools (`recordActualWorkingTime`, `recordTaskDuration`, and `recordLessonSummary`) that populate [`StudentMilestoneMatrix.jsx`](../../web-app/src/components/StudentMilestoneMatrix.jsx)—giving the lecturer a color-coded cohort progress matrix showing exactly how many minutes each student spent on Task 1, Task 2, and Task 3, and where they got stuck!
+When the teacher runs **Phase 3 (the Milestone Evaluation Map)** using that synthesized prompt, each Cloud Tasks worker invokes Genkit tools (`recordActualWorkingTime`, `recordTaskDuration`, and `recordLessonSummary`) that populate [`TaskGradingMatrixView.jsx`](../../web-app/src/components/tasks/TaskGradingMatrixView.jsx)—giving the lecturer a color-coded cohort progress matrix showing exactly how many minutes each student spent on Task 1, Task 2, and Task 3, and where they got stuck!
 
 ---
 
@@ -291,7 +291,7 @@ export async function slicePendingTaskSubmissions({
 }
 ```
 
-And if a teacher uses **⏪ Post-Class Retroactive Slicing** inside [`TaskGradingMatrixView.jsx`](../../web-app/src/components/tasks/TaskGradingMatrixView.jsx), our `sliceClassVideosForTask` Cloud Function ([`functions/media_processing/sliceClassVideosForTask.js`](../../functions/media_processing/sliceClassVideosForTask.js)) slices the specified `[startOffsetMinutes, durationMinutes]` window across all 40 class videos in parallel and immediately pipelines the sliced clips into the Gemini grading queue!
+And if a teacher uses **⏪ Post-Class Retroactive Slicing** inside [`TaskGradingMatrixView.jsx`](../../web-app/src/components/tasks/TaskGradingMatrixView.jsx), our retroactive slicing Cloud Function ([`functions/media_processing/extractRetroactiveTaskSubmissions.js`](../../functions/media_processing/extractRetroactiveTaskSubmissions.js)) slices the specified `[startOffsetMinutes, durationMinutes]` window across all 40 class videos in parallel and immediately pipelines the sliced clips into the Gemini grading queue!
 
 ---
 

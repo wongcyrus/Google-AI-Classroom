@@ -1,6 +1,6 @@
 # Part 4: Defeating Proxy Attendance & Lab Keyloggers with WebAuthn Passkeys, Rotating HMAC QRs & GCIP Blocking Functions
 
-**Author:** **Cyrus Wong (黃俊彥)** — *Google Developer Expert (GCP & AI/ML), Senior Lecturer at HKIIT / VTC Hong Kong*  
+**Author:** [**Cyrus Wong (黃俊彥)**](https://www.linkedin.com/in/cyruswong/) — *Google Developer Expert - Cloud (AI), Senior Lecturer at HKIIT*  
 [⏮️ Previous: Part 3 — Gemini 4 Argon & Genkit Resilience](./03-gemini-4-argon-genkit-multimodal-resilience.md) | [📚 Series Index](./README.md) | [⏭️ Next: Part 5 — Real-Time Multilingual Live Subtitles](./05-realtime-live-subtitles-code-switching-gemini-4-gemma-4.md)
 
 ---

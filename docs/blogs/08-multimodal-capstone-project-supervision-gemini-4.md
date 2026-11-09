@@ -1,6 +1,6 @@
 # Part 8: Multimodal AI Capstone Project Supervision — Streamlined Mobile 720p Demo Studio, 2-Stage Diarization & Fake-Log Auditing with Gemini 4
 
-**Author:** **Cyrus Wong (黃俊彥)** — *Google Developer Expert (GCP & AI/ML), Senior Lecturer at HKIIT / VTC Hong Kong*  
+**Author:** [**Cyrus Wong (黃俊彥)**](https://www.linkedin.com/in/cyruswong/) — *Google Developer Expert - Cloud (AI), Senior Lecturer at HKIIT*  
 [⏮️ Previous: Part 7 — Gemini 4 Map-Reduce Video & Rubric Grading](./07-serverless-map-reduce-video-and-gemini-4-rubric-grading.md) | [📚 Series Index](./README.md) | [⏭️ Next: Part 9 — Gamified Bingo & Zero-Trust Exam Mode](./09-gamified-bingo-active-presence-and-zero-trust-exam-mode.md)
 
 ---

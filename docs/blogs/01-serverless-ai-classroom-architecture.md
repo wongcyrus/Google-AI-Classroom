@@ -1,6 +1,6 @@
 # Part 1: Solving the $25-Per-Exam Problem — Architecting a Sub-$0.02/Student Serverless AI Classroom with Gemini 4 & Firebase
 
-**Author:** **Cyrus Wong (黃俊彥)** — *Google Developer Expert (GCP & AI/ML), Senior Lecturer at HKIIT / VTC Hong Kong*  
+**Author:** [**Cyrus Wong (黃俊彥)**](https://www.linkedin.com/in/cyruswong/) — *Google Developer Expert - Cloud (AI), Senior Lecturer at HKIIT*  
 [📚 Back to GDE Blog Series Index](./README.md) | [⏭️ Next: Part 2 — Browser Edge AI with Gemma 4 E2B](./02-browser-edge-ai-gemma-4-mediapipe-whisper.md)
 
 ---

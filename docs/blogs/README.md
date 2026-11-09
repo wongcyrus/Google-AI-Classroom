@@ -1,7 +1,7 @@
 # 📝 Google Developer Expert (GDE) 10-Part Technical Blog Series
 ### Architecting the Sub-$0.02/Student Serverless AI Classroom with Gemini 4 Argon (`gemini-4-argon`), Gemma 4 E2B, Google Genkit & Firebase
 
-**Author:** **Cyrus Wong (黃俊彥)** — *Google Developer Expert (Google Cloud Platform & AI/ML), Senior Lecturer at Hong Kong Institute of Information Technology (HKIIT), Vocational Training Council (VTC) Hong Kong*  
+**Author:** [**Cyrus Wong (黃俊彥)**](https://www.linkedin.com/in/cyruswong/) — *Google Developer Expert - Cloud (AI), Senior Lecturer at HKIIT*  
 **Live Production Platform:** [https://it114115-2627.web.app](https://it114115-2627.web.app)  
 **Presentation Deck & Script:** [Google Cloud Tech Talk Slide Deck (`google-cloud-slides.marp.md`)](../presentation/google-cloud-slides.marp.md) | [Interactive HTML Slides](../presentation/google-cloud-slides.html) | [Speaker Notes & Delivery Script](../presentation/speaker-notes-and-script.md)
 

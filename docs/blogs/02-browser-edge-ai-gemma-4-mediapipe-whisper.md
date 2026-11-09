@@ -1,6 +1,6 @@
 # Part 2: Zero-Egress Browser Edge AI — Running Gemma 4 E2B, MediaPipe 3D Face Mesh & LiteRT Whisper in Web Workers
 
-**Author:** **Cyrus Wong (黃俊彥)** — *Google Developer Expert (GCP & AI/ML), Senior Lecturer at HKIIT / VTC Hong Kong*  
+**Author:** [**Cyrus Wong (黃俊彥)**](https://www.linkedin.com/in/cyruswong/) — *Google Developer Expert - Cloud (AI), Senior Lecturer at HKIIT*  
 [⏮️ Previous: Part 1 — 4-Tier Serverless Architecture](./01-serverless-ai-classroom-architecture.md) | [📚 Series Index](./README.md) | [⏭️ Next: Part 3 — Gemini 4 Argon & Genkit Resilience](./03-gemini-4-argon-genkit-multimodal-resilience.md)
 
 ---
