@@ -14,6 +14,7 @@
 
 .individual-student-view-content {
   background-color: #ffffff;
+  color: #0f172a;
   padding: 1.5rem;
   border-radius: 12px;
   width: 92vw;
@@ -44,13 +45,15 @@
 
 .student-subemail {
   margin: 2px 0 0;
-  font-size: 0.8rem;
-  color: #64748b;
+  font-size: 0.82rem;
+  color: #475569;
+  font-weight: 500;
 }
 
 .channel-tab-group {
   display: flex;
   background: #f1f5f9;
+  border: 1px solid #e2e8f0;
   padding: 3px;
   border-radius: 8px;
   gap: 4px;
@@ -63,20 +66,44 @@
   border-radius: 6px;
   font-size: 0.82rem;
   font-weight: 600;
-  color: #64748b;
+  color: #475569;
   cursor: pointer;
   transition: all 0.15s ease;
+}
+
+.channel-tab-btn:hover:not(:disabled):not(.active):not(.live-peek-tab-btn) {
+  background: #e2e8f0;
+  color: #0f172a;
+  transform: none;
+  box-shadow: none;
 }
 
 .channel-tab-btn.active {
   background: #ffffff;
   color: #4f46e5;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.channel-tab-btn.active:hover:not(:disabled):not(.live-peek-tab-btn) {
+  background: #ffffff;
+  color: #4338ca;
+  transform: none;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
 .channel-tab-btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+
+.channel-tab-btn.live-peek-tab-btn {
+  color: #ffffff;
+}
+
+.channel-tab-btn.live-peek-tab-btn:hover:not(:disabled) {
+  filter: brightness(1.1);
+  transform: none;
+  box-shadow: none;
 }
 
 .message-sender {
@@ -92,6 +119,18 @@
   border: 1px solid #cbd5e1;
   border-radius: 6px;
   font-size: 0.85rem;
+  background-color: #ffffff;
+  color: #0f172a;
+}
+
+.message-sender input::placeholder {
+  color: #94a3b8;
+}
+
+.message-sender input:focus {
+  border-color: #6366f1;
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
 }
 
 .btn-send {
@@ -102,6 +141,67 @@
   border-radius: 6px;
   font-weight: 600;
   cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-send:hover:not(:disabled) {
+  background: #4338ca;
+  color: #ffffff;
+  transform: none;
+  box-shadow: none;
+}
+
+.btn-nudge {
+  font-size: 0.72rem;
+  padding: 2px 7px;
+  background-color: #f1f5f9;
+  color: #334155;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  line-height: 1.3;
+  transition: all 0.15s ease;
+}
+
+.btn-nudge:hover:not(:disabled) {
+  background-color: #e2e8f0;
+  color: #0f172a;
+  border-color: #94a3b8;
+  transform: none;
+  box-shadow: none;
+}
+
+.btn-nudge-bingo {
+  font-size: 0.72rem;
+  padding: 2px 8px;
+  background-color: #dbeafe;
+  color: #1d4ed8;
+  border: 1px solid #93c5fd;
+  border-radius: 4px;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  line-height: 1.3;
+  transition: all 0.15s ease;
+}
+
+.btn-nudge-bingo:hover:not(:disabled) {
+  background-color: #bfdbfe;
+  color: #1e40af;
+  border-color: #60a5fa;
+  transform: none;
+  box-shadow: none;
+}
+
+.btn-nudge-bingo:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
 }
 
 .header-actions {
@@ -118,11 +218,20 @@
   font-weight: 600;
   color: #334155;
   cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: #e2e8f0;
+  color: #0f172a;
+  border-color: #94a3b8;
+  transform: none;
+  box-shadow: none;
 }
 
 .btn-close {
   background: #f1f5f9;
-  border: none;
+  border: 1px solid #cbd5e1;
   width: 32px;
   height: 32px;
   border-radius: 6px;
@@ -130,6 +239,18 @@
   font-weight: bold;
   color: #64748b;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.btn-close:hover:not(:disabled) {
+  background: #fee2e2;
+  color: #ef4444;
+  border-color: #fca5a5;
+  transform: none;
+  box-shadow: none;
 }
 
 .individual-student-view-body {

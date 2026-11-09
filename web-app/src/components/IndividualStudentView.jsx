@@ -344,19 +344,19 @@ const IndividualStudentView = ({
         <div className="individual-student-view-header">
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-              <h2 style={{ margin: 0 }}>{student.displayName || student.name || student.email}</h2>
+              <h2 style={{ margin: 0, color: '#0f172a' }}>{student.displayName || student.name || student.email}</h2>
               {student.studentClass && (
-                <span style={{ fontSize: '0.75rem', fontWeight: 700, padding: '0.15rem 0.5rem', borderRadius: '9999px', backgroundColor: 'rgba(99, 102, 241, 0.12)', color: 'var(--color-primary, #6366f1)', border: '1px solid rgba(99, 102, 241, 0.25)' }}>
+                <span className="student-class-badge" style={{ fontSize: '0.75rem', fontWeight: 700, padding: '0.15rem 0.55rem', borderRadius: '9999px', backgroundColor: '#ede9fe', color: '#4338ca', border: '1px solid #c4b5fd' }}>
                   {student.studentClass}
                 </span>
               )}
               {student.programme && (
-                <span style={{ fontSize: '0.75rem', fontWeight: 500, padding: '0.12rem 0.45rem', borderRadius: '4px', backgroundColor: 'rgba(14, 165, 233, 0.1)', color: '#0284c7', border: '1px solid rgba(14, 165, 233, 0.2)' }}>
+                <span className="student-programme-badge" style={{ fontSize: '0.75rem', fontWeight: 600, padding: '0.12rem 0.45rem', borderRadius: '4px', backgroundColor: '#e0f2fe', color: '#0369a1', border: '1px solid #bae6fd' }}>
                   {student.programme}
                 </span>
               )}
             </div>
-            <p className="student-subemail" style={{ margin: '0.2rem 0 0 0' }}>{student.email}</p>
+            <p className="student-subemail" style={{ margin: '0.2rem 0 0 0', color: '#475569', fontSize: '0.82rem', fontWeight: 500 }}>{student.email}</p>
           </div>
 
           <div className="channel-tab-group" role="tablist" aria-label="Student video channels">
@@ -401,7 +401,7 @@ const IndividualStudentView = ({
               onClick={handleToggleLivePeek}
               style={{
                 backgroundColor: isPeeking ? '#dc2626' : '#2563eb',
-                color: '#fff',
+                color: '#ffffff',
                 fontWeight: '600',
               }}
             >
@@ -423,8 +423,7 @@ const IndividualStudentView = ({
             <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
               <button
                 type="button"
-                className="btn-mini"
-                style={{ fontSize: '0.72rem', padding: '2px 6px', background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '4px', cursor: 'pointer' }}
+                className="btn-nudge"
                 onClick={() => handleQuickNudge('⚠️ Please start sharing your screen immediately.')}
                 title="Send Screen Share Reminder"
               >
@@ -432,8 +431,7 @@ const IndividualStudentView = ({
               </button>
               <button
                 type="button"
-                className="btn-mini"
-                style={{ fontSize: '0.72rem', padding: '2px 6px', background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '4px', cursor: 'pointer' }}
+                className="btn-nudge"
                 onClick={() => handleQuickNudge('⚠️ Please turn on your webcam feed for invigilation.')}
                 title="Send Webcam Reminder"
               >
@@ -441,8 +439,7 @@ const IndividualStudentView = ({
               </button>
               <button
                 type="button"
-                className="btn-mini"
-                style={{ fontSize: '0.72rem', padding: '2px 6px', background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '4px', cursor: 'pointer' }}
+                className="btn-nudge"
                 onClick={() => handleQuickNudge('⚠️ Please check and enable your microphone.')}
                 title="Send Mic Reminder"
               >
@@ -450,8 +447,7 @@ const IndividualStudentView = ({
               </button>
               <button
                 type="button"
-                className="btn-mini"
-                style={{ fontSize: '0.72rem', padding: '2px 6px', background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: '4px', cursor: 'pointer' }}
+                className="btn-nudge"
                 onClick={() => handleQuickNudge('⚠️ Please keep your face centered and look directly at your screen.')}
                 title="Send Face Centering Reminder"
               >
@@ -459,17 +455,7 @@ const IndividualStudentView = ({
               </button>
               <button
                 type="button"
-                className="btn-mini"
-                style={{
-                  fontSize: '0.72rem',
-                  padding: '2px 8px',
-                  background: '#dbeafe',
-                  color: '#1d4ed8',
-                  border: '1px solid #93c5fd',
-                  borderRadius: '4px',
-                  cursor: isCallingStudentBingo ? 'not-allowed' : 'pointer',
-                  fontWeight: 600,
-                }}
+                className="btn-nudge-bingo"
                 onClick={handleCallStudentBingo}
                 disabled={isCallingStudentBingo}
                 title="Call Bingo challenge on this student's screen"
@@ -481,7 +467,7 @@ const IndividualStudentView = ({
 
           <div className="header-actions">
             <button onClick={() => handleShare()} className="btn-secondary">Share</button>
-            <button onClick={() => { stopPeek(); onClose(); }} className="btn-close">✕</button>
+            <button onClick={() => { stopPeek(); onClose(); }} className="btn-close" aria-label="Close modal">✕</button>
           </div>
         </div>
 
