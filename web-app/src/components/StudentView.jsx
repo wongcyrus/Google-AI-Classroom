@@ -1388,6 +1388,14 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
       webcamStreamRef.current = stream;
       if (webcamVideoRef.current) {
         webcamVideoRef.current.srcObject = stream;
+        webcamVideoRef.current.onloadedmetadata = () => {
+          try {
+            const playPromise = webcamVideoRef.current?.play?.();
+            if (playPromise && typeof playPromise.catch === 'function') {
+              playPromise.catch(e => console.debug('[StudentView] webcam video play note:', e));
+            }
+          } catch {}
+        };
         try {
           const playPromise = webcamVideoRef.current.play?.();
           if (playPromise && typeof playPromise.catch === 'function') {
@@ -2838,37 +2846,16 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
                     <span className="summary-badge ready">Ready</span>
                   </div>
 
-                  <div className="summary-item">
+                  <div
+                    className="summary-item summary-item-clickable"
+                    onClick={() => setIsReadinessWizardOpen(true)}
+                    title="Click to check camera and calibrate gaze in Setup Wizard"
+                    style={{ cursor: 'pointer' }}
+                  >
                     <span className="summary-icon">📷</span>
                     <div className="summary-text">
                       <strong>Camera & Gaze</strong>
-                      {availableWebcams.length > 1 ? (
-                        <select
-                          value={selectedWebcamId}
-                          onChange={(e) => setSelectedWebcamId(e.target.value)}
-                          className="summary-webcam-select"
-                          aria-label="Select Preferred Webcam"
-                          style={{
-                            display: 'block',
-                            marginTop: '2px',
-                            padding: '2px 6px',
-                            fontSize: '0.78rem',
-                            borderRadius: '4px',
-                            border: '1px solid #cbd5e1',
-                            background: '#fff',
-                            color: '#1e293b',
-                            maxWidth: '180px'
-                          }}
-                        >
-                          {availableWebcams.map((cam, idx) => (
-                            <option key={cam.deviceId || idx} value={cam.deviceId}>
-                              {cam.label}
-                            </option>
-                          ))}
-                        </select>
-                      ) : (
-                        <span>{availableWebcams.length > 0 ? (availableWebcams[0].label || `${availableWebcams.length} Detected`) : 'Optional / Screen-Only'}</span>
-                      )}
+                      <span>{availableWebcams.length > 0 ? `${availableWebcams.length} Detected` : 'Optional / Screen-Only'}</span>
                     </div>
                     <span className={`summary-badge ${availableWebcams.length > 0 ? 'ready' : 'info'}`}>
                       {availableWebcams.length > 0 ? 'Detected' : 'No Webcam'}
@@ -3162,6 +3149,75 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
               </div>
             )}
 
+            {isSharing && webcamError && availableWebcams.length > 0 && (
+              <div
+                className="webcam-permission-alert-banner"
+                role="alert"
+                style={{
+                  background: '#fef2f2',
+                  border: '1px solid #f87171',
+                  color: '#991b1b',
+                  padding: '10px 16px',
+                  borderRadius: '8px',
+                  marginBottom: '12px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '12px',
+                  flexWrap: 'wrap',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.875rem' }}>
+                  <span>📷⚠️</span>
+                  <span>
+                    <strong>Camera Issue:</strong>{' '}
+                    {webcamError || 'Camera could not be started or is currently in use by another application (e.g. OBS).'}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  {availableWebcams.length > 1 && (
+                    <select
+                      value={selectedWebcamId}
+                      onChange={handleWebcamChange}
+                      aria-label="Switch to another camera"
+                      style={{
+                        padding: '5px 10px',
+                        fontSize: '0.8rem',
+                        fontWeight: 600,
+                        borderRadius: '6px',
+                        border: '1px solid #f87171',
+                        backgroundColor: '#ffffff',
+                        color: '#991b1b',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {availableWebcams.map((cam, index) => (
+                        <option key={cam.deviceId || index} value={cam.deviceId}>
+                          📷 {cam.label}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => startWebcam(selectedWebcamId)}
+                    style={{
+                      background: '#dc2626',
+                      color: '#ffffff',
+                      border: 'none',
+                      borderRadius: '6px',
+                      padding: '5px 12px',
+                      fontSize: '0.8rem',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    🔄 Retry Camera
+                  </button>
+                </div>
+              </div>
+            )}
+
             {(isCapturing || isExamActive) && isSharing && (
               <p className="recording-indicator">
                 🔴 Live invigilation active: Capturing every {frameRate}s (Quality optimized)
@@ -3285,6 +3341,12 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
                     webcamVideoRef.current = el;
                     if (el && webcamStreamRef.current && el.srcObject !== webcamStreamRef.current) {
                       el.srcObject = webcamStreamRef.current;
+                      el.onloadedmetadata = () => {
+                        try {
+                          const p = el.play?.();
+                          if (p && typeof p.catch === 'function') p.catch(() => {});
+                        } catch {}
+                      };
                       try {
                         const p = el.play?.();
                         if (p && typeof p.catch === 'function') p.catch(() => {});

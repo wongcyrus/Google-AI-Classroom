@@ -533,6 +533,11 @@ export default function ExamReadinessWizard({
         }
         if (cameraVideoRef.current) {
           cameraVideoRef.current.srcObject = stream;
+          cameraVideoRef.current.onloadedmetadata = () => {
+            try {
+              cameraVideoRef.current?.play?.().catch(() => {});
+            } catch {}
+          };
           try {
             cameraVideoRef.current.play?.().catch(() => {});
           } catch {}
@@ -1003,6 +1008,11 @@ export default function ExamReadinessWizard({
                       cameraVideoRef.current = el;
                       if (el && cameraStreamRef.current && el.srcObject !== cameraStreamRef.current) {
                         el.srcObject = cameraStreamRef.current;
+                        el.onloadedmetadata = () => {
+                          try {
+                            el.play?.().catch(() => {});
+                          } catch {}
+                        };
                         try {
                           const p = el.play?.();
                           if (p && typeof p.catch === 'function') p.catch(() => {});

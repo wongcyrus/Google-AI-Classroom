@@ -864,17 +864,17 @@ describe('StudentView Component Extended Test Suite', () => {
     expect(camSelect.value).toBe('cam2');
   });
 
-  it('allows selecting preferred webcam from setup summary card before starting session', async () => {
+  it('allows clicking Camera & Gaze summary card to open readiness wizard', async () => {
     render(<StudentView user={mockUser} />);
 
-    const setupCamSelect = await screen.findByLabelText(/Select Preferred Webcam/i);
-    expect(setupCamSelect).toBeInTheDocument();
+    const camTile = screen.getByText(/Camera & Gaze/i).closest('.summary-item');
+    expect(camTile).toBeInTheDocument();
 
     await act(async () => {
-      fireEvent.change(setupCamSelect, { target: { value: 'cam2' } });
+      fireEvent.click(camTile);
     });
 
-    expect(setupCamSelect.value).toBe('cam2');
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
   });
 
   it('handles permission denied error when student rejects screen sharing', async () => {
