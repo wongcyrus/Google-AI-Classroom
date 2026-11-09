@@ -148,7 +148,8 @@ To streamline course setup, class creation is powered by **Concept Templates**. 
    - **Class ID:** Unique lowercase alphanumeric identifier (e.g., `it114115-2026-s1`).
    - **Display Name:** Friendly course title (e.g., *Cloud Architecture Lab*).
    - **Tags:** Adjust or add cohort tags as needed.
-   - **Storage Quota:** Select `5 GB`, `10 GB`, `20 GB`, or `Unlimited`.
+   - **Storage Quota:** Select `5 GB`, `10 GB`, or `20 GB`.
+   - **AI Cost Budget:** Select standard tier presets (`$10.00`, `$25.00`, `$50.00`, `$100.00`, `$200.00 USD`) or enter a **Custom Budget**. Automatically initialized by your chosen Concept Template (`$25.00` for Lecture & Lab, `$50.00` for Lecture in Lab) to establish hard FinOps cost guardrails before AI proctoring and transcription. When configuring an existing class, displays real-time cumulative spend (`$X.XX of $Y.YY (Z% used)`).
    - **Retention Period:** Lesson Video & Recording retention (`14`–`730` days). Controls retention for compiled MP4 lesson videos, teacher recordings, and incident evidence.
    - **📸 Auto-Purge Routine Screenshots:** Always active by default. Automatically purges routine interval raw screenshots once the session MP4 time-lapse video has been successfully compiled and verified, reclaiming ~85%+ storage while permanently safeguarding all anti-cheating alerts, proctoring violations, and irregularity evidence.
 4. (Optional) Expand **Advanced Configuration** to customize fine-grained parameters.

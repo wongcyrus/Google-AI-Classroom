@@ -70,6 +70,8 @@ const mockWriteBatch = vi.fn(() => ({
 const mockClassData = {
   name: 'Distributed Systems',
   storageQuota: 5368709120,
+  aiQuota: 50,
+  aiUsedQuota: 12.345,
   retentionDays: 30,
   videoRetentionDays: 90,
   studentEmails: ['alice@school.edu', 'bob@school.edu'],
@@ -2126,6 +2128,120 @@ lee.sm@stu.vtc.edu.hk,Lee Siu Ming,,HD in Software Engineering,IT114115/1B`;
       expect(screen.queryByText(/Select Class Concept Template/i)).not.toBeInTheDocument();
       expect(screen.queryByRole('heading', { level: 4, name: 'Lecture' })).not.toBeInTheDocument();
       expect(screen.queryByRole('button', { name: /Re-apply Presets/i })).not.toBeInTheDocument();
+    });
+  });
+
+  describe('AI Cost Budget Settings', () => {
+    it('configures preset AI cost budgets and saves aiQuota in class settings', async () => {
+      let savedData;
+      mockUpdateDoc.mockImplementation((ref, data) => {
+        savedData = data;
+        return Promise.resolve({});
+      });
+
+      await act(async () => {
+        render(<ClassManagement user={{ uid: 't1', email: 'teacher@school.edu' }} embeddedClassId="CLASS_101" />);
+      });
+
+      await waitFor(() => {
+        expect(screen.getByLabelText(/Class AI cost budget/i)).toHaveValue('50');
+      });
+
+      const aiBudgetSelect = screen.getByLabelText(/Class AI cost budget/i);
+      fireEvent.change(aiBudgetSelect, { target: { value: '100' } });
+
+      const saveButton = screen.getByRole('button', { name: /Save Class Settings/i });
+      await act(async () => {
+        fireEvent.click(saveButton);
+      });
+
+      await waitFor(() => {
+        expect(mockUpdateDoc).toHaveBeenCalled();
+        expect(savedData).toBeDefined();
+        expect(savedData.aiQuota).toBe(100);
+      });
+    });
+
+    it('supports custom AI cost budget entry and saves numeric quota in Firestore', async () => {
+      let savedData;
+      mockUpdateDoc.mockImplementation((ref, data) => {
+        savedData = data;
+        return Promise.resolve({});
+      });
+
+      await act(async () => {
+        render(<ClassManagement user={{ uid: 't1', email: 'teacher@school.edu' }} embeddedClassId="CLASS_101" />);
+      });
+
+      await waitFor(() => {
+        expect(screen.getByLabelText(/Class AI cost budget/i)).toBeInTheDocument();
+      });
+
+      const aiBudgetSelect = screen.getByLabelText(/Class AI cost budget/i);
+      fireEvent.change(aiBudgetSelect, { target: { value: 'custom' } });
+
+      const customInput = await screen.findByLabelText(/Custom AI budget in USD/i);
+      expect(customInput).toBeInTheDocument();
+      fireEvent.change(customInput, { target: { value: '75' } });
+
+      const saveButton = screen.getByRole('button', { name: /Save Class Settings/i });
+      await act(async () => {
+        fireEvent.click(saveButton);
+      });
+
+      await waitFor(() => {
+        expect(mockUpdateDoc).toHaveBeenCalled();
+        expect(savedData.aiQuota).toBe(75);
+      });
+    });
+
+    it('automatically updates AI cost budget and storage limit when selecting templates during class creation', async () => {
+      await act(async () => {
+        render(<ClassManagement user={{ uid: 't1', email: 'teacher@school.edu' }} />);
+      });
+
+      // Default template is lecture_in_lab -> aiQuota: 50, storageLimit: 10
+      expect(screen.getByLabelText(/Class AI cost budget/i)).toHaveValue('50');
+      expect(screen.getByLabelText(/Class storage limit allotment/i)).toHaveValue('10');
+
+      // Click Lab template card -> aiQuota: 25, storageLimit: 5
+      const labCard = screen.getByRole('heading', { level: 4, name: 'Lab' }).closest('.template-card');
+      await act(async () => {
+        fireEvent.click(labCard);
+      });
+
+      expect(screen.getByLabelText(/Class AI cost budget/i)).toHaveValue('25');
+      expect(screen.getByLabelText(/Class storage limit allotment/i)).toHaveValue('5');
+
+      // Click Lecture template card -> aiQuota: 25, storageLimit: 10
+      const lectureCard = screen.getByRole('heading', { level: 4, name: 'Lecture' }).closest('.template-card');
+      await act(async () => {
+        fireEvent.click(lectureCard);
+      });
+
+      expect(screen.getByLabelText(/Class AI cost budget/i)).toHaveValue('25');
+      expect(screen.getByLabelText(/Class storage limit allotment/i)).toHaveValue('10');
+
+      // Click Lecture in Lab template card -> aiQuota: 50, storageLimit: 10
+      const lectureInLabCard = screen.getByRole('heading', { level: 4, name: 'Lecture in Lab' }).closest('.template-card');
+      await act(async () => {
+        fireEvent.click(lectureInLabCard);
+      });
+
+      expect(screen.getByLabelText(/Class AI cost budget/i)).toHaveValue('50');
+      expect(screen.getByLabelText(/Class storage limit allotment/i)).toHaveValue('10');
+    });
+
+    it('displays current AI usage and percentage when editing an existing class', async () => {
+      await act(async () => {
+        render(<ClassManagement user={{ uid: 't1', email: 'teacher@school.edu' }} embeddedClassId="CLASS_101" />);
+      });
+
+      await waitFor(() => {
+        expect(screen.getByText(/Current usage:/i)).toBeInTheDocument();
+        expect(screen.getByText(/Current usage:/i)).toHaveTextContent('$12.35 of $50.00');
+        expect(screen.getByText(/Current usage:/i)).toHaveTextContent('24.7% used');
+      });
     });
   });
 

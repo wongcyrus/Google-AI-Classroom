@@ -33,6 +33,8 @@ describe('classTemplates constants and helpers', () => {
       expect(settings.bingoPrompt.name).toBe('Bingo Teacher Screen Attention Question Generator');
       expect(settings.subtitlePrompt).toBeDefined();
       expect(settings.subtitlePrompt.name).toBe('Bilingual Lecture & Technical Terminology Subtitle Translator');
+      expect(settings.aiQuota).toBe(25);
+      expect(settings.storageLimit).toBe('10');
     });
   });
 
@@ -47,6 +49,8 @@ describe('classTemplates constants and helpers', () => {
       expect(settings.defaultLectureRecording).toBe(false);
       expect(settings.isLectureSubtitlesEnabled).toBe(false);
       expect(settings.purgeScreenshotsAfterVideoCombine).toBe(true);
+      expect(settings.aiQuota).toBe(25);
+      expect(settings.storageLimit).toBe('5');
     });
   });
 
@@ -65,6 +69,8 @@ describe('classTemplates constants and helpers', () => {
       expect(settings.defaultLectureRecording).toBe(true);
       expect(settings.isLectureSubtitlesEnabled).toBe(true);
       expect(settings.purgeScreenshotsAfterVideoCombine).toBe(true);
+      expect(settings.aiQuota).toBe(50);
+      expect(settings.storageLimit).toBe('10');
     });
   });
 

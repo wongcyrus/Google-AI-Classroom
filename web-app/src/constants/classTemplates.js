@@ -26,6 +26,7 @@ export const CLASS_TEMPLATES = {
       '🌐 Real-time Bilingual Subtitles & Translation (CC)',
       '🚫 Student screen recording & proctoring disabled',
       '📱 Students can follow slides & live CC on laptops or mobile',
+      '💰 AI Cost Budget: $25.00 USD (Storage: 10 GB)',
     ],
     settings: {
       classType: 'lecture',
@@ -52,6 +53,9 @@ export const CLASS_TEMPLATES = {
       bingoPrompt: DEFAULT_BINGO_TEACHER_SCREEN_PROMPT,
       subtitlePrompt: DEFAULT_LIVE_SUBTITLE_TRANSLATION_PROMPT,
       studentRecordingsPolicy: 'always_enabled',
+      aiQuota: 25,
+      storageLimit: '10',
+      storageQuota: 10 * 1024 * 1024 * 1024,
     },
   },
   lab: {
@@ -67,6 +71,7 @@ export const CLASS_TEMPLATES = {
       '🪟 Relaxed windowing (multi-monitor, IDE, terminal allowed)',
       '📊 Student task workspace & automatic rubric grading',
       '👨‍🏫 Instructor can view live progress and assist struggling students',
+      '💰 AI Cost Budget: $25.00 USD (Storage: 5 GB)',
     ],
     settings: {
       classType: 'lab',
@@ -91,6 +96,9 @@ export const CLASS_TEMPLATES = {
       autoBingoIntervalMinutes: 10,
       autoBingoMode: 'question_bank',
       studentRecordingsPolicy: 'always_enabled',
+      aiQuota: 25,
+      storageLimit: '5',
+      storageQuota: 5 * 1024 * 1024 * 1024,
     },
   },
   lecture_in_lab: {
@@ -106,6 +114,7 @@ export const CLASS_TEMPLATES = {
       '👀 Active attention & gaze tracking (alerts if looking away from teacher)',
       '🎯 Periodic Bingo checks (verifies students are actively listening)',
       '🎬 Whole-Lecture Recording + Bilingual Subtitles broadcast to student screens',
+      '💰 AI Cost Budget: $50.00 USD (Storage: 10 GB)',
     ],
     settings: {
       classType: 'lecture_in_lab',
@@ -131,6 +140,9 @@ export const CLASS_TEMPLATES = {
       autoBingoMode: 'question_bank',
       subtitlePrompt: DEFAULT_LIVE_SUBTITLE_TRANSLATION_PROMPT,
       studentRecordingsPolicy: 'always_enabled',
+      aiQuota: 50,
+      storageLimit: '10',
+      storageQuota: 10 * 1024 * 1024 * 1024,
     },
   },
 };

@@ -425,14 +425,15 @@ flowchart TD
   - **🖥️🎧 Lecture in Lab Card:** One-click defaults for computer lab lectures (Dual capture, focus tracking, automated Bingo disabled to minimize student disruption).
   - *Non-Locking Design*: Picking any template populates form defaults while keeping all fields 100% customizable.
 
-### Section 1: Basic Information, Tags & Storage Quotas
+### Section 1: Basic Information, Tags, Storage & AI Cost Budgets
 - **Class ID Input:** Unique course identifier.
 - **Display Name Input:** Human-readable course title.
 - **Class Tags Chips Editor:**
   - Dynamic chip list displaying active tags with ✕ removal buttons.
   - **🏷️ Template Filter Tag Row:** 1-click preset pills (`[✓ #Lecture in Lab]`, `[+ #Lecture]`, `[+ #Lab]`) to quickly toggle template tags.
   - Tag input field with keyboard Enter support and auto-suggestions from other classes.
-- **Storage Quota Limit Dropdown:** `5 GB`, `10 GB`, `20 GB`, or `Unlimited`.
+- **Storage Quota Limit Dropdown:** `5 GB` (~$0.12/mo), `10 GB` (~$0.23/mo), or `20 GB` (~$0.46/mo).
+- **AI Cost Budget Dropdown & Custom Amount:** Standard presets (`$10.00`, `$25.00`, `$50.00`, `$100.00`, `$200.00 USD`) or custom numeric input. Auto-configured by Pedagogical Concept Templates (`$25.00` for Lecture/Lab, `$50.00` for Lecture in Lab). Features live FinOps tracking (`Current usage: $X.XX of $Y.YY (Z% used)`) when editing an existing class.
 - **Screenshot Retention Days Dropdown:** `7`, `14`, `30`, `60`, `90`, `180`, or `365` days.
 - **Video Retention Days Dropdown:** `14`, `30`, `60`, `90`, `180`, `365`, or `730` days.
 

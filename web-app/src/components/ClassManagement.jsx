@@ -25,7 +25,7 @@ import {
 } from '../utils/studentDisplayUtils';
 import { exportToExcel, readExcelFile } from '../utils/exportUtils';
 import useCloudPricing from '../hooks/useCloudPricing';
-import { formatStorageCost } from '../utils/formatters';
+import { formatStorageCost, formatAiCost } from '../utils/formatters';
 import { SUBTITLE_LANGUAGES } from '../utils/videoSubtitleUtils';
 import {
   DEFAULT_LECTURE_STT_PROMPT,
@@ -85,7 +85,10 @@ const ClassManagement = ({ user, embeddedClassId }) => {
   const [allKnownTags, setAllKnownTags] = useState([]);
 
   // Class settings state
-  const [storageLimit, setStorageLimit] = useState('5'); // In GB
+  const [storageLimit, setStorageLimit] = useState(() => (getClassTemplate(DEFAULT_CLASS_TEMPLATE_ID)?.settings?.storageLimit || '5').toString()); // In GB
+  const [aiBudget, setAiBudget] = useState(() => (getClassTemplate(DEFAULT_CLASS_TEMPLATE_ID)?.settings?.aiQuota || 50).toString()); // In USD
+  const [isCustomAiBudget, setIsCustomAiBudget] = useState(false);
+  const [aiUsedQuota, setAiUsedQuota] = useState(0); // In USD
   const [retentionDays, setRetentionDays] = useState('30'); // In Days (Screenshots)
   const [videoRetentionDays, setVideoRetentionDays] = useState('90'); // In Days (Videos)
   const [frameRate, setFrameRate] = useState('15'); // In Seconds per frame
@@ -253,6 +256,16 @@ const ClassManagement = ({ user, embeddedClassId }) => {
 
     // Student Recordings Policy
     setStudentRecordingsPolicy(settings.studentRecordingsPolicy);
+
+    // Storage & AI Cost Budgets
+    if (settings.storageLimit !== undefined) {
+      setStorageLimit(settings.storageLimit.toString());
+    }
+    if (settings.aiQuota !== undefined) {
+      const quotaStr = settings.aiQuota.toString();
+      setAiBudget(quotaStr);
+      setIsCustomAiBudget(!['10', '25', '50', '100', '200'].includes(quotaStr));
+    }
   };
 
   useEffect(() => {
@@ -462,6 +475,15 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           } else {
             setStorageLimit('5');
           }
+          if (classData.aiQuota !== undefined && classData.aiQuota !== null) {
+            const quotaStr = classData.aiQuota.toString();
+            setAiBudget(quotaStr);
+            setIsCustomAiBudget(!['10', '25', '50', '100', '200'].includes(quotaStr));
+          } else {
+            setAiBudget('25');
+            setIsCustomAiBudget(false);
+          }
+          setAiUsedQuota(Number(classData.aiUsedQuota) || 0);
           const history = Array.isArray(classData.scheduleHistory) ? classData.scheduleHistory : [];
           setScheduleHistory(history);
           if (classData.schedule) {
@@ -619,7 +641,11 @@ const ClassManagement = ({ user, embeddedClassId }) => {
         setClassName('');
         setClassTags([]);
         setTagInput('');
-        setStorageLimit('5');
+        const defaultTmplSettings = getTemplateSettings(DEFAULT_CLASS_TEMPLATE_ID);
+        setStorageLimit(defaultTmplSettings.storageLimit ? defaultTmplSettings.storageLimit.toString() : '5');
+        setAiBudget((defaultTmplSettings.aiQuota || 50).toString());
+        setIsCustomAiBudget(false);
+        setAiUsedQuota(0);
         setRetentionDays('30');
         setVideoRetentionDays('90');
         setScheduleStartDate('');
@@ -646,7 +672,6 @@ const ClassManagement = ({ user, embeddedClassId }) => {
         setCloudFallbackRate(3);
         setAfterClassVideoPrompt(null);
         setLiveImagePrompt(null);
-        const defaultTmplSettings = getTemplateSettings(DEFAULT_CLASS_TEMPLATE_ID);
         setBingoPrompt(defaultTmplSettings.bingoPrompt || null);
         setLiveAudioPrompt(null);
         setSessionAudioPrompt(null);
@@ -1108,6 +1133,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
       studentEmailList,
       resolvedStudentProfiles,
       storageQuotaBytes,
+      aiQuotaNum,
       retentionDaysNum,
       videoRetentionDaysNum,
       ipList,
@@ -1121,6 +1147,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
       name: className.trim() || targetClassId,
       tags: classTags,
       storageQuota: storageQuotaBytes,
+      aiQuota: aiQuotaNum !== undefined && !isNaN(aiQuotaNum) ? aiQuotaNum : 25,
       retentionDays: retentionDaysNum,
       videoRetentionDays: videoRetentionDaysNum,
       frameRate: parseInt(frameRate, 10) || 15,
@@ -1365,6 +1392,8 @@ const ClassManagement = ({ user, embeddedClassId }) => {
       .filter(Boolean);
 
     const storageQuotaBytes = parseInt(storageLimit) * 1024 * 1024 * 1024;
+    const parsedAiBudget = parseFloat(aiBudget);
+    const aiQuotaNum = !isNaN(parsedAiBudget) && parsedAiBudget > 0 ? parsedAiBudget : 25;
     const retentionDaysNum = parseInt(retentionDays, 10) > 0 ? parseInt(retentionDays, 10) : 30;
     const videoRetentionDaysNum = parseInt(videoRetentionDays, 10) > 0 ? parseInt(videoRetentionDays, 10) : 90;
     const ipList = ipRestrictions.split('\n').map(ip => ip.trim()).filter(Boolean);
@@ -1393,6 +1422,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
         studentEmailList,
         resolvedStudentProfiles,
         storageQuotaBytes,
+        aiQuotaNum,
         retentionDaysNum,
         videoRetentionDaysNum,
         ipList,
@@ -1439,6 +1469,8 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           studentEmails: studentEmailList,
           studentProfiles: resolvedStudentProfiles,
           storageQuota: storageQuotaBytes,
+          aiQuota: aiQuotaNum,
+          aiUsedQuota: 0,
           retentionDays: retentionDaysNum,
           videoRetentionDays: videoRetentionDaysNum,
           frameRate: parseInt(frameRate, 10) || 15,
@@ -1499,8 +1531,6 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           lectureRecordingPrompt: lectureSttPrompt || lectureRecordingPrompt || DEFAULT_LECTURE_STT_PROMPT,
           lectureTranslationPrompt: lectureTranslationPrompt || DEFAULT_LECTURE_TRANSLATION_PROMPT,
           lectureTargetLanguages: Array.isArray(lectureTargetLanguages) && lectureTargetLanguages.length > 0 ? lectureTargetLanguages : ['en', 'zh-Hant', 'zh-Hans'],
-          aiQuota: 50,
-          aiUsedQuota: 0,
         });
 
         setSuccessMessage('Class successfully created!');
@@ -2065,9 +2095,9 @@ const ClassManagement = ({ user, embeddedClassId }) => {
         </div>
       )}
 
-      {/* Section 1: Basic Information & Storage */}
+      {/* Section 1: Basic Information, Storage & AI Budgets */}
       <div className="settings-section-card">
-        <h3>📋 1. Basic Information & Storage Quota</h3>
+        <h3>📋 1. Basic Information &amp; Storage Quota &amp; AI Budgets</h3>
         
         <div className="form-row-2col">
           <div className="form-group">
@@ -2188,13 +2218,62 @@ const ClassManagement = ({ user, embeddedClassId }) => {
 
         <div className="form-row" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem' }}>
           <div className="form-group">
-            <label>Storage Limit Allotment</label>
-            <select value={storageLimit} onChange={(e) => setStorageLimit(e.target.value)}>
+            <label htmlFor="class-storage-limit">Storage Limit Allotment</label>
+            <select id="class-storage-limit" aria-label="Class storage limit allotment" value={storageLimit} onChange={(e) => setStorageLimit(e.target.value)}>
               <option value="5">5 GB (Standard - ~{formatStorageCost(5 * 1024 * 1024 * 1024, storageRatePerGibMonth)}/mo)</option>
               <option value="10">10 GB (Extended - ~{formatStorageCost(10 * 1024 * 1024 * 1024, storageRatePerGibMonth)}/mo)</option>
               <option value="20">20 GB (Large Course - ~{formatStorageCost(20 * 1024 * 1024 * 1024, storageRatePerGibMonth)}/mo)</option>
             </select>
             <p className="input-hint">Maximum storage cap for this class.</p>
+          </div>
+
+          <div className="form-group">
+            <label htmlFor="class-ai-budget">AI Cost Budget Allotment (USD)</label>
+            <select
+              id="class-ai-budget"
+              aria-label="Class AI cost budget"
+              value={!isCustomAiBudget && ['10', '25', '50', '100', '200'].includes(aiBudget) ? aiBudget : 'custom'}
+              onChange={(e) => {
+                if (e.target.value !== 'custom') {
+                  setAiBudget(e.target.value);
+                  setIsCustomAiBudget(false);
+                } else {
+                  setIsCustomAiBudget(true);
+                }
+              }}
+            >
+              <option value="10">$10.00 USD (Minimal - Small Class / Short Lab)</option>
+              <option value="25">$25.00 USD (Standard - Lab or Lecture)</option>
+              <option value="50">$50.00 USD (Extended - Anti-Distraction &amp; Multimedia)</option>
+              <option value="100">$100.00 USD (Large Course - Intensive AI Multimodal)</option>
+              <option value="200">$200.00 USD (Departmental - Heavy GenAI Cohort)</option>
+              <option value="custom">Custom Budget...</option>
+            </select>
+            {isCustomAiBudget && (
+              <div style={{ marginTop: '0.4rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ fontWeight: 600, color: '#475569' }}>$</span>
+                <input
+                  type="number"
+                  min="1"
+                  max="5000"
+                  step="1"
+                  placeholder="e.g. 75"
+                  value={aiBudget}
+                  onChange={(e) => setAiBudget(e.target.value)}
+                  style={{ width: '100%', padding: '6px 10px', borderRadius: '6px', border: '1px solid #cbd5e1' }}
+                  aria-label="Custom AI budget in USD"
+                />
+                <span style={{ fontSize: '0.82rem', color: '#64748b' }}>USD</span>
+              </div>
+            )}
+            <p className="input-hint">
+              Maximum AI quota cap in USD before automatic AI proctoring and transcription are paused.
+              {(selectedClass || embeddedClassId) && (
+                <span style={{ display: 'block', marginTop: '0.2rem', color: '#475569', fontWeight: 600 }}>
+                  Current usage: {formatAiCost(aiUsedQuota)} of ${(parseFloat(aiBudget) || 0).toFixed(2)} ({Math.min(100, Math.max(0, (((aiUsedQuota || 0) / (parseFloat(aiBudget) || 1)) * 100))).toFixed(1)}% used)
+                </span>
+              )}
+            </p>
           </div>
 
           <div className="form-group">
