@@ -3278,6 +3278,38 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
                     {clientAiStatus !== 'initializing' && faceStatus === 'quota_exceeded' && <span>⚠️ Class AI Quota Exceeded</span>}
                   </div>
                 )}
+                {whisperTranscript && (isWebcamSharing || isScreenSharing) && (
+                  <div
+                    className="ai-speech-transcript-hud"
+                    style={{
+                      position: 'absolute',
+                      bottom: '8px',
+                      left: '8px',
+                      right: '8px',
+                      backgroundColor: 'rgba(15, 23, 42, 0.88)',
+                      backdropFilter: 'blur(6px)',
+                      color: '#34d399',
+                      fontSize: '0.78rem',
+                      padding: '5px 10px',
+                      borderRadius: '6px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      zIndex: 10,
+                      boxShadow: '0 2px 6px rgba(0,0,0,0.3)',
+                      border: '1px solid rgba(52, 211, 153, 0.3)',
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                    }}
+                    title={`Transcribed Speech: "${whisperTranscript}"`}
+                  >
+                    <span style={{ flexShrink: 0 }}>🎙️ Live Speech:</span>
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', fontWeight: 600 }}>
+                      {whisperTranscript}
+                    </span>
+                  </div>
+                )}
               </div>
 
               {/* Stage Top Right Action Controls */}
@@ -3469,8 +3501,8 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
               </div>
             </div>
 
-            {/* Live Speech AI & Voice Proctoring HUD (Shown only when teacher enables audio recording) */}
-            {enableAudioCapture && (
+            {/* Live Speech AI & Voice Proctoring HUD (Shown when audio recording or voice AI is active) */}
+            {(enableAudioCapture || isLocalVoiceAiEnabled || isAudioRecording || isAudioCaptureActive || Boolean(whisperTranscript)) && (
               <div
                 className="student-voice-proctoring-hud"
                 style={{
