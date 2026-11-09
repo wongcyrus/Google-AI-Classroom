@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   acquireInputDeviceStream,
-  isVideoStreamDarkOrDead,
   resetWarnedMissingDevices,
 } from './mediaDeviceCapture';
 
@@ -27,7 +26,7 @@ describe('acquireInputDeviceStream', () => {
     resetWarnedMissingDevices();
   });
 
-  it('requests generic camera permission before binding a selected camera exactly', async () => {
+  it('requests generic camera permission before binding a selected camera exactly when unlabeled and preferDirectDevice is not set', async () => {
     const permission = createStream('video', 'default-camera');
     const selected = createStream('video', 'usb-camera');
     const getUserMedia = vi.fn()
@@ -216,7 +215,7 @@ describe('acquireInputDeviceStream', () => {
     });
   });
 
-  it('automatically falls back to second camera when default camera is locked by OBS (NotReadableError)', async () => {
+  it('automatically falls back to second camera when first camera is in use (NotReadableError)', async () => {
     const busyErr = new Error('Could not start video source');
     busyErr.name = 'NotReadableError';
     const secondCam = createStream('video', 'cam-2');
@@ -234,7 +233,7 @@ describe('acquireInputDeviceStream', () => {
       value: {
         getUserMedia,
         enumerateDevices: vi.fn().mockResolvedValue([
-          { kind: 'videoinput', deviceId: 'cam-1', label: 'Integrated Camera (In use by OBS)' },
+          { kind: 'videoinput', deviceId: 'cam-1', label: 'Integrated Camera' },
           { kind: 'videoinput', deviceId: 'cam-2', label: 'Logitech USB Webcam' },
         ]),
       },
@@ -245,7 +244,7 @@ describe('acquireInputDeviceStream', () => {
     expect(secondCam.track.stop).not.toHaveBeenCalled();
   });
 
-  it('binds a labeled secondary camera directly without probing the OBS-locked default camera first', async () => {
+  it('binds a manually selected secondary camera directly with preferDirectDevice even when labels are empty', async () => {
     const secondCam = createStream('video', 'cam-2');
     const getUserMedia = vi.fn().mockResolvedValueOnce(secondCam.stream);
 
@@ -254,13 +253,16 @@ describe('acquireInputDeviceStream', () => {
       value: {
         getUserMedia,
         enumerateDevices: vi.fn().mockResolvedValue([
-          { kind: 'videoinput', deviceId: 'cam-1', label: 'Default Camera (OBS)' },
-          { kind: 'videoinput', deviceId: 'cam-2', label: 'External USB Camera' },
+          { kind: 'videoinput', deviceId: 'cam-1', label: '' },
+          { kind: 'videoinput', deviceId: 'cam-2', label: '' },
         ]),
       },
     });
 
-    const result = await acquireInputDeviceStream('video', 'cam-2');
+    const result = await acquireInputDeviceStream('video', 'cam-2', {}, {
+      preferDirectDevice: true,
+      allowFallback: false,
+    });
 
     expect(getUserMedia).toHaveBeenCalledTimes(1);
     expect(getUserMedia).toHaveBeenCalledWith({
@@ -270,21 +272,27 @@ describe('acquireInputDeviceStream', () => {
     expect(result).toBe(secondCam.stream);
   });
 
-  it('detects ended or pitch-black OBS video streams in isVideoStreamDarkOrDead', () => {
-    const endedTrack = { readyState: 'ended', enabled: true };
-    expect(
-      isVideoStreamDarkOrDead(null, { getVideoTracks: () => [endedTrack] })
-    ).toEqual({ isDeadOrDark: true, reason: 'track_ended' });
+  it('aborts and stops any newly opened stream when signal is aborted mid-flight', async () => {
+    const cam2 = createStream('video', 'cam-2');
+    const signal = { aborted: false };
+    const getUserMedia = vi.fn().mockImplementation(async () => {
+      signal.aborted = true;
+      return cam2.stream;
+    });
 
-    const liveTrack = { readyState: 'live', enabled: true };
-    const zeroDimVideo = {
-      dataset: { forceFrameCheck: 'true' },
-      readyState: 0,
-      videoWidth: 0,
-      videoHeight: 0,
-    };
-    expect(
-      isVideoStreamDarkOrDead(zeroDimVideo, { getVideoTracks: () => [liveTrack] })
-    ).toEqual({ isDeadOrDark: true, reason: 'no_video_frames' });
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: {
+        getUserMedia,
+        enumerateDevices: vi.fn().mockResolvedValue([
+          { kind: 'videoinput', deviceId: 'cam-2', label: 'Camera 2' },
+        ]),
+      },
+    });
+
+    await expect(
+      acquireInputDeviceStream('video', 'cam-2', {}, { preferDirectDevice: true, signal })
+    ).rejects.toMatchObject({ isCancelledRequest: true });
+    expect(cam2.track.stop).toHaveBeenCalledOnce();
   });
 });

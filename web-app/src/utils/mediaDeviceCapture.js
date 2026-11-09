@@ -69,6 +69,19 @@ function resolveDeviceId(deviceId, beforePermission, afterPermission, storedIden
   return matchingDevice?.deviceId || deviceId;
 }
 
+function createCancelledRequestError() {
+  const err = new Error('Media device acquisition superseded by a newer request.');
+  err.name = 'AbortError';
+  err.isCancelledRequest = true;
+  return err;
+}
+
+function throwIfAborted(signal) {
+  if (signal?.aborted) {
+    throw createCancelledRequestError();
+  }
+}
+
 function isPermissionDeniedError(err) {
   return (
     err?.name === 'NotAllowedError' ||
@@ -78,6 +91,7 @@ function isPermissionDeniedError(err) {
 }
 
 function isDeviceBusyError(err) {
+  if (err?.isCancelledRequest) return false;
   return (
     err?.name === 'NotReadableError' ||
     err?.name === 'TrackStartError' ||
@@ -86,101 +100,83 @@ function isDeviceBusyError(err) {
   );
 }
 
-async function acquireSpecificDeviceStream(kind, targetDeviceId, trackConstraints = {}) {
+async function acquireSpecificDeviceStream(kind, targetDeviceId, trackConstraints = {}, signal = null) {
+  throwIfAborted(signal);
+
   const tryGetUserMedia = async (constraints) => {
+    throwIfAborted(signal);
     const stream = await navigator.mediaDevices.getUserMedia(constraints);
+    if (signal?.aborted) {
+      stopStream(stream);
+      throw createCancelledRequestError();
+    }
     const track = getInputTrack(stream, kind);
     const actualDeviceId = track?.getSettings?.().deviceId;
-    // Reject silent device substitution: if a specific device was requested, ensure
-    // the browser did not silently fall back to an unintended device (such as the default camera in use by OBS).
-    if (actualDeviceId && targetDeviceId && targetDeviceId !== 'default' && targetDeviceId !== '(default)' && actualDeviceId !== targetDeviceId) {
+    if (
+      actualDeviceId &&
+      targetDeviceId &&
+      targetDeviceId !== 'default' &&
+      targetDeviceId !== '(default)' &&
+      actualDeviceId !== targetDeviceId
+    ) {
       stopStream(stream);
       throw new Error(`Device substitution rejected: requested "${targetDeviceId}" but received "${actualDeviceId}".`);
     }
     return stream;
   };
 
+  const buildExactConstraints = (extraConstraints) => ({
+    audio: kind === 'audio'
+      ? { ...extraConstraints, deviceId: { exact: targetDeviceId } }
+      : false,
+    video: kind === 'video'
+      ? { ...extraConstraints, deviceId: { exact: targetDeviceId } }
+      : false,
+  });
+
   try {
-    return await tryGetUserMedia({
-      audio: kind === 'audio'
-        ? { ...trackConstraints, deviceId: { exact: targetDeviceId } }
-        : false,
-      video: kind === 'video'
-        ? { ...trackConstraints, deviceId: { exact: targetDeviceId } }
-        : false,
-    });
+    return await tryGetUserMedia(buildExactConstraints(trackConstraints));
   } catch (exactErr) {
-    if (isPermissionDeniedError(exactErr)) {
+    if (exactErr?.isCancelledRequest || signal?.aborted || isPermissionDeniedError(exactErr)) {
       throw exactErr;
     }
+
     if (isDeviceBusyError(exactErr)) {
-      // Hardware handle might still be releasing; retry once after a short grace period
-      const retryDelay = typeof process !== 'undefined' && process.env?.NODE_ENV === 'test' ? 0 : 120;
+      // Hardware handle might still be releasing from a just-stopped stream; retry exact once after a brief delay
+      const retryDelay = typeof process !== 'undefined' && process.env?.NODE_ENV === 'test' ? 0 : 100;
       if (retryDelay > 0) {
         await new Promise(resolve => setTimeout(resolve, retryDelay));
       }
-      try {
-        return await tryGetUserMedia({
-          audio: kind === 'audio'
-            ? { ...trackConstraints, deviceId: { exact: targetDeviceId } }
-            : false,
-          video: kind === 'video'
-            ? { ...trackConstraints, deviceId: { exact: targetDeviceId } }
-            : false,
-        });
-      } catch (retryExactErr) {
-        if (isPermissionDeniedError(retryExactErr) || isDeviceBusyError(retryExactErr)) {
-          throw retryExactErr;
-        }
-      }
+      throwIfAborted(signal);
+      return await tryGetUserMedia(buildExactConstraints(trackConstraints));
     }
 
-    console.warn(`[mediaDeviceCapture] Exact ${kind} constraint failed on device; retrying with direct deviceId:`, exactErr);
-    try {
-      return await tryGetUserMedia({
-        audio: kind === 'audio'
-          ? { ...trackConstraints, deviceId: targetDeviceId }
-          : false,
-        video: kind === 'video'
-          ? { ...trackConstraints, deviceId: targetDeviceId }
-          : false,
-      });
-    } catch (directErr) {
-      if (isPermissionDeniedError(directErr) || isDeviceBusyError(directErr)) {
-        throw directErr;
-      }
-      console.warn(`[mediaDeviceCapture] Direct ${kind} constraint failed; retrying with ideal constraint:`, directErr);
-      return await tryGetUserMedia({
-        audio: kind === 'audio'
-          ? { ...trackConstraints, deviceId: { ideal: targetDeviceId } }
-          : false,
-        video: kind === 'video'
-          ? { ...trackConstraints, deviceId: { ideal: targetDeviceId } }
-          : false,
-      });
+    if (
+      (exactErr?.name === 'OverconstrainedError' || exactErr?.name === 'ConstraintNotSatisfiedError') &&
+      trackConstraints &&
+      Object.keys(trackConstraints).length > 0
+    ) {
+      return await tryGetUserMedia(buildExactConstraints({}));
     }
+
+    throw exactErr;
   }
 }
 
-async function acquireFirstAvailableFallbackDevice(kind, devices, excludedIds, trackConstraints = {}) {
-  const sortedCandidates = [...devices].sort((a, b) => {
-    const aIsVirtual = /obs|virtual/i.test(a?.label || '') ? 1 : 0;
-    const bIsVirtual = /obs|virtual/i.test(b?.label || '') ? 1 : 0;
-    return aIsVirtual - bIsVirtual;
-  });
-
-  for (const candidate of sortedCandidates) {
+async function acquireFirstAvailableFallbackDevice(kind, devices, excludedIds, trackConstraints = {}, signal = null) {
+  for (const candidate of devices) {
+    throwIfAborted(signal);
     const candidateId = candidate?.deviceId;
     if (!candidateId || candidateId === 'default' || candidateId === '(default)' || excludedIds.has(candidateId)) {
       continue;
     }
     excludedIds.add(candidateId);
     try {
-      const stream = await acquireSpecificDeviceStream(kind, candidateId, trackConstraints);
+      const stream = await acquireSpecificDeviceStream(kind, candidateId, trackConstraints, signal);
       storeDeviceIdentity(kind, candidate);
       return stream;
     } catch (candidateErr) {
-      if (isPermissionDeniedError(candidateErr)) {
+      if (candidateErr?.isCancelledRequest || signal?.aborted || isPermissionDeniedError(candidateErr)) {
         throw candidateErr;
       }
       console.warn(
@@ -193,69 +189,9 @@ async function acquireFirstAvailableFallbackDevice(kind, devices, excludedIds, t
 }
 
 /**
- * Checks whether an active video stream or <video> element is dead (ended track, 0x0 frames)
- * or outputting 100% digital-zero black frames (common when a webcam is locked by OBS on Windows).
- */
-export function isVideoStreamDarkOrDead(videoEl, stream) {
-  const activeStream = stream || videoEl?.srcObject;
-  const track = activeStream?.getVideoTracks?.()[0];
-  if (!track || track.readyState === 'ended' || track.enabled === false) {
-    return { isDeadOrDark: true, reason: 'track_ended' };
-  }
-
-  const isTestEnv = typeof process !== 'undefined' && process.env?.NODE_ENV === 'test';
-  if (isTestEnv && !videoEl?.dataset?.forceFrameCheck) {
-    return { isDeadOrDark: false, reason: 'test_env' };
-  }
-
-  if (!videoEl) {
-    return { isDeadOrDark: false, reason: 'no_video_element' };
-  }
-
-  if (videoEl.readyState < 2 || !videoEl.videoWidth || !videoEl.videoHeight) {
-    return { isDeadOrDark: true, reason: 'no_video_frames' };
-  }
-
-  try {
-    if (typeof document === 'undefined') {
-      return { isDeadOrDark: false, reason: 'no_dom' };
-    }
-    const canvas = document.createElement('canvas');
-    canvas.width = 16;
-    canvas.height = 16;
-    const ctx = canvas.getContext?.('2d');
-    if (!ctx || typeof ctx.drawImage !== 'function' || typeof ctx.getImageData !== 'function') {
-      return { isDeadOrDark: false, reason: 'canvas_unavailable' };
-    }
-    ctx.drawImage(videoEl, 0, 0, 16, 16);
-    const data = ctx.getImageData(0, 0, 16, 16)?.data;
-    if (!data || data.length === 0) {
-      return { isDeadOrDark: false, reason: 'no_image_data' };
-    }
-    let maxChannel = 0;
-    for (let i = 0; i < data.length; i += 4) {
-      const r = data[i];
-      const g = data[i + 1];
-      const b = data[i + 2];
-      if (r > maxChannel) maxChannel = r;
-      if (g > maxChannel) maxChannel = g;
-      if (b > maxChannel) maxChannel = b;
-      if (maxChannel > 3) {
-        return { isDeadOrDark: false, reason: 'frames_ok' };
-      }
-    }
-    return { isDeadOrDark: true, reason: 'all_black_frames' };
-  } catch {
-    return { isDeadOrDark: false, reason: 'canvas_error' };
-  }
-}
-
-/**
- * Requests permission without a device constraint, then binds the selected input exactly.
- * This prevents an exact constraint from blocking Chrome's initial permission prompt while
- * ensuring an ideal constraint cannot silently substitute the default device.
- * If the default device is locked/in-use by another application (e.g. OBS), gracefully
- * bypasses the locked default device and binds the requested or next available device.
+ * Requests permission without a device constraint when needed, then binds the selected input exactly.
+ * When a video camera is explicitly selected (preferDirectDevice or permission already granted with labels),
+ * binds the target camera directly so a busy default camera is never probed first.
  */
 export async function acquireInputDeviceStream(kind, deviceId = '', trackConstraints = {}, options = {}) {
   if (kind !== 'audio' && kind !== 'video') {
@@ -265,62 +201,81 @@ export async function acquireInputDeviceStream(kind, deviceId = '', trackConstra
     throw new Error(`${kind === 'audio' ? 'Microphone' : 'Webcam'} is not supported by this browser.`);
   }
 
+  const {
+    signal = null,
+    preferDirectDevice = false,
+    allowFallback = true,
+  } = options || {};
+
+  throwIfAborted(signal);
+
   const hasExplicitDeviceId = Boolean(deviceId && deviceId !== 'default' && deviceId !== '(default)');
   const permissionConstraints = {
     audio: kind === 'audio' ? { ...trackConstraints } : false,
     video: kind === 'video' ? { ...trackConstraints } : false,
   };
   const devicesBeforePermission = deviceId ? await listInputDevices(kind) : [];
+  throwIfAborted(signal);
 
-  // When switching or opening a specific known video camera (where permission is already granted
-  // and labels are visible, or caller requested direct binding), bind the target camera directly
-  // without probing the system default camera first (which may be locked by OBS).
+  const hasKnownPrePermissionLabels = devicesBeforePermission.some(d => Boolean(d.label));
   const canBindVideoDirectly =
     kind === 'video' &&
     hasExplicitDeviceId &&
-    (Boolean(options?.preferDirectDevice) ||
+    (Boolean(preferDirectDevice) ||
       devicesBeforePermission.some(d => d.deviceId === deviceId && Boolean(d.label)));
 
-  let directBindError = null;
   if (canBindVideoDirectly) {
     try {
-      const directStream = await acquireSpecificDeviceStream(kind, deviceId, trackConstraints);
+      const directStream = await acquireSpecificDeviceStream(kind, deviceId, trackConstraints, signal);
       storeDeviceIdentity(
         kind,
         devicesBeforePermission.find(device => device.deviceId === deviceId) || { deviceId }
       );
       return directStream;
     } catch (directErr) {
-      if (isPermissionDeniedError(directErr)) {
+      if (directErr?.isCancelledRequest || signal?.aborted || isPermissionDeniedError(directErr)) {
         throw directErr;
       }
-      directBindError = directErr;
-      console.warn(
-        `[mediaDeviceCapture] Direct ${kind} binding for "${deviceId}" failed (${directErr?.name || 'Error'}: ${directErr?.message || 'device busy'}); trying fallback devices...`
-      );
-      // If we already have labeled devices (permission granted), try remaining available cameras directly
-      // without probing generic { video: {} } if the requested camera was busy!
-      if (devicesBeforePermission.some(d => Boolean(d.label))) {
-        const fallbackFromKnown = await acquireFirstAvailableFallbackDevice(
-          kind,
-          devicesBeforePermission,
-          new Set([deviceId]),
-          trackConstraints
-        );
-        if (fallbackFromKnown) {
-          return fallbackFromKnown;
+
+      const isUnlabeledPrePermissionRotation =
+        !hasKnownPrePermissionLabels &&
+        (directErr?.name === 'OverconstrainedError' || directErr?.name === 'ConstraintNotSatisfiedError');
+
+      if (!isUnlabeledPrePermissionRotation) {
+        if (allowFallback) {
+          console.warn(
+            `[mediaDeviceCapture] Direct ${kind} binding for "${deviceId}" failed (${directErr?.name || 'Error'}: ${directErr?.message || 'device busy'}); trying fallback devices...`
+          );
+          const currentDevices = await listInputDevices(kind);
+          const candidatePool = currentDevices.length > 0 ? currentDevices : devicesBeforePermission;
+          const fallbackStream = await acquireFirstAvailableFallbackDevice(
+            kind,
+            candidatePool,
+            new Set([deviceId]),
+            trackConstraints,
+            signal
+          );
+          if (fallbackStream) {
+            return fallbackStream;
+          }
         }
+        throw directErr;
       }
     }
   }
 
   let permissionStream = null;
-  let permissionError = directBindError;
+  let permissionError = null;
 
   try {
+    throwIfAborted(signal);
     permissionStream = await navigator.mediaDevices.getUserMedia(permissionConstraints);
+    if (signal?.aborted) {
+      stopStream(permissionStream);
+      throw createCancelledRequestError();
+    }
   } catch (err) {
-    if (isPermissionDeniedError(err)) {
+    if (err?.isCancelledRequest || signal?.aborted || isPermissionDeniedError(err)) {
       throw err;
     }
     permissionError = err;
@@ -333,20 +288,24 @@ export async function acquireInputDeviceStream(kind, deviceId = '', trackConstra
     if (permissionStream) {
       return permissionStream;
     }
-    const devicesAfterFail = await listInputDevices(kind);
-    const fallbackStream = await acquireFirstAvailableFallbackDevice(
-      kind,
-      devicesAfterFail,
-      new Set(),
-      trackConstraints
-    );
-    if (fallbackStream) {
-      return fallbackStream;
+    if (allowFallback) {
+      const devicesAfterFail = await listInputDevices(kind);
+      const fallbackStream = await acquireFirstAvailableFallbackDevice(
+        kind,
+        devicesAfterFail,
+        new Set(),
+        trackConstraints,
+        signal
+      );
+      if (fallbackStream) {
+        return fallbackStream;
+      }
     }
     throw permissionError || new Error(`Unable to start ${kind} stream.`);
   }
 
   const devicesAfterPermission = await listInputDevices(kind);
+  throwIfAborted(signal);
   const storedIdentity = readStoredDeviceIdentity(kind, deviceId);
   const resolvedDeviceId = resolveDeviceId(
     deviceId,
@@ -401,29 +360,31 @@ export async function acquireInputDeviceStream(kind, deviceId = '', trackConstra
   }
 
   try {
-    const selectedStream = await acquireSpecificDeviceStream(kind, resolvedDeviceId, trackConstraints);
+    const selectedStream = await acquireSpecificDeviceStream(kind, resolvedDeviceId, trackConstraints, signal);
     storeDeviceIdentity(
       kind,
       devicesAfterPermission.find(device => device.deviceId === resolvedDeviceId)
     );
     return selectedStream;
   } catch (targetErr) {
-    if (isPermissionDeniedError(targetErr)) {
+    if (targetErr?.isCancelledRequest || signal?.aborted || isPermissionDeniedError(targetErr)) {
       throw targetErr;
     }
-    console.warn(
-      `[mediaDeviceCapture] Selected ${kind} device "${resolvedDeviceId}" failed (${targetErr?.name || 'Error'}); trying remaining available devices...`
-    );
-    const fallbackStream = await acquireFirstAvailableFallbackDevice(
-      kind,
-      devicesAfterPermission,
-      new Set([resolvedDeviceId, deviceId]),
-      trackConstraints
-    );
-    if (fallbackStream) {
-      return fallbackStream;
+    if (allowFallback) {
+      console.warn(
+        `[mediaDeviceCapture] Selected ${kind} device "${resolvedDeviceId}" failed (${targetErr?.name || 'Error'}); trying remaining available devices...`
+      );
+      const fallbackStream = await acquireFirstAvailableFallbackDevice(
+        kind,
+        devicesAfterPermission,
+        new Set([resolvedDeviceId, deviceId]),
+        trackConstraints,
+        signal
+      );
+      if (fallbackStream) {
+        return fallbackStream;
+      }
     }
     throw targetErr || permissionError;
   }
 }
-

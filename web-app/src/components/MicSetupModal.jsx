@@ -30,17 +30,20 @@ export default function MicSetupModal({
     startSttVerification,
     stopSttVerification,
     startStream,
+    stopStream,
     isRecordingPlayback,
     isPlayingBack,
     startPlaybackTest,
   } = useAudioSetup({ studentUid, studentName, initialDeviceId: initialId });
 
-  // Start stream when modal opens or selectedDeviceId changes
+  // Start stream when modal opens or selectedDeviceId changes, and release when closed
   useEffect(() => {
     if (isOpen) {
       startStream(selectedDeviceId);
+    } else {
+      stopStream?.();
     }
-  }, [isOpen, selectedDeviceId, startStream]);
+  }, [isOpen, selectedDeviceId, startStream, stopStream]);
 
   if (!isOpen) return null;
 

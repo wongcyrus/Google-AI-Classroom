@@ -32,7 +32,7 @@ import UnenrolledStudentView from './UnenrolledStudentView';
 import { saveToOfflineQueue, flushOfflineQueue, getOfflineQueueCount } from '../utils/offlineBufferManager';
 import { decodeAudioBlobToPcm } from '../utils/audioDecoder';
 import { isGoogleChrome, isMobileDevice, isHandheldPhone } from '../utils/browserDetection';
-import { acquireInputDeviceStream, isVideoStreamDarkOrDead } from '../utils/mediaDeviceCapture';
+import { acquireInputDeviceStream } from '../utils/mediaDeviceCapture';
 import {
   allowsLocalVoiceAi,
   normalizeVoiceAiMode,
@@ -209,10 +209,16 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
 
   // Multi-camera selection & Layout State
   const [availableWebcams, setAvailableWebcams] = useState([]);
-  const [selectedWebcamId, setSelectedWebcamId] = useState('');
+  const [selectedWebcamId, setSelectedWebcamId] = useState(() => {
+    try {
+      return localStorage.getItem('preferred_camera_device_id') || '';
+    } catch {
+      return '';
+    }
+  });
   const [primaryStream, setPrimaryStream] = useState('screen'); // 'screen' | 'webcam'
-  const darkTriedWebcamsRef = useRef(new Set());
-  const webcamWatchdogTimerRef = useRef(null);
+  const webcamRequestIdRef = useRef(0);
+  const webcamAbortRef = useRef(null);
 
   const handleSwapFeeds = useCallback(() => {
     setPrimaryStream(prev => (prev === 'screen' ? 'webcam' : 'screen'));
@@ -1000,15 +1006,17 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
       appliedReadinessDevicesRef.current = readinessKey;
       setIsAudioUserEnabled(true);
       let hasLocalMicSelection = false;
+      let hasLocalCameraSelection = false;
       try {
         hasLocalMicSelection = Boolean(localStorage.getItem('preferred_mic_device_id'));
+        hasLocalCameraSelection = Boolean(localStorage.getItem('preferred_camera_device_id'));
       } catch {
         // Fall back to the readiness selection when storage is unavailable.
       }
       if (readiness.micDeviceId && !hasLocalMicSelection) {
         setSelectedMicDeviceId(readiness.micDeviceId);
       }
-      if (readiness.cameraDeviceId) {
+      if (readiness.cameraDeviceId && !hasLocalCameraSelection) {
         setSelectedWebcamId(readiness.cameraDeviceId);
       }
     }
@@ -1273,6 +1281,11 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
   }, [enableAudioCapture, isAudioUserEnabled, hasMicPermission, audioError, isWebcamSharing, updateCaptureStatus, showSystemNotification]);
 
   const stopWebcam = useCallback(async () => {
+    webcamRequestIdRef.current += 1;
+    if (webcamAbortRef.current) {
+      webcamAbortRef.current.aborted = true;
+      webcamAbortRef.current = null;
+    }
     if (webcamStreamRef.current) {
       webcamStreamRef.current.getTracks().forEach(track => track.stop());
       webcamStreamRef.current = null;
@@ -1294,6 +1307,11 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
   }, [enableAudioCapture, isAudioUserEnabled, hasMicPermission, audioError, isScreenSharing, updateCaptureStatus, showSystemNotification]);
 
   const stopAllStreams = useCallback(async () => {
+    webcamRequestIdRef.current += 1;
+    if (webcamAbortRef.current) {
+      webcamAbortRef.current.aborted = true;
+      webcamAbortRef.current = null;
+    }
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
       intervalRef.current = null;
@@ -1341,8 +1359,7 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
       if (videoDevices.length > 0) {
         setSelectedWebcamId(prev => {
           if (prev && videoDevices.some(d => d.deviceId === prev)) return prev;
-          const preferredPhysical = videoDevices.find(d => d.label && !/obs|virtual/i.test(d.label));
-          return (preferredPhysical || videoDevices[0]).deviceId;
+          return videoDevices[0].deviceId;
         });
       }
     } catch (err) {
@@ -1364,36 +1381,65 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
 
   /**
    * Initializes and starts the webcam video stream.
-   * Requests generic camera access first so Chrome can show its permission prompt,
-   * then binds the selected camera exactly without silently substituting another device.
+   * Binds the selected camera directly when specified, and serializes concurrent requests.
    */
-  const startWebcam = useCallback(async (targetDeviceId, existingStream = null) => {
+  const startWebcam = useCallback(async (targetDeviceId, existingStream = null, options = {}) => {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       console.warn("Webcam is not supported by your browser.");
       return;
     }
 
-    if (webcamWatchdogTimerRef.current) {
-      clearTimeout(webcamWatchdogTimerRef.current);
-      webcamWatchdogTimerRef.current = null;
+    const reqId = ++webcamRequestIdRef.current;
+    if (webcamAbortRef.current) {
+      webcamAbortRef.current.aborted = true;
     }
+    const abortSignal = { aborted: false };
+    webcamAbortRef.current = abortSignal;
 
     // Stop existing webcam track if any and different from existingStream
     if (webcamStreamRef.current && webcamStreamRef.current !== existingStream) {
       webcamStreamRef.current.getTracks().forEach(track => track.stop());
       webcamStreamRef.current = null;
+      if (webcamVideoRef.current) {
+        webcamVideoRef.current.srcObject = null;
+      }
       const releaseDelay = typeof process !== 'undefined' && process.env?.NODE_ENV === 'test' ? 0 : 50;
       if (releaseDelay > 0) {
         await new Promise(resolve => setTimeout(resolve, releaseDelay));
       }
     }
 
-    const deviceIdToUse = targetDeviceId || selectedWebcamId;
+    if (webcamRequestIdRef.current !== reqId || abortSignal.aborted) {
+      return;
+    }
+
+    const deviceIdToUse = targetDeviceId !== undefined ? targetDeviceId : selectedWebcamId;
+    const isManualSelection = Boolean(options?.isManualSelection);
     try {
       setWebcamError('');
-      let stream = (existingStream && typeof existingStream.getVideoTracks === 'function') ? existingStream : null;
+      const hasLiveExistingStream =
+        existingStream &&
+        typeof existingStream.getVideoTracks === 'function' &&
+        existingStream.getVideoTracks().some(t => t.readyState !== 'ended');
+      let stream = hasLiveExistingStream ? existingStream : null;
       if (!stream) {
-        stream = await acquireInputDeviceStream('video', deviceIdToUse);
+        stream = await acquireInputDeviceStream(
+          'video',
+          deviceIdToUse,
+          {},
+          {
+            preferDirectDevice: Boolean(deviceIdToUse),
+            allowFallback: !isManualSelection,
+            signal: abortSignal,
+          }
+        );
+      }
+
+      if (webcamRequestIdRef.current !== reqId || abortSignal.aborted) {
+        if (stream && stream !== existingStream) {
+          stream.getTracks().forEach(track => track.stop());
+        }
+        return;
       }
 
       webcamStreamRef.current = stream;
@@ -1419,60 +1465,23 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
       const activeTrack = stream.getVideoTracks()[0];
       const trackDeviceId = activeTrack?.getSettings?.().deviceId;
       const actualDeviceId = (trackDeviceId && trackDeviceId !== 'default') ? trackDeviceId : deviceIdToUse;
-      if (actualDeviceId) setSelectedWebcamId(actualDeviceId);
-
-      const startedAtMs = Date.now();
-      const attemptAutoRecoveryFromObs = async (failedId, reasonText) => {
-        if (failedId) {
-          darkTriedWebcamsRef.current.add(failedId);
-        }
+      if (actualDeviceId) {
+        setSelectedWebcamId(actualDeviceId);
         try {
-          if (navigator.mediaDevices?.enumerateDevices) {
-            const devs = await navigator.mediaDevices.enumerateDevices();
-            const videos = devs.filter(d => d.kind === 'videoinput' && d.deviceId && d.deviceId !== 'default');
-            const nextCam =
-              videos.find(d => !darkTriedWebcamsRef.current.has(d.deviceId) && !/obs|virtual/i.test(d.label || '')) ||
-              videos.find(d => !darkTriedWebcamsRef.current.has(d.deviceId));
-            if (nextCam) {
-              console.warn(`[StudentView] Camera "${failedId}" ${reasonText}; auto-switching to "${nextCam.label || nextCam.deviceId}"`);
-              setSelectedWebcamId(nextCam.deviceId);
-              startWebcamRef.current?.(nextCam.deviceId);
-              return true;
-            }
-          }
+          localStorage.setItem('preferred_camera_device_id', actualDeviceId);
         } catch {}
-        setWebcamError(
-          `Selected camera feed is ${reasonText} (e.g. in use by OBS). Switch camera using the dropdown or click Retry Camera.`
-        );
-        return false;
-      };
+      }
 
       if (activeTrack) {
-        activeTrack.onended = async () => {
-          if (Date.now() - startedAtMs < 2500) {
-            const switched = await attemptAutoRecoveryFromObs(actualDeviceId, 'disconnected or locked');
-            if (switched) return;
+        activeTrack.onended = () => {
+          if (webcamStreamRef.current === stream) {
+            stopWebcamRef.current?.();
           }
-          stopWebcamRef.current?.();
         };
       }
 
       // Re-enumerate to get human-readable labels now that camera permission is granted
       refreshWebcams();
-
-      const isTestEnv = typeof process !== 'undefined' && process.env?.NODE_ENV === 'test';
-      if (!isTestEnv) {
-        webcamWatchdogTimerRef.current = setTimeout(() => {
-          if (webcamStreamRef.current !== stream) return;
-          const health = isVideoStreamDarkOrDead(webcamVideoRef.current, stream);
-          if (health.isDeadOrDark) {
-            attemptAutoRecoveryFromObs(
-              actualDeviceId,
-              health.reason === 'all_black_frames' ? 'dark/black' : 'unresponsive'
-            );
-          }
-        }, 1200);
-      }
 
       const activeStreams = [
         'webcam',
@@ -1483,6 +1492,9 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
       ];
       await updateCaptureStatus(activeStreams);
     } catch (err) {
+      if (webcamRequestIdRef.current !== reqId || abortSignal.aborted || err?.isCancelledRequest) {
+        return;
+      }
       console.warn("Webcam unavailable or permission not granted:", err);
       refreshWebcams();
       const permissionDenied = err?.name === 'NotAllowedError' || err?.name === 'PermissionDeniedError';
@@ -1499,13 +1511,17 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
   }, [startWebcam]);
 
   const openReadinessWizard = useCallback((stepToOpen = 1) => {
-    if (webcamWatchdogTimerRef.current) {
-      clearTimeout(webcamWatchdogTimerRef.current);
-      webcamWatchdogTimerRef.current = null;
+    webcamRequestIdRef.current += 1;
+    if (webcamAbortRef.current) {
+      webcamAbortRef.current.aborted = true;
+      webcamAbortRef.current = null;
     }
     if (webcamStreamRef.current) {
       webcamStreamRef.current.getTracks().forEach(track => track.stop());
       webcamStreamRef.current = null;
+      if (webcamVideoRef.current) {
+        webcamVideoRef.current.srcObject = null;
+      }
       setIsWebcamSharing(false);
     }
     setWizardInitialStep(stepToOpen);
@@ -1514,10 +1530,12 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
 
   const handleWebcamChange = (e) => {
     const newDeviceId = e.target.value;
-    darkTriedWebcamsRef.current.clear();
     setSelectedWebcamId(newDeviceId);
+    try {
+      localStorage.setItem('preferred_camera_device_id', newDeviceId);
+    } catch {}
     if (isWebcamSharing || isSharing) {
-      startWebcam(newDeviceId);
+      startWebcam(newDeviceId, null, { isManualSelection: true });
     }
   };
 
@@ -3949,6 +3967,11 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
         onConfirm={(payload) => {
           const micId = typeof payload === 'object' && payload !== null ? payload.deviceId : payload;
           setSelectedMicDeviceId(micId || '');
+          if (micId) {
+            try {
+              localStorage.setItem('preferred_mic_device_id', micId);
+            } catch {}
+          }
           setIsAudioUserEnabled(true);
           setIsMicSetupOpen(false);
         }}
@@ -3967,11 +3990,21 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
         currentMicDeviceId={selectedMicDeviceId}
         onSelectMicDevice={(id) => {
           setSelectedMicDeviceId(id);
+          if (id) {
+            try {
+              localStorage.setItem('preferred_mic_device_id', id);
+            } catch {}
+          }
           setIsAudioUserEnabled(true);
         }}
         currentCameraDeviceId={selectedWebcamId}
         onSelectCameraDevice={(id) => {
           setSelectedWebcamId(id);
+          if (id) {
+            try {
+              localStorage.setItem('preferred_camera_device_id', id);
+            } catch {}
+          }
         }}
         currentScreenStream={screenStreamRef.current}
         captureMode={captureMode}
@@ -3985,12 +4018,18 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
           if (readinessResult?.micDeviceId) {
             setIsAudioUserEnabled(true);
             setSelectedMicDeviceId(readinessResult.micDeviceId);
+            try {
+              localStorage.setItem('preferred_mic_device_id', readinessResult.micDeviceId);
+            } catch {}
           }
 
           // 2. Start webcam stream if camera is present and verified (non-blocking)
           const camId = readinessResult?.cameraDeviceId;
           if (camId) {
             setSelectedWebcamId(camId);
+            try {
+              localStorage.setItem('preferred_camera_device_id', camId);
+            } catch {}
             try {
               await startWebcam(camId, readinessResult?.cameraStream);
             } catch (camErr) {

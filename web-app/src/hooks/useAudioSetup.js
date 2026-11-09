@@ -75,6 +75,8 @@ export function useAudioSetup({ studentUid = '', studentName = '', initialDevice
   const [playbackAudioUrl, setPlaybackAudioUrl] = useState(null);
 
   const streamRef = useRef(null);
+  const streamRequestIdRef = useRef(0);
+  const streamAbortRef = useRef(null);
   const audioContextRef = useRef(null);
   const analyserRef = useRef(null);
   const animationFrameRef = useRef(null);
@@ -146,8 +148,36 @@ export function useAudioSetup({ studentUid = '', studentName = '', initialDevice
     }
   }, [refreshDevices]);
 
+  const stopStream = useCallback(() => {
+    streamRequestIdRef.current += 1;
+    if (streamAbortRef.current) {
+      streamAbortRef.current.aborted = true;
+      streamAbortRef.current = null;
+    }
+    const hadStream = Boolean(streamRef.current);
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(t => t.stop());
+      streamRef.current = null;
+    }
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
+    if (hadStream) {
+      setStream(null);
+      setVolumeLevel(0);
+    }
+  }, []);
+
   // 2. Start audio stream and attach volume analyser
   const startStream = useCallback(async (deviceId) => {
+    const reqId = ++streamRequestIdRef.current;
+    if (streamAbortRef.current) {
+      streamAbortRef.current.aborted = true;
+    }
+    const abortSignal = { aborted: false };
+    streamAbortRef.current = abortSignal;
+
     setError(null);
 
     // Stop existing stream
@@ -157,7 +187,12 @@ export function useAudioSetup({ studentUid = '', studentName = '', initialDevice
     }
 
     try {
-      const newStream = await acquireInputDeviceStream('audio', deviceId);
+      const newStream = await acquireInputDeviceStream('audio', deviceId, {}, { signal: abortSignal });
+
+      if (reqId !== streamRequestIdRef.current || abortSignal.aborted) {
+        newStream?.getTracks?.().forEach(t => t.stop());
+        return null;
+      }
 
       streamRef.current = newStream;
       setStream(newStream);
@@ -243,6 +278,9 @@ export function useAudioSetup({ studentUid = '', studentName = '', initialDevice
 
       return newStream;
     } catch (err) {
+      if (reqId !== streamRequestIdRef.current || abortSignal.aborted || err?.isCancelledRequest) {
+        return null;
+      }
       console.error('Microphone access failed:', err);
       setError(err.message || 'Microphone access denied');
       return null;
@@ -443,6 +481,7 @@ export function useAudioSetup({ studentUid = '', studentName = '', initialDevice
     stopSttVerification,
     // Stream lifecycle
     startStream,
+    stopStream,
     // Playback
     isRecordingPlayback,
     isPlayingBack,

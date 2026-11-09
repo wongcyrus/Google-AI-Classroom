@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { db } from '../firebase-config';
 import { doc, setDoc } from 'firebase/firestore';
-import { acquireInputDeviceStream, isVideoStreamDarkOrDead } from '../utils/mediaDeviceCapture';
+import { acquireInputDeviceStream } from '../utils/mediaDeviceCapture';
 
 /**
  * 3-Step Guided Pre-Exam Readiness Wizard (Self-Calibration)
@@ -66,7 +66,7 @@ export default function ExamReadinessWizard({
   const cameraStreamRef = useRef(null);
   const acquiredCamIdRef = useRef('');
   const cameraRetryTickRef = useRef(0);
-  const darkTriedCamIdsRef = useRef(new Set());
+  const isManualCameraSelectionRef = useRef(false);
 
   // --- Step 3: Screen Share Check ---
   const [isScreenVerified, setIsScreenVerified] = useState(false);
@@ -93,11 +93,23 @@ export default function ExamReadinessWizard({
   }, []);
 
   useEffect(() => {
+    if (currentMicDeviceId) {
+      setSelectedMic(currentMicDeviceId);
+    }
+  }, [currentMicDeviceId]);
+
+  useEffect(() => {
+    if (currentCameraDeviceId) {
+      setSelectedCamera(currentCameraDeviceId);
+    }
+  }, [currentCameraDeviceId]);
+
+  useEffect(() => {
     if (isOpen) {
       if (!wasOpenRef.current) {
         wasOpenRef.current = true;
         setStep(initialStep || 1);
-        darkTriedCamIdsRef.current.clear();
+        isManualCameraSelectionRef.current = false;
         setCameraError('');
         setCameraNotice('');
       }
@@ -108,7 +120,7 @@ export default function ExamReadinessWizard({
     }
 
     wasOpenRef.current = false;
-    darkTriedCamIdsRef.current.clear();
+    isManualCameraSelectionRef.current = false;
     if (ownsScreenStreamRef.current && screenStreamRef.current) {
       screenStreamRef.current.getTracks().forEach((track) => track.stop());
     }
@@ -145,14 +157,13 @@ export default function ExamReadinessWizard({
       if (audios.length > 0) {
         setSelectedMic((prev) => {
           if (prev && audios.some((a) => a.deviceId === prev)) return prev;
-          return prev || audios[0].deviceId;
+          return audios[0].deviceId;
         });
       }
       if (videos.length > 0) {
         setSelectedCamera((prev) => {
           if (prev && videos.some((v) => v.deviceId === prev)) return prev;
-          const preferredPhysical = videos.find((v) => v.label && !/obs|virtual/i.test(v.label));
-          return prev || (preferredPhysical || videos[0]).deviceId;
+          return videos[0].deviceId;
         });
       }
     } catch (err) {
@@ -194,10 +205,15 @@ export default function ExamReadinessWizard({
     }
 
     let isMounted = true;
+    const abortSignal = { aborted: false };
     const startMic = async () => {
       try {
-        const stream = await acquireInputDeviceStream('audio', selectedMic || '');
-        if (!isMounted) {
+        if (micStreamRef.current) {
+          micStreamRef.current.getTracks().forEach((t) => t.stop());
+          micStreamRef.current = null;
+        }
+        const stream = await acquireInputDeviceStream('audio', selectedMic || '', {}, { signal: abortSignal });
+        if (!isMounted || abortSignal.aborted) {
           stream.getTracks().forEach((t) => t.stop());
           return;
         }
@@ -205,9 +221,13 @@ export default function ExamReadinessWizard({
         micStreamRef.current = stream;
         const activeTrack = stream?.getAudioTracks?.()[0];
         const actualMicId = activeTrack?.getSettings?.().deviceId;
-        if (actualMicId && !selectedMic) {
-          acquiredMicIdRef.current = actualMicId;
+        const effectiveMicId = (actualMicId && actualMicId !== 'default') ? actualMicId : selectedMic;
+        acquiredMicIdRef.current = effectiveMicId || 'default';
+        if (actualMicId && actualMicId !== 'default' && !selectedMic) {
           setSelectedMic(actualMicId);
+        }
+        if (effectiveMicId) {
+          onSelectMicDevice?.(effectiveMicId);
         }
         loadDevices();
 
@@ -243,6 +263,7 @@ export default function ExamReadinessWizard({
           console.warn('ExamReadinessWizard audio analysis setup warning:', audioErr);
         }
       } catch (err) {
+        if (!isMounted || abortSignal.aborted || err?.isCancelledRequest) return;
         console.warn('Wizard mic init failed or not available:', err);
         setHasMicHardware(false);
       }
@@ -252,13 +273,10 @@ export default function ExamReadinessWizard({
 
     return () => {
       isMounted = false;
+      abortSignal.aborted = true;
       if (micAnimFrameRef.current) cancelAnimationFrame(micAnimFrameRef.current);
       if (micAudioCtxRef.current && micAudioCtxRef.current.state !== 'closed') {
         micAudioCtxRef.current.close().catch(() => {});
-      }
-      if (micStreamRef.current) {
-        micStreamRef.current.getTracks().forEach((t) => t.stop());
-        micStreamRef.current = null;
       }
     };
   }, [isOpen, step, selectedMic, loadDevices]);
@@ -502,6 +520,14 @@ export default function ExamReadinessWizard({
         playbackAudioUrlRef.current = null;
       }
       stopSpeechTest();
+      if (micStreamRef.current) {
+        micStreamRef.current.getTracks().forEach((t) => t.stop());
+        micStreamRef.current = null;
+      }
+      if (cameraStreamRef.current) {
+        cameraStreamRef.current.getTracks().forEach((t) => t.stop());
+        cameraStreamRef.current = null;
+      }
     };
   }, [stopPlayback, stopSpeechTest]);
 
@@ -516,12 +542,14 @@ export default function ExamReadinessWizard({
     const nextIndex = (currentIndex + 1) % videoDevices.length;
     const nextCamId = videoDevices[nextIndex]?.deviceId;
     if (nextCamId) {
+      isManualCameraSelectionRef.current = true;
       acquiredCamIdRef.current = '';
       setCameraError('');
       setCameraNotice('');
       setSelectedCamera(nextCamId);
+      onSelectCameraDevice?.(nextCamId);
     }
-  }, [videoDevices, selectedCamera]);
+  }, [videoDevices, selectedCamera, onSelectCameraDevice]);
 
   useEffect(() => {
     if (!isOpen || step < 2) {
@@ -529,6 +557,9 @@ export default function ExamReadinessWizard({
       if (cameraStreamRef.current) {
         cameraStreamRef.current.getTracks().forEach((t) => t.stop());
         cameraStreamRef.current = null;
+      }
+      if (cameraVideoRef.current) {
+        cameraVideoRef.current.srcObject = null;
       }
       return;
     }
@@ -551,41 +582,7 @@ export default function ExamReadinessWizard({
     }
 
     let isMounted = true;
-    let watchdogTimer = null;
-
-    const tryFallbackToNextCamera = async (failedCamId, reasonLabel) => {
-      if (!isMounted) return;
-      if (failedCamId) {
-        darkTriedCamIdsRef.current.add(failedCamId);
-      }
-      try {
-        if (!navigator.mediaDevices?.enumerateDevices) return;
-        const allDevs = await navigator.mediaDevices.enumerateDevices();
-        const videos = allDevs.filter((d) => d.kind === 'videoinput' && d.deviceId && d.deviceId !== 'default');
-        const nextCandidate =
-          videos.find(
-            (d) => !darkTriedCamIdsRef.current.has(d.deviceId) && !/obs|virtual/i.test(d.label || '')
-          ) || videos.find((d) => !darkTriedCamIdsRef.current.has(d.deviceId));
-        if (nextCandidate && isMounted) {
-          if (cameraStreamRef.current) {
-            cameraStreamRef.current.getTracks().forEach((t) => t.stop());
-            cameraStreamRef.current = null;
-          }
-          acquiredCamIdRef.current = '';
-          setCameraError('');
-          setCameraNotice(
-            `Camera feed was ${reasonLabel} (e.g. in use by OBS). Automatically switched to "${nextCandidate.label || 'next camera'}".`
-          );
-          setSelectedCamera(nextCandidate.deviceId);
-          return;
-        }
-      } catch {}
-      if (isMounted) {
-        setCameraError(
-          `Selected camera appears ${reasonLabel} (e.g. locked by OBS). Select another camera above or close OBS.`
-        );
-      }
-    };
+    const abortSignal = { aborted: false };
 
     const startCamera = async () => {
       try {
@@ -593,15 +590,29 @@ export default function ExamReadinessWizard({
         if (cameraStreamRef.current) {
           cameraStreamRef.current.getTracks().forEach((t) => t.stop());
           cameraStreamRef.current = null;
+          if (cameraVideoRef.current) {
+            cameraVideoRef.current.srcObject = null;
+          }
           const releaseDelay = typeof process !== 'undefined' && process.env?.NODE_ENV === 'test' ? 0 : 50;
           if (releaseDelay > 0) {
             await new Promise((r) => setTimeout(r, releaseDelay));
           }
         }
+        if (!isMounted || abortSignal.aborted) return;
 
-        const stream = await acquireInputDeviceStream('video', selectedCamera || '');
+        const isExplicitManualPick = isManualCameraSelectionRef.current;
+        const stream = await acquireInputDeviceStream(
+          'video',
+          selectedCamera || '',
+          {},
+          {
+            preferDirectDevice: Boolean(selectedCamera),
+            allowFallback: !isExplicitManualPick,
+            signal: abortSignal,
+          }
+        );
 
-        if (!isMounted) {
+        if (!isMounted || abortSignal.aborted) {
           stream.getTracks().forEach((t) => t.stop());
           return;
         }
@@ -614,19 +625,12 @@ export default function ExamReadinessWizard({
 
         if (actualCamId && actualCamId !== 'default' && actualCamId !== selectedCamera) {
           if (selectedCamera) {
-            setCameraNotice('Previous camera was busy (e.g. in use by OBS); automatically switched to an available camera.');
+            setCameraNotice('Previous camera was in use by another application; switched to an available camera.');
           }
           setSelectedCamera(actualCamId);
         }
         if (effectiveCamId) {
           onSelectCameraDevice?.(effectiveCamId);
-        }
-
-        if (activeCamTrack) {
-          activeCamTrack.onended = () => {
-            if (!isMounted || cameraStreamRef.current !== stream) return;
-            tryFallbackToNextCamera(effectiveCamId, 'disconnected or locked by another app');
-          };
         }
 
         if (cameraVideoRef.current) {
@@ -643,28 +647,15 @@ export default function ExamReadinessWizard({
 
         setHasCameraHardware(true);
         await loadDevices();
-
-        const isTestEnv = typeof process !== 'undefined' && process.env?.NODE_ENV === 'test';
-        if (!isTestEnv) {
-          watchdogTimer = setTimeout(() => {
-            if (!isMounted || cameraStreamRef.current !== stream) return;
-            const health = isVideoStreamDarkOrDead(cameraVideoRef.current, stream);
-            if (health.isDeadOrDark) {
-              tryFallbackToNextCamera(
-                effectiveCamId,
-                health.reason === 'all_black_frames' ? 'dark/black' : 'unresponsive'
-              );
-            }
-          }, 1200);
-        }
       } catch (err) {
+        if (!isMounted || abortSignal.aborted || err?.isCancelledRequest) return;
         console.warn('Wizard camera init failed or unavailable:', err);
         await loadDevices();
         const isPermErr = err?.name === 'NotAllowedError' || err?.name === 'PermissionDeniedError';
         setCameraError(
           isPermErr
             ? 'Camera permission is blocked. Allow camera access in your browser site settings.'
-            : 'Selected camera is in use by another app (e.g. OBS) or unavailable. Choose another camera from the dropdown.'
+            : 'Selected camera is currently in use by another application or unavailable. Choose another camera from the dropdown.'
         );
         if (!navigator.mediaDevices?.enumerateDevices) {
           if (!selectedCamera) setHasCameraHardware(false);
@@ -686,10 +677,10 @@ export default function ExamReadinessWizard({
 
     return () => {
       isMounted = false;
-      if (watchdogTimer) clearTimeout(watchdogTimer);
+      abortSignal.aborted = true;
       // Note: do not stop camera stream here if advancing to step 3 so it can be handed off
     };
-  }, [isOpen, step, selectedCamera, cameraRetryTick, loadDevices]);
+  }, [isOpen, step, selectedCamera, cameraRetryTick, loadDevices, onSelectCameraDevice]);
 
   // Calibrate neutral gaze & face position
   const handleCalibrateFace = () => {
@@ -919,7 +910,12 @@ export default function ExamReadinessWizard({
                 </label>
                 <select
                   value={selectedMic}
-                  onChange={(e) => setSelectedMic(e.target.value)}
+                  onChange={(e) => {
+                    const newMicId = e.target.value;
+                    acquiredMicIdRef.current = '';
+                    setSelectedMic(newMicId);
+                    onSelectMicDevice?.(newMicId);
+                  }}
                   style={{
                     width: '100%',
                     padding: '0.6rem',
@@ -1132,10 +1128,13 @@ export default function ExamReadinessWizard({
                 <select
                   value={selectedCamera}
                   onChange={(e) => {
+                    const newCamId = e.target.value;
+                    isManualCameraSelectionRef.current = true;
                     acquiredCamIdRef.current = '';
                     setCameraError('');
                     setCameraNotice('');
-                    setSelectedCamera(e.target.value);
+                    setSelectedCamera(newCamId);
+                    onSelectCameraDevice?.(newCamId);
                   }}
                   style={{
                     width: '100%',
