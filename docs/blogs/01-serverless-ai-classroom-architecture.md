@@ -1,11 +1,11 @@
 # Part 1: Solving the $25-Per-Exam Problem — Architecting a Sub-$0.02/Student Serverless AI Classroom with Gemini 4 & Firebase
 
 **Author:** [**Cyrus Wong (黃俊彥)**](https://www.linkedin.com/in/cyruswong/) — *Google Developer Expert - Cloud (AI), Senior Lecturer at HKIIT*  
-[📚 Back to GDE Blog Series Index](./README.md) | [⏭️ Next: Part 2 — Browser Edge AI with Gemma 4 E2B](./02-browser-edge-ai-gemma-4-mediapipe-whisper.md)
+[📚 Back to GDE Blog Series Index](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/README.md) | [⏭️ Next: Part 2 — Browser Edge AI with Gemma 4 E2B](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/02-browser-edge-ai-gemma-4-mediapipe-whisper.md)
 
 ---
 
-![Serverless AI Classroom Assistant with Gemini 4 & Firebase](../presentation/images/slide_hero_classroom_ai.png)
+![Serverless AI Classroom Assistant with Gemini 4 & Firebase](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/presentation/images/slide_hero_classroom_ai.png)
 
 ## 1. Problem Statement: The Classroom Trilemma — Integrity vs. Privacy vs. Cloud FinOps
 
@@ -15,7 +15,7 @@ In our computer laboratories at the **Hong Kong Institute of Information Technol
 2. **Student Biometric Privacy (GDPR / Hong Kong PDPO)**: Legacy commercial proctoring suites require students to install invasive ring-0 kernel drivers and continuously stream raw webcam video and bedroom/lab microphone feeds to third-party cloud servers. This sparks justified student pushback and creates massive institutional liability under the **Hong Kong Personal Data (Privacy) Ordinance (PDPO)** and **EU GDPR**.
 3. **Institutional Cost Sustainability**: Commercial proctoring SaaS platforms charge **$15 to $25 USD per student per exam** ($750–$1,250 USD for a single 50-student cohort). Public universities and vocational institutions simply cannot afford that price tag for daily formative lab exercises, weekly capstone consultations, and continuous assessment.
 
-![The Classroom Assessment Trilemma](../presentation/images/slide_assessment_trilemma.png)
+![The Classroom Assessment Trilemma](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/presentation/images/slide_assessment_trilemma.png)
 
 When we set out to replace legacy proctoring and manual lab grading with an open-source, cloud-native platform in `asia-east2` (Hong Kong), we established a strict architectural mandate:
 - **Zero Continuous Raw Video/Audio Streaming to the Cloud**: 95% of high-frequency biometric gaze, posture, object detection, and speech-intent proctoring must execute **100% locally inside the student's browser** using WebGPU and WebAssembly (**LiteRT-LM Gemma 4 E2B** `gemma-4-E2B-it-web.litertlm`, **LiteRT Whisper-Tiny**, and **MediaPipe Tasks-Vision**) at **$0.00 cloud API cost**.
@@ -28,7 +28,7 @@ When we set out to replace legacy proctoring and manual lab grading with an open
 
 Instead of streaming 50 concurrent 1080p WebRTC video feeds to cloud GPU clusters, we decoupled high-frequency sensory perception (**Tier 1 Browser Edge**) from low-latency signaling (**Tier 2 Firestore & Cloud Storage**), domain-isolated serverless compute (**Tier 3 Cloud Functions Gen 2 / Cloud Run**), and multimodal reasoning (**Tier 4 Vertex AI / Google Genkit**).
 
-![4-Tier Hybrid Edge-to-Cloud Serverless Classroom Architecture](./images/blog01_diagram1_4tier_architecture.png)
+![4-Tier Hybrid Edge-to-Cloud Serverless Classroom Architecture](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog01_diagram1_4tier_architecture.png)
 
 ### How the 4 Tiers Work Together in a Live Lab
 1. **Tier 1 (Student Browser Edge)**: Every frame from the student's webcam is analyzed in a dedicated Web Worker via MediaPipe's 478-point 3D Face Landmarker (including iris rings `468..477`), while ambient microphone audio is gated by an RMS energy detector, transcribed locally by **LiteRT Whisper-Tiny**, and evaluated for exam collusion by **LiteRT-LM Gemma 4 E2B** (`gemma-4-E2B-it-web.litertlm`). Raw video and audio frames are immediately garbage-collected in browser RAM unless a sustained (>3.0s) violation occurs.
@@ -44,13 +44,13 @@ A classic architectural mistake in serverless Firebase applications is dumping e
 - **Cold-Start Contamination**: Packaging `fluent-ffmpeg`, `@ffmpeg-installer/ffmpeg`, `sharp`, and `@google-cloud/tasks` alongside lightweight Google Cloud Identity Platform (GCIP) blocking functions (`beforeUserCreated`, `beforeUserSignedIn`) inflated container cold starts above 4.2 seconds—causing noticeable login delays for students scanning classroom QR codes.
 - **Blast-Radius & Memory Over-Provisioning**: Video compilation (`compileVideo`) requires **2 vCPUs and 8 GiB of RAM** with a **540-second timeout**, whereas an attendance heartbeat or CSV property upload needs only **256 MiB of RAM**.
 
-In [`firebase.json`](../../firebase.json), we partitioned our backend into **7 isolated Cloud Functions Gen 2 micro-codebases** running on Node.js 22, each with its own independent `package.json`, dependency tree, memory profile, and CI/CD deployment guard:
+In [`firebase.json`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/firebase.json), we partitioned our backend into **7 isolated Cloud Functions Gen 2 micro-codebases** running on Node.js 22, each with its own independent `package.json`, dependency tree, memory profile, and CI/CD deployment guard:
 
-![Domain-Driven Isolation: 7 Cloud Functions Gen 2 Codebases](./images/blog01_diagram2_7codebases.png)
+![Domain-Driven Isolation: 7 Cloud Functions Gen 2 Codebases](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog01_diagram2_7codebases.png)
 
-### Production Code Listing 1: Multi-Codebase & Hosting Build Guard in [`firebase.json`](../../firebase.json)
+### Production Code Listing 1: Multi-Codebase & Hosting Build Guard in [`firebase.json`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/firebase.json)
 
-Notice how [`firebase.json`](../../firebase.json) not only isolates the 7 `nodejs22` function codebases, but also enforces a **predeploy environment verification guard** on Firebase Hosting so a developer can never accidentally deploy a `dev`-configured React bundle to the production project (`it114115-2627`), while serving `.wasm` binaries with proper MIME headers for MediaPipe and LiteRT:
+Notice how [`firebase.json`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/firebase.json) not only isolates the 7 `nodejs22` function codebases, but also enforces a **predeploy environment verification guard** on Firebase Hosting so a developer can never accidentally deploy a `dev`-configured React bundle to the production project (`it114115-2627`), while serving `.wasm` binaries with proper MIME headers for MediaPipe and LiteRT:
 
 ```json
 {
@@ -124,11 +124,11 @@ Notice how [`firebase.json`](../../firebase.json) not only isolates the 7 `nodej
 
 In a naive real-time classroom application, if 50 students write their telemetry every 5 seconds to individual documents (`classes/{classId}/students/{studentUid}`) and 3 instructors/TAs open the live monitoring dashboard, a single 3-hour practical exam can trigger **hundreds of thousands of Firestore document reads** and cause React state thrashing on the teacher's browser.
 
-![Teacher Command Center](../presentation/images/slide_teacher_command_center.png)
+![Teacher Command Center](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/presentation/images/slide_teacher_command_center.png)
 
-We solved this with a dual-path telemetry design connecting [`useFaceMonitor.js`](../../web-app/src/hooks/useFaceMonitor.js), [`useClientLiteRTGemma.js`](../../web-app/src/hooks/useClientLiteRTGemma.js), and [`functions/property_processing/index.mjs`](../../functions/property_processing/index.mjs):
+We solved this with a dual-path telemetry design connecting [`useFaceMonitor.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/hooks/useFaceMonitor.js), [`useClientLiteRTGemma.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/hooks/useClientLiteRTGemma.js), and [`functions/property_processing/index.mjs`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/property_processing/index.mjs):
 
-![Dual-Path Edge Telemetry & Protected CSV Sync Sequence](./images/blog01_diagram3_single_stream_telemetry.png)
+![Dual-Path Edge Telemetry & Protected CSV Sync Sequence](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog01_diagram3_single_stream_telemetry.png)
 
 ### Edge Case 1: Preventing Teacher CSV Uploads from Wiping Live Exam State
 
@@ -136,9 +136,9 @@ During live classes, teachers frequently upload a revised CSV spreadsheet (to as
 
 If Sync Mode blindly deleted every field not present in the teacher's CSV headers, uploading a seat chart mid-exam would wipe out students' WebAuthn Passkey bindings and active Bingo challenges.
 
-### Production Code Listing 2: Protected Internal Key Guard in [`functions/property_processing/index.mjs`](../../functions/property_processing/index.mjs)
+### Production Code Listing 2: Protected Internal Key Guard in [`functions/property_processing/index.mjs`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/property_processing/index.mjs)
 
-Here is how [`isInternalPropertyKey`](../../functions/property_processing/index.mjs) and batched 450-document writes in [`functions/property_processing/index.mjs`](../../functions/property_processing/index.mjs) guarantee that teacher spreadsheet syncs never clobber live telemetry or authentication state:
+Here is how [`isInternalPropertyKey`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/property_processing/index.mjs) and batched 450-document writes in [`functions/property_processing/index.mjs`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/property_processing/index.mjs) guarantee that teacher spreadsheet syncs never clobber live telemetry or authentication state:
 
 ```javascript
 /**
@@ -191,11 +191,11 @@ Another silent cost killer in educational cloud platforms is **orphaned media st
 
 If a teacher deletes an old class document (`classes/{classId}`) or shortens the class's data-retention window (`retentionDays` / `videoRetentionDays`), standard Firestore deletion leaves every subcollection document and gigabytes of Cloud Storage blobs behind—accumulating perpetual storage bills and violating PDPO data-retention commitments.
 
-![Cloud Storage & FFmpeg TTL Governance](../presentation/images/slide_cloud_storage_ffmpeg_ttl.png)
+![Cloud Storage & FFmpeg TTL Governance](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/presentation/images/slide_cloud_storage_ffmpeg_ttl.png)
 
-### Production Code Listing 3: 4-Stage Cascading Class Purge in [`functions/storage_triggers/cleanupTriggers.js`](../../functions/storage_triggers/cleanupTriggers.js)
+### Production Code Listing 3: 4-Stage Cascading Class Purge in [`functions/storage_triggers/cleanupTriggers.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/storage_triggers/cleanupTriggers.js)
 
-In [`functions/storage_triggers/cleanupTriggers.js`](../../functions/storage_triggers/cleanupTriggers.js), we implemented `onClassDocDeleted` and `onClassRetentionUpdated`. Whenever a class document is deleted, `onClassDocDeleted` executes a 4-stage cascading cleanup across Cloud Storage and Firestore in 500-document batches:
+In [`functions/storage_triggers/cleanupTriggers.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/storage_triggers/cleanupTriggers.js), we implemented `onClassDocDeleted` and `onClassRetentionUpdated`. Whenever a class document is deleted, `onClassDocDeleted` executes a 4-stage cascading cleanup across Cloud Storage and Firestore in 500-document batches:
 
 ```javascript
 export const onClassDocDeleted = onDocumentDeleted({
@@ -253,9 +253,9 @@ export const onClassDocDeleted = onDocumentDeleted({
 
 Furthermore, whenever an individual `screenshots/{id}`, `audio/{id}`, `videoJobs/{id}`, or `zipJobs/{id}` document expires via **Firestore Native TTL (`expireAt`)**, dedicated `onDocumentDeleted` triggers (`onScreenshotDocDeleted`, `onAudioDocDeleted`, `onVideoJobDocDeleted`) immediately delete the corresponding physical blob in Cloud Storage—guaranteeing **zero orphaned storage bytes**.
 
-### Production Code Listing 4: 9-Category Real-Time Storage Quota Enforcement & Self-Healing Drift Guard in [`functions/storage_triggers/storageQuota.js`](../../functions/storage_triggers/storageQuota.js)
+### Production Code Listing 4: 9-Category Real-Time Storage Quota Enforcement & Self-Healing Drift Guard in [`functions/storage_triggers/storageQuota.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/storage_triggers/storageQuota.js)
 
-In addition to cascading deletion, every physical blob uploaded to Cloud Storage is tracked in real time across **9 distinct storage categories** (`storageUsageScreenShots`, `storageUsageVideos`, `storageUsageRecordings`, `storageUsageAudio`, `storageUsageIrregularities`, `storageUsageZips`, `storageUsageTasks`, `storageUsageReports`, and `storageUsageProjectMeetings`). If an upload pushes a class over its configured `storageQuota`, `updateStorageUsageOnUpload` in [`functions/storage_triggers/storageQuota.js`](../../functions/storage_triggers/storageQuota.js) automatically deletes the offending blob and rolls back the atomic `FieldValue.increment` counter:
+In addition to cascading deletion, every physical blob uploaded to Cloud Storage is tracked in real time across **9 distinct storage categories** (`storageUsageScreenShots`, `storageUsageVideos`, `storageUsageRecordings`, `storageUsageAudio`, `storageUsageIrregularities`, `storageUsageZips`, `storageUsageTasks`, `storageUsageReports`, and `storageUsageProjectMeetings`). If an upload pushes a class over its configured `storageQuota`, `updateStorageUsageOnUpload` in [`functions/storage_triggers/storageQuota.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/storage_triggers/storageQuota.js) automatically deletes the offending blob and rolls back the atomic `FieldValue.increment` counter:
 
 ```javascript
 export function getStorageCategoryAndClass(filePath) {
@@ -312,10 +312,10 @@ By executing continuous biometric vision and speech-intent classification inside
 ## 7. Key Takeaways for Google Cloud & EdTech Builders
 
 1. **Push High-Frequency Perception to the Browser Edge**: Never stream continuous 30-FPS video or raw microphone audio to cloud servers when WebGPU and WebAssembly can run **LiteRT-LM Gemma 4 E2B** and **MediaPipe** locally on the student's machine at $0.00 cost and zero biometric privacy exposure.
-2. **Split Monolithic Cloud Functions by Resource Profile**: Isolating heavy `ffmpeg`/`sharp` workloads (`media-processing`, 8 GiB RAM) from authentication (`auth-triggers`, 256 MiB RAM) and Genkit AI orchestration (`ai-flows`, 1 GiB RAM) in [`firebase.json`](../../firebase.json) eliminates cold-start latency and slashes container memory billing.
+2. **Split Monolithic Cloud Functions by Resource Profile**: Isolating heavy `ffmpeg`/`sharp` workloads (`media-processing`, 8 GiB RAM) from authentication (`auth-triggers`, 256 MiB RAM) and Genkit AI orchestration (`ai-flows`, 1 GiB RAM) in [`firebase.json`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/firebase.json) eliminates cold-start latency and slashes container memory billing.
 3. **Give Teachers Model Choice Across Every Workflow**: By exposing **Gemini 4 Argon (`gemini-4-argon`)**, **Gemini 3.8 Flash (`gemini-3.8-flash`)**, and **Gemini 3.5 Flash-Lite (`gemini-3.5-flash-lite`)** in every UI picker, educators can use `gemini-3.5-flash-lite` for sub-second live interactions and switch to `gemini-4-argon` when grading complex multi-step code or synthesizing new rubrics.
-4. **Automate Data Lifecycle & Cascading Storage Purges**: Pairing Firestore Native TTL (`expireAt`) with cascading `onDocumentDeleted` Storage triggers in [`cleanupTriggers.js`](../../functions/storage_triggers/cleanupTriggers.js) ensures strict compliance with Hong Kong PDPO and GDPR while preventing silent storage bill creep.
+4. **Automate Data Lifecycle & Cascading Storage Purges**: Pairing Firestore Native TTL (`expireAt`) with cascading `onDocumentDeleted` Storage triggers in [`cleanupTriggers.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/storage_triggers/cleanupTriggers.js) ensures strict compliance with Hong Kong PDPO and GDPR while preventing silent storage bill creep.
 
 ---
 
-[📚 Back to GDE Blog Series Index](./README.md) | [⏭️ Continue to Part 2: Zero-Egress Browser Edge AI with Gemma 4 E2B →](./02-browser-edge-ai-gemma-4-mediapipe-whisper.md)
+[📚 Back to GDE Blog Series Index](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/README.md) | [⏭️ Continue to Part 2: Zero-Egress Browser Edge AI with Gemma 4 E2B →](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/02-browser-edge-ai-gemma-4-mediapipe-whisper.md)

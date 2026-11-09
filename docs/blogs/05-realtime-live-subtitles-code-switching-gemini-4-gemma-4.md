@@ -1,11 +1,11 @@
 # Part 5: Real-Time Multilingual Live Subtitles & Hong Kong Code-Switching with Gemini 4 / 3.8 & On-Device Gemma 4 E2B
 
 **Author:** [**Cyrus Wong (黃俊彥)**](https://www.linkedin.com/in/cyruswong/) — *Google Developer Expert - Cloud (AI), Senior Lecturer at HKIIT*  
-[⏮️ Previous: Part 4 — WebAuthn Passkeys & Rotating HMAC QRs](./04-webauthn-passkeys-rotating-hmac-qr-auth.md) | [📚 Series Index](./README.md) | [⏭️ Next: Part 6 — 1,000-Viewer Broadcast & Gemini 4 Lecture Studio](./06-scalable-screen-broadcast-and-gemini-4-lecture-studio.md)
+[⏮️ Previous: Part 4 — WebAuthn Passkeys & Rotating HMAC QRs](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/04-webauthn-passkeys-rotating-hmac-qr-auth.md) | [📚 Series Index](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/README.md) | [⏭️ Next: Part 6 — 1,000-Viewer Broadcast & Gemini 4 Lecture Studio](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/06-scalable-screen-broadcast-and-gemini-4-lecture-studio.md)
 
 ---
 
-![Live Subtitles & Multilingual Captions Engine](../presentation/images/slide_live_subtitles_multilingual.png)
+![Live Subtitles & Multilingual Captions Engine](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/presentation/images/slide_live_subtitles_multilingual.png)
 
 ## 1. Problem Statement: Why Standard Speech-to-Text Breaks in Bilingual Technical Classrooms
 
@@ -19,18 +19,18 @@ When we tested standard commercial speech-to-text (STT) and machine translation 
 3. **Loss of Cross-Discipline Context**: The word *"port"* means a TCP/UDP network port in Computer Science, a venous access port in Nursing & Healthcare, and a maritime harbor in Logistics. Without discipline-aware context and rolling conversational history, utterance-by-utterance translation loses pronoun referents (*"it"*, *"this hook"*) and domain accuracy.
 
 To solve this for diverse international and mainland/local student cohorts, we engineered a **Dual-Engine Real-Time Multilingual Live Subtitle Pipeline** supporting **9 simultaneous target languages** (`zh-Hant`, `zh-Hans`, `en`, `ja`, `ko`, `es`, `fr`, `de`, `vi`). Instructors can switch seamlessly between:
-- **Server Mode (Recommended · Cross-Platform)**: Powered by **Gemini 3.5 Flash-Lite (`gemini-3.5-flash-lite`)**, **Gemini 3.8 Flash (`gemini-3.8-flash`)**, or **Gemini 4 Argon (`gemini-4-argon`)** via Genkit (`translateTeacherSpeech` in [`functions/ai_flows/subtitleFlows.js`](../../functions/ai_flows/subtitleFlows.js)) with `thinkingBudget: 0` for sub-second multi-language structured JSON generation.
-- **Client Mode ($0.00 Cloud Cost · Desktop WebGPU/WASM)**: Powered by on-device **LiteRT-LM `Gemma 4 E2B` (`gemma-4-E2B-it-web.litertlm`)** running inside a dedicated Web Worker ([`litertGemma.worker.js`](../../web-app/src/workers/litertGemma.worker.js)) with automatic cloud fallback for zero dropped captions.
+- **Server Mode (Recommended · Cross-Platform)**: Powered by **Gemini 3.5 Flash-Lite (`gemini-3.5-flash-lite`)**, **Gemini 3.8 Flash (`gemini-3.8-flash`)**, or **Gemini 4 Argon (`gemini-4-argon`)** via Genkit (`translateTeacherSpeech` in [`functions/ai_flows/subtitleFlows.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/ai_flows/subtitleFlows.js)) with `thinkingBudget: 0` for sub-second multi-language structured JSON generation.
+- **Client Mode ($0.00 Cloud Cost · Desktop WebGPU/WASM)**: Powered by on-device **LiteRT-LM `Gemma 4 E2B` (`gemma-4-E2B-it-web.litertlm`)** running inside a dedicated Web Worker ([`litertGemma.worker.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/workers/litertGemma.worker.js)) with automatic cloud fallback for zero dropped captions.
 
 ---
 
 ## 2. Architectural Deep-Dive: Dual-Engine Live Subtitle Pipeline
 
-In [`TeacherSubtitleControlModal.jsx`](../../web-app/src/components/subtitles/TeacherSubtitleControlModal.jsx) and [`useTeacherLiveSubtitles.js`](../../web-app/src/hooks/useTeacherLiveSubtitles.js), instructors can toggle between **Server Mode** and **Client Mode**, change their spoken source language (`zh-HK`, `en-US`, `zh-CN`), or add/remove target languages on the fly without restarting their microphone stream.
+In [`TeacherSubtitleControlModal.jsx`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/components/subtitles/TeacherSubtitleControlModal.jsx) and [`useTeacherLiveSubtitles.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/hooks/useTeacherLiveSubtitles.js), instructors can toggle between **Server Mode** and **Client Mode**, change their spoken source language (`zh-HK`, `en-US`, `zh-CN`), or add/remove target languages on the fly without restarting their microphone stream.
 
 ### Diagram 1: Dual-Engine Live Subtitle Architecture (Cloud Gemini 4/3.8/3.5 vs. $0.00 Edge Gemma 4 E2B)
 
-![Dual-Engine Live Subtitle Architecture: Cloud Gemini 4/3.8/3.5 vs. Edge Gemma 4 E2B](./images/blog05_diagram1_dual_engine_live_subtitles.png)
+![Dual-Engine Live Subtitle Architecture: Cloud Gemini 4/3.8/3.5 vs. Edge Gemma 4 E2B](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog05_diagram1_dual_engine_live_subtitles.png)
 
 ---
 
@@ -40,7 +40,7 @@ In [`TeacherSubtitleControlModal.jsx`](../../web-app/src/components/subtitles/Te
 
 When translating live speech in a lecture theatre, latency is paramount: if subtitles lag more than 1.5 seconds behind the lecturer's voice, students lose synchronization with the slide pointer.
 
-In [`functions/ai_flows/subtitleFlows.js`](../../functions/ai_flows/subtitleFlows.js), `translateTeacherSpeech` achieves **~420ms median translation latency across 5 languages simultaneously** by combining three techniques:
+In [`functions/ai_flows/subtitleFlows.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/ai_flows/subtitleFlows.js), `translateTeacherSpeech` achieves **~420ms median translation latency across 5 languages simultaneously** by combining three techniques:
 1. **Zero-Thinking Fast Path (`thinkingConfig: { thinkingBudget: 0 }`)**: Disables chain-of-thought reasoning tokens for direct lexical translation while keeping `temperature: 0.1` for deterministic technical terminology preservation.
 2. **Rolling Conversational History (`historyText`)**: Passes the lecturer's preceding 4 utterances (`historyBufferRef.current.slice(-4)`) strictly as read-only context so the model resolves pronouns (*"if we omit it"* $\rightarrow$ *"if we omit the dependency array"*) without re-translating old sentences.
 3. **Resilient Multi-Model Routing (`generateWithResilience`)**: Supports `gemini-3.5-flash-lite` (default high-frequency workhorse), `gemini-3.8-flash`, and `gemini-4-argon` (`gemini-4-argon`) with automatic region/model failover and per-class FinOps quota enforcement (`checkQuota` & `logJob`).
@@ -123,9 +123,9 @@ Guidelines:
 
 ### 3.2 Client Engine: $0.00 On-Device `Gemma 4 E2B` in Web Worker with Streaming CacheStorage
 
-For instructors running 3-hour daily lab sessions on desktop workstations who want **$0.00 cloud AI expenditure**, we integrated **Gemma 4 E2B (`gemma-4-E2B-it-web.litertlm`)** via `@litert-lm/core` inside [`web-app/src/workers/litertGemma.worker.js`](../../web-app/src/workers/litertGemma.worker.js).
+For instructors running 3-hour daily lab sessions on desktop workstations who want **$0.00 cloud AI expenditure**, we integrated **Gemma 4 E2B (`gemma-4-E2B-it-web.litertlm`)** via `@litert-lm/core` inside [`web-app/src/workers/litertGemma.worker.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/workers/litertGemma.worker.js).
 
-When the teacher clicks **Download & Load Local Gemma 4 (~1.9 GB)** in [`TeacherSubtitleControlModal.jsx`](../../web-app/src/components/subtitles/TeacherSubtitleControlModal.jsx), the worker streams the model weights with real-time progress reporting and caches the binary in the browser's persistent `CacheStorage` (`webai-litert-gemma-v1`), so subsequent lectures load from local SSD in under 2 seconds:
+When the teacher clicks **Download & Load Local Gemma 4 (~1.9 GB)** in [`TeacherSubtitleControlModal.jsx`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/components/subtitles/TeacherSubtitleControlModal.jsx), the worker streams the model weights with real-time progress reporting and caches the binary in the browser's persistent `CacheStorage` (`webai-litert-gemma-v1`), so subsequent lectures load from local SSD in under 2 seconds:
 
 ```javascript
 // From web-app/src/workers/litertGemma.worker.js
@@ -159,7 +159,7 @@ Spoken transcript:
 }
 ```
 
-Crucially, in [`useTeacherLiveSubtitles.js`](../../web-app/src/hooks/useTeacherLiveSubtitles.js), if on-device Gemma 4 E2B is still initializing, times out (>10s), or omits one of the requested target languages in its JSON output, `translateTranscript` **automatically backfills only the missing language keys** via the Cloud `translateTeacherSpeech` function—guaranteeing zero dropped captions:
+Crucially, in [`useTeacherLiveSubtitles.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/hooks/useTeacherLiveSubtitles.js), if on-device Gemma 4 E2B is still initializing, times out (>10s), or omits one of the requested target languages in its JSON output, `translateTranscript` **automatically backfills only the missing language keys** via the Cloud `translateTeacherSpeech` function—guaranteeing zero dropped captions:
 
 ```javascript
 // From web-app/src/hooks/useTeacherLiveSubtitles.js
@@ -188,15 +188,15 @@ return { ...gemmaTranslations, ...(response.data?.translations || {}) };
 
 ## 4. Discipline Glossary Injection & Zero-Restart Dynamic Prompt Propagation
 
-![Course Subject Domains & Multilingual Intelligence](../presentation/images/slide_subject_domain_multilingual.png)
+![Course Subject Domains & Multilingual Intelligence](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/presentation/images/slide_subject_domain_multilingual.png)
 
 A single university deployment spans multiple faculties—from **Computer Science & Software Engineering** to **Healthcare, Nursing & Medical Sciences**, **Business & Corporate Finance (`EBITDA`, `IFRS`)**, and **Electrical & Mechanical Engineering**.
 
 ### Diagram 2: Discipline Glossary Injection & Zero-Restart Dynamic Prompt Propagation
 
-When an instructor switches the **Subject Domain** or edits custom prompt instructions inside [`TeacherSubtitleControlModal.jsx`](../../web-app/src/components/subtitles/TeacherSubtitleControlModal.jsx) (or [`ClassManagement.jsx`](../../web-app/src/components/ClassManagement.jsx)), the update propagates to all active inference workers and student screens via Firestore `onSnapshot` with **0ms audio interruption**:
+When an instructor switches the **Subject Domain** or edits custom prompt instructions inside [`TeacherSubtitleControlModal.jsx`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/components/subtitles/TeacherSubtitleControlModal.jsx) (or [`ClassManagement.jsx`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/components/ClassManagement.jsx)), the update propagates to all active inference workers and student screens via Firestore `onSnapshot` with **0ms audio interruption**:
 
-![Discipline Glossary Injection & Zero-Restart Dynamic Prompt Propagation](./images/blog05_diagram2_glossary_propagation_sequence.png)
+![Discipline Glossary Injection & Zero-Restart Dynamic Prompt Propagation](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog05_diagram2_glossary_propagation_sequence.png)
 
 ---
 
@@ -206,15 +206,15 @@ Building a demo speech-to-text app takes an afternoon; making it survive 3-hour 
 
 ### Diagram 3: Out-of-Tab Microphone Silence Watchdog & Mobile iOS Jetsam OOM Guard
 
-![Out-of-Tab Microphone Watchdog & Mobile iOS Jetsam OOM Guard](./images/blog05_diagram3_mic_watchdog_ios_guard.png)
+![Out-of-Tab Microphone Watchdog & Mobile iOS Jetsam OOM Guard](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog05_diagram3_mic_watchdog_ios_guard.png)
 
 ### Edge Case 1: The Mobile iOS WebKit 1.9 GB `Jetsam OOM` Crash Guard
 iOS and iPadOS browsers enforce a strict per-tab WebContent memory ceiling (~1.4 GB–2.0 GB). If an instructor opens the Teacher Dashboard on an iPad Pro and the browser attempts to auto-download and instantiate the ~1.9 GB `gemma-4-E2B-it-web.litertlm` model in WASM/WebGPU memory, iOS WebKit immediately kills and reloads the page (`Jetsam OOM`).
-- **Our Fix**: In [`useTeacherLiveSubtitles.js`](../../web-app/src/hooks/useTeacherLiveSubtitles.js), `isMobileOrIosBrowser()` detects iOS, Android, and iPadOS (`navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1`) and automatically locks `engineMode` to `'server'`, while on desktop browsers Gemma 4 E2B is never downloaded automatically—it requires an explicit teacher click on `loadGemmaModel()`.
+- **Our Fix**: In [`useTeacherLiveSubtitles.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/hooks/useTeacherLiveSubtitles.js), `isMobileOrIosBrowser()` detects iOS, Android, and iPadOS (`navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1`) and automatically locks `engineMode` to `'server'`, while on desktop browsers Gemma 4 E2B is never downloaded automatically—it requires an explicit teacher click on `loadGemmaModel()`.
 
 ### Edge Case 2: Whisper Silence Hallucinations (`"Thank you for watching"`, `"♪"`, Foreign Script Artifacts)
 When a lecturer pauses for 5 seconds to write on the whiteboard, `whisper-tiny` frequently hallucinates YouTube training artifacts such as `"Thank you."`, `"Thanks for watching."`, `"[BLANK_AUDIO]"`, or random Korean/Cyrillic/Arabic characters due to background HVAC fan noise. Worse, if a non-empty hallucination string is returned, a naive pipeline treats it as valid speech and skips the Cloud AI audio transcription fallback!
-- **Our Fix**: Both client (`isWhisperNoiseArtifact` in [`useTeacherLiveSubtitles.js`](../../web-app/src/hooks/useTeacherLiveSubtitles.js)) and server (`isSubtitleNoiseOrRefusal` in [`functions/ai_flows/subtitleFlows.js`](../../functions/ai_flows/subtitleFlows.js)) strip these exact hallucination patterns and out-of-script Unicode blocks (`[\uAC00-\uD7AF\u0600-\u06FF...]`) *before* deciding whether to invoke `transcribeAudioWithFirebaseAI` or publish to Firestore:
+- **Our Fix**: Both client (`isWhisperNoiseArtifact` in [`useTeacherLiveSubtitles.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/hooks/useTeacherLiveSubtitles.js)) and server (`isSubtitleNoiseOrRefusal` in [`functions/ai_flows/subtitleFlows.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/ai_flows/subtitleFlows.js)) strip these exact hallucination patterns and out-of-script Unicode blocks (`[\uAC00-\uD7AF\u0600-\u06FF...]`) *before* deciding whether to invoke `transcribeAudioWithFirebaseAI` or publish to Firestore:
 
 ```javascript
 // From web-app/src/hooks/useTeacherLiveSubtitles.js
@@ -252,11 +252,11 @@ When running hybrid Web Speech API + WASM Whisper VAD in parallel, two race cond
 
 ### Edge Case 4: iOS Safari WebKit `AudioContext.resume()` Deadlock & Zero-Gain Pull Node
 In Chrome, Safari, and iOS WebKit, calling `await audioCtx.resume()` inside an async `getUserMedia` callback when transient user activation has expired returns a **permanently pending Promise** that deadlocks audio setup forever. Furthermore, on iOS WebKit, a `MediaStreamAudioSourceNode` connected only to an `AnalyserNode` or `AudioWorklet` will **refuse to pull PCM frames** unless the graph terminates at `audioCtx.destination`.
-- **Our Fix**: In [`useTeacherLiveSubtitles.js`](../../web-app/src/hooks/useTeacherLiveSubtitles.js) and [`TeacherSubtitleControlModal.jsx`](../../web-app/src/components/subtitles/TeacherSubtitleControlModal.jsx), we never `await audioCtx.resume()`; instead we fire-and-forget `tryResumeAudioCtx()` alongside passive `pointerdown`/`keydown` listeners, and connect the analyser to `audioCtx.destination` through a **0-gain silent `GainNode` (`silentGain.gain.value = 0`)** so WebKit pulls hardware audio frames without causing speaker feedback.
+- **Our Fix**: In [`useTeacherLiveSubtitles.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/hooks/useTeacherLiveSubtitles.js) and [`TeacherSubtitleControlModal.jsx`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/components/subtitles/TeacherSubtitleControlModal.jsx), we never `await audioCtx.resume()`; instead we fire-and-forget `tryResumeAudioCtx()` alongside passive `pointerdown`/`keydown` listeners, and connect the analyser to `audioCtx.destination` through a **0-gain silent `GainNode` (`silentGain.gain.value = 0`)** so WebKit pulls hardware audio frames without causing speaker feedback.
 
 ### Edge Case 5: The Wireless Mic Battery Trap (`isMicSilentWarning` Watchdog)
 Lecturers frequently minimize the browser and spend 40 minutes coding in VS Code or presenting fullscreen PowerPoint slides. If their wireless lapel microphone battery dies or they accidentally hit the hardware mute switch on their headset, they have no idea that student captions have stopped.
-- **Our Fix**: A 2-second watchdog in [`useTeacherLiveSubtitles.js`](../../web-app/src/hooks/useTeacherLiveSubtitles.js) monitors both hardware track events (`primaryAudioTrack.muted`, `enabled === false`, `readyState === 'ended'`) and RMS voice activity timestamps (`lastVoiceActivityAtRef.current`). If the hardware track is muted for $\ge 10\text{s}$ or zero speech energy is detected for $\ge 45\text{s}$, `isMicSilentWarning` triggers a high-visibility alert and native OS notification on top of fullscreen PowerPoint.
+- **Our Fix**: A 2-second watchdog in [`useTeacherLiveSubtitles.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/hooks/useTeacherLiveSubtitles.js) monitors both hardware track events (`primaryAudioTrack.muted`, `enabled === false`, `readyState === 'ended'`) and RMS voice activity timestamps (`lastVoiceActivityAtRef.current`). If the hardware track is muted for $\ge 10\text{s}$ or zero speech energy is detected for $\ge 45\text{s}$, `isMicSilentWarning` triggers a high-visibility alert and native OS notification on top of fullscreen PowerPoint.
 
 ---
 
@@ -282,4 +282,4 @@ We benchmarked a 60-minute bilingual Cantonese/English Computer Science lecture 
 
 ---
 
-[⏮️ Previous: Part 4 — WebAuthn Passkeys & Rotating HMAC QRs](./04-webauthn-passkeys-rotating-hmac-qr-auth.md) | [📚 Series Index](./README.md) | [⏭️ Continue to Part 6: Scaling Screen Broadcasting to 1,000+ Viewers & Gemini 4 Lecture Studio →](./06-scalable-screen-broadcast-and-gemini-4-lecture-studio.md)
+[⏮️ Previous: Part 4 — WebAuthn Passkeys & Rotating HMAC QRs](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/04-webauthn-passkeys-rotating-hmac-qr-auth.md) | [📚 Series Index](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/README.md) | [⏭️ Continue to Part 6: Scaling Screen Broadcasting to 1,000+ Viewers & Gemini 4 Lecture Studio →](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/06-scalable-screen-broadcast-and-gemini-4-lecture-studio.md)

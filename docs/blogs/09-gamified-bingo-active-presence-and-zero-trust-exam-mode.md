@@ -1,11 +1,11 @@
 # Part 9: Gamified "Bingo" Active Presence Verification & Zero-Trust Exam Mode on Google Cloud
 
 **Author:** [**Cyrus Wong (黃俊彥)**](https://www.linkedin.com/in/cyruswong/) — *Google Developer Expert - Cloud (AI), Senior Lecturer at HKIIT*  
-[⏮️ Previous: Part 8 — Multimodal Capstone Supervision with Gemini 4](./08-multimodal-capstone-project-supervision-gemini-4.md) | [📚 Series Index](./README.md) | [⏭️ Next: Part 10 — Green AI FinOps, Storage Lifecycle & Terraform IaC](./10-green-ai-finops-storage-lifecycle-and-terraform-iac.md)
+[⏮️ Previous: Part 8 — Multimodal Capstone Supervision with Gemini 4](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/08-multimodal-capstone-project-supervision-gemini-4.md) | [📚 Series Index](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/README.md) | [⏭️ Next: Part 10 — Green AI FinOps, Storage Lifecycle & Terraform IaC](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/10-green-ai-finops-storage-lifecycle-and-terraform-iac.md)
 
 ---
 
-![Bingo Active Presence & 2-Strike Verification](../presentation/images/slide_bingo_active_presence.png)
+![Bingo Active Presence & 2-Strike Verification](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/presentation/images/slide_bingo_active_presence.png)
 
 ## 1. Verifying Active Attention Without Punitive Surveillance or Idle Polling Bills
 
@@ -17,26 +17,26 @@ However, solving this problem naively introduces three severe trade-offs:
 3. **Serverless Polling Bills**: Running a Cloud Scheduler cron job every 60 seconds to scan pending attendance timers across 50 classes burns tens of thousands of idle Firestore reads per month.
 
 In **Part 9** of our Google Developer Expert series, we detail how we engineered two complementary classroom integrity systems:
-- **Gamified "Classroom Bingo" Active Presence Verification** ([`BingoModal.jsx`](../../web-app/src/components/BingoModal.jsx), [`BingoQuestionBankModal.jsx`](../../web-app/src/components/BingoQuestionBankModal.jsx), [`BingoResultsView.jsx`](../../web-app/src/components/BingoResultsView.jsx), [`LectureQrBingoModal.jsx`](../../web-app/src/components/monitor/LectureQrBingoModal.jsx), and [`bingoFlows.js`](../../functions/ai_flows/bingoFlows.js)) featuring **3 FinOps-Tiered Verification Modes**, a **Gemini 4 Argon (`gemini-4-argon`) Question Bank AI Studio**, Fisher-Yates positional bias elimination, and an event-driven **Non-Punitive Two-Strike State Machine** powered by **Google Cloud Tasks (`dispatchBingoRetryTask`)**.
-- **Zero-Trust Exam Mode Lockdown & Court-Ready Forensic Dossiers** ([`ExamReadinessWizard.jsx`](../../web-app/src/components/ExamReadinessWizard.jsx), [`storage.rules`](../../storage.rules), [`getStudentVideoPlaybackUrl.js`](../../functions/media_processing/getStudentVideoPlaybackUrl.js), and [`processReportJob.js`](../../functions/media_processing/processReportJob.js)), enforcing full-monitor capture (`displaySurface === 'monitor'`), write-once Cloud Storage metadata locks (`isExam == 'true'`), Student Portal confidentiality shielding during exam windows, and 1-click export of formal **Microsoft Word (`.docx`) & RFC 4180 CSV Incident Dossiers**.
+- **Gamified "Classroom Bingo" Active Presence Verification** ([`BingoModal.jsx`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/components/BingoModal.jsx), [`BingoQuestionBankModal.jsx`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/components/BingoQuestionBankModal.jsx), [`BingoResultsView.jsx`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/components/BingoResultsView.jsx), [`LectureQrBingoModal.jsx`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/components/monitor/LectureQrBingoModal.jsx), and [`bingoFlows.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/ai_flows/bingoFlows.js)) featuring **3 FinOps-Tiered Verification Modes**, a **Gemini 4 Argon (`gemini-4-argon`) Question Bank AI Studio**, Fisher-Yates positional bias elimination, and an event-driven **Non-Punitive Two-Strike State Machine** powered by **Google Cloud Tasks (`dispatchBingoRetryTask`)**.
+- **Zero-Trust Exam Mode Lockdown & Court-Ready Forensic Dossiers** ([`ExamReadinessWizard.jsx`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/components/ExamReadinessWizard.jsx), [`storage.rules`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/storage.rules), [`getStudentVideoPlaybackUrl.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/media_processing/getStudentVideoPlaybackUrl.js), and [`processReportJob.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/media_processing/processReportJob.js)), enforcing full-monitor capture (`displaySurface === 'monitor'`), write-once Cloud Storage metadata locks (`isExam == 'true'`), Student Portal confidentiality shielding during exam windows, and 1-click export of formal **Microsoft Word (`.docx`) & RFC 4180 CSV Incident Dossiers**.
 
 ---
 
 ## 2. Diagram 1: Three FinOps-Optimized Bingo Verification Modes & The Gemini 4 Question Bank Studio
 
-When a lecturer triggers a Classroom Bingo round (either manually with one click, via a **Staggered Jitter Queue** that challenges random subsets of students every few minutes so neighbours cannot shout out "Option B!", or via **Auto-Bingo** during live screen broadcasts), `resolveBingoQuestion` in [`functions/ai_flows/bingoFlows.js`](../../functions/ai_flows/bingoFlows.js) supports three FinOps-optimized question generation modes—plus hardware WebAuthn passkey QR modes (`mobile_passkey` and `lecture_passkey_qr`):
+When a lecturer triggers a Classroom Bingo round (either manually with one click, via a **Staggered Jitter Queue** that challenges random subsets of students every few minutes so neighbours cannot shout out "Option B!", or via **Auto-Bingo** during live screen broadcasts), `resolveBingoQuestion` in [`functions/ai_flows/bingoFlows.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/ai_flows/bingoFlows.js) supports three FinOps-optimized question generation modes—plus hardware WebAuthn passkey QR modes (`mobile_passkey` and `lecture_passkey_qr`):
 
-![Three FinOps Bingo Verification Modes & Gemini 4 Question Bank Studio](./images/blog09_diagram1_bingo_3modes_question_studio.png)
+![Three FinOps Bingo Verification Modes & Gemini 4 Question Bank Studio](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog09_diagram1_bingo_3modes_question_studio.png)
 
 ### Engineering Highlights of the Bingo Question Engine
-1. **Universal Model Agency in the Question Bank Studio (`BingoQuestionBankModal.jsx`)**: Before class, teachers can open [`BingoQuestionBankModal.jsx`](../../web-app/src/components/BingoQuestionBankModal.jsx), type a lesson topic (or customize the system prompt), and select **🧠 Gemini 4 Argon (`gemini-4-argon`)**, **⚡ Gemini 3.8 Flash (`gemini-3.8-flash`)**, or **🪶 Gemini 3.5 Flash-Lite (`gemini-3.5-flash-lite`)** to generate 1 to 15 multiple-choice questions at once—or bulk-import existing quizzes in standard **Moodle Aiken text format**.
+1. **Universal Model Agency in the Question Bank Studio (`BingoQuestionBankModal.jsx`)**: Before class, teachers can open [`BingoQuestionBankModal.jsx`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/components/BingoQuestionBankModal.jsx), type a lesson topic (or customize the system prompt), and select **🧠 Gemini 4 Argon (`gemini-4-argon`)**, **⚡ Gemini 3.8 Flash (`gemini-3.8-flash`)**, or **🪶 Gemini 3.5 Flash-Lite (`gemini-3.5-flash-lite`)** to generate 1 to 15 multiple-choice questions at once—or bulk-import existing quizzes in standard **Moodle Aiken text format**.
 2. **Eliminating LLM Positional Bias (`shuffleOptionsAndCorrectIndex`)**: When generating 4-option multiple-choice questions, LLMs exhibit a strong statistical bias toward placing the correct answer at index `0` (Option A) or index `1` (Option B). Every question generated by `generateBingoQuestionBank` or `resolveBingoQuestion` passes through a deterministic **Fisher-Yates permutation (`shuffleOptionsAndCorrectIndex`)** that randomizes option order and updates `correctIndex` accordingly.
 3. **Multimodal Teacher Screen + 5-Minute Live Subtitle Fusion (`Mode 2`)**: In `teacher_screen` mode, `resolveBingoQuestion` makes **a single multimodal Gemini call for the entire 50-student class** (`~$0.00015 USD` total cohort cost!). Even better, it fuses the teacher's live broadcast frame (`classes/{classId}/screenBroadcast/liveFrame`) with the last 5 minutes of the teacher's spoken commentary (`classes/{classId}/liveSubtitles/current`) and injects an **Anti-Duplication Rule** containing the last 5 asked questions (`isDuplicateQuestion` with $80\%$ lexical Jaccard similarity rejection) so Gemini never repeats the same question while the teacher stays on a single slide!
-4. **Zero-Leak Client Payload Sanitization**: A savvy computer science student will immediately open Chrome DevTools (`Network` / `Firestore` tab) when a quiz pops up. In [`bingoFlows.js`](../../functions/ai_flows/bingoFlows.js), `correctIndex` is written **exclusively** to `classes/{classId}/bingoRecords/{bingoId}` (which students are blocked from reading in `firestore.rules`). The payload pushed to `studentProperties/{studentUid}.activeBingo` contains only `question`, `options`, and `expiresAtMillis`—making client-side answer inspection impossible.
+4. **Zero-Leak Client Payload Sanitization**: A savvy computer science student will immediately open Chrome DevTools (`Network` / `Firestore` tab) when a quiz pops up. In [`bingoFlows.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/ai_flows/bingoFlows.js), `correctIndex` is written **exclusively** to `classes/{classId}/bingoRecords/{bingoId}` (which students are blocked from reading in `firestore.rules`). The payload pushed to `studentProperties/{studentUid}.activeBingo` contains only `question`, `options`, and `expiresAtMillis`—making client-side answer inspection impossible.
 
 ### Production Code 1: Genkit Structured Schema Generation & Fisher-Yates Positional De-Biasing (`bingoFlows.js`)
 
-Let's inspect `generateBingoQuestionBank` and `shuffleOptionsAndCorrectIndex` in [`functions/ai_flows/bingoFlows.js`](../../functions/ai_flows/bingoFlows.js):
+Let's inspect `generateBingoQuestionBank` and `shuffleOptionsAndCorrectIndex` in [`functions/ai_flows/bingoFlows.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/ai_flows/bingoFlows.js):
 
 ```javascript
 // Source: functions/ai_flows/bingoFlows.js
@@ -96,20 +96,20 @@ export function shuffleOptionsAndCorrectIndex(options, correctIndex) {
 
 ## 3. Diagram 2: The Non-Punitive Two-Strike State Machine with Google Cloud Tasks & 3-Color Attendance Heatmap
 
-What happens after the high-priority [`BingoModal.jsx`](../../web-app/src/components/BingoModal.jsx) (`z-index: 2147483647`, accompanied by an optional Web Audio API chime) appears on the student's screen with a 45-second countdown timer?
+What happens after the high-priority [`BingoModal.jsx`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/components/BingoModal.jsx) (`z-index: 2147483647`, accompanied by an optional Web Audio API chime) appears on the student's screen with a 45-second countdown timer?
 
-Our **Two-Strike State Machine** (`submitBingoResponse`, `enqueueBingoRetryTask`, and `handleDispatchBingoRetry` in [`functions/ai_flows/bingoFlows.js`](../../functions/ai_flows/bingoFlows.js)) strictly decouples **academic comprehension** from **physical desk presence**:
+Our **Two-Strike State Machine** (`submitBingoResponse`, `enqueueBingoRetryTask`, and `handleDispatchBingoRetry` in [`functions/ai_flows/bingoFlows.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/ai_flows/bingoFlows.js)) strictly decouples **academic comprehension** from **physical desk presence**:
 
 - **Case 1 — Correct Answer (`passed`)**: The student earns base points (`100 pts`), a speed bonus (up to `+50 pts` scaled by remaining time ratio), and a top-3 podium rank bonus (`+50 / +30 / +20 pts`). Any prior strike is cleared (`strikeNumber = 0`).
 - **Case 2 — Wrong Answer (`failed_incorrect`)**: Because the student actively clicked an option within the 45-second window, **physical presence at the workstation is 100% verified!** The student receives instant visual feedback on the correct answer, **zero strikes are triggered, and zero attendance minutes are deducted.**
 - **Case 3 — Strike 1 Timeout (`missed_timeout` on `strikeNumber === 1`)**: What if the student stepped away to the washroom for 2 minutes? Instead of docking attendance on a single missed check, `submitBingoResponse` sets `pendingRetryBingo: true` and enqueues a delayed task in **Google Cloud Tasks** (`locations/asia-east2/functions/dispatchBingoRetryTask`) scheduled for `retryDelayMinutes` later (configurable 1–15 minutes, default 3 minutes, **$0.00 idle polling cost**).
 - **Case 4 — Strike 2 Consecutive Timeout (`missed_timeout` on `strikeNumber >= 2`)**: When the Cloud Task wakes up after 3 minutes, it performs pre-flight idempotency checks (verifying the class is still active and the teacher hasn't cancelled the session) and dispatches a personal **Strike 2 Follow-Up Challenge**. If the student responds to Strike 2 (even with a wrong answer!), presence is recovered. Only if the student **misses both Strike 1 and Strike 2 consecutively** does the backend calculate the elapsed unverified minutes ($\Delta t = t_{\text{Strike 2}} - t_{\text{Strike 1}}$) and write an `attendanceAdjustments` deduction record!
 
-![Non-Punitive Two-Strike Attendance State Machine with Google Cloud Tasks](./images/blog09_diagram2_two_strike_bingo_state_machine.png)
+![Non-Punitive Two-Strike Attendance State Machine with Google Cloud Tasks](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog09_diagram2_two_strike_bingo_state_machine.png)
 
 ### Production Code 2: Event-Driven Two-Strike Cloud Tasks Scheduling & Elapsed AFK Deduction (`bingoFlows.js`)
 
-Here is the exact Two-Strike state transition and deterministic Cloud Task deduplication logic inside [`functions/ai_flows/bingoFlows.js`](../../functions/ai_flows/bingoFlows.js):
+Here is the exact Two-Strike state transition and deterministic Cloud Task deduplication logic inside [`functions/ai_flows/bingoFlows.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/ai_flows/bingoFlows.js):
 
 ```javascript
 // Source: functions/ai_flows/bingoFlows.js
@@ -172,7 +172,7 @@ Here is the exact Two-Strike state transition and deterministic Cloud Task dedup
   }
 ```
 
-In [`AttendanceView.jsx`](../../web-app/src/components/AttendanceView.jsx), every minute of a lesson is encoded as a **5-State Minute Bitmask (`0`–`4`)**:
+In [`AttendanceView.jsx`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/components/AttendanceView.jsx), every minute of a lesson is encoded as a **5-State Minute Bitmask (`0`–`4`)**:
 - `1` / `3` / `4` (**🟢 Green**): Verified Active Presence (Screen Shared / Passkey Verified / Teacher Override).
 - `2` (**🔴 Red**): Voided AFK Window (`attendanceAdjustments` from 2 consecutive missed Bingo checks, showing exact tooltip timestamps and a **1-Click Teacher Excuse / Restore (`excused: true`)** button).
 - `0` (**⚪ Grey**): Offline / Disconnected.
@@ -181,11 +181,11 @@ In [`AttendanceView.jsx`](../../web-app/src/components/AttendanceView.jsx), ever
 
 ## 4. Diagram 3: Zero-Trust Exam Mode Lockdown & Court-Ready `.docx` Forensic Dossiers
 
-![Zero-Trust Assessment Security & Live Exam Mode](../presentation/images/slide_exam_mode_zero_trust.png)
+![Zero-Trust Assessment Security & Live Exam Mode](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/presentation/images/slide_exam_mode_zero_trust.png)
 
 While Classroom Bingo keeps daily lectures and labs lively and non-punitive, formal practical examinations require **Zero-Trust Assessment Security**. When a class enters a scheduled `examPeriods` window (or `lessonType === 'exam'`), four defense-in-depth layers activate automatically across the client browser, Cloud Run FFmpeg, Cloud Storage Security Rules, and our Signed URL Broker:
 
-![Zero-Trust Exam Mode Lockdown & Court-Ready .docx Forensic Dossiers](./images/blog09_diagram3_zero_trust_exam_lockdown.png)
+![Zero-Trust Exam Mode Lockdown & Court-Ready .docx Forensic Dossiers](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog09_diagram3_zero_trust_exam_lockdown.png)
 
 ---
 
@@ -216,7 +216,7 @@ We enforce this at two independent boundaries:
     }
 ```
 
-2. **Server-Side Signed URL Broker (`getStudentVideoPlaybackUrl.js`)**: Even if a video was compiled before an instructor retroactively added an `examPeriods` range to the class settings, [`evaluateStudentRecordingsAccess`](../../functions/media_processing/getStudentVideoPlaybackUrl.js) checks both the `jobData.isExam` flag and `isTimestampInExamPeriods(jobData.startTime, examPeriods, timeZone)`:
+2. **Server-Side Signed URL Broker (`getStudentVideoPlaybackUrl.js`)**: Even if a video was compiled before an instructor retroactively added an `examPeriods` range to the class settings, [`evaluateStudentRecordingsAccess`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/media_processing/getStudentVideoPlaybackUrl.js) checks both the `jobData.isExam` flag and `isTimestampInExamPeriods(jobData.startTime, examPeriods, timeZone)`:
 
 ```javascript
 // Source: functions/media_processing/getStudentVideoPlaybackUrl.js
@@ -252,7 +252,7 @@ export function evaluateStudentRecordingsAccess({
 
 When an academic integrity board reviews a suspected exam irregularity, raw JSON logs in a database are difficult for non-technical committee members to inspect.
 
-When an instructor clicks **📄 Export Formal Dossier (.docx)** in [`IncidentDossierExportModal.jsx`](../../web-app/src/components/IncidentDossierExportModal.jsx) (accessed via [`IrregularitiesView.jsx`](../../web-app/src/components/IrregularitiesView.jsx)), [`processReportJob.js`](../../functions/media_processing/processReportJob.js) (`1 vCPU, 2 GiB RAM, 540s timeout`) queries all time-scoped `irregularities`, `audio` transcripts (from Edge Whisper + Gemini verification), and `screenshots` for the class, classifies each student's risk level (`HIGH RISK`, `MODERATE RISK`, `NORMAL / CLEAN`), and uses the `docx` and `csv-stringify` libraries to compile a downloadable **Microsoft Word (`.docx`) Incident Dossier** complete with embedded `ImageRun` evidence snapshots, 3D head-pose/gaze telemetry tables, and verbatim speech transcripts:
+When an instructor clicks **📄 Export Formal Dossier (.docx)** in [`IncidentDossierExportModal.jsx`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/components/IncidentDossierExportModal.jsx) (accessed via [`IrregularitiesView.jsx`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/components/IrregularitiesView.jsx)), [`processReportJob.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/media_processing/processReportJob.js) (`1 vCPU, 2 GiB RAM, 540s timeout`) queries all time-scoped `irregularities`, `audio` transcripts (from Edge Whisper + Gemini verification), and `screenshots` for the class, classifies each student's risk level (`HIGH RISK`, `MODERATE RISK`, `NORMAL / CLEAN`), and uses the `docx` and `csv-stringify` libraries to compile a downloadable **Microsoft Word (`.docx`) Incident Dossier** complete with embedded `ImageRun` evidence snapshots, 3D head-pose/gaze telemetry tables, and verbatim speech transcripts:
 
 ```javascript
 // Source: functions/media_processing/processReportJob.js
@@ -295,4 +295,4 @@ In **Part 10 (our Series Finale)**, we look under the hood at **Day-2 Institutio
 
 ---
 
-[⏮️ Previous: Part 8 — Multimodal Capstone Supervision with Gemini 4](./08-multimodal-capstone-project-supervision-gemini-4.md) | [📚 Series Index](./README.md) | [⏭️ Continue to Part 10: Green AI FinOps, Storage Lifecycle & 1-Command Terraform IaC →](./10-green-ai-finops-storage-lifecycle-and-terraform-iac.md)
+[⏮️ Previous: Part 8 — Multimodal Capstone Supervision with Gemini 4](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/08-multimodal-capstone-project-supervision-gemini-4.md) | [📚 Series Index](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/README.md) | [⏭️ Continue to Part 10: Green AI FinOps, Storage Lifecycle & 1-Command Terraform IaC →](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/10-green-ai-finops-storage-lifecycle-and-terraform-iac.md)

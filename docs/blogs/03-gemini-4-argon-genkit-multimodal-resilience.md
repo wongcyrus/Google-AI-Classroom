@@ -1,11 +1,11 @@
 # Part 3: Frontier Multimodal Orchestration — Right-Sizing Gemini 4 Argon (`gemini-4-argon`), Gemini 3.8 Flash & On-Device Gemma 4 E2B with Google Genkit
 
 **Author:** [**Cyrus Wong (黃俊彥)**](https://www.linkedin.com/in/cyruswong/) — *Google Developer Expert - Cloud (AI), Senior Lecturer at HKIIT*  
-[⏮️ Previous: Part 2 — Browser Edge AI with Gemma 4 E2B](./02-browser-edge-ai-gemma-4-mediapipe-whisper.md) | [📚 Series Index](./README.md) | [⏭️ Next: Part 4 — WebAuthn Passkeys & Rotating HMAC QRs](./04-webauthn-passkeys-rotating-hmac-qr-auth.md)
+[⏮️ Previous: Part 2 — Browser Edge AI with Gemma 4 E2B](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/02-browser-edge-ai-gemma-4-mediapipe-whisper.md) | [📚 Series Index](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/README.md) | [⏭️ Next: Part 4 — WebAuthn Passkeys & Rotating HMAC QRs](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/04-webauthn-passkeys-rotating-hmac-qr-auth.md)
 
 ---
 
-![Gemini 4 & Gemma 4 E2B Model Matrix](../presentation/images/slide_gemini_models_matrix.png)
+![Gemini 4 & Gemma 4 E2B Model Matrix](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/presentation/images/slide_gemini_models_matrix.png)
 
 ## 1. Problem Statement: The Multimodal Classroom Paradox — Why One Model Size Never Fits All
 
@@ -22,9 +22,9 @@ With the arrival of **Gemini 4 (`gemini-4-argon`)** in Vertex AI alongside **Gem
 
 ## 2. Architectural Deep-Dive: The 5-Model Edge-to-Cloud Right-Sizing Matrix
 
-Rather than hardcoding a single model ID across our backend, we built a **5-Model Right-Sizing Architecture** spanning Tier-1 Browser WebGPU Workers and Tier-4 Google Genkit Cloud Functions. Teachers can configure a class-wide default model in [`ClassManagement.jsx`](../../web-app/src/components/ClassManagement.jsx) and override it on the fly inside any feature studio:
+Rather than hardcoding a single model ID across our backend, we built a **5-Model Right-Sizing Architecture** spanning Tier-1 Browser WebGPU Workers and Tier-4 Google Genkit Cloud Functions. Teachers can configure a class-wide default model in [`ClassManagement.jsx`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/components/ClassManagement.jsx) and override it on the fly inside any feature studio:
 
-![5-Model Edge-to-Cloud Right-Sizing Architecture (Gemini 4 & Gemma 4)](./images/blog03_diagram1_5model_matrix.png)
+![5-Model Edge-to-Cloud Right-Sizing Architecture (Gemini 4 & Gemma 4)](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog03_diagram1_5model_matrix.png)
 
 ### Complete Matrix of Teacher-Selectable Gemini 4 Surfaces
 
@@ -32,15 +32,15 @@ Every AI-powered workflow in the repository exposes **Gemini 4 Argon (`gemini-4-
 
 | Classroom Workflow | Frontend Selector Component | Backend Cloud Function / Genkit Flow | Recommended Model Strategy |
 | :--- | :--- | :--- | :--- |
-| **1. Class-Wide Default & Live Vision Monitor** | [`ClassManagement.jsx`](../../web-app/src/components/ClassManagement.jsx) & [`ControlsPanel.jsx`](../../web-app/src/components/monitor/ControlsPanel.jsx) | [`analyzeImageFlow`](../../functions/ai_flows/analysisFlows.js) / [`analyzeAllImagesFlow`](../../functions/ai_flows/analysisFlows.js) | `gemini-3.5-flash-lite` for instant classroom peeks; switch to **`gemini-4-argon`** for deep code inspection on a student's IDE screenshot. |
-| **2. Practical Task Rubric Synthesis** | [`TaskEditorModal.jsx`](../../web-app/src/components/tasks/TaskEditorModal.jsx) (`#task-ai-model-select`) | [`extractTaskDemoSteps`](../../functions/ai_flows/extractTaskDemoSteps.js) | Use **`gemini-4-argon`** to watch your reference demo video and synthesize nuanced partial-credit marking criteria and visual proof requirements. |
-| **3. Practical Task Video Auto-Grading** | [`TaskGradingMatrixView.jsx`](../../web-app/src/components/tasks/TaskGradingMatrixView.jsx) (`Grading AI Model`) | [`evaluateTaskSubmission`](../../functions/ai_flows/evaluateTaskSubmission.js) | Defaults to `taskData.model`; override with **`gemini-4-argon`** in the Grading Matrix toolbar for complex multi-step debugging labs or exam appeals. |
-| **4. After-Class Cohort Video Map-Reduce** | [`VideoLibrary.jsx`](../../web-app/src/components/VideoLibrary.jsx) & [`VideoAnalysisJobs.jsx`](../../web-app/src/components/VideoAnalysisJobs.jsx) | [`analyzeSingleVideoFlow`](../../functions/ai_flows/analysisFlows.js) & [`generateLabTaskPrompt`](../../functions/ai_flows/generateLabTaskPrompt.js) | Use `gemini-3.8-flash` for Stage-1 per-student video logs and **`gemini-4-argon`** for Stage-2 cohort rubric discovery. |
-| **5. Whole-Lecture Subtitles (CC) & YouTube Chapters** | [`ClassManagement.jsx`](../../web-app/src/components/ClassManagement.jsx) & [`LectureRecordingsView.jsx`](../../web-app/src/components/LectureRecordingsView.jsx) | [`processLectureSubtitles`](../../functions/ai_flows/processLectureSubtitles.js) | Single-pass pure Opus audio ingestion (`thinkingBudget: 0`, `maxOutputTokens: 65536`) with `gemini-3.8-flash` or **`gemini-4-argon`**. |
-| **6. Capstone Project Meeting Supervision** | [`ProjectMeetingsView.jsx`](../../web-app/src/components/meetings/ProjectMeetingsView.jsx) | [`analyzeProjectMeeting`](../../functions/ai_flows/projectMeetingFlows.js) | Stage 1 diarizes audio via `gemini-3.5-transcribe-preview`; Stage 2 uses **`gemini-4-argon`** or `gemini-3.8-flash` to cross-examine weekly logs against 720p mobile demo videos and photos. |
-| **7. Bingo Question Bank AI Generator** | [`BingoQuestionBankModal.jsx`](../../web-app/src/components/BingoQuestionBankModal.jsx) (`Bingo AI Model`) | [`generateBingoQuestionBank`](../../functions/ai_flows/bingoFlows.js) | Use `gemini-3.5-flash-lite` for fast recall MCQs or **`gemini-4-argon`** for scenario-based architecture diagnostic questions. |
-| **8. AI Prompt Studio Meta-Optimizer (`✨ Optimize`)** | [`PromptForm.jsx`](../../web-app/src/components/prompt/PromptForm.jsx) & [`PromptManagement.jsx`](../../web-app/src/components/PromptManagement.jsx) | [`analysisFlows.js`](../../functions/ai_flows/analysisFlows.js) | Select **`gemini-4-argon`** next to `Optimize` to rewrite rough instructor grading notes into schema-safe system prompts while locking `{{variable}}` tags. |
-| **9. Live Subtitles & Multilingual Captions** | [`TeacherSubtitleControlModal.jsx`](../../web-app/src/components/subtitles/TeacherSubtitleControlModal.jsx) | [`translateTeacherSpeech`](../../functions/ai_flows/subtitleFlows.js) & [`litertGemma.worker.js`](../../web-app/src/workers/litertGemma.worker.js) | Toggle between $0.00 on-device **Gemma 4 E2B** (`client` mode) and Cloud Functions (`gemini-3.5-flash-lite` / `gemini-3.8-flash` / `gemini-4-argon`). |
+| **1. Class-Wide Default & Live Vision Monitor** | [`ClassManagement.jsx`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/components/ClassManagement.jsx) & [`ControlsPanel.jsx`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/components/monitor/ControlsPanel.jsx) | [`analyzeImageFlow`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/ai_flows/analysisFlows.js) / [`analyzeAllImagesFlow`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/ai_flows/analysisFlows.js) | `gemini-3.5-flash-lite` for instant classroom peeks; switch to **`gemini-4-argon`** for deep code inspection on a student's IDE screenshot. |
+| **2. Practical Task Rubric Synthesis** | [`TaskEditorModal.jsx`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/components/tasks/TaskEditorModal.jsx) (`#task-ai-model-select`) | [`extractTaskDemoSteps`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/ai_flows/extractTaskDemoSteps.js) | Use **`gemini-4-argon`** to watch your reference demo video and synthesize nuanced partial-credit marking criteria and visual proof requirements. |
+| **3. Practical Task Video Auto-Grading** | [`TaskGradingMatrixView.jsx`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/components/tasks/TaskGradingMatrixView.jsx) (`Grading AI Model`) | [`evaluateTaskSubmission`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/ai_flows/evaluateTaskSubmission.js) | Defaults to `taskData.model`; override with **`gemini-4-argon`** in the Grading Matrix toolbar for complex multi-step debugging labs or exam appeals. |
+| **4. After-Class Cohort Video Map-Reduce** | [`VideoLibrary.jsx`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/components/VideoLibrary.jsx) & [`VideoAnalysisJobs.jsx`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/components/VideoAnalysisJobs.jsx) | [`analyzeSingleVideoFlow`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/ai_flows/analysisFlows.js) & [`generateLabTaskPrompt`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/ai_flows/generateLabTaskPrompt.js) | Use `gemini-3.8-flash` for Stage-1 per-student video logs and **`gemini-4-argon`** for Stage-2 cohort rubric discovery. |
+| **5. Whole-Lecture Subtitles (CC) & YouTube Chapters** | [`ClassManagement.jsx`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/components/ClassManagement.jsx) & [`LectureRecordingsView.jsx`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/components/LectureRecordingsView.jsx) | [`processLectureSubtitles`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/ai_flows/processLectureSubtitles.js) | Single-pass pure Opus audio ingestion (`thinkingBudget: 0`, `maxOutputTokens: 65536`) with `gemini-3.8-flash` or **`gemini-4-argon`**. |
+| **6. Capstone Project Meeting Supervision** | [`ProjectMeetingsView.jsx`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/components/meetings/ProjectMeetingsView.jsx) | [`analyzeProjectMeeting`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/ai_flows/projectMeetingFlows.js) | Stage 1 diarizes audio via `gemini-3.5-transcribe-preview`; Stage 2 uses **`gemini-4-argon`** or `gemini-3.8-flash` to cross-examine weekly logs against 720p mobile demo videos and photos. |
+| **7. Bingo Question Bank AI Generator** | [`BingoQuestionBankModal.jsx`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/components/BingoQuestionBankModal.jsx) (`Bingo AI Model`) | [`generateBingoQuestionBank`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/ai_flows/bingoFlows.js) | Use `gemini-3.5-flash-lite` for fast recall MCQs or **`gemini-4-argon`** for scenario-based architecture diagnostic questions. |
+| **8. AI Prompt Studio Meta-Optimizer (`✨ Optimize`)** | [`PromptForm.jsx`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/components/prompt/PromptForm.jsx) & [`PromptManagement.jsx`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/components/PromptManagement.jsx) | [`analysisFlows.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/ai_flows/analysisFlows.js) | Select **`gemini-4-argon`** next to `Optimize` to rewrite rough instructor grading notes into schema-safe system prompts while locking `{{variable}}` tags. |
+| **9. Live Subtitles & Multilingual Captions** | [`TeacherSubtitleControlModal.jsx`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/components/subtitles/TeacherSubtitleControlModal.jsx) | [`translateTeacherSpeech`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/ai_flows/subtitleFlows.js) & [`litertGemma.worker.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/workers/litertGemma.worker.js) | Toggle between $0.00 on-device **Gemma 4 E2B** (`client` mode) and Cloud Functions (`gemini-3.5-flash-lite` / `gemini-3.8-flash` / `gemini-4-argon`). |
 
 ---
 
@@ -50,15 +50,15 @@ One of the most important engineering lessons when adopting **Gemini 4 (`gemini-
 - **Strict Parameter Contract on `gemini-4-*`**: Passing legacy sampling parameters (`temperature`, `topP`, `top_p`, `topK`, `top_k`) inside `config` to `gemini-4-argon` throws an immediate `400 INVALID_ARGUMENT` error because Gemini 4 manages internal reasoning sampling natively.
 - **Transient Overload & Quota Spikes in Live Labs**: When 40 students submit their practical exam videos simultaneously or a teacher triggers `analyzeAllImagesFlow` across 40 screens with up to `maxToolRoundtrips = numScreenshots * 3`, regional Vertex AI endpoints can return `429 RESOURCE_EXHAUSTED`, `503 UNAVAILABLE`, or `ECONNRESET`. The pipeline must never fail a student's submission—it must retry with exponential backoff + random jitter and seamlessly fail over to `gemini-3.5-flash-lite` if the primary model is exhausted.
 
-![Genkit Resilience Flow](../presentation/images/slide_genkit_resilience_flow.png)
+![Genkit Resilience Flow](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/presentation/images/slide_genkit_resilience_flow.png)
 
-Here is the exact sequence executed by [`generateWithResilience`](../../functions/ai_flows/analysisFlows.js) for every Genkit invocation across our backend:
+Here is the exact sequence executed by [`generateWithResilience`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/ai_flows/analysisFlows.js) for every Genkit invocation across our backend:
 
-![Genkit generateWithResilience: Gemini 4 Sanitization & Self-Healing Failover](./images/blog03_diagram2_genkit_resilience_sequence.png)
+![Genkit generateWithResilience: Gemini 4 Sanitization & Self-Healing Failover](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog03_diagram2_genkit_resilience_sequence.png)
 
-### Production Code Listing 1: `generateWithResilience` in [`functions/ai_flows/analysisFlows.js`](../../functions/ai_flows/analysisFlows.js)
+### Production Code Listing 1: `generateWithResilience` in [`functions/ai_flows/analysisFlows.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/ai_flows/analysisFlows.js)
 
-Here is the production implementation in [`functions/ai_flows/analysisFlows.js`](../../functions/ai_flows/analysisFlows.js) showing how we strip unsupported sampling keys when `modelName.startsWith('gemini-4')` and handle network/quota retries before failing over:
+Here is the production implementation in [`functions/ai_flows/analysisFlows.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/ai_flows/analysisFlows.js) showing how we strip unsupported sampling keys when `modelName.startsWith('gemini-4')` and handle network/quota retries before failing over:
 
 ```javascript
 /**
@@ -140,11 +140,11 @@ export async function generateWithResilience(
 Two of the best examples of **model right-sizing** in our codebase are **Two-Stage Audio Invigilation (`analyzeAudioFlow`)** and **Automated Demo Video Rubric Synthesis (`extractTaskDemoSteps`)**:
 
 ### Why Two-Stage Audio (`gemini-3.5-transcribe-preview` + Reasoning Model) Beats Single-Pass Audio Tool Calling
-In [`analyzeAudioFlow`](../../functions/ai_flows/analysisFlows.js), we discovered that passing complex Genkit tool definitions (`recordAudioIrregularity`, `recordAudioAudit`, `sendMessageToStudent`) directly to an acoustic Speech-to-Text model degrades transcription fidelity on Cantonese/English code-switching. Instead, we split the pipeline into two specialized stages—and if the student's browser already transcribed the audio via **LiteRT Whisper-Tiny**, Stage 1 is skipped altogether (`suppliedTranscript`), saving 100% of audio input tokens!
+In [`analyzeAudioFlow`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/ai_flows/analysisFlows.js), we discovered that passing complex Genkit tool definitions (`recordAudioIrregularity`, `recordAudioAudit`, `sendMessageToStudent`) directly to an acoustic Speech-to-Text model degrades transcription fidelity on Cantonese/English code-switching. Instead, we split the pipeline into two specialized stages—and if the student's browser already transcribed the audio via **LiteRT Whisper-Tiny**, Stage 1 is skipped altogether (`suppliedTranscript`), saving 100% of audio input tokens!
 
-### Production Code Listing 2: Multimodal Reference Video Rubric Synthesis in [`functions/ai_flows/extractTaskDemoSteps.js`](../../functions/ai_flows/extractTaskDemoSteps.js) & [`TaskEditorModal.jsx`](../../web-app/src/components/tasks/TaskEditorModal.jsx)
+### Production Code Listing 2: Multimodal Reference Video Rubric Synthesis in [`functions/ai_flows/extractTaskDemoSteps.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/ai_flows/extractTaskDemoSteps.js) & [`TaskEditorModal.jsx`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/components/tasks/TaskEditorModal.jsx)
 
-When creating a hands-on practical assignment in [`TaskEditorModal.jsx`](../../web-app/src/components/tasks/TaskEditorModal.jsx), an instructor can attach a YouTube URL, upload an MP4 demo, or select a recorded lecture, and choose **Gemini 4 Argon (`gemini-4-argon`)**, **Gemini 3.8 Flash (`gemini-3.8-flash`)**, or **Gemini 3.5 Flash-Lite (`gemini-3.5-flash-lite`)**:
+When creating a hands-on practical assignment in [`TaskEditorModal.jsx`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/components/tasks/TaskEditorModal.jsx), an instructor can attach a YouTube URL, upload an MP4 demo, or select a recorded lecture, and choose **Gemini 4 Argon (`gemini-4-argon`)**, **Gemini 3.8 Flash (`gemini-3.8-flash`)**, or **Gemini 3.5 Flash-Lite (`gemini-3.5-flash-lite`)**:
 
 ```jsx
 {/* web-app/src/components/tasks/TaskEditorModal.jsx */}
@@ -165,7 +165,7 @@ When creating a hands-on practical assignment in [`TaskEditorModal.jsx`](../../w
 </div>
 ```
 
-On the backend, [`extractTaskDemoSteps.js`](../../functions/ai_flows/extractTaskDemoSteps.js) resolves Cloud Storage (`gs://`) or YouTube URIs, invokes `generateWithResilience` with `responseMimeType: 'application/json'`, and normalizes the extracted milestone steps, expected visual proof, and partial-credit marking criteria:
+On the backend, [`extractTaskDemoSteps.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/ai_flows/extractTaskDemoSteps.js) resolves Cloud Storage (`gs://`) or YouTube URIs, invokes `generateWithResilience` with `responseMimeType: 'application/json'`, and normalizes the extracted milestone steps, expected visual proof, and partial-credit marking criteria:
 
 ```javascript
 // functions/ai_flows/extractTaskDemoSteps.js
@@ -193,15 +193,15 @@ const cost = calculateCost(usage, res.modelUsed || preferredModel);
 
 Hardcoding system prompts inside backend code prevents lecturers from adapting AI grading to their specific syllabus (e.g., Cybersecurity Penetration Testing vs. Frontend React Development). At the same time, writing JSON-schema-safe prompts with required runtime template placeholders (`{{transcript}}`, `{{captureInterval}}`, `{{studentEmail}}`) is error-prone for busy educators.
 
-![Teacher AI Prompt Studio](../presentation/images/slide_prompt_management_studio.png)
+![Teacher AI Prompt Studio](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/presentation/images/slide_prompt_management_studio.png)
 
-We solved this in [`PromptForm.jsx`](../../web-app/src/components/prompt/PromptForm.jsx) and `promptRegistry.js` with a **Three-Tier Prompt Governance Architecture** and an in-place **Gemini 4 Prompt Optimizer**:
+We solved this in [`PromptForm.jsx`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/components/prompt/PromptForm.jsx) and `promptRegistry.js` with a **Three-Tier Prompt Governance Architecture** and an in-place **Gemini 4 Prompt Optimizer**:
 
-![3-Tier Prompt Governance & Gemini 4 Meta-Prompt Optimizer (✨ Optimize)](./images/blog03_diagram3_prompt_governance_optimizer.png)
+![3-Tier Prompt Governance & Gemini 4 Meta-Prompt Optimizer (✨ Optimize)](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog03_diagram3_prompt_governance_optimizer.png)
 
-### Production Code Listing 3: Optimizer Model Picker & Required Placeholder Validation in [`web-app/src/components/prompt/PromptForm.jsx`](../../web-app/src/components/prompt/PromptForm.jsx)
+### Production Code Listing 3: Optimizer Model Picker & Required Placeholder Validation in [`web-app/src/components/prompt/PromptForm.jsx`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/components/prompt/PromptForm.jsx)
 
-In [`PromptForm.jsx`](../../web-app/src/components/prompt/PromptForm.jsx), teachers can switch between **`gemini-4-argon`**, **`gemini-3.8-flash`**, and **`gemini-3.5-flash-lite`** right next to the **Optimize** button, while interactive placeholder chips (`ph.required`) warn the instructor if any mandatory runtime interpolation variable is missing before saving:
+In [`PromptForm.jsx`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/components/prompt/PromptForm.jsx), teachers can switch between **`gemini-4-argon`**, **`gemini-3.8-flash`**, and **`gemini-3.5-flash-lite`** right next to the **Optimize** button, while interactive placeholder chips (`ph.required`) warn the instructor if any mandatory runtime interpolation variable is missing before saving:
 
 ```jsx
 {/* web-app/src/components/prompt/PromptForm.jsx */}
@@ -238,11 +238,11 @@ In [`PromptForm.jsx`](../../web-app/src/components/prompt/PromptForm.jsx), teach
 
 When different teachers across a university department experiment with **`gemini-4-argon`**, **`gemini-3.8-flash`**, **`gemini-3.5-flash-lite`**, and two-stage composite pipelines (`gemini-3.5-transcribe-preview + gemini-3.5-flash-lite`), institutional cloud administrators need **micro-dollar cost attribution** and **hard per-class budget caps** (`aiQuota` vs. `aiUsedQuota`).
 
-![AI Cost & FinOps Governance](../presentation/images/slide_ai_cost_finops.png)
+![AI Cost & FinOps Governance](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/presentation/images/slide_ai_cost_finops.png)
 
-### Production Code Listing 4: Multi-SDK Token Normalization & Composite Pipeline Pricing in [`functions/ai_flows/cost.js`](../../functions/ai_flows/cost.js)
+### Production Code Listing 4: Multi-SDK Token Normalization & Composite Pipeline Pricing in [`functions/ai_flows/cost.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/ai_flows/cost.js)
 
-In [`functions/ai_flows/cost.js`](../../functions/ai_flows/cost.js), we maintain a warm 12-hour in-memory pricing cache synced from `system_config/pricing` (populated daily by our Cloud Billing Catalog API job `syncGeminiPricing`), normalize token property variations across Genkit, Google GenAI SDK, and Vertex AI (`promptTokenCount` vs. `inputTokens`), and compute exact USD costs down to `$0.000001`:
+In [`functions/ai_flows/cost.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/ai_flows/cost.js), we maintain a warm 12-hour in-memory pricing cache synced from `system_config/pricing` (populated daily by our Cloud Billing Catalog API job `syncGeminiPricing`), normalize token property variations across Genkit, Google GenAI SDK, and Vertex AI (`promptTokenCount` vs. `inputTokens`), and compute exact USD costs down to `$0.000001`:
 
 ```javascript
 // Default baseline pricing lookup table for Gemini models in USD per 1 million tokens (Input / Output)
@@ -315,4 +315,4 @@ Here is how our 5-model architecture performs in production across real HKIIT cl
 
 ---
 
-[⏮️ Previous: Part 2 — Browser Edge AI with Gemma 4 E2B](./02-browser-edge-ai-gemma-4-mediapipe-whisper.md) | [📚 Series Index](./README.md) | [⏭️ Continue to Part 4: Defeating Proxy Attendance with WebAuthn Passkeys →](./04-webauthn-passkeys-rotating-hmac-qr-auth.md)
+[⏮️ Previous: Part 2 — Browser Edge AI with Gemma 4 E2B](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/02-browser-edge-ai-gemma-4-mediapipe-whisper.md) | [📚 Series Index](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/README.md) | [⏭️ Continue to Part 4: Defeating Proxy Attendance with WebAuthn Passkeys →](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/04-webauthn-passkeys-rotating-hmac-qr-auth.md)

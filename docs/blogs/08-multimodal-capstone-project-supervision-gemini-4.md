@@ -1,11 +1,11 @@
 # Part 8: Multimodal AI Capstone Project Supervision — Streamlined Mobile 720p Demo Studio, 2-Stage Diarization & Fake-Log Auditing with Gemini 4
 
 **Author:** [**Cyrus Wong (黃俊彥)**](https://www.linkedin.com/in/cyruswong/) — *Google Developer Expert - Cloud (AI), Senior Lecturer at HKIIT*  
-[⏮️ Previous: Part 7 — Gemini 4 Map-Reduce Video & Rubric Grading](./07-serverless-map-reduce-video-and-gemini-4-rubric-grading.md) | [📚 Series Index](./README.md) | [⏭️ Next: Part 9 — Gamified Bingo & Zero-Trust Exam Mode](./09-gamified-bingo-active-presence-and-zero-trust-exam-mode.md)
+[⏮️ Previous: Part 7 — Gemini 4 Map-Reduce Video & Rubric Grading](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/07-serverless-map-reduce-video-and-gemini-4-rubric-grading.md) | [📚 Series Index](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/README.md) | [⏭️ Next: Part 9 — Gamified Bingo & Zero-Trust Exam Mode](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/09-gamified-bingo-active-presence-and-zero-trust-exam-mode.md)
 
 ---
 
-![Capstone Project Meetings & Multi-Stream AI Supervision](../presentation/images/slide_project_meetings_ai_supervision.png)
+![Capstone Project Meetings & Multi-Stream AI Supervision](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/presentation/images/slide_project_meetings_ai_supervision.png)
 
 ## 1. The Capstone Supervision Bottleneck: ChatGPT Logbooks, Free-Riders & Multi-Device Consultation Friction
 
@@ -15,7 +15,7 @@ Supervising 15 final-year engineering capstone project groups (60+ students) acr
 2. **Physical Consultation Friction (Why Desktop Screen-Capture Signaling Failed in Live Meetings)**: During a 15-minute face-to-face group consultation around a lab table, students demonstrate work across their personal laptops, physical IoT breadboards, mobile apps, and paper architecture sketches. Originally, we experimented with cross-device Firestore signaling to trigger browser screen sharing on the student's PC. In practice, waiting for a student to open the web app, authenticate, and select a display surface mid-meeting wasted 3 to 4 minutes of a 15-minute consultation—and couldn't capture mobile hardware or whiteboard diagrams at all!
 3. **Multilingual Speaker Attribution in Noisy Labs**: When 4 project teammates and a supervisor debate system architecture around a single table—code-switching rapidly between conversational Cantonese, Mandarin, and English technical terms (`React`, `Firestore`, `Docker`, `Cloud Run`, `PR`)—a single-pass LLM prompt cannot reliably separate *who* actually answered the technical challenge questions from *who* sat silently and free-rode on their teammates' work.
 
-In **Part 8** of our Google Developer Expert series, we dive deep into the architecture of the **Capstone Project Supervision & Weekly Log AI Pipeline** ([`ProjectMeetingsView.jsx`](../../web-app/src/components/meetings/ProjectMeetingsView.jsx) and [`projectMeetingFlows.js`](../../functions/ai_flows/projectMeetingFlows.js)), showing how we engineered:
+In **Part 8** of our Google Developer Expert series, we dive deep into the architecture of the **Capstone Project Supervision & Weekly Log AI Pipeline** ([`ProjectMeetingsView.jsx`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/components/meetings/ProjectMeetingsView.jsx) and [`projectMeetingFlows.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/ai_flows/projectMeetingFlows.js)), showing how we engineered:
 - **A Self-Healing On-Demand Google Sheets Logbook Sync** with **Hamming Distance = 1 Student ID Typo Healing** and holiday-aware academic week calculation.
 - **A Pre-Meeting Fake-Log AI Auditor (`prepareProjectMeetingLogQuestions`)** that cross-examines each student's current weekly log against their prior weeks' history and generates pointed live code-walkthrough challenge questions.
 - **A Streamlined Single-Device Teacher Mobile Supervision Studio** on the supervisor's smartphone: combining **🎙️ Continuous Voice Recording** (+ 1-tap `🗣️ Speaking Now` student voice anchors), **📸 Zero-Pause `0.1s` Photo Snaps (`1280px` JPEG)**, and **📹 Auto-Sliced `720p` (`1280×720`) Mobile Camera Demo Videos** that completely eliminate student PC screen-capture friction.
@@ -25,9 +25,9 @@ In **Part 8** of our Google Developer Expert series, we dive deep into the archi
 
 ## 2. Diagram 1: Self-Healing Google Sheets Sync & Pre-Meeting Fake-Log AI Auditor
 
-Before the weekly consultation begins, the supervisor clicks **🔄 Sync Weekly Logs** inside [`ProjectMeetingsView.jsx`](../../web-app/src/components/meetings/ProjectMeetingsView.jsx). Rather than running wasteful background cron jobs every 5 minutes, the platform performs an on-demand incremental delta sync against the class's linked Google Form spreadsheet (`Form Responses 2`), fetching only newly appended rows (`startRow = lastSyncedRowCount + 1`).
+Before the weekly consultation begins, the supervisor clicks **🔄 Sync Weekly Logs** inside [`ProjectMeetingsView.jsx`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/components/meetings/ProjectMeetingsView.jsx). Rather than running wasteful background cron jobs every 5 minutes, the platform performs an on-demand incremental delta sync against the class's linked Google Form spreadsheet (`Form Responses 2`), fetching only newly appended rows (`startRow = lastSyncedRowCount + 1`).
 
-![Self-Healing Google Sheets Sync & Pre-Meeting Fake-Log AI Auditor](./images/blog08_diagram1_sheets_sync_fake_log_audit.png)
+![Self-Healing Google Sheets Sync & Pre-Meeting Fake-Log AI Auditor](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog08_diagram1_sheets_sync_fake_log_audit.png)
 
 ### Why Hamming Distance = 1 Student ID Healing Saved Hours of Manual Fixes
 On mobile Google Forms, students frequently mistype a single digit of their 9-digit VTC Student ID (e.g., typing `250105349` instead of `250105348`) or submit from a personal `@gmail.com` address. A strict string equality check drops those logs as orphaned records.
@@ -36,7 +36,7 @@ Our ingestion resolver compares any unmatched 9-digit numeric ID against the enr
 
 ### Production Code 1: Pre-Meeting Fake-Log Detection & Live Code-Walkthrough Challenge Generator (`handlePrepareProjectLogQuestions`)
 
-Once the weekly logs are synced into `classes/{classId}/projectMeetings/{meetingId}`, the supervisor clicks **🔍 Audit Logs & Prepare Questions** (or runs **⚡ Smart Batch AI Mode 1** across all groups for Week $W$). Let's look at [`handlePrepareProjectLogQuestions`](../../functions/ai_flows/projectMeetingFlows.js) in [`functions/ai_flows/projectMeetingFlows.js`](../../functions/ai_flows/projectMeetingFlows.js), which feeds each student's Week $W$ log *plus* their multi-week historical log trajectory into **Gemini 4 Argon (`gemini-4-argon`)** or **Gemini 3.8 Flash (`gemini-3.8-flash`)**:
+Once the weekly logs are synced into `classes/{classId}/projectMeetings/{meetingId}`, the supervisor clicks **🔍 Audit Logs & Prepare Questions** (or runs **⚡ Smart Batch AI Mode 1** across all groups for Week $W$). Let's look at [`handlePrepareProjectLogQuestions`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/ai_flows/projectMeetingFlows.js) in [`functions/ai_flows/projectMeetingFlows.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/ai_flows/projectMeetingFlows.js), which feeds each student's Week $W$ log *plus* their multi-week historical log trajectory into **Gemini 4 Argon (`gemini-4-argon`)** or **Gemini 3.8 Flash (`gemini-3.8-flash`)**:
 
 ```javascript
 // Source: functions/ai_flows/projectMeetingFlows.js
@@ -104,7 +104,7 @@ When a student submits a suspected ChatGPT log claiming they built an entire Fla
 
 When the group sits down for their weekly consultation, the supervisor opens the meeting card on their smartphone or tablet.
 
-To make live supervision effortless with **one thumb**, we eliminated cross-device student PC screen-capture signaling completely and consolidated all multimodal capture into a **Streamlined Single-Device Teacher Mobile Supervision Studio** in [`ProjectMeetingsView.jsx`](../../web-app/src/components/meetings/ProjectMeetingsView.jsx):
+To make live supervision effortless with **one thumb**, we eliminated cross-device student PC screen-capture signaling completely and consolidated all multimodal capture into a **Streamlined Single-Device Teacher Mobile Supervision Studio** in [`ProjectMeetingsView.jsx`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/components/meetings/ProjectMeetingsView.jsx):
 
 1. **🎙️ Continuous Voice Consultation (`audio/webm` / `audio/mp4`)**: Protected by the browser Screen Wake Lock API (`navigator.wakeLock.request('screen')`) so the mobile browser never sleeps mid-consultation. As each student speaks or answers a challenge question, the supervisor taps their **`🗣️ Speaking Now`** pill, stamping `{ studentUid, name, email, timeSeconds, timestamp, clipIndex }` into `voiceAnchors[]`.
 2. **📸 Zero-Pause Instant Photo Snap (`0.1s`, `1280px` JPEG @ `0.85` quality)**: When a student sketches an ER diagram on paper, shows an IoT microcontroller circuit, or points to a stack trace on their laptop, tapping **`📸 Snap Photo`** captures a crisp `1280px` image and uploads it to `projectMeetings/{classId}/{groupId}/{meetingId}/` **in `0.1` seconds without pausing or interrupting the ongoing voice recording!**
@@ -113,10 +113,10 @@ To make live supervision effortless with **one thumb**, we eliminated cross-devi
    - It activates the mobile rear/front camera at **`720p` (`1280×720`, `~1.5 Mbps` bitrate)**—sharp enough for Gemini 4 Argon to read laptop UI states and terminal output, yet compact enough (`~11 MB/min`) to upload in seconds over campus Wi-Fi.
    - The instant the supervisor taps **`⏹️ Stop Demo`**, the studio uploads the `720p` demo clip (`type: 'mobile_camera'`) and **automatically resumes `Voice Part N+1`** so not a single second of verbal feedback is lost!
 
-![Streamlined Single-Device Teacher Mobile Supervision Studio State Machine](./images/blog08_diagram2_mobile_supervision_studio_state.png)
+![Streamlined Single-Device Teacher Mobile Supervision Studio State Machine](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog08_diagram2_mobile_supervision_studio_state.png)
 
 ### Atomic Stale Analysis Invalidation When Moving Clips Across Groups or Weeks
-During back-to-back consultations with 10 project groups, a supervisor occasionally records Group 3's voice clip or demo video while Group 2's card is still open. In [`ProjectMeetingsView.jsx`](../../web-app/src/components/meetings/ProjectMeetingsView.jsx), we built a **1-Click Clip Reassignment Modal (`➡️ Move Clip to Another Meeting / Week`)**.
+During back-to-back consultations with 10 project groups, a supervisor occasionally records Group 3's voice clip or demo video while Group 2's card is still open. In [`ProjectMeetingsView.jsx`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/components/meetings/ProjectMeetingsView.jsx), we built a **1-Click Clip Reassignment Modal (`➡️ Move Clip to Another Meeting / Week`)**.
 
 Whenever a voice clip, 720p demo video, or photo is moved from Meeting $A$ to Meeting $B$ (or deleted after an AI report was already generated), a single atomic Firestore `writeBatch()` moves the media metadata, shifts any associated `voiceAnchors`, and **automatically purges stale AI report fields** (`executiveSummary`, `keyInsights`, `attendanceRecord`, `studentContributions`, `actionItems`, `rawDiarizedTranscript`) on both meetings using `deleteField()` while setting `needsReanalysis: true`. This guarantees a supervisor can never accidentally email a stale AI report after modifying a meeting's evidence!
 
@@ -130,7 +130,7 @@ Why split `analyzeProjectMeeting` into **two distinct AI stages** instead of fee
 - **Stage 1 (`gemini-3.5-transcribe-preview` with `gemini-3.8-flash` Resilience Fallbacks)** is dedicated 100% to **verbatim multilingual acoustic speaker diarization** across every audio clip and 720p demo video, shifting timestamps cumulatively (`offsetTranscriptTimestamps`) across `Voice Part 1`, `Demo 1`, and `Voice Part 2`.
 - **Stage 2 (`gemini-4-argon` or `gemini-3.8-flash`)** receives the complete diarized transcript, the supervisor's 1-tap `voiceAnchors[]`, the `720p` mobile demo videos (`screenClips[]`), the whiteboard/hardware photos (`photos[]`), the students' written weekly logs (`weeklyLogs[]`), and last week's assigned action items (`priorWeekContext`) to perform a rigorous **Multimodal Cross-Examination**:
 
-![Two-Stage Multimodal Diarization & Gemini 4 Argon Cross-Examination (analyzeProjectMeeting)](./images/blog08_diagram3_two_stage_capstone_diarization.png)
+![Two-Stage Multimodal Diarization & Gemini 4 Argon Cross-Examination (analyzeProjectMeeting)](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog08_diagram3_two_stage_capstone_diarization.png)
 
 ---
 
@@ -142,7 +142,7 @@ During real classroom testing with 25-minute capstone consultations, we discover
 1. **Low-Volume / Quiet Clips**: If students sit far from the supervisor's phone in a quiet room, dedicated STT filters occasionally classify soft speech as background noise and return an empty string.
 2. **Mid-Meeting Silence Pause Truncation (`isLongClipTranscriptTruncated`)**: If a group pauses speaking for 20 seconds at minute `08:00` while compiling code on a laptop during a 20-minute recording (`>= 360s`), `gemini-3.5-transcribe-preview` can prematurely emit an end-of-sequence token, truncating the second half of the consultation!
 
-In [`functions/ai_flows/projectMeetingFlows.js`](../../functions/ai_flows/projectMeetingFlows.js), we built two automatic self-healing guards (`isLongClipTranscriptTruncated` and `offsetTranscriptTimestamps`) that detect both anomalies and seamlessly recover the full verbatim Cantonese/English diarization using multimodal `gemini-3.8-flash` (`thinkingBudget: 0`):
+In [`functions/ai_flows/projectMeetingFlows.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/ai_flows/projectMeetingFlows.js), we built two automatic self-healing guards (`isLongClipTranscriptTruncated` and `offsetTranscriptTimestamps`) that detect both anomalies and seamlessly recover the full verbatim Cantonese/English diarization using multimodal `gemini-3.8-flash` (`thinkingBudget: 0`):
 
 ```javascript
 // Source: functions/ai_flows/projectMeetingFlows.js
@@ -192,7 +192,7 @@ In Stage 2, **Gemini 4 Argon (`gemini-4-argon`)** or **Gemini 3.8 Flash (`gemini
 
 However, what if a 4-member group has a silent free-rider who never spoke a word during the meeting, causing the LLM to omit them from its output array? Or what if the supervisor manually tapped **`🗣️ Speaking Now`** for a student whose voice was too soft for the microphone?
 
-In [`functions/ai_flows/projectMeetingFlows.js`](../../functions/ai_flows/projectMeetingFlows.js), `reconcileMeetingRosterResults` deterministically reconciles the AI's JSON output against the authoritative `groupData.members` roster:
+In [`functions/ai_flows/projectMeetingFlows.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/ai_flows/projectMeetingFlows.js), `reconcileMeetingRosterResults` deterministically reconciles the AI's JSON output against the authoritative `groupData.members` roster:
 
 ```javascript
 // Source: functions/ai_flows/projectMeetingFlows.js
@@ -257,7 +257,7 @@ export function reconcileMeetingRosterResults({
 
 ## 6. 1-Click Class-Wide HTML Email Dispatch & Longitudinal Student Portfolios
 
-Once the supervisor reviews the generated report (or edits any score/feedback inline), clicking **`📧 Email All Week W Reports`** invokes `batchEmailProjectMeetingReports` in [`functions/ai_flows/projectMeetingFlows.js`](../../functions/ai_flows/projectMeetingFlows.js).
+Once the supervisor reviews the generated report (or edits any score/feedback inline), clicking **`📧 Email All Week W Reports`** invokes `batchEmailProjectMeetingReports` in [`functions/ai_flows/projectMeetingFlows.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/ai_flows/projectMeetingFlows.js).
 
 Using SMTP credentials mounted strictly at runtime from **Google Cloud Secret Manager (`SMTP_PASSWORD`)**, the function formats a responsive, badge-styled HTML supervision report containing:
 - An optional highlighted **👨‍🏫 Supervisor Note**,
@@ -276,4 +276,4 @@ In **Part 9**, we turn to live classroom engagement and formal assessment securi
 
 ---
 
-[⏮️ Previous: Part 7 — Gemini 4 Map-Reduce Video & Rubric Grading](./07-serverless-map-reduce-video-and-gemini-4-rubric-grading.md) | [📚 Series Index](./README.md) | [⏭️ Continue to Part 9: Gamified Bingo Active Presence & Zero-Trust Exam Mode →](./09-gamified-bingo-active-presence-and-zero-trust-exam-mode.md)
+[⏮️ Previous: Part 7 — Gemini 4 Map-Reduce Video & Rubric Grading](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/07-serverless-map-reduce-video-and-gemini-4-rubric-grading.md) | [📚 Series Index](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/README.md) | [⏭️ Continue to Part 9: Gamified Bingo Active Presence & Zero-Trust Exam Mode →](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/09-gamified-bingo-active-presence-and-zero-trust-exam-mode.md)

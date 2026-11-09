@@ -1,11 +1,11 @@
 # Part 6: Scaling Classroom Screen Broadcasting to 1,000+ Viewers & Single-Pass Whole-Lecture Subtitles with Gemini 4 Argon
 
 **Author:** [**Cyrus Wong (黃俊彥)**](https://www.linkedin.com/in/cyruswong/) — *Google Developer Expert - Cloud (AI), Senior Lecturer at HKIIT*  
-[⏮️ Previous: Part 5 — Real-Time Multilingual Live Subtitles](./05-realtime-live-subtitles-code-switching-gemini-4-gemma-4.md) | [📚 Series Index](./README.md) | [⏭️ Next: Part 7 — Gemini 4 Map-Reduce Video & Rubric Grading](./07-serverless-map-reduce-video-and-gemini-4-rubric-grading.md)
+[⏮️ Previous: Part 5 — Real-Time Multilingual Live Subtitles](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/05-realtime-live-subtitles-code-switching-gemini-4-gemma-4.md) | [📚 Series Index](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/README.md) | [⏭️ Next: Part 7 — Gemini 4 Map-Reduce Video & Rubric Grading](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/07-serverless-map-reduce-video-and-gemini-4-rubric-grading.md)
 
 ---
 
-![Public Presentation Mode & 1,000+ Spectator Fanout](../presentation/images/slide_public_presentation_mode.png)
+![Public Presentation Mode & 1,000+ Spectator Fanout](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/presentation/images/slide_public_presentation_mode.png)
 
 ## 1. Problem Statement: Breaking Two Hard Ceilings in Lecture Hall Broadcasting & Post-Lecture Publishing
 
@@ -31,11 +31,11 @@ In a programming lecture or technical keynote, the presenter's screen (slides, I
 
 ### Diagram 1: 32×18 Pixel-Delta Screen Broadcaster & Zero-Auth PIN Gate (`/live/:classId?pin=XXXX`)
 
-![32×18 Pixel-Delta Screen Broadcaster & Zero-Auth 1,000-Viewer PIN Gate](./images/blog06_diagram1_1000_viewer_broadcast.png)
+![32×18 Pixel-Delta Screen Broadcaster & Zero-Auth 1,000-Viewer PIN Gate](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog06_diagram1_1000_viewer_broadcast.png)
 
 ### Implementation Walkthrough: 32×18 RGB Pixel Diffing, Hardware `ImageCapture`, & 950 KB Payload Guard
 
-In [`web-app/src/hooks/useTeacherScreenBroadcast.js`](../../web-app/src/hooks/useTeacherScreenBroadcast.js), our broadcaster solves four gnarly browser compositor bugs:
+In [`web-app/src/hooks/useTeacherScreenBroadcast.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/hooks/useTeacherScreenBroadcast.js), our broadcaster solves four gnarly browser compositor bugs:
 1. **Inline Web Worker Tick Loop**: When a lecturer switches focus from Chrome to VS Code or PowerPoint, Chromium throttles standard main-thread `setInterval` timers to 1 tick per minute. We instantiate an inline `Blob` Web Worker (`worker.postMessage({ action: 'start', interval })`) whose ticks are completely immune to background tab throttling.
 2. **1000ms `ImageCapture.grabFrame()` Watchdog & GPU Texture Release**: We read frames directly from the hardware media track via `reusableImageCapture.grabFrame()`. However, on Windows/macOS, `grabFrame()` can hang indefinitely when the desktop compositor has zero damaged rectangles. We race `grabFrame()` against a `1000ms` timeout—falling back to an attached `1920x1080` offscreen `<video>` element—and always call `frameSource.close()` in `finally` so `ImageBitmap` GPU textures never leak.
 3. **32×18 Downsampled RGB Delta**: Before encoding a high-resolution JPEG, we draw the frame onto a tiny `32×18` canvas (`576 pixels`) and compare the `R, G, B` channels against `lastDiffDataRef.current`. We only encode and upload a full-resolution frame if more than 2 pixels changed by $>10$ intensity units (or every `2000ms` as a keep-alive heartbeat).
@@ -109,7 +109,7 @@ if (hasChanged) {
 
 ### Bypassing the 100/hr NAT Ceiling with Zero-Auth Firestore PIN Rules
 
-To let 1,000+ conference or auditorium viewers join `/live/:classId?pin=XXXX` simultaneously from the same Wi-Fi IP—and allow speakers to print the QR code on their slides *days in advance*—we store both `publicPin` and `savedPublicPin` in `classes/{classId}/screenBroadcast/session` (`configurePublicAccess` in [`useTeacherScreenBroadcast.js`](../../web-app/src/hooks/useTeacherScreenBroadcast.js)) and validate the PIN directly inside [`firestore.rules`](../../firestore.rules) with **zero Firebase Auth calls**:
+To let 1,000+ conference or auditorium viewers join `/live/:classId?pin=XXXX` simultaneously from the same Wi-Fi IP—and allow speakers to print the QR code on their slides *days in advance*—we store both `publicPin` and `savedPublicPin` in `classes/{classId}/screenBroadcast/session` (`configurePublicAccess` in [`useTeacherScreenBroadcast.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/hooks/useTeacherScreenBroadcast.js)) and validate the PIN directly inside [`firestore.rules`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/firestore.rules) with **zero Firebase Auth calls**:
 
 ```javascript
 // From firestore.rules
@@ -146,21 +146,21 @@ match /screenBroadcastViewers/{studentUid} {
 
 ## 3. Crash-Tolerant 1-Minute Segmented Recording & The 5-Point Cloud Run FFmpeg Safety Gate
 
-![Batch Lecture Video Pipeline & 5-Point Safety Gate](../presentation/images/slide_batch_lecture_video_pipeline.png)
+![Batch Lecture Video Pipeline & 5-Point Safety Gate](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/presentation/images/slide_batch_lecture_video_pipeline.png)
 
 Recording a 3-hour lecture into a single in-memory browser `Blob` is a ticking time bomb: if the browser tab crashes or the laptop battery dies at minute 179, the entire 3-hour recording is lost.
 
 ### Diagram 2: Resilient 1-Minute Rolling Ingestion & 5-Point Pre-Deletion Safety Gate
 
-In [`useLectureRecorder.js`](../../web-app/src/hooks/useLectureRecorder.js) and [`functions/media_processing/mergeLectureRecordings.js`](../../functions/media_processing/mergeLectureRecordings.js), we record rolling **1-minute self-contained `.webm` segments** backed by an IndexedDB crash-recovery queue (`lectureRecoveryDb.js`), and merge them post-lecture inside a `2 vCPU, 2GiB RAM` Cloud Run container guarded by a **5-Point Pre-Deletion Integrity Gate**:
+In [`useLectureRecorder.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/hooks/useLectureRecorder.js) and [`functions/media_processing/mergeLectureRecordings.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/media_processing/mergeLectureRecordings.js), we record rolling **1-minute self-contained `.webm` segments** backed by an IndexedDB crash-recovery queue (`lectureRecoveryDb.js`), and merge them post-lecture inside a `2 vCPU, 2GiB RAM` Cloud Run container guarded by a **5-Point Pre-Deletion Integrity Gate**:
 
-![Resilient 1-Minute Rolling Ingestion & 5-Point Cloud Run FFmpeg Safety Gate](./images/blog06_diagram2_ffmpeg_5point_safety_gate.png)
+![Resilient 1-Minute Rolling Ingestion & 5-Point Cloud Run FFmpeg Safety Gate](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog06_diagram2_ffmpeg_5point_safety_gate.png)
 
 ### Production Code: Mixed Audio Alignment, 48kHz CBR MP3 Extraction, & Pre-Deletion Gate
 
 What happens if a lecturer starts recording their screen with the microphone unplugged for the first two 1-minute clips, and plugs in their USB headset at minute 3? A standard `ffmpeg -f concat -c copy` command will either fail or slide the audio from minute 3 backward to minute 0, ruining lip/slide sync for the entire 3-hour video!
 
-Here is how [`functions/media_processing/mergeLectureRecordings.js`](../../functions/media_processing/mergeLectureRecordings.js) aligns mixed audio/no-audio clips using `lavfi anullsrc`, extracts a normalized 48kHz CBR MP3 for Gemini, and enforces the Pre-Deletion Integrity Gate:
+Here is how [`functions/media_processing/mergeLectureRecordings.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/media_processing/mergeLectureRecordings.js) aligns mixed audio/no-audio clips using `lavfi anullsrc`, extracts a normalized 48kHz CBR MP3 for Gemini, and enforces the Pre-Deletion Integrity Gate:
 
 ```javascript
 // From functions/media_processing/mergeLectureRecordings.js
@@ -237,21 +237,21 @@ if (durationSeconds <= 0 && videoStats.size < 1024) {
 
 ## 4. Single-Pass Audio-Only Whole-Lecture Subtitles with Gemini 4 Argon (`gemini-4-argon`)
 
-![Teacher Lecture Recording & YouTube CC Workflow](../presentation/images/slide_lecture_recording_youtube.png)
+![Teacher Lecture Recording & YouTube CC Workflow](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/presentation/images/slide_lecture_recording_youtube.png)
 
 Why send 1.2 GB of video frames into a multimodal LLM when closed captions and YouTube chapter markers come entirely from the lecturer's voice?
 
-In [`ClassManagement.jsx`](../../web-app/src/components/ClassManagement.jsx) and [`LectureRecordingsView.jsx`](../../web-app/src/components/LectureRecordingsView.jsx), instructors can select their preferred lecture intelligence model—**🧠 Gemini 4 Argon (`gemini-4-argon`)**, **⚡ Gemini 3.8 Flash (`gemini-3.8-flash`, Default)**, or **🚀 Gemini 3.5 Flash-Lite (`gemini-3.5-flash-lite`)** (`SUPPORTED_LECTURE_AI_MODELS` in [`functions/ai_flows/config.js`](../../functions/ai_flows/config.js)).
+In [`ClassManagement.jsx`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/components/ClassManagement.jsx) and [`LectureRecordingsView.jsx`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/components/LectureRecordingsView.jsx), instructors can select their preferred lecture intelligence model—**🧠 Gemini 4 Argon (`gemini-4-argon`)**, **⚡ Gemini 3.8 Flash (`gemini-3.8-flash`, Default)**, or **🚀 Gemini 3.5 Flash-Lite (`gemini-3.5-flash-lite`)** (`SUPPORTED_LECTURE_AI_MODELS` in [`functions/ai_flows/config.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/ai_flows/config.js)).
 
 ### Diagram 3: Two-Stage Whole-Lecture Audio Pipeline, Timescale Calibration & YouTube Studio Packaging
 
-![Single-Pass Whole-Lecture Audio Subtitles & YouTube Studio Packaging with Gemini 4 Argon](./images/blog06_diagram3_gemini4_lecture_subtitles_sequence.png)
+![Single-Pass Whole-Lecture Audio Subtitles & YouTube Studio Packaging with Gemini 4 Argon](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog06_diagram3_gemini4_lecture_subtitles_sequence.png)
 
 ### Why We Split Whole-Lecture Subtitling into Stage 1 (Single-Pass Audio STT) + Stage 2 (Batched Translation)
 
 When we initially asked the model to transcribe a 2-hour lecture *and* translate every sentence inline into 4 languages within a single JSON response, the output exceeded `65,536 completion tokens` (`maxOutputTokens`) around minute 70, truncating the JSON!
 
-In [`functions/ai_flows/processLectureSubtitles.js`](../../functions/ai_flows/processLectureSubtitles.js), we architected a **Two-Stage Pipeline** that handles up to **9-hour audio recordings** without ever hitting the 65,536 output token ceiling:
+In [`functions/ai_flows/processLectureSubtitles.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/ai_flows/processLectureSubtitles.js), we architected a **Two-Stage Pipeline** that handles up to **9-hour audio recordings** without ever hitting the 65,536 output token ceiling:
 1. **Stage 1 — Single-Pass Whole-Audio Verbatim Transcription & Chaptering**: We pass the normalized 48kHz CBR MP3 (`gs://.../lecture_audio_normalized.mp3`) to **Gemini 4 Argon (`gemini-4-argon`)** or **Gemini 3.8 Flash (`gemini-3.8-flash`)** with `maxOutputTokens: 65536` and `thinkingConfig: { thinkingBudget: 0 }`. Because Stage 1 outputs *only* the `original` spoken cues and 4–10 YouTube chapter milestones, a full 3-hour lecture takes only ~18,000 output tokens and never cuts off on whiteboard pauses.
 2. **Stage 2 — Controlled-Concurrency Batched Translation**: We slice the transcribed segments into batches of `50 sentences` (`BATCH_SIZE = 50`, `CONCURRENCY = 3`) and translate each target language independently via `buildLectureTranslationPrompt`.
 
@@ -363,4 +363,4 @@ We benchmarked a **2-hour (120-minute) Full HD 1080p lecture** broadcast to **50
 
 ---
 
-[⏮️ Previous: Part 5 — Real-Time Multilingual Live Subtitles](./05-realtime-live-subtitles-code-switching-gemini-4-gemma-4.md) | [📚 Series Index](./README.md) | [⏭️ Continue to Part 7: Serverless Map-Reduce-Map Video Intelligence & Gemini 4 Rubric Grading →](./07-serverless-map-reduce-video-and-gemini-4-rubric-grading.md)
+[⏮️ Previous: Part 5 — Real-Time Multilingual Live Subtitles](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/05-realtime-live-subtitles-code-switching-gemini-4-gemma-4.md) | [📚 Series Index](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/README.md) | [⏭️ Continue to Part 7: Serverless Map-Reduce-Map Video Intelligence & Gemini 4 Rubric Grading →](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/07-serverless-map-reduce-video-and-gemini-4-rubric-grading.md)

@@ -1,11 +1,11 @@
 # Part 2: Zero-Egress Browser Edge AI — Running Gemma 4 E2B, MediaPipe 3D Face Mesh & LiteRT Whisper in Web Workers
 
 **Author:** [**Cyrus Wong (黃俊彥)**](https://www.linkedin.com/in/cyruswong/) — *Google Developer Expert - Cloud (AI), Senior Lecturer at HKIIT*  
-[⏮️ Previous: Part 1 — 4-Tier Serverless Architecture](./01-serverless-ai-classroom-architecture.md) | [📚 Series Index](./README.md) | [⏭️ Next: Part 3 — Gemini 4 Argon & Genkit Resilience](./03-gemini-4-argon-genkit-multimodal-resilience.md)
+[⏮️ Previous: Part 1 — 4-Tier Serverless Architecture](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/01-serverless-ai-classroom-architecture.md) | [📚 Series Index](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/README.md) | [⏭️ Next: Part 3 — Gemini 4 Argon & Genkit Resilience](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/03-gemini-4-argon-genkit-multimodal-resilience.md)
 
 ---
 
-![Browser-Native Edge Speech & Vision AI](../presentation/images/slide_edge_speech_proctor.png)
+![Browser-Native Edge Speech & Vision AI](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/presentation/images/slide_edge_speech_proctor.png)
 
 ## 1. Problem Statement: Why Privacy-by-Design Requires Running LLMs & Vision Models in the Browser
 
@@ -17,7 +17,7 @@ In our Hong Kong computer labs and hybrid examinations at **HKIIT / VTC**, strea
 
 Using **Google MediaPipe (`@mediapipe/tasks-vision`)**, **Google LiteRT.js (`@litertjs/core` Whisper-Tiny)**, and **LiteRT-LM WebGPU (`@litert-lm/core` Gemma 4 E2B `gemma-4-E2B-it-web.litertlm`)**, we moved **100% of continuous visual and acoustic invigilation inside the student's browser**—achieving **60 FPS UI responsiveness**, **zero raw media egress**, and **$0.00 cloud API cost**.
 
-![Edge Vision Gaze & 3D Face Mesh](../presentation/images/slide_edge_vision_gaze.png)
+![Edge Vision Gaze & 3D Face Mesh](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/presentation/images/slide_edge_vision_gaze.png)
 
 ---
 
@@ -25,9 +25,9 @@ Using **Google MediaPipe (`@mediapipe/tasks-vision`)**, **Google LiteRT.js (`@li
 
 Running a 478-point 3D facial landmark detector, an iris-depth estimator, a Chirp-Z log-Mel spectrogram extractor, a Whisper speech-to-text model, and a 2-billion-parameter **Gemma 4 E2B** LLM on the main React thread would freeze the browser UI immediately.
 
-In [`useFaceMonitor.js`](../../web-app/src/hooks/useFaceMonitor.js), [`litertWhisper.worker.js`](../../web-app/src/workers/litertWhisper.worker.js), [`litertGemma.worker.js`](../../web-app/src/workers/litertGemma.worker.js), and [`useClientLiteRTGemma.js`](../../web-app/src/hooks/useClientLiteRTGemma.js), we isolate speech and LLM reasoning inside dedicated Web Workers while synchronizing vision landmark detection to the browser's hardware video decoder via `requestVideoFrameCallback()`:
+In [`useFaceMonitor.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/hooks/useFaceMonitor.js), [`litertWhisper.worker.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/workers/litertWhisper.worker.js), [`litertGemma.worker.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/workers/litertGemma.worker.js), and [`useClientLiteRTGemma.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/hooks/useClientLiteRTGemma.js), we isolate speech and LLM reasoning inside dedicated Web Workers while synchronizing vision landmark detection to the browser's hardware video decoder via `requestVideoFrameCallback()`:
 
-![Zero-Copy Off-Main-Thread Browser Edge AI Pipeline](./images/blog02_diagram1_edge_worker_pipeline.png)
+![Zero-Copy Off-Main-Thread Browser Edge AI Pipeline](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog02_diagram1_edge_worker_pipeline.png)
 
 ---
 
@@ -35,7 +35,7 @@ In [`useFaceMonitor.js`](../../web-app/src/hooks/useFaceMonitor.js), [`litertWhi
 
 Legacy proctoring software is notorious for false-positive alerts: if a student sneezes, blinks, or glances down at their mechanical keyboard for 500 milliseconds, they get flagged for "cheating." Conversely, if a student sits in a corner desk where their webcam is mounted at a $15^\circ$ angle, uncalibrated head-pose detectors flag them continuously.
 
-We solved both problems in [`useFaceMonitor.js`](../../web-app/src/hooks/useFaceMonitor.js) through three mathematical and state-machine innovations:
+We solved both problems in [`useFaceMonitor.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/hooks/useFaceMonitor.js) through three mathematical and state-machine innovations:
 1. **1-Click Adaptive Neutral Pose Calibration (`calibrateBaseline`)**: Students click **🎯 Set Center Pose** to zero out their personal baseline head Yaw ($\text{Yaw}_0$) and Pitch ($\text{Pitch}_0$) offsets for off-center monitor mounts.
 2. **Monocular Depth-from-Iris Distance Estimation ($D_{\text{cm}}$)**: Using the anatomical constancy of the human horizontal iris diameter ($d_{\text{iris}} \approx 11.7\text{ mm}$) and MediaPipe's iris boundary landmarks (`469, 471` for left iris; `474, 476` for right iris), we compute physical camera-to-face distance in centimeters without any hardware depth sensor:
 
@@ -43,11 +43,11 @@ $$D_{\text{cm}} = \text{clamp}\left(\text{round}\left(\frac{1.17 \times (0.85 \t
 
 3. **3-Second Debounce Gate with 600ms Blink/Jitter Grace Window & Lifecycle Incident Tracking**: An anomaly (`looking_away`, `no_face`, `multiple_faces`, `eyes_closed`, `talking`) must persist continuously for `debounceSeconds` (default **3.0 seconds**) before opening a single active incident document in Firestore (`irregularities/{id}`), and automatically updates `endedAt` and `durationSeconds` when the student returns to normal posture!
 
-![3-Second Biometric Debounce & 600ms Blink Grace State Machine](./images/blog02_diagram2_biometric_debounce_state.png)
+![3-Second Biometric Debounce & 600ms Blink Grace State Machine](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog02_diagram2_biometric_debounce_state.png)
 
-### Production Code Listing 1: 3D Iris Depth, Eye-Gaze Ratio & Anti-Jitter Debounce in [`web-app/src/hooks/useFaceMonitor.js`](../../web-app/src/hooks/useFaceMonitor.js)
+### Production Code Listing 1: 3D Iris Depth, Eye-Gaze Ratio & Anti-Jitter Debounce in [`web-app/src/hooks/useFaceMonitor.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/hooks/useFaceMonitor.js)
 
-Here is the exact real-time biometric geometry and debounce gate running inside [`useFaceMonitor.js`](../../web-app/src/hooks/useFaceMonitor.js):
+Here is the exact real-time biometric geometry and debounce gate running inside [`useFaceMonitor.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/hooks/useFaceMonitor.js):
 
 ```javascript
 // MediaPipe Iris: Depth-from-Iris Distance Calculation (11.7mm constant human iris diameter)
@@ -108,11 +108,11 @@ if (currentAnomaly) {
 
 In Hong Kong classrooms, students and lecturers naturally code-switch between **Cantonese, Mandarin, and English technical terminology** within a single sentence (e.g., *"唔該阿Sir，呢個 Question 3 個 option B 係咪啱㗎？"*).
 
-To transcribe student speech on-device with zero UI jank, [`litertWhisper.worker.js`](../../web-app/src/workers/litertWhisper.worker.js) runs `@litertjs/core` inside a dedicated Web Worker:
+To transcribe student speech on-device with zero UI jank, [`litertWhisper.worker.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/workers/litertWhisper.worker.js) runs `@litertjs/core` inside a dedicated Web Worker:
 1. **Dynamic Peak Auto-Gain & 80-Bin Log-Mel Spectrogram via Chirp-Z FFT**: Whisper expects a normalized `[1, 80, 3000]` Float32 tensor representing 30 seconds of 16 kHz audio. Because quiet whispering during an exam often has low amplitude ($0.003 < \text{peak} < 0.25$), `extractAudioFeatures()` applies up to $6\times$ automatic gain normalization before computing a 400-point Hann-windowed Chirp-Z Fast Fourier Transform (`hopLength = 160`) and projecting onto 80 Slaney-normalized Mel filterbanks.
 2. **Automatic WebGPU-to-WASM Delegate Failover**: `compileWhisperModel()` attempts to compile the Whisper graph on `webgpu` first, and transparently falls back to `wasm` if the browser's WebGPU implementation rejects dynamic sequence shapes.
 
-### Production Code Listing 2: WebGPU/WASM Whisper Compilation & Code-Switching Classifier in [`web-app/src/workers/litertWhisper.worker.js`](../../web-app/src/workers/litertWhisper.worker.js)
+### Production Code Listing 2: WebGPU/WASM Whisper Compilation & Code-Switching Classifier in [`web-app/src/workers/litertWhisper.worker.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/workers/litertWhisper.worker.js)
 
 ```javascript
 /**
@@ -163,11 +163,11 @@ export async function compileWhisperModel(loadAndCompile, modelBuffer, preferred
 
 Recognizing speech tokens is only half the battle: if a student mutters *"Let me read this question carefully"* (benign self-talk) or raises their hand and says *"Mr. Wong, my Docker daemon crashed"* (legitimate inquiry), a keyword-based detector would falsely accuse them of cheating.
 
-We needed a true **Large Language Model** running locally in the browser to evaluate semantic intent. Using `@litert-lm/core` (`v0.15.0`) and the quantized **Gemma 4 E2B** model (`gemma-4-E2B-it-web.litertlm`, ~1.91 GB in WebGPU), [`litertGemma.worker.js`](../../web-app/src/workers/litertGemma.worker.js) serves **two mission-critical classroom roles at $0.00 API cost**:
+We needed a true **Large Language Model** running locally in the browser to evaluate semantic intent. Using `@litert-lm/core` (`v0.15.0`) and the quantized **Gemma 4 E2B** model (`gemma-4-E2B-it-web.litertlm`, ~1.91 GB in WebGPU), [`litertGemma.worker.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/workers/litertGemma.worker.js) serves **two mission-critical classroom roles at $0.00 API cost**:
 1. **`EVALUATE_TRANSCRIPT` (Exam Acoustic Intent Proctor)**: Classifies student speech transcripts into one of 5 strict categories (`COLLUSION_EXAM`, `EXTERNAL_AI_ASSIST`, `UNAUTHORIZED_TALK`, `LEGITIMATE_INQUIRY`, or `BENIGN`) with severity, confidence, quoted evidence, and rationale—and supports custom teacher prompts (`{{transcript}}`, `{{classId}}`, `{{studentEmail}}`) authored in the AI Prompt Studio!
 2. **`TRANSLATE_TRANSCRIPT` ($0.00 Client-Mode Live Subtitles)**: When a lecturer selects **On-Device Gemma 4 E2B** in the Live Subtitles modal, the same WebGPU worker translates Cantonese/English code-switched lecture speech into up to 7 target languages (`en`, `zh-Hant`, `zh-Hans`, `ja`, `ko`, `es`, `fr`) while preserving technical identifiers like `useEffect`, `Docker`, and `Python`.
 
-### Production Code Listing 3: Gemma 4 E2B WebGPU Initialization & Structured Output Parser in [`web-app/src/workers/litertGemma.worker.js`](../../web-app/src/workers/litertGemma.worker.js)
+### Production Code Listing 3: Gemma 4 E2B WebGPU Initialization & Structured Output Parser in [`web-app/src/workers/litertGemma.worker.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/workers/litertGemma.worker.js)
 
 ```javascript
 const GEMMA_OUTPUT_INSTRUCTIONS = `Use exactly one category:
@@ -229,17 +229,17 @@ async function initializeGemma(modelUrl) {
 
 ## 6. Edge Cases & Production Failure Modes We Solved: "DeepFreeze" Lab PCs, iOS Jetsam OOM & Live Hot-Swapping
 
-Deploying a 1.91 GB WebGPU LLM (`gemma-4-E2B-it-web.litertlm`) across university computer labs and BYOD student devices exposed three real-world failure modes that we engineered around in [`gemmaLiteRTLoader.js`](../../web-app/src/utils/gemmaLiteRTLoader.js) and [`useClientLiteRTGemma.js`](../../web-app/src/hooks/useClientLiteRTGemma.js):
+Deploying a 1.91 GB WebGPU LLM (`gemma-4-E2B-it-web.litertlm`) across university computer labs and BYOD student devices exposed three real-world failure modes that we engineered around in [`gemmaLiteRTLoader.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/utils/gemmaLiteRTLoader.js) and [`useClientLiteRTGemma.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/hooks/useClientLiteRTGemma.js):
 
-1. **"DeepFreeze" Wiped Lab PCs & Step-1 Wizard Pre-Warming**: University lab PCs reboot into a clean image every morning, wiping the browser cache. Instead of blocking the student from entering the exam while 1.91 GB downloads over campus Wi-Fi, [`ExamReadinessWizard.jsx`](../../web-app/src/components/ExamReadinessWizard.jsx) triggers `preloadGemmaModel()` at **Step 1 (Microphone Check)**, requests `navigator.storage.persist()` so Chromium will not evict the `webai-litert-gemma-v1` CacheStorage bucket, and streams the model into `Engine.create({ model: modelStream })` while the student completes Steps 2–4.
+1. **"DeepFreeze" Wiped Lab PCs & Step-1 Wizard Pre-Warming**: University lab PCs reboot into a clean image every morning, wiping the browser cache. Instead of blocking the student from entering the exam while 1.91 GB downloads over campus Wi-Fi, [`ExamReadinessWizard.jsx`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/components/ExamReadinessWizard.jsx) triggers `preloadGemmaModel()` at **Step 1 (Microphone Check)**, requests `navigator.storage.persist()` so Chromium will not evict the `webai-litert-gemma-v1` CacheStorage bucket, and streams the model into `Engine.create({ model: modelStream })` while the student completes Steps 2–4.
 2. **Non-Blocking Cloud-to-Edge Hot-Swap**: If the exam begins while Gemma 4 E2B is still at `55%` download, the student enters the classroom immediately. Any speech detected during the download window is transparently routed to our Cloud Genkit flow (`analyzeAudioFlow` using `gemini-3.5-transcribe-preview` + `gemini-3.5-flash-lite`), and **automatically hot-swaps to 100% local Gemma 4 E2B inference the millisecond the Web Worker emits `INIT_COMPLETE` (`ready: true`)**!
 3. **iOS / iPadOS WebKit Jetsam OOM Guard & Storage Quota Pre-Flight**: Allocating a 1.91 GB ArrayBuffer or WebGPU buffer on an iPhone or iPad (which masquerades as `MacIntel` with `maxTouchPoints > 1` on iPadOS) triggers Apple's kernel Jetsam killer, crashing the browser tab. Similarly, laptops with `< 2.5 GB` free disk space throw `QuotaExceededError` mid-download. Our `isMobileOrIosBrowser()`, `deviceMemory < 4`, and `precheckGemmaViability()` guards fail fast in `< 5ms` and route mobile/low-RAM devices cleanly to Cloud Fallback.
 
-![Step-1 Readiness Pre-Warming & Cloud-to-Edge Live Hot-Swap](./images/blog02_diagram3_gemma4_hotswap_sequence.png)
+![Step-1 Readiness Pre-Warming & Cloud-to-Edge Live Hot-Swap](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog02_diagram3_gemma4_hotswap_sequence.png)
 
-### Production Code Listing 4: Conversation Lifecycle Hygiene & Dual Firestore Alerting in [`web-app/src/hooks/useClientLiteRTGemma.js`](../../web-app/src/hooks/useClientLiteRTGemma.js)
+### Production Code Listing 4: Conversation Lifecycle Hygiene & Dual Firestore Alerting in [`web-app/src/hooks/useClientLiteRTGemma.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/hooks/useClientLiteRTGemma.js)
 
-Notice how [`useClientLiteRTGemma.js`](../../web-app/src/hooks/useClientLiteRTGemma.js) prevents concurrent WebGPU context contention (`evaluationInFlightRef`), logs rich console diagnostics for lab debugging, and writes confirmed violations to both the root `irregularities` collection (for the live Teacher Irregularities feed) and the class subcollection `classes/{classId}/irregularities` (for the automated Incident Dossier generator):
+Notice how [`useClientLiteRTGemma.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/hooks/useClientLiteRTGemma.js) prevents concurrent WebGPU context contention (`evaluationInFlightRef`), logs rich console diagnostics for lab debugging, and writes confirmed violations to both the root `irregularities` collection (for the live Teacher Irregularities feed) and the class subcollection `classes/{classId}/irregularities` (for the automated Incident Dossier generator):
 
 ```javascript
 // 1. If Violation: Create record in /irregularities (root & class subcollection)
@@ -307,4 +307,4 @@ We benchmarked our 3-model browser edge stack across standard HKIIT lab hardware
 
 ---
 
-[⏮️ Previous: Part 1 — 4-Tier Serverless Architecture](./01-serverless-ai-classroom-architecture.md) | [📚 Series Index](./README.md) | [⏭️ Continue to Part 3: Frontier Multimodal Orchestration with Gemini 4 Argon →](./03-gemini-4-argon-genkit-multimodal-resilience.md)
+[⏮️ Previous: Part 1 — 4-Tier Serverless Architecture](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/01-serverless-ai-classroom-architecture.md) | [📚 Series Index](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/README.md) | [⏭️ Continue to Part 3: Frontier Multimodal Orchestration with Gemini 4 Argon →](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/03-gemini-4-argon-genkit-multimodal-resilience.md)

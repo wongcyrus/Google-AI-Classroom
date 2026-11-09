@@ -1,11 +1,11 @@
 # Part 10: Green AI FinOps, Self-Cleaning Storage Lifecycles & 1-Command Terraform IaC for Multi-School Deployment
 
 **Author:** [**Cyrus Wong (黃俊彥)**](https://www.linkedin.com/in/cyruswong/) — *Google Developer Expert - Cloud (AI), Senior Lecturer at HKIIT*  
-[⏮️ Previous: Part 9 — Gamified Bingo & Zero-Trust Exam Mode](./09-gamified-bingo-active-presence-and-zero-trust-exam-mode.md) | [📚 Back to GDE Blog Series Index](./README.md)
+[⏮️ Previous: Part 9 — Gamified Bingo & Zero-Trust Exam Mode](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/09-gamified-bingo-active-presence-and-zero-trust-exam-mode.md) | [📚 Back to GDE Blog Series Index](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/README.md)
 
 ---
 
-![Green AI & Cloud FinOps Dashboard](../presentation/images/slide_ai_cost_finops.png)
+![Green AI & Cloud FinOps Dashboard](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/presentation/images/slide_ai_cost_finops.png)
 
 ## 1. The Three Pillars of Institutional Day-2 Production Readiness
 
@@ -21,13 +21,13 @@ In **Part 10 (the finale of our 10-part Google Developer Expert series)**, we wa
 
 ## 2. Diagram 1: Real-Time AI FinOps Pipeline, Live Cloud Billing SKU Sync & Atomic Quota Circuit Breakers
 
-In [`scheduledTasks.js`](../../functions/scheduled_tasks/scheduledTasks.js), [`cost.js`](../../functions/ai_flows/cost.js), [`jobLogger.js`](../../functions/ai_flows/jobLogger.js), [`useCloudPricing.js`](../../web-app/src/hooks/useCloudPricing.js), and [`aiCostAggregator.js`](../../web-app/src/utils/aiCostAggregator.js), every AI invocation and storage event is metered in real time against live Google Cloud Billing Catalog SKU rates:
+In [`scheduledTasks.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/scheduled_tasks/scheduledTasks.js), [`cost.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/ai_flows/cost.js), [`jobLogger.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/ai_flows/jobLogger.js), [`useCloudPricing.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/hooks/useCloudPricing.js), and [`aiCostAggregator.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/utils/aiCostAggregator.js), every AI invocation and storage event is metered in real time against live Google Cloud Billing Catalog SKU rates:
 
-![Real-Time AI FinOps Pipeline, Live Cloud Billing SKU Sync & Atomic Quota Circuit Breaker](./images/blog10_diagram1_finops_sku_sync_circuit_breaker.png)
+![Real-Time AI FinOps Pipeline, Live Cloud Billing SKU Sync & Atomic Quota Circuit Breaker](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog10_diagram1_finops_sku_sync_circuit_breaker.png)
 
 ### Production Code 1: Live Google Cloud Billing Catalog SKU Sync (`syncGeminiPricing`) & Multi-Stage Cost Engine (`cost.js`)
 
-Hardcoding cloud pricing constants in frontend code inevitably drifts as new model tiers launch or regional storage SKU rates change. Every 24 hours, `syncGeminiPricing` in [`functions/scheduled_tasks/scheduledTasks.js`](../../functions/scheduled_tasks/scheduledTasks.js) queries the official **Google Cloud Billing Catalog API v1** for both Vertex AI (`C7E2-9256-1C43`) and Regional Standard Cloud Storage in Hong Kong (`95FF-2EF5-5EA1`, `asia-east2`), writing the authoritative rate table into `system_config/pricing`:
+Hardcoding cloud pricing constants in frontend code inevitably drifts as new model tiers launch or regional storage SKU rates change. Every 24 hours, `syncGeminiPricing` in [`functions/scheduled_tasks/scheduledTasks.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/scheduled_tasks/scheduledTasks.js) queries the official **Google Cloud Billing Catalog API v1** for both Vertex AI (`C7E2-9256-1C43`) and Regional Standard Cloud Storage in Hong Kong (`95FF-2EF5-5EA1`, `asia-east2`), writing the authoritative rate table into `system_config/pricing`:
 
 ```javascript
 // Source: functions/scheduled_tasks/scheduledTasks.js
@@ -61,7 +61,7 @@ export const syncGeminiPricing = onSchedule({
 });
 ```
 
-On the AI execution plane, [`functions/ai_flows/cost.js`](../../functions/ai_flows/cost.js) maintains a 12-hour warm memory cache of `system_config/pricing`, normalizes token usage metadata across Genkit (`inputTokens`/`outputTokens`), the Google GenAI SDK (`promptTokenCount`/`candidatesTokenCount`), and composite two-stage pipelines (`gemini-3.5-transcribe-preview + gemini-4-argon`), and computes exact sub-cent USD cost (`Number((inputCost + outputCost).toFixed(6))`):
+On the AI execution plane, [`functions/ai_flows/cost.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/ai_flows/cost.js) maintains a 12-hour warm memory cache of `system_config/pricing`, normalizes token usage metadata across Genkit (`inputTokens`/`outputTokens`), the Google GenAI SDK (`promptTokenCount`/`candidatesTokenCount`), and composite two-stage pipelines (`gemini-3.5-transcribe-preview + gemini-4-argon`), and computes exact sub-cent USD cost (`Number((inputCost + outputCost).toFixed(6))`):
 
 ```javascript
 // Source: functions/ai_flows/cost.js
@@ -92,19 +92,19 @@ export function calculateCost(usageMetadata, model = DEFAULT_MODEL) {
 }
 ```
 
-In [`AiCostReportView.jsx`](../../web-app/src/components/AiCostReportView.jsx), lecturers and system administrators can inspect itemized AI token costs alongside an interactive **1–12 Month Cloud Storage Holding Period Slider**, viewing exact storage & AI costs across 18 categories—including **`👥 Project Meeting Audio, Demos & Photos`** (`voiceClipsCount`, `demoClipsCount`, `photosCount`) and **`📋 Task Rubric & Submissions`**.
+In [`AiCostReportView.jsx`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/components/AiCostReportView.jsx), lecturers and system administrators can inspect itemized AI token costs alongside an interactive **1–12 Month Cloud Storage Holding Period Slider**, viewing exact storage & AI costs across 18 categories—including **`👥 Project Meeting Audio, Demos & Photos`** (`voiceClipsCount`, `demoClipsCount`, `photosCount`) and **`📋 Task Rubric & Submissions`**.
 
 ---
 
 ## 3. Diagram 2: 9-Category Event-Driven Storage Quota & 4-Stage Cascading Class Purge (`onClassDocDeleted`)
 
-![Cloud Media Lifecycle & Automated Storage Governance](../presentation/images/slide_cloud_storage_ffmpeg_ttl.png)
+![Cloud Media Lifecycle & Automated Storage Governance](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/presentation/images/slide_cloud_storage_ffmpeg_ttl.png)
 
 How do we prevent a class from uploading unlimited gigabytes of video, and how do we guarantee zero orphaned files when a class is deleted?
 
 ### Production Code 2: 9-Category Event-Driven Cloud Storage Quota Metering & Self-Healing Non-Negative Drift Guard (`storageQuota.js`)
 
-Every time a file is finalized or deleted in our Google Cloud Storage bucket, [`updateStorageUsageOnUpload`](../../functions/storage_triggers/storageQuota.js) and [`updateStorageUsageOnDelete`](../../functions/storage_triggers/storageQuota.js) in [`functions/storage_triggers/storageQuota.js`](../../functions/storage_triggers/storageQuota.js) classify the blob path into **one of 9 granular storage categories** via `getStorageCategoryAndClass(filePath)`:
+Every time a file is finalized or deleted in our Google Cloud Storage bucket, [`updateStorageUsageOnUpload`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/storage_triggers/storageQuota.js) and [`updateStorageUsageOnDelete`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/storage_triggers/storageQuota.js) in [`functions/storage_triggers/storageQuota.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/storage_triggers/storageQuota.js) classify the blob path into **one of 9 granular storage categories** via `getStorageCategoryAndClass(filePath)`:
 
 | Storage Path Prefix | Firestore Metadata Counter (`classes/{id}/metadata/storage`) | Classroom Asset Category |
 | :--- | :--- | :--- |
@@ -146,7 +146,7 @@ export function getStorageCategoryAndClass(filePath) {
 }
 ```
 
-And if a lecturer or system administrator ever wants to verify that Firestore's event-driven byte counters match the physical bytes stored in the Google Cloud Storage bucket after a bulk manual archive purge, clicking **🔄 Audit & Recalculate Storage** invokes `recalculateStorageUsage` in [`functions/storage_triggers/storageQuota.js`](../../functions/storage_triggers/storageQuota.js), scanning every physical prefix in parallel and stamping `lastAuditedAt`:
+And if a lecturer or system administrator ever wants to verify that Firestore's event-driven byte counters match the physical bytes stored in the Google Cloud Storage bucket after a bulk manual archive purge, clicking **🔄 Audit & Recalculate Storage** invokes `recalculateStorageUsage` in [`functions/storage_triggers/storageQuota.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/storage_triggers/storageQuota.js), scanning every physical prefix in parallel and stamping `lastAuditedAt`:
 
 ```javascript
 // Source: functions/storage_triggers/storageQuota.js
@@ -198,11 +198,11 @@ export async function recalculateStorageUsageInternal(classId) {
 
 In Firestore, deleting a parent document (`classes/{classId}`) does **not** automatically delete its subcollections, top-level job documents referencing `classId`, or physical files in Cloud Storage.
 
-To guarantee **100% Zero-Orphan Cleanup** when a teacher deletes a class at the end of a semester, [`onClassDocDeleted`](../../functions/storage_triggers/cleanupTriggers.js) in [`functions/storage_triggers/cleanupTriggers.js`](../../functions/storage_triggers/cleanupTriggers.js) executes a comprehensive **4-Stage Cascading Purge**:
+To guarantee **100% Zero-Orphan Cleanup** when a teacher deletes a class at the end of a semester, [`onClassDocDeleted`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/storage_triggers/cleanupTriggers.js) in [`functions/storage_triggers/cleanupTriggers.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/storage_triggers/cleanupTriggers.js) executes a comprehensive **4-Stage Cascading Purge**:
 
-![4-Stage Zero-Orphan Cascading Class Purge (onClassDocDeleted)](./images/blog10_diagram2_4stage_cascading_class_purge.png)
+![4-Stage Zero-Orphan Cascading Class Purge (onClassDocDeleted)](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog10_diagram2_4stage_cascading_class_purge.png)
 
-Here is the production implementation from [`functions/storage_triggers/cleanupTriggers.js`](../../functions/storage_triggers/cleanupTriggers.js), using 500-document chunked batch commits (`deleteCollectionByClassId` and `deleteSubcollectionByPath`) to respect Firestore's 500-operation batch ceiling:
+Here is the production implementation from [`functions/storage_triggers/cleanupTriggers.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/storage_triggers/cleanupTriggers.js), using 500-document chunked batch commits (`deleteCollectionByClassId` and `deleteSubcollectionByPath`) to respect Firestore's 500-operation batch ceiling:
 
 ```javascript
 // Source: functions/storage_triggers/cleanupTriggers.js
@@ -259,16 +259,16 @@ export const onClassDocDeleted = onDocumentDeleted({
 
 ## 4. Diagram 3: 1-Command Zero-Click Terraform Onboarding & The 2,575+ Assertion Verification Pyramid
 
-![1-Command Terraform IaC & DevSecOps Safeguards](../presentation/images/slide_terraform_demo_sandbox.png)
+![1-Command Terraform IaC & DevSecOps Safeguards](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/presentation/images/slide_terraform_demo_sandbox.png)
 
-To empower any university, school, or Google Developer Group (GDG) to deploy their own sovereign instance of the Google AI Classroom without clicking through dozens of Cloud Console wizards, [`setup-new-project.sh`](../../setup-new-project.sh), [`terraform/`](../../terraform/), and [`deploy.sh`](../../deploy.sh) automate the entire provisioning and verification lifecycle:
+To empower any university, school, or Google Developer Group (GDG) to deploy their own sovereign instance of the Google AI Classroom without clicking through dozens of Cloud Console wizards, [`setup-new-project.sh`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/setup-new-project.sh), [`terraform/`](https://github.com/wongcyrus/Google-AI-Classroom/tree/main/terraform), and [`deploy.sh`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/deploy.sh) automate the entire provisioning and verification lifecycle:
 
-![1-Command Zero-Click Terraform IaC & The 2,575+ Assertion Verification Pyramid](./images/blog10_diagram3_terraform_verification_pyramid.png)
+![1-Command Zero-Click Terraform IaC & The 2,575+ Assertion Verification Pyramid](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog10_diagram3_terraform_verification_pyramid.png)
 
 ### How `./setup-new-project.sh` Eliminates Manual Cloud Console Clicks
 Running `./setup-new-project.sh my-school-ai-2026 01ABCD-23EFGH-45IJKL` executes an end-to-end automated pipeline:
 1. **Project Creation & Billing Link**: Creates the GCP project (if not already present) and attaches the billing account.
-2. **Terraform State & 27 APIs**: Runs `terraform init && terraform apply` inside [`terraform/`](../../terraform/), enabling Compute, Cloud Run, Cloud Functions Gen 2, Cloud Build, Artifact Registry, Eventarc, Cloud Tasks, Cloud Scheduler, Secret Manager, Vertex AI (`aiplatform.googleapis.com`), Cloud Billing Catalog, Firestore Native, Firebase Storage, and Identity Platform (GCIP).
+2. **Terraform State & 27 APIs**: Runs `terraform init && terraform apply` inside [`terraform/`](https://github.com/wongcyrus/Google-AI-Classroom/tree/main/terraform), enabling Compute, Cloud Run, Cloud Functions Gen 2, Cloud Build, Artifact Registry, Eventarc, Cloud Tasks, Cloud Scheduler, Secret Manager, Vertex AI (`aiplatform.googleapis.com`), Cloud Billing Catalog, Firestore Native, Firebase Storage, and Identity Platform (GCIP).
 3. **Cross-Codebase Config Synchronization (`sync-config.sh`)**: Automatically extracts the newly generated Firebase Web App SDK credentials and writes them into `web-app/.env` and `functions/config.js`, then runs `./sync-config.sh` to propagate identical region, CORS, and model constants across all **7 isolated Cloud Functions codebases** (`ai_flows`, `media_processing`, `lecture_processing`, `scheduled_tasks`, `storage_triggers`, `ClassFunctions`, and `user_management`).
 4. **Zero-Cold-Start 24/7 Demo Sandbox Seeding (`seed-demo-data.mjs`)**: Pre-populates the `IT114115-Demo` class with realistic student telemetry, pre-compiled H.264 lab videos, bilingual `.vtt` lecture recordings, and all **13 Default AI System Prompts** so teachers can test every Gemini 4 Argon studio within 60 seconds of deployment!
 
@@ -280,16 +280,16 @@ Across this 10-part architectural deep dive, we have shared every layer of the *
 
 | Part | Architectural Focus | Key Google AI & Cloud Technologies |
 | :--- | :--- | :--- |
-| **[Part 1](./01-serverless-ai-classroom-architecture.md)** | Solving the $25-Per-Exam Problem: Serverless Architecture | Gemini 4 Argon, Gemma 4 E2B, Firebase Gen 2 |
-| **[Part 2](./02-browser-edge-ai-gemma-4-mediapipe-whisper.md)** | Zero-Egress Browser Edge AI (Gemma 4 E2B, MediaPipe, Whisper) | WebGPU Gemma 4 E2B, MediaPipe 3D Mesh, LiteRT Whisper |
-| **[Part 3](./03-gemini-4-argon-genkit-multimodal-resilience.md)** | Frontier Multimodal Orchestration with Gemini 4 & Genkit | `gemini-4-argon`, `3.8-flash`, `3.5-lite`, Google Genkit |
-| **[Part 4](./04-webauthn-passkeys-rotating-hmac-qr-auth.md)** | WebAuthn Passkeys, Rotating HMAC QRs & GCIP Blocking | FIDO2 WebAuthn, GCIP Blocking Hooks, 15s HMAC QR |
-| **[Part 5](./05-realtime-live-subtitles-code-switching-gemini-4-gemma-4.md)** | Real-Time Multilingual Live Subtitles & Code-Switching | Gemini 4/3.8, LiteRT Gemma 4 E2B, Audio Worklet |
-| **[Part 6](./06-scalable-screen-broadcast-and-gemini-4-lecture-studio.md)** | 1,000-Viewer Screen Broadcast & Lecture Recording Studio | Firestore WebP Delta Sync, Gemini 3.5 Transcribe + Gemini 4 |
-| **[Part 7](./07-serverless-map-reduce-video-and-gemini-4-rubric-grading.md)** | Map-Reduce-Map Video Intelligence & Practical Task Grading | Cloud Run FFmpeg, Cloud Tasks, Gemini 4 Rubric Engine |
-| **[Part 8](./08-multimodal-capstone-project-supervision-gemini-4.md)** | Streamlined Mobile 720p Capstone Supervision & Log Auditing | Single-Device Mobile Studio, 2-Stage Diarization + Gemini 4 |
-| **[Part 9](./09-gamified-bingo-active-presence-and-zero-trust-exam-mode.md)** | Gamified Bingo Active Presence & Zero-Trust Exam Mode | Two-Strike Cloud Tasks, `.docx` Dossiers, Storage Rules |
-| **[Part 10](./10-green-ai-finops-storage-lifecycle-and-terraform-iac.md)** | Green AI FinOps, Storage Lifecycles & 1-Command Terraform | Cloud Billing Catalog API, Cascading Purge, Terraform IaC |
+| **[Part 1](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/01-serverless-ai-classroom-architecture.md)** | Solving the $25-Per-Exam Problem: Serverless Architecture | Gemini 4 Argon, Gemma 4 E2B, Firebase Gen 2 |
+| **[Part 2](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/02-browser-edge-ai-gemma-4-mediapipe-whisper.md)** | Zero-Egress Browser Edge AI (Gemma 4 E2B, MediaPipe, Whisper) | WebGPU Gemma 4 E2B, MediaPipe 3D Mesh, LiteRT Whisper |
+| **[Part 3](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/03-gemini-4-argon-genkit-multimodal-resilience.md)** | Frontier Multimodal Orchestration with Gemini 4 & Genkit | `gemini-4-argon`, `3.8-flash`, `3.5-lite`, Google Genkit |
+| **[Part 4](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/04-webauthn-passkeys-rotating-hmac-qr-auth.md)** | WebAuthn Passkeys, Rotating HMAC QRs & GCIP Blocking | FIDO2 WebAuthn, GCIP Blocking Hooks, 15s HMAC QR |
+| **[Part 5](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/05-realtime-live-subtitles-code-switching-gemini-4-gemma-4.md)** | Real-Time Multilingual Live Subtitles & Code-Switching | Gemini 4/3.8, LiteRT Gemma 4 E2B, Audio Worklet |
+| **[Part 6](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/06-scalable-screen-broadcast-and-gemini-4-lecture-studio.md)** | 1,000-Viewer Screen Broadcast & Lecture Recording Studio | Firestore WebP Delta Sync, Gemini 3.5 Transcribe + Gemini 4 |
+| **[Part 7](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/07-serverless-map-reduce-video-and-gemini-4-rubric-grading.md)** | Map-Reduce-Map Video Intelligence & Practical Task Grading | Cloud Run FFmpeg, Cloud Tasks, Gemini 4 Rubric Engine |
+| **[Part 8](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/08-multimodal-capstone-project-supervision-gemini-4.md)** | Streamlined Mobile 720p Capstone Supervision & Log Auditing | Single-Device Mobile Studio, 2-Stage Diarization + Gemini 4 |
+| **[Part 9](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/09-gamified-bingo-active-presence-and-zero-trust-exam-mode.md)** | Gamified Bingo Active Presence & Zero-Trust Exam Mode | Two-Strike Cloud Tasks, `.docx` Dossiers, Storage Rules |
+| **[Part 10](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/10-green-ai-finops-storage-lifecycle-and-terraform-iac.md)** | Green AI FinOps, Storage Lifecycles & 1-Command Terraform | Cloud Billing Catalog API, Cascading Purge, Terraform IaC |
 
 By shifting continuous high-frequency perception to **Browser WebGPU Edge AI** and reserving **Frontier Cloud Multimodal Reasoning (`Gemini 4 Argon`, `Gemini 3.8 Flash`, `Gemini 3.5 Flash-Lite`)** for high-value pedagogical synthesis, we achieved:
 - **100% Biometric Privacy-by-Design** (zero continuous raw webcam video streams sent to the cloud),
@@ -297,6 +297,6 @@ By shifting continuous high-frequency perception to **Browser WebGPU Edge AI** a
 - **A 99.8% Reduction in Cloud Operating Costs** (**`<$0.02 USD` per student-hour**).
 
 ### Explore the Full Series & Open-Source Repository
-- [📚 Return to the 10-Part GDE Technical Blog Series Index](./README.md)
-- [🎤 View the 45-Minute Google Cloud Tech Talk Slide Deck (`google-cloud-slides.marp.md`)](../presentation/google-cloud-slides.marp.md)
-- [🏠 Main Repository README & Architecture Documentation Index](../../README.md)
+- [📚 Return to the 10-Part GDE Technical Blog Series Index](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/README.md)
+- [🎤 View the 45-Minute Google Cloud Tech Talk Slide Deck (`google-cloud-slides.marp.md`)](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/presentation/google-cloud-slides.marp.md)
+- [🏠 Main Repository README & Architecture Documentation Index](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/README.md)

@@ -1,11 +1,11 @@
 # Part 4: Defeating Proxy Attendance & Lab Keyloggers with WebAuthn Passkeys, Rotating HMAC QRs & GCIP Blocking Functions
 
 **Author:** [**Cyrus Wong (黃俊彥)**](https://www.linkedin.com/in/cyruswong/) — *Google Developer Expert - Cloud (AI), Senior Lecturer at HKIIT*  
-[⏮️ Previous: Part 3 — Gemini 4 Argon & Genkit Resilience](./03-gemini-4-argon-genkit-multimodal-resilience.md) | [📚 Series Index](./README.md) | [⏭️ Next: Part 5 — Real-Time Multilingual Live Subtitles](./05-realtime-live-subtitles-code-switching-gemini-4-gemma-4.md)
+[⏮️ Previous: Part 3 — Gemini 4 Argon & Genkit Resilience](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/03-gemini-4-argon-genkit-multimodal-resilience.md) | [📚 Series Index](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/README.md) | [⏭️ Next: Part 5 — Real-Time Multilingual Live Subtitles](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/05-realtime-live-subtitles-code-switching-gemini-4-gemma-4.md)
 
 ---
 
-![Mobile Passkey & Rotating QR Attendance](../presentation/images/slide_mobile_passkey_attendance.png)
+![Mobile Passkey & Rotating QR Attendance](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/presentation/images/slide_mobile_passkey_attendance.png)
 
 ## 1. Problem Statement: The Dual Security Crisis in University Computer Labs & 200-Seat Lecture Theatres
 
@@ -25,13 +25,13 @@ To solve both problems simultaneously without requiring dedicated biometric turn
 
 On multi-campus educational domains, distinguishing faculty from students at the exact moment of registration is critical. In our platform, a user with `role: 'teacher'` can orchestrate **Gemini 4 Argon (`gemini-4-argon`)** multimodal grading jobs, inspect live student screen feeds, and reset hardware passkeys, whereas `role: 'student'` is strictly scoped to submitting their own telemetry and viewing authorized course materials. An accidental privilege escalation is both a data-privacy violation and a FinOps risk.
 
-![4-Tier Hybrid Role Resolution](../presentation/images/slide_hybrid_role_resolution.png)
+![4-Tier Hybrid Role Resolution](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/presentation/images/slide_hybrid_role_resolution.png)
 
 ### Diagram 1: 4-Tier Deterministic Role Hierarchy & GCIP Blocking Gate
 
-In [`functions/auth_triggers/userManagement.js`](../../functions/auth_triggers/userManagement.js), [`functions/auth_triggers/ipRestriction.js`](../../functions/auth_triggers/ipRestriction.js), and [`functions/auth_triggers/config.js`](../../functions/auth_triggers/config.js), our GCIP blocking functions intercept every signup and sign-in request *before* a Firebase JWT is ever minted:
+In [`functions/auth_triggers/userManagement.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/auth_triggers/userManagement.js), [`functions/auth_triggers/ipRestriction.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/auth_triggers/ipRestriction.js), and [`functions/auth_triggers/config.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/auth_triggers/config.js), our GCIP blocking functions intercept every signup and sign-in request *before* a Firebase JWT is ever minted:
 
-![4-Tier Deterministic Role Resolution & GCIP Blocking Gate](./images/blog04_diagram1_4tier_role_resolution.png)
+![4-Tier Deterministic Role Resolution & GCIP Blocking Gate](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog04_diagram1_4tier_role_resolution.png)
 
 ### Implementation Walkthrough: Multi-Domain Role Derivation & Pre-Enrolled Roster Linking
 
@@ -40,7 +40,7 @@ Why do we need four tiers instead of a simple `@vtc.edu.hk` suffix check? Becaus
 2. Some institutions share a single apex domain (`@school.edu`) for both staff and students, distinguishing them only by username pattern (e.g., 9-digit student IDs vs. alphabetic staff handles—**Tier 2**).
 3. In hierarchical domains (`@stu.vtc.edu.hk` vs. `@vtc.edu.hk`), a naive `.endsWith('vtc.edu.hk')` check would accidentally classify `@stu.vtc.edu.hk` as a teacher unless student subdomains take strict precedence (**Tier 3**).
 
-Here is the production implementation from [`functions/ai_flows/config.js`](../../functions/ai_flows/config.js) and [`functions/auth_triggers/userManagement.js`](../../functions/auth_triggers/userManagement.js):
+Here is the production implementation from [`functions/ai_flows/config.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/ai_flows/config.js) and [`functions/auth_triggers/userManagement.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/auth_triggers/userManagement.js):
 
 ```javascript
 // From functions/ai_flows/config.js
@@ -81,7 +81,7 @@ export function deriveUserRole(email) {
 }
 ```
 
-And during `beforeUserCreated`, we combine Tier 1 pre-enrollment checks with automatic profile hydration from the central `studentDirectory` in [`functions/auth_triggers/userManagement.js`](../../functions/auth_triggers/userManagement.js):
+And during `beforeUserCreated`, we combine Tier 1 pre-enrollment checks with automatic profile hydration from the central `studentDirectory` in [`functions/auth_triggers/userManagement.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/auth_triggers/userManagement.js):
 
 ```javascript
 // From functions/auth_triggers/userManagement.js
@@ -117,7 +117,7 @@ export async function handleBeforeUserCreatedLogic(event, customDeps = {}) {
 
 During scheduled practical exams, we want to prevent remote students from logging into a class session from outside the physical computer lab subnet, *without* blocking students from reviewing their course materials from home in the evening.
 
-In [`functions/auth_triggers/ipRestriction.js`](../../functions/auth_triggers/ipRestriction.js), `checkipaddress` (`beforeUserSignedIn`) evaluates the student's enrolled classes against their timezone-aware `schedule.timeSlots` using `date-fns-tz` and validates `event.ipAddress` against the class's IPv4 CIDR ranges (`ip-address` `Address4.isInSubnet()`):
+In [`functions/auth_triggers/ipRestriction.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/auth_triggers/ipRestriction.js), `checkipaddress` (`beforeUserSignedIn`) evaluates the student's enrolled classes against their timezone-aware `schedule.timeSlots` using `date-fns-tz` and validates `event.ipAddress` against the class's IPv4 CIDR ranges (`ip-address` `Address4.isInSubnet()`):
 
 ```javascript
 // From functions/auth_triggers/ipRestriction.js
@@ -173,7 +173,7 @@ export const checkipaddress = beforeUserSignedIn(
 
 Even when IP restrictions keep traffic inside the campus Wi-Fi or lab subnet, how do we guarantee that Student A sitting in the lecture hall isn't checking in on behalf of Student B?
 
-We implemented a strict **1-Phone = 1-Student Hardware Lock** in [`functions/ai_flows/passkeyFlows.js`](../../functions/ai_flows/passkeyFlows.js) using `@simplewebauthn/server`. When a student pairs their smartphone:
+We implemented a strict **1-Phone = 1-Student Hardware Lock** in [`functions/ai_flows/passkeyFlows.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/ai_flows/passkeyFlows.js) using `@simplewebauthn/server`. When a student pairs their smartphone:
 1. We require `authenticatorAttachment: 'platform'`, forcing the mobile browser to generate an asymmetric ECDSA P-256 keypair inside the phone's hardware **Apple Secure Enclave** (iOS Face ID / Touch ID) or **Android Titan M2** module.
 2. During `handleVerifyPasskeyRegistration`, we check two orthogonal hardware identifiers across the entire `studentPasskeys` collection:
    - The cryptographic WebAuthn `credentialID`.
@@ -271,7 +271,7 @@ In a 200-seat lecture hall where students do not sit at fixed lab desktops, how 
 
 ### Diagram 2: 15-Second Rotating HMAC Projector QR & Challenge Creation Tolerance
 
-![1-Phone = 1-Student FIDO2 Lock & 15s Rotating HMAC Projector QR](./images/blog04_diagram2_rotating_hmac_qr_sequence.png)
+![1-Phone = 1-Student FIDO2 Lock & 15s Rotating HMAC Projector QR](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog04_diagram2_rotating_hmac_qr_sequence.png)
 
 ### Edge Case Solved: The "Mid-Biometric QR Rotation" Race Condition
 
@@ -281,7 +281,7 @@ When we first tested 15-second rotating QR codes with 150 students in a lecture 
 3. Because the student's hands are damp or they adjust their glasses, their biometric scan takes `4.5 seconds`—completing at `t = 18.7s` (now in window `W_2`).
 4. If we shorten the grace window to block WhatsApp forwarding, a naive token check during `verifyLecturePasskeyAuth` rejects the legitimate in-room student because the projector QR rotated while Face ID was scanning!
 
-We solved this in [`functions/ai_flows/passkeyFlows.js`](../../functions/ai_flows/passkeyFlows.js) with **Two-Phase Challenge Creation Tolerance**:
+We solved this in [`functions/ai_flows/passkeyFlows.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/ai_flows/passkeyFlows.js) with **Two-Phase Challenge Creation Tolerance**:
 - **Phase 1 (`handleGetLecturePasskeyAuthOptions`)**: When the camera scans the QR code, the server immediately validates the HMAC token using `crypto.timingSafeEqual` and writes a cryptographically random 2-minute WebAuthn challenge document (`bingoRecords/{bingoId}/challenges/{challengeId}`) stamped with `createdAt: FieldValue.serverTimestamp()`.
 - **Phase 2 (`handleVerifyLecturePasskeyAuth`)**: When the phone submits the signed hardware assertion a few seconds later, we verify whether the token is currently valid **OR** was valid at `challengeCreatedAtMillis`:
 
@@ -356,7 +356,7 @@ How do teachers and students sign into untrusted shared lab workstations without
 
 ### Diagram 3: Zero-Keystroke Lab PC Login & 3-Tier Emergency Recovery
 
-![Keylogger-Proof Shared Lab PC Login & 3-Tier Emergency Recovery](./images/blog04_diagram3_lab_pc_qr_login_recovery.png)
+![Keylogger-Proof Shared Lab PC Login & 3-Tier Emergency Recovery](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog04_diagram3_lab_pc_qr_login_recovery.png)
 
 ### Zero-Keystroke Custom Token Exchange (`handleVerifyDesktopLoginPasskey`)
 
@@ -375,7 +375,7 @@ In a cohort of 150 students, every single week at least two students will arrive
 - A cracked camera lens that cannot focus on a QR code, or
 - A non-GMS Android handset (e.g., certain Huawei / HarmonyOS or custom ROM devices) that lacks Google Credential Manager support for WebAuthn passkeys.
 
-If security blocks teaching, instructors will turn security off. We engineered three frictionless, fully audited recovery tiers in [`functions/ai_flows/passkeyFlows.js`](../../functions/ai_flows/passkeyFlows.js):
+If security blocks teaching, instructors will turn security off. We engineered three frictionless, fully audited recovery tiers in [`functions/ai_flows/passkeyFlows.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/ai_flows/passkeyFlows.js):
 - **Tier A — 1-Click Podium Bypass (`handleApproveTeacherPasskeyBypass`)**: The student clicks *"Request Teacher Bypass"* on their lab PC (`handleRequestTeacherPasskeyBypass`), entering their desk number. A live toast appears on the instructor's podium dashboard; one click grants a 180-minute lesson-scoped bypass in `classes/{classId}/studentProperties/{uid}.passkeyBypass`.
 - **Tier B — Aisle Walk-Around 6-Digit PIN (`handleVerifyTeacherPasskeyBypassPin`)**: While walking the lab aisles, the instructor can type their daily 6-digit emergency PIN directly onto the student's screen to unlock attendance for that session.
 - **Tier C — Non-GMS Device Exemption & Phone Replacement (`handleResetStudentPasskey`)**: For students who buy a new phone or use a non-GMS device, the teacher can reset their hardware binding or toggle a roster exemption—with every action permanently recorded in `passkeyAuditLogs`.
@@ -402,4 +402,4 @@ If security blocks teaching, instructors will turn security off. We engineered t
 
 ---
 
-[⏮️ Previous: Part 3 — Gemini 4 Argon & Genkit Resilience](./03-gemini-4-argon-genkit-multimodal-resilience.md) | [📚 Series Index](./README.md) | [⏭️ Continue to Part 5: Real-Time Multilingual Live Subtitles & Code-Switching →](./05-realtime-live-subtitles-code-switching-gemini-4-gemma-4.md)
+[⏮️ Previous: Part 3 — Gemini 4 Argon & Genkit Resilience](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/03-gemini-4-argon-genkit-multimodal-resilience.md) | [📚 Series Index](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/README.md) | [⏭️ Continue to Part 5: Real-Time Multilingual Live Subtitles & Code-Switching →](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/05-realtime-live-subtitles-code-switching-gemini-4-gemma-4.md)
