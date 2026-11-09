@@ -82,6 +82,8 @@ const callOptions = {
 
 export const analyzeImage = onCallGenkit({
     ...callOptions,    
+    memory: '2GiB',
+    timeoutSeconds: 540,
     authPolicy: (auth) => {
         return auth?.token?.role === 'teacher' || auth?.token?.role === 'admin';
     },
@@ -89,6 +91,8 @@ export const analyzeImage = onCallGenkit({
 
 export const analyzeAllImages = onCallGenkit({
     ...callOptions,
+    memory: '2GiB',
+    timeoutSeconds: 540,
     authPolicy: (auth) => {
         return auth?.token?.role === 'teacher' || auth?.token?.role === 'admin';
     },

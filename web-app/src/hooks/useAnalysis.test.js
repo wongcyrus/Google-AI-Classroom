@@ -56,6 +56,7 @@ describe('useAnalysis Hook', () => {
       classId: 'CLASS_123',
       model: 'gemini-1.5-flash',
     });
+    expect(httpsCallable).toHaveBeenCalledWith(expect.anything(), 'analyzeImage', { timeout: 540000 });
     expect(result.current.analysisResults).toEqual({
       s1: 'No cheating detected',
       s2: 'Focus on editor',
@@ -109,6 +110,7 @@ describe('useAnalysis Hook', () => {
       classId: 'CLASS_123',
       model: 'gemini-2.0-flash',
     });
+    expect(httpsCallable).toHaveBeenCalledWith(expect.anything(), 'analyzeAllImages', { timeout: 540000 });
     expect(result.current.analysisResults).toEqual({
       'All Students (Class Summary)': 'Class-wide summary: 95% on task.',
     });

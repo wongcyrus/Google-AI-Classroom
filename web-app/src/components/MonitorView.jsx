@@ -2339,7 +2339,9 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
   const displayTime = timelineScrubTime ?? (reviewTime ? new Date(reviewTime).getTime() : now.getTime());
 
   const analysisResultItems = useMemo(() => 
-    Object.entries(analysisResults || {}).map(([studentId, result]) => {
+    Object.entries(analysisResults || {})
+      .filter(([studentId]) => studentId !== 'error')
+      .map(([studentId, result]) => {
       const studentObj = students.find(s => s.id === studentId);
       const email = studentObj?.email || uidToEmailMap.get(studentId) || studentId;
       const displayName = studentObj?.displayName || getStudentDisplayName(email, studentProfiles);
@@ -3223,14 +3225,47 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
             <p style={{ fontSize: '1.1em', fontWeight: '500', color: '#1976d2' }}>
               🤖 Gemini AI is analyzing the student screen(s)...
             </p>
-            <p style={{ color: '#666', fontSize: '0.9em' }}>Please wait a moment.</p>
+            <p style={{ color: '#666', fontSize: '0.9em' }}>
+              For large cohorts (20+ screens), deep multimodal reasoning may take 1–3 minutes. Please keep this window open.
+            </p>
           </div>
-        ) : (analysisResults && Object.keys(analysisResults).length > 0) ? (
-          <ul style={{ padding: 0, margin: 0, maxHeight: '60vh', overflowY: 'auto' }}>
-            {analysisResultItems}
-          </ul>
         ) : (
-          <p>No analysis results available.</p>
+          <div>
+            {analysisResults?.error && (
+              <div style={{
+                background: '#ffebee',
+                color: '#c62828',
+                padding: '14px 16px',
+                borderRadius: '8px',
+                border: '1px solid #ef9a9a',
+                marginBottom: '16px',
+                fontSize: '0.95em',
+                lineHeight: '1.5'
+              }}>
+                <div style={{ fontWeight: 'bold', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  ⚠️ Analysis Error: {analysisResults.error}
+                </div>
+                <div>
+                  {String(analysisResults.error).includes('deadline-exceeded') ? (
+                    <span>
+                      The analysis request timed out. Large class cohorts (20+ student screens) require significant multimodal compute time when using frontier models.
+                      <br /><br />
+                      <strong>Recommendation:</strong> Try selecting <em>Gemini 3.8 Flash</em> for high-speed cohort analysis, or run per-student image analysis.
+                    </span>
+                  ) : (
+                    <span>{analysisResults.error}</span>
+                  )}
+                </div>
+              </div>
+            )}
+            {analysisResultItems.length > 0 ? (
+              <ul style={{ padding: 0, margin: 0, maxHeight: '60vh', overflowY: 'auto' }}>
+                {analysisResultItems}
+              </ul>
+            ) : !analysisResults?.error ? (
+              <p>No analysis results available.</p>
+            ) : null}
+          </div>
         )}
       </Modal>
 

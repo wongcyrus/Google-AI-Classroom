@@ -9,7 +9,7 @@ export const useAnalysis = (classId) => {
   const runPerImageAnalysis = useCallback(async (screenshotsToAnalyze, prompt, model) => {
     if (!prompt.trim()) return;
     console.log(`[${new Date().toISOString()}] Running per-image analysis using model ${model || 'default'} for:`, Object.keys(screenshotsToAnalyze));
-    const analyzeImage = httpsCallable(functions, 'analyzeImage');
+    const analyzeImage = httpsCallable(functions, 'analyzeImage', { timeout: 540000 });
     try {
       setIsAnalyzing(true);
       const result = await analyzeImage({ screenshots: screenshotsToAnalyze, prompt, classId, model });
@@ -30,7 +30,7 @@ export const useAnalysis = (classId) => {
   const runAllImagesAnalysis = useCallback(async (screenshotsToAnalyze, prompt, model) => {
     if (!prompt.trim()) return;
     console.log(`[${new Date().toISOString()}] Running all-images analysis using model ${model || 'default'} for ${Object.keys(screenshotsToAnalyze).length} images.`);
-    const analyzeAllImages = httpsCallable(functions, 'analyzeAllImages');
+    const analyzeAllImages = httpsCallable(functions, 'analyzeAllImages', { timeout: 540000 });
     try {
       setIsAnalyzing(true);
       const result = await analyzeAllImages({ screenshots: screenshotsToAnalyze, prompt, classId, model });
