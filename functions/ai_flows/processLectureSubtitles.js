@@ -4,7 +4,12 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { execSync } from 'child_process';
-import ffmpegPath from 'ffmpeg-static';
+import defaultFfmpegPath from 'ffmpeg-static';
+
+const localFfmpegPath = path.join(process.cwd(), 'ffmpeg');
+const ffmpegPath = (fs.existsSync(localFfmpegPath) && fs.statSync(localFfmpegPath).isFile())
+  ? localFfmpegPath
+  : defaultFfmpegPath;
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { onDocumentCreated } from 'firebase-functions/v2/firestore';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
