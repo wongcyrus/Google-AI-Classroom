@@ -124,6 +124,83 @@ describe('ExamReadinessWizard Component', () => {
     });
   });
 
+  it('supports playing back audio, stopping playback, and re-testing voice', async () => {
+    class MockMediaRecorder {
+      constructor(stream, opts) {
+        this.stream = stream;
+        this.opts = opts;
+        this.state = 'inactive';
+      }
+      start() {
+        this.state = 'recording';
+      }
+      stop() {
+        this.state = 'inactive';
+        if (this.ondataavailable) {
+          this.ondataavailable({ data: new Blob(['audio data'], { type: 'audio/webm' }) });
+        }
+        if (this.onstop) {
+          this.onstop();
+        }
+      }
+    }
+    globalThis.MediaRecorder = MockMediaRecorder;
+    globalThis.MediaRecorder.isTypeSupported = vi.fn().mockReturnValue(true);
+    globalThis.URL.createObjectURL = vi.fn().mockReturnValue('blob:http://localhost/test-audio');
+    globalThis.URL.revokeObjectURL = vi.fn();
+
+    const mockPlay = vi.fn().mockResolvedValue();
+    const mockPause = vi.fn();
+    globalThis.Audio = class {
+      constructor(src) {
+        this.src = src;
+        this.play = mockPlay;
+        this.pause = mockPause;
+      }
+    };
+
+    render(
+      <ExamReadinessWizard
+        isOpen={true}
+        onClose={vi.fn()}
+        onComplete={vi.fn()}
+        user={{ uid: 'student_1' }}
+        classId="CLASS_1"
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Test Speech/i })).toBeInTheDocument();
+    });
+
+    // 1. Initial Test
+    fireEvent.click(screen.getByRole('button', { name: /Test Speech/i }));
+    expect(screen.getByRole('button', { name: /Stop/i })).toBeInTheDocument();
+
+    // Stop to finish recording
+    fireEvent.click(screen.getByRole('button', { name: /Stop/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Play Again/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Re-test Voice/i })).toBeInTheDocument();
+    });
+
+    // 2. Play Again
+    fireEvent.click(screen.getByRole('button', { name: /Play Again/i }));
+    expect(mockPlay).toHaveBeenCalled();
+
+    // 3. Re-test Voice
+    fireEvent.click(screen.getByRole('button', { name: /Re-test Voice/i }));
+    expect(screen.getByText(/Recording Sample/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Stop/i })).toBeInTheDocument();
+
+    // Stop re-test
+    fireEvent.click(screen.getByRole('button', { name: /Stop/i }));
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Re-test Voice/i })).toBeInTheDocument();
+    });
+  });
+
   it('navigates through all 3 steps, changes camera, calibrates face, verifies screen share and finishes', async () => {
     const onComplete = vi.fn();
     const onClose = vi.fn();

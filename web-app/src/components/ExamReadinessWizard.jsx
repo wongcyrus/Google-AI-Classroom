@@ -47,6 +47,7 @@ export default function ExamReadinessWizard({
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
   const playbackAudioRef = useRef(null);
+  const playbackAudioUrlRef = useRef(null);
   const speechRecognitionRef = useRef(null);
   const acquiredMicIdRef = useRef('');
 
@@ -240,6 +241,17 @@ export default function ExamReadinessWizard({
   }, [isOpen, step, selectedMic, loadDevices]);
 
   // Voice Recording & Audio Loopback Playback Test Helper
+  const stopPlayback = useCallback(() => {
+    if (playbackAudioRef.current) {
+      try {
+        playbackAudioRef.current.pause();
+        playbackAudioRef.current.currentTime = 0;
+      } catch {}
+      playbackAudioRef.current = null;
+    }
+    setIsPlayingBack(false);
+  }, []);
+
   const stopSpeechTest = useCallback((isUserAction = false) => {
     if (countdownIntervalRef.current) {
       clearInterval(countdownIntervalRef.current);
@@ -264,23 +276,22 @@ export default function ExamReadinessWizard({
       } catch {}
       speechRecognitionRef.current = null;
     }
-    if (playbackAudioRef.current) {
-      try {
-        playbackAudioRef.current.pause();
-      } catch {}
-    }
+    stopPlayback();
     setIsListeningSpeech(false);
     setIsRecordingPlayback(false);
-    setIsPlayingBack(false);
     setRecordingCountdown(0);
-  }, []);
+  }, [stopPlayback]);
 
   const playRecordedAudio = useCallback((url) => {
-    const targetUrl = url || playbackAudioUrl;
+    const targetUrl = url || playbackAudioUrlRef.current || playbackAudioUrl;
     if (!targetUrl) return;
     try {
       if (playbackAudioRef.current) {
-        playbackAudioRef.current.pause();
+        try {
+          playbackAudioRef.current.pause();
+          playbackAudioRef.current.currentTime = 0;
+        } catch {}
+        playbackAudioRef.current = null;
       }
       const audio = new Audio(targetUrl);
       playbackAudioRef.current = audio;
@@ -297,6 +308,7 @@ export default function ExamReadinessWizard({
   }, [playbackAudioUrl]);
 
   const startSpeechTest = useCallback(() => {
+    stopPlayback();
     stopSpeechTest();
     setSpeechError('');
     setSpeechTranscript('');
@@ -306,10 +318,13 @@ export default function ExamReadinessWizard({
       return;
     }
 
-    if (playbackAudioUrl) {
-      URL.revokeObjectURL(playbackAudioUrl);
-      setPlaybackAudioUrl(null);
+    if (playbackAudioUrlRef.current) {
+      try {
+        URL.revokeObjectURL(playbackAudioUrlRef.current);
+      } catch {}
+      playbackAudioUrlRef.current = null;
     }
+    setPlaybackAudioUrl(null);
 
     setIsListeningSpeech(true);
     setIsRecordingPlayback(true);
@@ -403,6 +418,7 @@ export default function ExamReadinessWizard({
         const audioBlob = new Blob(audioChunksRef.current, { type: effectiveMime || 'audio/webm' });
         if (audioBlob.size > 0) {
           const audioUrl = URL.createObjectURL(audioBlob);
+          playbackAudioUrlRef.current = audioUrl;
           setPlaybackAudioUrl(audioUrl);
           setIsMicVerified(true);
           if (!recognizedText) {
@@ -444,22 +460,27 @@ export default function ExamReadinessWizard({
         }
       }
     }, 3200);
-  }, [stopSpeechTest, playbackAudioUrl, playRecordedAudio]);
+  }, [stopPlayback, stopSpeechTest, playRecordedAudio]);
 
   useEffect(() => {
     if (!isOpen || step !== 1) {
+      stopPlayback();
       stopSpeechTest();
     }
-  }, [isOpen, step, stopSpeechTest]);
+  }, [isOpen, step, stopPlayback, stopSpeechTest]);
 
   useEffect(() => {
     return () => {
-      if (playbackAudioUrl) {
-        URL.revokeObjectURL(playbackAudioUrl);
+      stopPlayback();
+      if (playbackAudioUrlRef.current) {
+        try {
+          URL.revokeObjectURL(playbackAudioUrlRef.current);
+        } catch {}
+        playbackAudioUrlRef.current = null;
       }
       stopSpeechTest();
     };
-  }, [playbackAudioUrl, stopSpeechTest]);
+  }, [stopPlayback, stopSpeechTest]);
 
   // --- Step 2: Camera Preview ---
   useEffect(() => {
@@ -810,20 +831,19 @@ export default function ExamReadinessWizard({
                       {playbackAudioUrl && !isRecordingPlayback && (
                         <button
                           type="button"
-                          onClick={() => playRecordedAudio()}
-                          disabled={isPlayingBack}
+                          onClick={isPlayingBack ? stopPlayback : () => playRecordedAudio()}
                           style={{
                             padding: '0.45rem 0.85rem',
                             borderRadius: '6px',
-                            backgroundColor: isPlayingBack ? '#475569' : '#10b981',
+                            backgroundColor: isPlayingBack ? '#ef4444' : '#10b981',
                             color: '#fff',
                             border: 'none',
                             fontSize: '0.8rem',
                             fontWeight: 600,
-                            cursor: isPlayingBack ? 'not-allowed' : 'pointer',
+                            cursor: 'pointer',
                           }}
                         >
-                          {isPlayingBack ? '🔊 Playing...' : '▶️ Play Again'}
+                          {isPlayingBack ? '⏹️ Stop Playback' : '▶️ Play Again'}
                         </button>
                       )}
                       <button
