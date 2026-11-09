@@ -294,12 +294,17 @@ export default function ExamReadinessWizard({
 
   // --- Step 2: Camera Preview ---
   useEffect(() => {
-    if (!isOpen || step !== 2) {
+    if (!isOpen || step < 2) {
       acquiredCamIdRef.current = '';
       if (cameraStreamRef.current) {
         cameraStreamRef.current.getTracks().forEach((t) => t.stop());
         cameraStreamRef.current = null;
       }
+      return;
+    }
+
+    // Keep camera stream alive on Step 3 for seamless invigilation handoff
+    if (step === 3 && cameraStreamRef.current) {
       return;
     }
 
@@ -326,6 +331,9 @@ export default function ExamReadinessWizard({
         }
         if (cameraVideoRef.current) {
           cameraVideoRef.current.srcObject = stream;
+          try {
+            cameraVideoRef.current.play?.().catch(() => {});
+          } catch {}
         }
 
         loadDevices();
@@ -339,10 +347,7 @@ export default function ExamReadinessWizard({
 
     return () => {
       isMounted = false;
-      if (cameraStreamRef.current) {
-        cameraStreamRef.current.getTracks().forEach((t) => t.stop());
-        cameraStreamRef.current = null;
-      }
+      // Note: do not stop camera stream here if advancing to step 3 so it can be handed off
     };
   }, [isOpen, step, selectedCamera, loadDevices]);
 
@@ -401,6 +406,9 @@ export default function ExamReadinessWizard({
     screenStreamRef.current = null;
     ownsScreenStreamRef.current = false;
 
+    const retainedCameraStream = cameraStreamRef.current;
+    cameraStreamRef.current = null;
+
     const hasCamera = Boolean(selectedCamera && hasCameraHardware);
     const hasMic = Boolean(selectedMic && hasMicHardware);
 
@@ -450,6 +458,7 @@ export default function ExamReadinessWizard({
         hasMic,
         micDeviceId: hasMic ? selectedMic : '',
         cameraDeviceId: hasCamera ? selectedCamera : '',
+        cameraStream: retainedCameraStream,
         calibrationData,
         isScreenVerified: true,
         screenStream: retainedScreenStream,
@@ -461,6 +470,7 @@ export default function ExamReadinessWizard({
         hasMic,
         micDeviceId: hasMic ? selectedMic : '',
         cameraDeviceId: hasCamera ? selectedCamera : '',
+        cameraStream: retainedCameraStream,
         calibrationData,
         isScreenVerified: isScreenVerified,
         screenStream: retainedScreenStream,
@@ -758,7 +768,16 @@ export default function ExamReadinessWizard({
                   }}
                 >
                   <video
-                    ref={cameraVideoRef}
+                    ref={(el) => {
+                      cameraVideoRef.current = el;
+                      if (el && cameraStreamRef.current && el.srcObject !== cameraStreamRef.current) {
+                        el.srcObject = cameraStreamRef.current;
+                        try {
+                          const p = el.play?.();
+                          if (p && typeof p.catch === 'function') p.catch(() => {});
+                        } catch {}
+                      }
+                    }}
                     autoPlay
                     playsInline
                     muted

@@ -1361,14 +1361,14 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
    * Requests generic camera access first so Chrome can show its permission prompt,
    * then binds the selected camera exactly without silently substituting another device.
    */
-  const startWebcam = useCallback(async (targetDeviceId) => {
+  const startWebcam = useCallback(async (targetDeviceId, existingStream = null) => {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       console.warn("Webcam is not supported by your browser.");
       return;
     }
 
-    // Stop existing webcam track if any
-    if (webcamStreamRef.current) {
+    // Stop existing webcam track if any and different from existingStream
+    if (webcamStreamRef.current && webcamStreamRef.current !== existingStream) {
       webcamStreamRef.current.getTracks().forEach(track => track.stop());
       webcamStreamRef.current = null;
     }
@@ -1376,12 +1376,21 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
     const deviceIdToUse = targetDeviceId || selectedWebcamId;
     try {
       setWebcamError('');
-      const stream = await acquireInputDeviceStream('video', deviceIdToUse);
+      let stream = (existingStream && typeof existingStream.getVideoTracks === 'function') ? existingStream : null;
+      if (!stream) {
+        stream = await acquireInputDeviceStream('video', deviceIdToUse);
+      }
 
+      webcamStreamRef.current = stream;
       if (webcamVideoRef.current) {
         webcamVideoRef.current.srcObject = stream;
+        try {
+          const playPromise = webcamVideoRef.current.play?.();
+          if (playPromise && typeof playPromise.catch === 'function') {
+            playPromise.catch(e => console.debug('[StudentView] webcam video play note:', e));
+          }
+        } catch {}
       }
-      webcamStreamRef.current = stream;
       setIsWebcamSharing(true);
 
       const activeTrack = stream.getVideoTracks()[0];
@@ -1439,7 +1448,7 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
         console.debug('[StudentView] webcam play error:', playErr);
       }
     }
-  }, [isWebcamSharing, primaryStream]);
+  }, [isWebcamSharing, isScreenSharing, primaryStream]);
 
   const startScreen = useCallback(async (existingStream = null) => {
     const currentTrack = screenStreamRef.current?.getVideoTracks?.()[0];
@@ -3196,7 +3205,22 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
                     <span>🔄 Click to Swap</span>
                   </div>
                 )}
-                <video ref={screenVideoRef} autoPlay muted playsInline className="video-preview" />
+                <video
+                  ref={(el) => {
+                    screenVideoRef.current = el;
+                    if (el && screenStreamRef.current && el.srcObject !== screenStreamRef.current) {
+                      el.srcObject = screenStreamRef.current;
+                      try {
+                        const p = el.play?.();
+                        if (p && typeof p.catch === 'function') p.catch(() => {});
+                      } catch {}
+                    }
+                  }}
+                  autoPlay
+                  muted
+                  playsInline
+                  className="video-preview"
+                />
               </div>
 
               {/* Webcam Stream Element */}
@@ -3225,7 +3249,22 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
                     <span>🔄 Click to Swap</span>
                   </div>
                 )}
-                <video ref={webcamVideoRef} autoPlay muted playsInline className="video-preview" />
+                <video
+                  ref={(el) => {
+                    webcamVideoRef.current = el;
+                    if (el && webcamStreamRef.current && el.srcObject !== webcamStreamRef.current) {
+                      el.srcObject = webcamStreamRef.current;
+                      try {
+                        const p = el.play?.();
+                        if (p && typeof p.catch === 'function') p.catch(() => {});
+                      } catch {}
+                    }
+                  }}
+                  autoPlay
+                  muted
+                  playsInline
+                  className="video-preview"
+                />
                 <canvas ref={overlayCanvasRef} className="webcam-mesh-overlay" />
                 {isWebcamSharing && (
                   <div className={`ai-face-hud ${clientAiStatus === 'initializing' ? 'initializing' : faceStatus}`}>
@@ -3736,7 +3775,7 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
           if (camId) {
             setSelectedWebcamId(camId);
             try {
-              await startWebcam(camId);
+              await startWebcam(camId, readinessResult?.cameraStream);
             } catch (camErr) {
               console.warn('[StudentView] Webcam start skipped or unavailable:', camErr);
             }
