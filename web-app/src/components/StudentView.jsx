@@ -1559,6 +1559,15 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
         setIsAudioUserEnabled(true);
       }
       setIsScreenSharing(true);
+
+      // Directly trigger microphone capture & permission prompt if audio is enabled
+      if (isAudioUserEnabled && typeof startAudioRecording === 'function') {
+        try {
+          await startAudioRecording();
+        } catch (micErr) {
+          console.warn('[StudentView] Quick Start mic capture note:', micErr);
+        }
+      }
       const willRecordAudio = Boolean(
         (isAudioUserEnabled || !existingStream) &&
           hasMicPermission !== false &&

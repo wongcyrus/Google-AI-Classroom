@@ -481,6 +481,7 @@ export function useAudioRecorder({
       });
       if (startAttempt !== startAttemptRef.current) {
         stream.getTracks().forEach(track => track.stop());
+        isRecordingRef.current = false;
         return null;
       }
 
@@ -739,10 +740,10 @@ export function useAudioRecorder({
 
   // Automatically start/stop when enabled flag or params change
   useEffect(() => {
-    const shouldRecord = Boolean(enabled && classId && studentUid);
+    const shouldRecord = Boolean(enabled);
     const configurationChanged =
       currentRecordingConfigRef.current !== recordingConfigKey;
-    const startKey = `${classId}:${studentUid}:${deviceId}`;
+    const startKey = `${classId || 'local'}:${studentUid || 'anonymous'}:${deviceId}`;
     currentRecordingConfigRef.current = recordingConfigKey;
 
     if (shouldRecord) {

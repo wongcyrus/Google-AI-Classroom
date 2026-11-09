@@ -39,6 +39,7 @@ export default function ExamReadinessWizard({
   const micAudioCtxRef = useRef(null);
   const micAnimFrameRef = useRef(null);
   const speechTimeoutRef = useRef(null);
+  const acquiredMicIdRef = useRef('');
 
   // --- Step 2: Camera & Pose Calibration ---
   const [videoDevices, setVideoDevices] = useState([]);
@@ -48,6 +49,7 @@ export default function ExamReadinessWizard({
   const [calibrationData, setCalibrationData] = useState(null);
   const cameraVideoRef = useRef(null);
   const cameraStreamRef = useRef(null);
+  const acquiredCamIdRef = useRef('');
 
   // --- Step 3: Screen Share Check ---
   const [isScreenVerified, setIsScreenVerified] = useState(false);
@@ -142,6 +144,7 @@ export default function ExamReadinessWizard({
   // --- Step 1: Live Mic VU Meter ---
   useEffect(() => {
     if (!isOpen || step !== 1) {
+      acquiredMicIdRef.current = '';
       if (micAnimFrameRef.current) cancelAnimationFrame(micAnimFrameRef.current);
       if (micAudioCtxRef.current && micAudioCtxRef.current.state !== 'closed') {
         micAudioCtxRef.current.close().catch(() => {});
@@ -150,6 +153,10 @@ export default function ExamReadinessWizard({
         micStreamRef.current.getTracks().forEach((t) => t.stop());
         micStreamRef.current = null;
       }
+      return;
+    }
+
+    if (acquiredMicIdRef.current && selectedMic === acquiredMicIdRef.current && micStreamRef.current) {
       return;
     }
 
@@ -166,6 +173,7 @@ export default function ExamReadinessWizard({
         const activeTrack = stream?.getAudioTracks?.()[0];
         const actualMicId = activeTrack?.getSettings?.().deviceId;
         if (actualMicId && !selectedMic) {
+          acquiredMicIdRef.current = actualMicId;
           setSelectedMic(actualMicId);
         }
         loadDevices();
@@ -287,10 +295,15 @@ export default function ExamReadinessWizard({
   // --- Step 2: Camera Preview ---
   useEffect(() => {
     if (!isOpen || step !== 2) {
+      acquiredCamIdRef.current = '';
       if (cameraStreamRef.current) {
         cameraStreamRef.current.getTracks().forEach((t) => t.stop());
         cameraStreamRef.current = null;
       }
+      return;
+    }
+
+    if (acquiredCamIdRef.current && selectedCamera === acquiredCamIdRef.current && cameraStreamRef.current) {
       return;
     }
 
@@ -308,6 +321,7 @@ export default function ExamReadinessWizard({
         const activeCamTrack = stream?.getVideoTracks?.()[0];
         const actualCamId = activeCamTrack?.getSettings?.().deviceId;
         if (actualCamId && !selectedCamera) {
+          acquiredCamIdRef.current = actualCamId;
           setSelectedCamera(actualCamId);
         }
         if (cameraVideoRef.current) {

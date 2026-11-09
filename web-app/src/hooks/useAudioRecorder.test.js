@@ -353,7 +353,7 @@ describe('useAudioRecorder Hook & AI Monitoring Modes', () => {
     );
 
     await waitFor(() => {
-      expect(mockGetUserMedia).toHaveBeenCalledTimes(2);
+      expect(mockGetUserMedia).toHaveBeenCalledTimes(1);
     });
 
     act(() => {
@@ -361,7 +361,7 @@ describe('useAudioRecorder Hook & AI Monitoring Modes', () => {
     });
 
     await waitFor(() => {
-      expect(mockGetUserMedia).toHaveBeenCalledTimes(4);
+      expect(mockGetUserMedia).toHaveBeenCalledTimes(2);
     });
     expect(mockAudioTrack.stop).toHaveBeenCalled();
   });
