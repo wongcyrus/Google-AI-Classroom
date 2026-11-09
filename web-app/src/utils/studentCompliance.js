@@ -93,6 +93,7 @@ export function getComplianceSummary(students = [], classSettings = {}, screensh
   let noCam = 0;
   let noMic = 0;
   let noScreen = 0;
+  let sharingScreen = 0;
   let aiAlert = 0;
 
   for (const student of students) {
@@ -102,11 +103,12 @@ export function getComplianceSummary(students = [], classSettings = {}, screensh
     if (issues.length > 0) {
       problems += 1;
     }
-    const hasScreenActive = Boolean(student?.isSharing);
+    const hasScreenActive = Boolean(student?.isScreenSharing !== undefined ? student.isScreenSharing : student?.isSharing);
     const hasWebcamActive = Boolean(student?.isWebcamSharing);
     const hasMicActive = Boolean(student?.isAudioSharing && !student?.audioError);
 
-    if (!hasScreenActive) noScreen += 1;
+    if (hasScreenActive) sharingScreen += 1;
+    else noScreen += 1;
     if (!hasWebcamActive) noCam += 1;
     if (!hasMicActive) noMic += 1;
     if (issues.some((issue) => issue.type === 'ai_alert')) aiAlert += 1;
@@ -118,6 +120,7 @@ export function getComplianceSummary(students = [], classSettings = {}, screensh
     noCam,
     noMic,
     noScreen,
+    sharingScreen,
     aiAlert,
   };
 }
@@ -137,10 +140,11 @@ export function filterStudentsByCompliance(students = [], filterType = 'all', cl
   }
 
   return students.filter((student) => {
-    const hasScreenActive = Boolean(student?.isSharing);
+    const hasScreenActive = Boolean(student?.isScreenSharing !== undefined ? student.isScreenSharing : student?.isSharing);
     const hasWebcamActive = Boolean(student?.isWebcamSharing);
     const hasMicActive = Boolean(student?.isAudioSharing && !student?.audioError);
 
+    if (filterType === 'sharing_screen' || filterType === 'sharing') return hasScreenActive;
     if (filterType === 'no_screen') return !hasScreenActive;
     if (filterType === 'no_cam') return !hasWebcamActive;
     if (filterType === 'no_mic') return !hasMicActive;
@@ -165,6 +169,8 @@ export function filterStudentsByCompliance(students = [], filterType = 'all', cl
  */
 export function getNudgeMessageForFilter(filterType) {
   switch (filterType) {
+    case 'sharing_screen':
+      return '👍 Reminder: Please keep your active screen shared and stay focused on the classroom activities.';
     case 'no_cam':
       return '⚠️ Invigilation Notice: Your webcam feed is required for this session. Please turn on your camera immediately.';
     case 'no_mic':

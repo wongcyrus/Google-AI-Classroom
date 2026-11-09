@@ -144,6 +144,7 @@ describe('studentCompliance Utility', () => {
       expect(summary.noCam).toBe(2); // s2, s3
       expect(summary.noMic).toBe(1); // s3
       expect(summary.noScreen).toBe(1); // s3
+      expect(summary.sharingScreen).toBe(3); // s1, s2, s4
       expect(summary.aiAlert).toBe(1); // s4
 
       // Empty list default
@@ -153,6 +154,7 @@ describe('studentCompliance Utility', () => {
         noCam: 0,
         noMic: 0,
         noScreen: 0,
+        sharingScreen: 0,
         aiAlert: 0,
       });
     });
@@ -161,6 +163,7 @@ describe('studentCompliance Utility', () => {
       expect(filterStudentsByCompliance(students, 'all', dualSettings)).toHaveLength(4);
       expect(filterStudentsByCompliance(students, '', dualSettings)).toHaveLength(4);
       expect(filterStudentsByCompliance(students, null, dualSettings)).toHaveLength(4);
+      expect(filterStudentsByCompliance(students, 'sharing_screen', dualSettings).map((s) => s.id)).toEqual(['1', '2', '4']);
       expect(filterStudentsByCompliance(students, 'problems', dualSettings)).toHaveLength(3);
       expect(filterStudentsByCompliance(students, 'no_cam', dualSettings).map((s) => s.id)).toEqual(['2', '3']);
       expect(filterStudentsByCompliance(students, 'no_mic', dualSettings).map((s) => s.id)).toEqual(['3']);

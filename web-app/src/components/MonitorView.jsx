@@ -1473,6 +1473,7 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
         studentClass: studentProfile.studentClass,
         programme: studentProfile.programme,
         isSharing: isActuallySharing,
+        isScreenSharing: isActuallySharing && Boolean(!status.activeStreams || status.activeStreams.includes('screen')),
         isWebcamSharing: isActuallySharing && Boolean(status.isWebcamSharing || (status.activeStreams && status.activeStreams.includes('webcam'))),
         isAudioSharing: isActuallySharing && Boolean(status.isAudioSharing || (status.activeStreams && status.activeStreams.includes('audio')) || status.isAudioRecording),
         audioStatus: isActuallySharing ? status?.audioStatus : null,
@@ -2807,12 +2808,13 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
 
               <select
                 aria-label="Filter students by status"
-                className={`channel-select-compact problem-filter-select ${complianceSummary.problems > 0 && problemFilter !== 'all' ? 'has-active-filter' : ''}`}
+                className={`channel-select-compact problem-filter-select ${complianceSummary.problems > 0 && problemFilter !== 'all' && problemFilter !== 'sharing_screen' ? 'has-active-filter' : ''}`}
                 value={problemFilter}
                 onChange={(e) => setProblemFilter(e.target.value)}
                 title="Filter by student compliance issue"
               >
                 <option value="all">👥 All Students ({complianceSummary.total})</option>
+                <option value="sharing_screen">🖥️ Sharing Screen ({complianceSummary.sharingScreen || 0})</option>
                 <option value="problems">⚠️ Problems ({complianceSummary.problems})</option>
                 <option value="no_cam">📷 Missing Cam ({complianceSummary.noCam})</option>
                 <option value="no_mic">🎙️ Missing Mic ({complianceSummary.noMic})</option>
@@ -2839,7 +2841,7 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
                 <option value="2row_30s">🔄 Roll 2 Rows (30s)</option>
               </select>
 
-              {problemFilter !== 'all' && filteredStudents.length > 0 && (
+              {problemFilter !== 'all' && problemFilter !== 'sharing_screen' && filteredStudents.length > 0 && (
                 <button
                   type="button"
                   className="compact-nudge-btn"

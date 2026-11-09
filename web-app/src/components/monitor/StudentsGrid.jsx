@@ -25,7 +25,7 @@ const StudentsGrid = ({
             const existingStudent = students.find((s) => s.id === studentUid);
             return existingStudent || { id: studentUid, email, isSharing: !!screenshots[studentUid] };
           })
-        : (problemFilter === 'all'
+        : (problemFilter === 'all' || problemFilter === 'sharing_screen'
             ? students.filter((student) => student.isSharing)
             : students
           )
@@ -48,7 +48,9 @@ const StudentsGrid = ({
             margin: '10px 0',
           }}
         >
-          {problemFilter !== 'all'
+          {problemFilter === 'sharing_screen'
+            ? 'No students are currently sharing their screen.'
+            : problemFilter !== 'all'
             ? '✨ All students are compliant with the selected filter.'
             : 'No active student streams currently sharing.'}
         </div>
