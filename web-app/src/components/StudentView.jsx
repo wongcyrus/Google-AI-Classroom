@@ -695,10 +695,10 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
 
   const isExamActive = Boolean(isExamReadyLocal || myProperties?.examReadiness?.isReady || isNowInExamPeriod);
   const isAudioCaptureActive =
-    Boolean(enableAudioCapture) &&
     (isSharing || isWebcamSharing || isScreenSharing || isExamActive) &&
     isAudioUserEnabled &&
-    !isSessionDisplaced;
+    !isSessionDisplaced &&
+    (enableAudioCapture || isLocalVoiceAiEnabled || effectiveVoiceAiMode !== 'disabled' || isAudioUserEnabled);
 
   // 1. Segmented Audio Recording Hook with Moving Window & Selected Mic Device
   const {
@@ -1215,8 +1215,8 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
 
     const sendHeartbeat = () => {
       const isMicActive = Boolean(
-        enableAudioCapture &&
-          (isAudioRecording || (isAudioUserEnabled && hasMicPermission !== false && !audioError))
+        isAudioUserEnabled &&
+          (isAudioRecording || (hasMicPermission !== false && !audioError))
       );
       const activeStreams = [
         ...(isScreenSharing ? ['screen'] : []),
@@ -1256,14 +1256,14 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
     const activeStreams = isWebcamSharing
       ? [
           'webcam',
-          ...(enableAudioCapture && isAudioUserEnabled && hasMicPermission !== false && !audioError
+          ...(isAudioUserEnabled && hasMicPermission !== false && !audioError
             ? ['audio']
             : []),
         ]
       : [];
     await updateCaptureStatus(activeStreams);
     showSystemNotification(
-      enableAudioCapture && !isWebcamSharing
+      isAudioUserEnabled && !isWebcamSharing
         ? "Screen and microphone sharing have stopped."
         : "Screen sharing has stopped."
     );
@@ -1281,7 +1281,7 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
     const activeStreams = isScreenSharing
       ? [
           'screen',
-          ...(enableAudioCapture && isAudioUserEnabled && hasMicPermission !== false && !audioError
+          ...(isAudioUserEnabled && hasMicPermission !== false && !audioError
             ? ['audio']
             : []),
         ]
@@ -1400,7 +1400,7 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
       const activeStreams = [
         'webcam',
         ...(isScreenSharing ? ['screen'] : []),
-        ...(enableAudioCapture && isAudioUserEnabled && hasMicPermission !== false && !audioError
+        ...(isAudioUserEnabled && hasMicPermission !== false && !audioError
           ? ['audio']
           : []),
       ];
@@ -1555,13 +1555,12 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
           stopScreenRef.current?.();
         };
       }
-      if (!existingStream && enableAudioCapture) {
+      if (!existingStream && isAudioUserEnabled) {
         setIsAudioUserEnabled(true);
       }
       setIsScreenSharing(true);
       const willRecordAudio = Boolean(
-        enableAudioCapture &&
-          (isAudioUserEnabled || !existingStream) &&
+        (isAudioUserEnabled || !existingStream) &&
           hasMicPermission !== false &&
           !audioError
       );
@@ -1572,7 +1571,7 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
       ];
       await updateCaptureStatus(activeStreams, activeClass);
       showSystemNotification(
-        enableAudioCapture
+        willRecordAudio
           ? "Screen and microphone recording have started."
           : "Screen recording has started."
       );
@@ -2795,12 +2794,12 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
                     onClick={() => startScreen()}
                     className="btn-quick-start-screen"
                     title={
-                      enableAudioCapture
+                      isAudioUserEnabled
                         ? 'Start Screen Sharing and Microphone Recording Directly'
                         : 'Start Screen Sharing Directly'
                     }
                   >
-                    {enableAudioCapture
+                    {isAudioUserEnabled
                       ? '🖥️🎙️ Quick Start (Screen + Mic)'
                       : '🖥️ Quick Start (Screen Only)'}
                   </button>
@@ -2827,18 +2826,23 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
                     </span>
                   </div>
 
-                  <div className="summary-item">
+                  <div
+                    className="summary-item summary-item-clickable"
+                    onClick={() => setIsMicSetupOpen(true)}
+                    title="Click to select and test microphone"
+                    style={{ cursor: 'pointer' }}
+                  >
                     <span className="summary-icon">🎙️</span>
                     <div className="summary-text">
                       <strong>Microphone</strong>
                       <span>
                         {enableAudioCapture
                           ? (audioCaptureMode === 'mandatory' ? 'Required (Recording)' : 'Optional (Recording)')
-                          : 'Not Recording'}
+                          : (isAudioUserEnabled ? 'Active (Voice AI)' : 'Muted (Click to Setup)')}
                       </span>
                     </div>
-                    <span className={`summary-badge ${enableAudioCapture && isAudioUserEnabled ? 'ready' : 'info'}`}>
-                      {enableAudioCapture ? (isAudioUserEnabled ? 'Active' : 'Muted') : 'Off'}
+                    <span className={`summary-badge ${isAudioUserEnabled ? 'ready' : 'info'}`}>
+                      {isAudioUserEnabled ? 'Active' : 'Muted'}
                     </span>
                   </div>
 
@@ -2976,34 +2980,32 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
 
                 <div className="active-controls-right">
                   {/* Mic Mute / Blocked Toggle */}
-                  {(enableAudioCapture || isAudioRecording) && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (isAudioUserEnabled && (audioError || hasMicPermission === false)) {
-                          setIsMicSetupOpen(true);
-                        } else {
-                          setIsAudioUserEnabled((prev) => !prev);
-                        }
-                      }}
-                      className={`active-tool-button ${!isAudioUserEnabled || audioError || hasMicPermission === false ? 'muted' : 'active'}`}
-                      title={
-                        !isAudioUserEnabled
-                          ? 'Unmute Mic'
-                          : audioError || hasMicPermission === false
-                          ? 'Microphone blocked or unavailable — Click to configure microphone'
-                          : 'Mute Mic'
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (isAudioUserEnabled && (audioError || hasMicPermission === false)) {
+                        setIsMicSetupOpen(true);
+                      } else {
+                        setIsAudioUserEnabled((prev) => !prev);
                       }
-                    >
-                      {!isAudioUserEnabled
-                        ? '🔇 Unmute'
+                    }}
+                    className={`active-tool-button ${!isAudioUserEnabled || audioError || hasMicPermission === false ? 'muted' : 'active'}`}
+                    title={
+                      !isAudioUserEnabled
+                        ? 'Unmute Mic'
                         : audioError || hasMicPermission === false
-                        ? '⚠️ Mic Blocked'
-                        : isSpeaking
-                        ? '🔊 Speaking'
-                        : '🎙️ Mic Active'}
-                    </button>
-                  )}
+                        ? 'Microphone blocked or unavailable — Click to configure microphone'
+                        : 'Mute Mic'
+                    }
+                  >
+                    {!isAudioUserEnabled
+                      ? '🔇 Unmute'
+                      : audioError || hasMicPermission === false
+                      ? '⚠️ Mic Blocked'
+                      : isSpeaking
+                      ? '🔊 Speaking'
+                      : '🎙️ Mic Active'}
+                  </button>
 
                   {/* Webcam Switcher if multiple webcams */}
                   {availableWebcams.length > 1 && (
@@ -3047,7 +3049,7 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
               </div>
             )}
 
-            {enableAudioCapture && isSharing && isAudioUserEnabled && (audioError || hasMicPermission === false) && (
+            {isSharing && isAudioUserEnabled && (audioError || hasMicPermission === false) && (
               <div
                 className="mic-permission-alert-banner"
                 role="alert"
@@ -3700,6 +3702,16 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
       <ExamReadinessWizard
         isOpen={isReadinessWizardOpen}
         onClose={() => setIsReadinessWizardOpen(false)}
+        user={user}
+        classId={activeClass}
+        currentMicDeviceId={selectedMicDeviceId}
+        onSelectMicDevice={(id) => setSelectedMicDeviceId(id)}
+        currentCameraDeviceId={selectedWebcamId}
+        onSelectCameraDevice={(id) => setSelectedWebcamId(id)}
+        currentScreenStream={screenStreamRef.current}
+        captureMode={captureMode}
+        enableAudioCapture={enableAudioCapture}
+        audioCaptureMode={audioCaptureMode}
         onComplete={async (readinessResult) => {
           setIsReadinessWizardOpen(false);
           setIsExamReadyLocal(true);

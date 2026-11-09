@@ -89,7 +89,7 @@ export async function acquireInputDeviceStream(kind, deviceId = '', trackConstra
   const devicesBeforePermission = deviceId ? await listInputDevices(kind) : [];
   const permissionStream = await navigator.mediaDevices.getUserMedia(permissionConstraints);
 
-  if (!deviceId) {
+  if (!deviceId || deviceId === '(default)') {
     return permissionStream;
   }
 

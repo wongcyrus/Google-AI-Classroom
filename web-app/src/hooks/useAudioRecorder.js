@@ -471,6 +471,7 @@ export function useAudioRecorder({
     const startAttempt = ++startAttemptRef.current;
     isRecordingRef.current = true;
     setAudioError(null);
+    automaticStartFailureKeyRef.current = '';
     console.log('%c[useAudioRecorder:Start] 🎙️ Starting recording stream with deviceId:', 'background:#0891b2;color:white;font-weight:bold;padding:2px 6px;border-radius:4px;', deviceId || '(system default)');
     try {
       const stream = await acquireInputDeviceStream('audio', deviceId, {

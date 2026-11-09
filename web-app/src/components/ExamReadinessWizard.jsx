@@ -141,7 +141,7 @@ export default function ExamReadinessWizard({
 
   // --- Step 1: Live Mic VU Meter ---
   useEffect(() => {
-    if (!isOpen || step !== 1 || !selectedMic) {
+    if (!isOpen || step !== 1) {
       if (micAnimFrameRef.current) cancelAnimationFrame(micAnimFrameRef.current);
       if (micAudioCtxRef.current && micAudioCtxRef.current.state !== 'closed') {
         micAudioCtxRef.current.close().catch(() => {});
@@ -156,13 +156,18 @@ export default function ExamReadinessWizard({
     let isMounted = true;
     const startMic = async () => {
       try {
-        const stream = await acquireInputDeviceStream('audio', selectedMic);
+        const stream = await acquireInputDeviceStream('audio', selectedMic || '');
         if (!isMounted) {
           stream.getTracks().forEach((t) => t.stop());
           return;
         }
 
         micStreamRef.current = stream;
+        const activeTrack = stream?.getAudioTracks?.()[0];
+        const actualMicId = activeTrack?.getSettings?.().deviceId;
+        if (actualMicId && !selectedMic) {
+          setSelectedMic(actualMicId);
+        }
         loadDevices();
 
         try {
@@ -281,7 +286,7 @@ export default function ExamReadinessWizard({
 
   // --- Step 2: Camera Preview ---
   useEffect(() => {
-    if (!isOpen || step !== 2 || !selectedCamera) {
+    if (!isOpen || step !== 2) {
       if (cameraStreamRef.current) {
         cameraStreamRef.current.getTracks().forEach((t) => t.stop());
         cameraStreamRef.current = null;
@@ -292,7 +297,7 @@ export default function ExamReadinessWizard({
     let isMounted = true;
     const startCamera = async () => {
       try {
-        const stream = await acquireInputDeviceStream('video', selectedCamera);
+        const stream = await acquireInputDeviceStream('video', selectedCamera || '');
 
         if (!isMounted) {
           stream.getTracks().forEach((t) => t.stop());
@@ -300,6 +305,11 @@ export default function ExamReadinessWizard({
         }
 
         cameraStreamRef.current = stream;
+        const activeCamTrack = stream?.getVideoTracks?.()[0];
+        const actualCamId = activeCamTrack?.getSettings?.().deviceId;
+        if (actualCamId && !selectedCamera) {
+          setSelectedCamera(actualCamId);
+        }
         if (cameraVideoRef.current) {
           cameraVideoRef.current.srcObject = stream;
         }
