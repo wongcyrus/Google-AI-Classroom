@@ -39,18 +39,20 @@ describe('ExamReadinessWizard Component', () => {
       getDisplayMedia: vi.fn().mockResolvedValue(mockStream),
     };
 
-    window.AudioContext = vi.fn().mockImplementation(() => ({
-      state: 'running',
-      createMediaStreamSource: vi.fn().mockReturnValue({ connect: vi.fn() }),
-      createAnalyser: vi.fn().mockReturnValue({
-        fftSize: 256,
-        frequencyBinCount: 128,
-        getByteFrequencyData: vi.fn((arr) => {
-          arr.fill(50);
+    window.AudioContext = vi.fn().mockImplementation(function() {
+      return {
+        state: 'running',
+        createMediaStreamSource: vi.fn().mockReturnValue({ connect: vi.fn() }),
+        createAnalyser: vi.fn().mockReturnValue({
+          fftSize: 256,
+          frequencyBinCount: 128,
+          getByteFrequencyData: vi.fn((arr) => {
+            arr.fill(50);
+          }),
         }),
-      }),
-      close: vi.fn().mockResolvedValue(),
-    }));
+        close: vi.fn().mockResolvedValue(),
+      };
+    });
 
     function MockSpeechRecognition() {
       this.continuous = false;

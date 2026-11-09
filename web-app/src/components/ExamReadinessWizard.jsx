@@ -505,6 +505,15 @@ export default function ExamReadinessWizard({
     let isMounted = true;
     const startCamera = async () => {
       try {
+        if (cameraStreamRef.current) {
+          cameraStreamRef.current.getTracks().forEach((t) => t.stop());
+          cameraStreamRef.current = null;
+          const releaseDelay = typeof process !== 'undefined' && process.env?.NODE_ENV === 'test' ? 0 : 50;
+          if (releaseDelay > 0) {
+            await new Promise((r) => setTimeout(r, releaseDelay));
+          }
+        }
+
         const stream = await acquireInputDeviceStream('video', selectedCamera || '');
 
         if (!isMounted) {
@@ -515,9 +524,12 @@ export default function ExamReadinessWizard({
         cameraStreamRef.current = stream;
         const activeCamTrack = stream?.getVideoTracks?.()[0];
         const actualCamId = activeCamTrack?.getSettings?.().deviceId;
-        if (actualCamId && !selectedCamera) {
-          acquiredCamIdRef.current = actualCamId;
+        acquiredCamIdRef.current = actualCamId || selectedCamera;
+        if (actualCamId && actualCamId !== 'default' && !selectedCamera) {
           setSelectedCamera(actualCamId);
+        }
+        if (actualCamId || selectedCamera) {
+          onSelectCameraDevice?.(actualCamId || selectedCamera);
         }
         if (cameraVideoRef.current) {
           cameraVideoRef.current.srcObject = stream;
@@ -526,10 +538,13 @@ export default function ExamReadinessWizard({
           } catch {}
         }
 
+        setHasCameraHardware(true);
         loadDevices();
       } catch (err) {
         console.warn('Wizard camera init failed or unavailable:', err);
-        setHasCameraHardware(false);
+        if (!selectedCamera) {
+          setHasCameraHardware(false);
+        }
       }
     };
 

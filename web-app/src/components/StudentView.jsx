@@ -695,7 +695,7 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
 
   const isExamActive = Boolean(isExamReadyLocal || myProperties?.examReadiness?.isReady || isNowInExamPeriod);
   const isAudioCaptureActive =
-    (isSharing || isWebcamSharing || isScreenSharing || isExamActive) &&
+    (isSharing || isWebcamSharing || isScreenSharing) &&
     isAudioUserEnabled &&
     !isSessionDisplaced &&
     (enableAudioCapture || isLocalVoiceAiEnabled || effectiveVoiceAiMode !== 'disabled' || isAudioUserEnabled);
@@ -1371,6 +1371,10 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
     if (webcamStreamRef.current && webcamStreamRef.current !== existingStream) {
       webcamStreamRef.current.getTracks().forEach(track => track.stop());
       webcamStreamRef.current = null;
+      const releaseDelay = typeof process !== 'undefined' && process.env?.NODE_ENV === 'test' ? 0 : 50;
+      if (releaseDelay > 0) {
+        await new Promise(resolve => setTimeout(resolve, releaseDelay));
+      }
     }
 
     const deviceIdToUse = targetDeviceId || selectedWebcamId;
@@ -1400,7 +1404,8 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
         };
       }
 
-      const actualDeviceId = activeTrack?.getSettings?.().deviceId || deviceIdToUse;
+      const trackDeviceId = activeTrack?.getSettings?.().deviceId;
+      const actualDeviceId = (trackDeviceId && trackDeviceId !== 'default') ? trackDeviceId : deviceIdToUse;
       if (actualDeviceId) setSelectedWebcamId(actualDeviceId);
 
       // Re-enumerate to get human-readable labels now that camera permission is granted
@@ -1428,7 +1433,7 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
   const handleWebcamChange = (e) => {
     const newDeviceId = e.target.value;
     setSelectedWebcamId(newDeviceId);
-    if (isWebcamSharing) {
+    if (isWebcamSharing || isSharing) {
       startWebcam(newDeviceId);
     }
   };
@@ -2837,7 +2842,33 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
                     <span className="summary-icon">📷</span>
                     <div className="summary-text">
                       <strong>Camera & Gaze</strong>
-                      <span>{availableWebcams.length > 0 ? `${availableWebcams.length} Detected` : 'Optional / Screen-Only'}</span>
+                      {availableWebcams.length > 1 ? (
+                        <select
+                          value={selectedWebcamId}
+                          onChange={(e) => setSelectedWebcamId(e.target.value)}
+                          className="summary-webcam-select"
+                          aria-label="Select Preferred Webcam"
+                          style={{
+                            display: 'block',
+                            marginTop: '2px',
+                            padding: '2px 6px',
+                            fontSize: '0.78rem',
+                            borderRadius: '4px',
+                            border: '1px solid #cbd5e1',
+                            background: '#fff',
+                            color: '#1e293b',
+                            maxWidth: '180px'
+                          }}
+                        >
+                          {availableWebcams.map((cam, idx) => (
+                            <option key={cam.deviceId || idx} value={cam.deviceId}>
+                              {cam.label}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <span>{availableWebcams.length > 0 ? (availableWebcams[0].label || `${availableWebcams.length} Detected`) : 'Optional / Screen-Only'}</span>
+                      )}
                     </div>
                     <span className={`summary-badge ${availableWebcams.length > 0 ? 'ready' : 'info'}`}>
                       {availableWebcams.length > 0 ? 'Detected' : 'No Webcam'}
