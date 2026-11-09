@@ -5,7 +5,7 @@
 
 ---
 
-![4-Tier Hybrid Edge-to-Cloud Architecture](../presentation/images/slide_hybrid_architecture.png)
+![Serverless AI Classroom Assistant with Gemini 4 & Firebase](../presentation/images/slide_hero_classroom_ai.png)
 
 ## 1. Problem Statement: The Classroom Trilemma — Integrity vs. Privacy vs. Cloud FinOps
 
@@ -43,8 +43,6 @@ Instead of streaming 50 concurrent 1080p WebRTC video feeds to cloud GPU cluster
 A classic architectural mistake in serverless Firebase applications is dumping every trigger and callable endpoint into a single monolithic `functions/index.js`. When we benchmarked a monolithic deployment early in development, we discovered two severe problems:
 - **Cold-Start Contamination**: Packaging `fluent-ffmpeg`, `@ffmpeg-installer/ffmpeg`, `sharp`, and `@google-cloud/tasks` alongside lightweight Google Cloud Identity Platform (GCIP) blocking functions (`beforeUserCreated`, `beforeUserSignedIn`) inflated container cold starts above 4.2 seconds—causing noticeable login delays for students scanning classroom QR codes.
 - **Blast-Radius & Memory Over-Provisioning**: Video compilation (`compileVideo`) requires **2 vCPUs and 8 GiB of RAM** with a **540-second timeout**, whereas an attendance heartbeat or CSV property upload needs only **256 MiB of RAM**.
-
-![7 Isolated Cloud Functions Gen 2 Codebases](../presentation/images/slide_cloud_functions_gen2.png)
 
 In [`firebase.json`](../../firebase.json), we partitioned our backend into **7 isolated Cloud Functions Gen 2 micro-codebases** running on Node.js 22, each with its own independent `package.json`, dependency tree, memory profile, and CI/CD deployment guard:
 
