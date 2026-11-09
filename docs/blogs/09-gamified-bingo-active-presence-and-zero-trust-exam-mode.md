@@ -1,3 +1,12 @@
+---
+title: "Part 9: Gamified \"Bingo\" Active Presence Verification & Zero-Trust Exam Mode on Google Cloud"
+published: true
+description: "Gamified active presence verification with AI question bank studio and zero-trust exam proctoring on Google Cloud."
+tags: security, gamification, googlecloud, webdev
+cover_image: https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog09_cover_gamified_bingo_exam_mode.png
+canonical_url: https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/09-gamified-bingo-active-presence-and-zero-trust-exam-mode.md
+---
+
 # Part 9: Gamified "Bingo" Active Presence Verification & Zero-Trust Exam Mode on Google Cloud
 
 **Author:** [**Cyrus Wong (黃俊彥)**](https://www.linkedin.com/in/cyruswong/) — *Google Developer Expert - Cloud (AI), Senior Lecturer at HKIIT*  
@@ -5,7 +14,7 @@
 
 ---
 
-![Bingo Active Presence & 2-Strike Verification](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/presentation/images/slide_bingo_active_presence.png)
+![Part 9: Gamified Bingo Active Presence & Zero-Trust Exam Mode](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog09_cover_gamified_bingo_exam_mode.png)
 
 ## 1. Verifying Active Attention Without Punitive Surveillance or Idle Polling Bills
 

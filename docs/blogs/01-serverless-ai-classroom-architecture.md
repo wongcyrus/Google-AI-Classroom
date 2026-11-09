@@ -1,3 +1,12 @@
+---
+title: "Part 1: Solving the $25-Per-Exam Problem — Architecting a Sub-$0.02/Student Serverless AI Classroom with Gemini 4 & Firebase"
+published: true
+description: "Architecting a production sub-$0.02/student-hour serverless AI classroom on Google Cloud with Gemini 4, Firebase, and browser-edge AI."
+tags: googlecloud, ai, webdev, serverless
+cover_image: https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog01_cover_serverless_ai_classroom.png
+canonical_url: https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/01-serverless-ai-classroom-architecture.md
+---
+
 # Part 1: Solving the $25-Per-Exam Problem — Architecting a Sub-$0.02/Student Serverless AI Classroom with Gemini 4 & Firebase
 
 **Author:** [**Cyrus Wong (黃俊彥)**](https://www.linkedin.com/in/cyruswong/) — *Google Developer Expert - Cloud (AI), Senior Lecturer at HKIIT*  
@@ -5,7 +14,7 @@
 
 ---
 
-![Serverless AI Classroom Assistant with Gemini 4 & Firebase](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/presentation/images/slide_hero_classroom_ai.png)
+![Part 1: Solving the $25-Per-Exam Problem — Sub-$0.02/Student Serverless AI Classroom with Gemini 4 & Firebase](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog01_cover_serverless_ai_classroom.png)
 
 ## 1. Problem Statement: The Classroom Trilemma — Integrity vs. Privacy vs. Cloud FinOps
 

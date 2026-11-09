@@ -1,3 +1,12 @@
+---
+title: "Part 7: Serverless Map-Reduce-Map Video Intelligence & Rubric-Driven Practical Task Auto-Grading with Gemini 4 Argon"
+published: true
+description: "Serverless Map-Reduce-Map video intelligence and rubric-driven practical task auto-grading with Gemini 4 Argon on Google Cloud."
+tags: googlecloud, video, ai, cloudtasks
+cover_image: https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog07_cover_serverless_map_reduce_video_grading.png
+canonical_url: https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/07-serverless-map-reduce-video-and-gemini-4-rubric-grading.md
+---
+
 # Part 7: Serverless Map-Reduce-Map Video Intelligence & Rubric-Driven Practical Task Auto-Grading with Gemini 4 Argon
 
 **Author:** [**Cyrus Wong (黃俊彥)**](https://www.linkedin.com/in/cyruswong/) — *Google Developer Expert - Cloud (AI), Senior Lecturer at HKIIT*  
@@ -5,7 +14,7 @@
 
 ---
 
-![Serverless Map-Reduce-Map Video Intelligence](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/presentation/images/slide_map_reduce_ai_jobs.png)
+![Part 7: Serverless Map-Reduce Video Intelligence & Rubric Grading](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog07_cover_serverless_map_reduce_video_grading.png)
 
 ## 1. The 80-Hour Lab Grading Bottleneck & The HTTP 429 Quota Wall
 

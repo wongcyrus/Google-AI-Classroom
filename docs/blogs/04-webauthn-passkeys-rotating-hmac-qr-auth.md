@@ -1,3 +1,12 @@
+---
+title: "Part 4: Defeating Proxy Attendance & Lab Keyloggers with WebAuthn Passkeys, Rotating HMAC QRs & GCIP Blocking Functions"
+published: true
+description: "Defeating proxy attendance and keyloggers with FIDO2 WebAuthn Passkeys, 10-second rotating HMAC QR codes, and GCIP Cloud Identity blocking hooks."
+tags: security, passkeys, webauthn, googlecloud
+cover_image: https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog04_cover_webauthn_passkeys_rotating_qr.png
+canonical_url: https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/04-webauthn-passkeys-rotating-hmac-qr-auth.md
+---
+
 # Part 4: Defeating Proxy Attendance & Lab Keyloggers with WebAuthn Passkeys, Rotating HMAC QRs & GCIP Blocking Functions
 
 **Author:** [**Cyrus Wong (黃俊彥)**](https://www.linkedin.com/in/cyruswong/) — *Google Developer Expert - Cloud (AI), Senior Lecturer at HKIIT*  
@@ -5,7 +14,7 @@
 
 ---
 
-![Mobile Passkey & Rotating QR Attendance](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/presentation/images/slide_mobile_passkey_attendance.png)
+![Part 4: Defeating Proxy Attendance & Keyloggers — FIDO2 Passkeys, Rotating HMAC QRs & GCIP Blocking Functions](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog04_cover_webauthn_passkeys_rotating_qr.png)
 
 ## 1. Problem Statement: The Dual Security Crisis in University Computer Labs & 200-Seat Lecture Theatres
 

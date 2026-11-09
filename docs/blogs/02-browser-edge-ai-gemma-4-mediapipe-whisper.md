@@ -1,3 +1,12 @@
+---
+title: "Part 2: Zero-Egress Browser Edge AI — Running Gemma 4 E2B, MediaPipe 3D Face Mesh & LiteRT Whisper in Web Workers"
+published: true
+description: "Run on-device AI in browser Web Workers with LiteRT-LM Gemma 4 E2B, MediaPipe 478-pt Face Mesh, and LiteRT Whisper with zero cloud egress cost."
+tags: webgpu, ai, webdev, javascript
+cover_image: https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog02_cover_browser_edge_ai_gemma4.png
+canonical_url: https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/02-browser-edge-ai-gemma-4-mediapipe-whisper.md
+---
+
 # Part 2: Zero-Egress Browser Edge AI — Running Gemma 4 E2B, MediaPipe 3D Face Mesh & LiteRT Whisper in Web Workers
 
 **Author:** [**Cyrus Wong (黃俊彥)**](https://www.linkedin.com/in/cyruswong/) — *Google Developer Expert - Cloud (AI), Senior Lecturer at HKIIT*  
@@ -5,7 +14,7 @@
 
 ---
 
-![Browser-Native Edge Speech & Vision AI](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/presentation/images/slide_edge_speech_proctor.png)
+![Part 2: Zero-Egress Browser Edge AI — Gemma 4 E2B, MediaPipe 3D Face Mesh & LiteRT Whisper in Web Workers](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog02_cover_browser_edge_ai_gemma4.png)
 
 ## 1. Problem Statement: Why Privacy-by-Design Requires Running LLMs & Vision Models in the Browser
 

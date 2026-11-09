@@ -1,3 +1,12 @@
+---
+title: "Part 3: Frontier Multimodal Orchestration — Right-Sizing Gemini 4 Argon, Gemini 3.8 Flash & On-Device Gemma 4 E2B with Google Genkit"
+published: true
+description: "Orchestrating Gemini 4 Argon, Gemini 3.8 Flash, and on-device Gemma 4 with Google Genkit resilience patterns and multi-tier prompt governance."
+tags: googlecloud, genkit, gemini, ai
+cover_image: https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog03_cover_frontier_multimodal_orchestration.png
+canonical_url: https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/03-gemini-4-argon-genkit-multimodal-resilience.md
+---
+
 # Part 3: Frontier Multimodal Orchestration — Right-Sizing Gemini 4 Argon (`gemini-4-argon`), Gemini 3.8 Flash & On-Device Gemma 4 E2B with Google Genkit
 
 **Author:** [**Cyrus Wong (黃俊彥)**](https://www.linkedin.com/in/cyruswong/) — *Google Developer Expert - Cloud (AI), Senior Lecturer at HKIIT*  
@@ -5,7 +14,7 @@
 
 ---
 
-![Gemini 4 & Gemma 4 E2B Model Matrix](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/presentation/images/slide_gemini_models_matrix.png)
+![Part 3: Frontier Multimodal Orchestration — Right-Sizing Gemini 4 Argon, Gemini 3.8 Flash & Genkit Resilience](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog03_cover_frontier_multimodal_orchestration.png)
 
 ## 1. Problem Statement: The Multimodal Classroom Paradox — Why One Model Size Never Fits All
 

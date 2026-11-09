@@ -1,3 +1,12 @@
+---
+title: "Part 6: Scaling Classroom Screen Broadcasting to 1,000+ Viewers & Single-Pass Whole-Lecture Subtitles with Gemini 4 Argon"
+published: true
+description: "Scaling proctored screen broadcasting to 1,000+ zero-auth viewers and compiling single-pass whole-lecture subtitles with Gemini 4 Argon."
+tags: googlecloud, video, webrtc, gemini
+cover_image: https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog06_cover_scalable_screen_broadcast.png
+canonical_url: https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/06-scalable-screen-broadcast-and-gemini-4-lecture-studio.md
+---
+
 # Part 6: Scaling Classroom Screen Broadcasting to 1,000+ Viewers & Single-Pass Whole-Lecture Subtitles with Gemini 4 Argon
 
 **Author:** [**Cyrus Wong (黃俊彥)**](https://www.linkedin.com/in/cyruswong/) — *Google Developer Expert - Cloud (AI), Senior Lecturer at HKIIT*  
@@ -5,7 +14,7 @@
 
 ---
 
-![Public Presentation Mode & 1,000+ Spectator Fanout](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/presentation/images/slide_public_presentation_mode.png)
+![Part 6: Scaling Screen Broadcast to 1,000+ Viewers & Gemini 4 Lecture Studio](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog06_cover_scalable_screen_broadcast.png)
 
 ## 1. Problem Statement: Breaking Two Hard Ceilings in Lecture Hall Broadcasting & Post-Lecture Publishing
 

@@ -1,3 +1,12 @@
+---
+title: "Part 5: Real-Time Multilingual Live Subtitles & Hong Kong Code-Switching with Gemini 4 / 3.8 & On-Device Gemma 4 E2B"
+published: true
+description: "Real-time multilingual live subtitles handling Hong Kong English-Cantonese code-switching via Gemini 4, Gemini 3.8, and on-device Gemma 4 E2B."
+tags: ai, webdev, speech, gemini
+cover_image: https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog05_cover_realtime_live_subtitles.png
+canonical_url: https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/05-realtime-live-subtitles-code-switching-gemini-4-gemma-4.md
+---
+
 # Part 5: Real-Time Multilingual Live Subtitles & Hong Kong Code-Switching with Gemini 4 / 3.8 & On-Device Gemma 4 E2B
 
 **Author:** [**Cyrus Wong (黃俊彥)**](https://www.linkedin.com/in/cyruswong/) — *Google Developer Expert - Cloud (AI), Senior Lecturer at HKIIT*  
@@ -5,7 +14,7 @@
 
 ---
 
-![Live Subtitles & Multilingual Captions Engine](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/presentation/images/slide_live_subtitles_multilingual.png)
+![Part 5: Real-Time Multilingual Live Subtitles — Hong Kong Code-Switching with Gemini 4 / 3.8 & Edge Gemma 4](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog05_cover_realtime_live_subtitles.png)
 
 ## 1. Problem Statement: Why Standard Speech-to-Text Breaks in Bilingual Technical Classrooms
 
