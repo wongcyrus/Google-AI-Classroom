@@ -95,6 +95,35 @@ describe('ExamReadinessWizard Component', () => {
     expect(screen.getByText(/2. 📷 Camera & Pose/i)).toBeInTheDocument();
   });
 
+  it('triggers voice recording and playback test in Step 1', async () => {
+    render(
+      <ExamReadinessWizard
+        isOpen={true}
+        onClose={vi.fn()}
+        onComplete={vi.fn()}
+        user={{ uid: 'student_1' }}
+        classId="CLASS_1"
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Test Speech/i })).toBeInTheDocument();
+    });
+
+    const testBtn = screen.getByRole('button', { name: /Test Speech/i });
+    fireEvent.click(testBtn);
+
+    expect(screen.getByText(/Recording Sample/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Stop/i })).toBeInTheDocument();
+
+    // Stop recording
+    fireEvent.click(screen.getByRole('button', { name: /Stop/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Microphone & Audio Playback Verified/i)).toBeInTheDocument();
+    });
+  });
+
   it('navigates through all 3 steps, changes camera, calibrates face, verifies screen share and finishes', async () => {
     const onComplete = vi.fn();
     const onClose = vi.fn();

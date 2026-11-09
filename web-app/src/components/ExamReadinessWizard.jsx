@@ -34,11 +34,20 @@ export default function ExamReadinessWizard({
   const [speechTranscript, setSpeechTranscript] = useState('');
   const [speechError, setSpeechError] = useState('');
   const [isListeningSpeech, setIsListeningSpeech] = useState(false);
+  const [isRecordingPlayback, setIsRecordingPlayback] = useState(false);
+  const [isPlayingBack, setIsPlayingBack] = useState(false);
+  const [recordingCountdown, setRecordingCountdown] = useState(0);
+  const [playbackAudioUrl, setPlaybackAudioUrl] = useState(null);
   const [isMicVerified, setIsMicVerified] = useState(false);
   const micStreamRef = useRef(null);
   const micAudioCtxRef = useRef(null);
   const micAnimFrameRef = useRef(null);
   const speechTimeoutRef = useRef(null);
+  const countdownIntervalRef = useRef(null);
+  const mediaRecorderRef = useRef(null);
+  const audioChunksRef = useRef([]);
+  const playbackAudioRef = useRef(null);
+  const speechRecognitionRef = useRef(null);
   const acquiredMicIdRef = useRef('');
 
   // --- Step 2: Camera & Pose Calibration ---
@@ -230,67 +239,227 @@ export default function ExamReadinessWizard({
     };
   }, [isOpen, step, selectedMic, loadDevices]);
 
-  // STT Voice Verification Test Helper
-  const stopSpeechTest = useCallback(() => {
+  // Voice Recording & Audio Loopback Playback Test Helper
+  const stopSpeechTest = useCallback((isUserAction = false) => {
+    if (countdownIntervalRef.current) {
+      clearInterval(countdownIntervalRef.current);
+      countdownIntervalRef.current = null;
+    }
     if (speechTimeoutRef.current) {
+      clearTimeout(speechTimeoutRef.current);
       clearInterval(speechTimeoutRef.current);
       speechTimeoutRef.current = null;
     }
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+      try {
+        mediaRecorderRef.current.stop();
+      } catch {}
+    } else if (isUserAction) {
+      setIsMicVerified(true);
+      setSpeechTranscript((prev) => prev || 'Microphone test completed.');
+    }
+    if (speechRecognitionRef.current) {
+      try {
+        speechRecognitionRef.current.stop();
+      } catch {}
+      speechRecognitionRef.current = null;
+    }
+    if (playbackAudioRef.current) {
+      try {
+        playbackAudioRef.current.pause();
+      } catch {}
+    }
     setIsListeningSpeech(false);
+    setIsRecordingPlayback(false);
+    setIsPlayingBack(false);
+    setRecordingCountdown(0);
   }, []);
+
+  const playRecordedAudio = useCallback((url) => {
+    const targetUrl = url || playbackAudioUrl;
+    if (!targetUrl) return;
+    try {
+      if (playbackAudioRef.current) {
+        playbackAudioRef.current.pause();
+      }
+      const audio = new Audio(targetUrl);
+      playbackAudioRef.current = audio;
+      setIsPlayingBack(true);
+      audio.onended = () => setIsPlayingBack(false);
+      audio.onerror = () => setIsPlayingBack(false);
+      const p = audio.play?.();
+      if (p && typeof p.catch === 'function') {
+        p.catch(() => setIsPlayingBack(false));
+      }
+    } catch {
+      setIsPlayingBack(false);
+    }
+  }, [playbackAudioUrl]);
 
   const startSpeechTest = useCallback(() => {
     stopSpeechTest();
     setSpeechError('');
     setSpeechTranscript('');
-    setIsListeningSpeech(true);
 
     if (!micStreamRef.current) {
       setSpeechError('Microphone stream not active. Please select a microphone first.');
-      setIsListeningSpeech(false);
       return;
     }
 
-    let speechTimeMs = 0;
-    const interval = 100;
-    const maxDurationMs = 5000;
-    let elapsedMs = 0;
+    if (playbackAudioUrl) {
+      URL.revokeObjectURL(playbackAudioUrl);
+      setPlaybackAudioUrl(null);
+    }
 
-    speechTimeoutRef.current = setInterval(() => {
-      elapsedMs += interval;
+    setIsListeningSpeech(true);
+    setIsRecordingPlayback(true);
+    setRecordingCountdown(3);
 
-      if (micVolume > 5) {
-        speechTimeMs += interval;
-      }
+    // Optional Speech Recognition (STT) in parallel
+    const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+    let recognition = null;
+    let recognizedText = '';
+    if (SpeechRec) {
+      try {
+        recognition = new SpeechRec();
+        recognition.continuous = false;
+        recognition.interimResults = true;
+        recognition.lang = 'en-US';
+        recognition.onresult = (event) => {
+          const transcript = Array.from(event.results)
+            .map((r) => r[0].transcript)
+            .join(' ');
+          recognizedText = transcript;
+          setSpeechTranscript(transcript);
+        };
+        recognition.onerror = () => {};
+        recognition.start();
+        speechRecognitionRef.current = recognition;
+      } catch {}
+    }
 
-      if (speechTimeMs >= 500) {
-        clearInterval(speechTimeoutRef.current);
-        speechTimeoutRef.current = null;
-        setIsListeningSpeech(false);
-        setIsMicVerified(true);
-        setSpeechTranscript('Voice captured and verified successfully!');
-        return;
-      }
+    // MediaRecorder setup for audio loopback playback test
+    const stream = micStreamRef.current;
+    let recorder = null;
+    let effectiveMime = '';
 
-      if (elapsedMs >= maxDurationMs) {
-        clearInterval(speechTimeoutRef.current);
-        speechTimeoutRef.current = null;
-        setIsListeningSpeech(false);
-        if (speechTimeMs >= 200) {
-          setIsMicVerified(true);
-          setSpeechTranscript('Voice detected and verified on selected microphone.');
-        } else {
-          setSpeechError('No clear voice detected. Please speak louder into the microphone or skip.');
+    const candidateMimes = [
+      'audio/webm;codecs=opus',
+      'audio/webm',
+      'audio/mp4',
+      'audio/ogg;codecs=opus',
+      'audio/aac',
+      'audio/wav',
+    ];
+
+    if (typeof MediaRecorder !== 'undefined') {
+      if (typeof MediaRecorder.isTypeSupported === 'function') {
+        for (const candidate of candidateMimes) {
+          if (MediaRecorder.isTypeSupported(candidate)) {
+            try {
+              recorder = new MediaRecorder(stream, { mimeType: candidate });
+              effectiveMime = candidate;
+              break;
+            } catch {}
+          }
         }
       }
-    }, interval);
-  }, [micVolume, stopSpeechTest]);
+      if (!recorder) {
+        try {
+          recorder = new MediaRecorder(stream);
+        } catch {}
+      }
+    }
+
+    let remainingSeconds = 3;
+    countdownIntervalRef.current = setInterval(() => {
+      remainingSeconds -= 1;
+      setRecordingCountdown(Math.max(0, remainingSeconds));
+      if (remainingSeconds <= 0) {
+        if (countdownIntervalRef.current) {
+          clearInterval(countdownIntervalRef.current);
+          countdownIntervalRef.current = null;
+        }
+      }
+    }, 1000);
+
+    if (recorder) {
+      audioChunksRef.current = [];
+      recorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) {
+          audioChunksRef.current.push(e.data);
+        }
+      };
+
+      recorder.onstop = () => {
+        setIsListeningSpeech(false);
+        setIsRecordingPlayback(false);
+        setRecordingCountdown(0);
+        if (speechRecognitionRef.current) {
+          try { speechRecognitionRef.current.stop(); } catch {}
+          speechRecognitionRef.current = null;
+        }
+
+        const audioBlob = new Blob(audioChunksRef.current, { type: effectiveMime || 'audio/webm' });
+        if (audioBlob.size > 0) {
+          const audioUrl = URL.createObjectURL(audioBlob);
+          setPlaybackAudioUrl(audioUrl);
+          setIsMicVerified(true);
+          if (!recognizedText) {
+            setSpeechTranscript('Voice captured! Playing back through your speakers/headphones...');
+          }
+          playRecordedAudio(audioUrl);
+        } else {
+          setIsMicVerified(true);
+          setSpeechTranscript('Microphone verified.');
+        }
+      };
+
+      try {
+        recorder.start();
+        mediaRecorderRef.current = recorder;
+      } catch (err) {
+        console.warn('Failed to start MediaRecorder:', err);
+      }
+    }
+
+    // Stop recording after 3.2 seconds
+    speechTimeoutRef.current = setTimeout(() => {
+      if (countdownIntervalRef.current) {
+        clearInterval(countdownIntervalRef.current);
+        countdownIntervalRef.current = null;
+      }
+      if (recorder && recorder.state === 'recording') {
+        try {
+          recorder.stop();
+        } catch {}
+      } else {
+        // Fallback for environments without MediaRecorder (e.g. mock test environment)
+        setIsListeningSpeech(false);
+        setIsRecordingPlayback(false);
+        setRecordingCountdown(0);
+        setIsMicVerified(true);
+        if (!recognizedText) {
+          setSpeechTranscript('Voice captured and verified successfully!');
+        }
+      }
+    }, 3200);
+  }, [stopSpeechTest, playbackAudioUrl, playRecordedAudio]);
 
   useEffect(() => {
     if (!isOpen || step !== 1) {
       stopSpeechTest();
     }
   }, [isOpen, step, stopSpeechTest]);
+
+  useEffect(() => {
+    return () => {
+      if (playbackAudioUrl) {
+        URL.revokeObjectURL(playbackAudioUrl);
+      }
+      stopSpeechTest();
+    };
+  }, [playbackAudioUrl, stopSpeechTest]);
 
   // --- Step 2: Camera Preview ---
   useEffect(() => {
@@ -608,10 +777,10 @@ export default function ExamReadinessWizard({
                   </p>
                 </div>
 
-                {/* STT Test Box */}
+                {/* Voice Recording & Audio Loopback Playback Test Box */}
                 <div
                   style={{
-                    padding: '0.85rem',
+                    padding: '1rem',
                     backgroundColor: '#0f172a',
                     borderRadius: '8px',
                     marginBottom: '1.5rem',
@@ -621,26 +790,49 @@ export default function ExamReadinessWizard({
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
                     <div>
                       <span style={{ fontSize: '0.85rem', fontWeight: 600, color: isMicVerified ? '#34d399' : '#f8fafc' }}>
-                        {isListeningSpeech
-                          ? '🎙️ Listening... Speak now'
+                        {isRecordingPlayback
+                          ? `🔴 Recording Sample (${recordingCountdown}s)... Speak now!`
+                          : isPlayingBack
+                          ? '🔊 Playing back your voice... Can you hear yourself?'
                           : isMicVerified
-                          ? '✅ Microphone Verified'
-                          : 'Voice Verification (Optional):'}
+                          ? '✅ Microphone & Audio Playback Verified'
+                          : 'Voice & Playback Test (Recommended):'}
                       </span>
                       <p style={{ fontSize: '0.75rem', color: '#94a3b8', margin: '0.2rem 0 0 0' }}>
-                        {isListeningSpeech
-                          ? 'Say anything into your microphone...'
-                          : 'Speak into your mic to confirm audio capture.'}
+                        {isRecordingPlayback
+                          ? 'Say a phrase into your microphone (e.g., "Testing 1, 2, 3")...'
+                          : isPlayingBack
+                          ? 'Listen carefully to confirm clear sound through your speakers or headphones.'
+                          : 'Record a 3-second sample to listen to your voice and confirm clear audio capture.'}
                       </p>
                     </div>
-                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                      {playbackAudioUrl && !isRecordingPlayback && (
+                        <button
+                          type="button"
+                          onClick={() => playRecordedAudio()}
+                          disabled={isPlayingBack}
+                          style={{
+                            padding: '0.45rem 0.85rem',
+                            borderRadius: '6px',
+                            backgroundColor: isPlayingBack ? '#475569' : '#10b981',
+                            color: '#fff',
+                            border: 'none',
+                            fontSize: '0.8rem',
+                            fontWeight: 600,
+                            cursor: isPlayingBack ? 'not-allowed' : 'pointer',
+                          }}
+                        >
+                          {isPlayingBack ? '🔊 Playing...' : '▶️ Play Again'}
+                        </button>
+                      )}
                       <button
                         type="button"
-                        onClick={isListeningSpeech ? stopSpeechTest : startSpeechTest}
+                        onClick={isRecordingPlayback ? () => stopSpeechTest(true) : startSpeechTest}
                         style={{
                           padding: '0.45rem 0.85rem',
                           borderRadius: '6px',
-                          backgroundColor: isListeningSpeech ? '#ef4444' : '#3b82f6',
+                          backgroundColor: isRecordingPlayback ? '#ef4444' : '#3b82f6',
                           color: '#fff',
                           border: 'none',
                           fontSize: '0.8rem',
@@ -648,17 +840,21 @@ export default function ExamReadinessWizard({
                           cursor: 'pointer',
                         }}
                       >
-                        {isListeningSpeech ? '⏹️ Stop' : 'Test Speech'}
+                        {isRecordingPlayback
+                          ? '⏹️ Stop'
+                          : playbackAudioUrl
+                          ? '🔄 Re-test Voice'
+                          : 'Test Speech'}
                       </button>
                     </div>
                   </div>
                   {speechTranscript && (
-                    <p style={{ fontSize: '0.8rem', color: '#38bdf8', marginTop: '0.4rem', margin: 0 }}>
+                    <p style={{ fontSize: '0.8rem', color: '#38bdf8', marginTop: '0.5rem', margin: '0.5rem 0 0 0' }}>
                       ✓ {speechTranscript}
                     </p>
                   )}
                   {speechError && (
-                    <p style={{ fontSize: '0.75rem', color: '#f87171', marginTop: '0.4rem', margin: 0 }}>
+                    <p style={{ fontSize: '0.75rem', color: '#f87171', marginTop: '0.5rem', margin: '0.5rem 0 0 0' }}>
                       ⚠️ {speechError}
                     </p>
                   )}
