@@ -301,7 +301,7 @@ async function initializeGemma(modelUrl) {
   })();
 
   try {
-    await initializationPromise;
+    return await initializationPromise;
   } finally {
     initializationPromise = null;
   }

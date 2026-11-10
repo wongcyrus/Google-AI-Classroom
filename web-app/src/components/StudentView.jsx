@@ -640,10 +640,31 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
       if (localResult) {
         return localResult;
       }
-    } else if (isGemmaWorkable && gemmaStatus === 'idle' && preloadGemmaModel) {
-      Promise.resolve(preloadGemmaModel()).catch((err) =>
-        console.debug('[StudentView] Auto-starting Gemma 4 E2B preload on transcript:', err)
-      );
+    } else if (isGemmaWorkable && preloadGemmaModel) {
+      if (gemmaStatus === 'idle') {
+        Promise.resolve(preloadGemmaModel()).catch((err) =>
+          console.debug('[StudentView] Auto-starting Gemma 4 E2B preload on transcript:', err)
+        );
+      }
+      // If Gemma 4 E2B is already cached locally or nearly finished loading (>= 85%),
+      // wait briefly (up to 6s) for the WebGPU engine to finish initializing so we evaluate locally!
+      if ((isGemmaCached || gemmaLoadingProgress >= 85) && (gemmaStatus === 'idle' || gemmaStatus === 'loading')) {
+        try {
+          console.log('[StudentView] ⏳ Waiting for cached/in-progress Gemma 4 E2B engine to finish initializing before evaluating transcript...');
+          const initRes = await Promise.race([
+            Promise.resolve(preloadGemmaModel()),
+            new Promise((resolve) => setTimeout(() => resolve(null), 6000)),
+          ]);
+          if (initRes?.ready) {
+            const localResult = await evaluateSpeechWithGemma(transcript);
+            if (localResult) {
+              return localResult;
+            }
+          }
+        } catch (waitErr) {
+          console.debug('[StudentView] Gemma 4 E2B wait note:', waitErr);
+        }
+      }
     }
 
     if (!shouldSendTranscriptToCloud(effectiveVoiceAiMode)) {
@@ -676,7 +697,9 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
     effectiveVoiceAiMode,
     evaluateSpeechWithGemma,
     gemmaEngine,
+    gemmaLoadingProgress,
     gemmaStatus,
+    isGemmaCached,
     isGemmaReady,
     isGemmaWorkable,
     liveAudioPrompt,
@@ -1125,7 +1148,7 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
     if ((isAudioCaptureActive || isWhisperCached) && isLocalVoiceAiEnabled && whisperStatus === 'idle') {
       preloadWhisperModel?.();
     }
-    if ((isAudioCaptureActive || isGemmaCached) && shouldEvaluateVoiceWithGemma && isGemmaWorkable && gemmaStatus === 'idle') {
+    if (shouldEvaluateVoiceWithGemma && isGemmaWorkable && gemmaStatus === 'idle') {
       preloadGemmaModel?.();
     }
   }, [activeClass, aiMonitoringMode, isModelCached, isPreloading, clientAiStatus, isAudioCaptureActive, isLocalVoiceAiEnabled, isWhisperCached, whisperStatus, preloadModel, preloadWhisperModel, shouldEvaluateVoiceWithGemma, isGemmaCached, isGemmaWorkable, gemmaStatus, preloadGemmaModel]);

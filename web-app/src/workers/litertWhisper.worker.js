@@ -288,6 +288,18 @@ async function handleMessage(event) {
             if (typeof loadLiteRt === 'function') {
               try {
                 self.Module = self.Module || {};
+                self.Module.printErr = (text) => {
+                  const msg = String(text || '');
+                  if (
+                    msg.includes('subgraph.cc:2619') ||
+                    msg.includes('compiled_model.cc:1714') ||
+                    msg.includes('litert_compiled_model.cc:164')
+                  ) {
+                    clientInferenceSupported = false;
+                    return;
+                  }
+                  console.warn('[LiteRT WASM]', msg);
+                };
                 self.Module.locateFile = (fileName, scriptDirectory) => {
                   if (fileName.endsWith('.wasm')) {
                     return `${LITERT_WASM_URL}${fileName}`;
@@ -417,8 +429,9 @@ async function handleMessage(event) {
                 detectedLanguage
               );
             } else {
-              console.debug(
-                '[LiteRTWorker] Segment token sequence was not recognized as valid speech; skipping segment.'
+              clientInferenceSupported = false;
+              console.info(
+                '[LiteRTWorker] Dynamic output tensor allocation unsupported for bundled TFLite graph; using selected-track SpeechRecognition + AI STT stream.'
               );
             }
           } catch (inferErr) {

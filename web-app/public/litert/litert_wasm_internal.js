@@ -150,7 +150,7 @@ if (ENVIRONMENT_IS_WEB || ENVIRONMENT_IS_WORKER) {
 
 var out = console.log.bind(console);
 
-var err = console.error.bind(console);
+var err = Module["printErr"] || console.error.bind(console);
 
 // end include: shell.js
 // include: preamble.js

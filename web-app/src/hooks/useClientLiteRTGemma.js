@@ -139,11 +139,38 @@ export function useClientLiteRTGemma({
           if (payload?.status) setStatus(payload.status);
           if (typeof payload?.progress === 'number') setLoadingProgress(payload.progress);
         } else if (type === 'PROGRESS') {
-          setLoadingProgress(payload.progress);
+          const progress = Number(payload?.progress) || 0;
+          setLoadingProgress((prev) => {
+            const prevBucket = Math.floor((prev || 0) / 10);
+            const nextBucket = Math.floor(progress / 10);
+            if (nextBucket > prevBucket && progress < 100) {
+              console.log(
+                `%c[LiteRT-LM Gemma 4 E2B] ⏳ Model Loading Progress: ${progress}%`,
+                'background: #312e81; color: #c7d2fe; font-weight: bold; padding: 2px 6px; border-radius: 4px;'
+              );
+            }
+            return progress;
+          });
         } else if (type === 'INIT_COMPLETE') {
           const isGemmaReady =
             payload?.ready === true &&
             payload?.engine === 'litert_lm_gemma_e2b';
+          if (isGemmaReady) {
+            console.log(
+              '%c[LiteRT-LM Gemma 4 E2B] ✅ On-device Gemma 4 E2B initialized and ready (WebGPU)',
+              'background: #065f46; color: #6ee7b7; font-weight: bold; padding: 2px 6px; border-radius: 4px;',
+              {
+                delegate: payload?.delegate || 'webgpu',
+                cached: Boolean(payload?.cached),
+                engine: payload?.engine,
+              }
+            );
+          } else {
+            console.warn(
+              '[LiteRT-LM Gemma 4 E2B] ⚠️ On-device Gemma 4 E2B unavailable, using Cloud fallback:',
+              payload?.unavailableReason || 'unknown reason'
+            );
+          }
           const nextStatus = isGemmaReady ? 'ready' : 'unavailable';
           setStatus(nextStatus);
           statusRef.current = nextStatus;
