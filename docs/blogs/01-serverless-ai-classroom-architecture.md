@@ -1,23 +1,23 @@
 ---
-title: "Google AI Classroom Part 1: Solving the $25-Per-Exam Problem — Architecting a Sub-$0.02/Student Serverless AI Classroom with Gemini 4 & Firebase"
+title: "Google AI Classroom Part 1: Architecting a Scale-to-Zero Serverless AI Classroom with Gemini 4, Gemma 4 E2B & Firebase"
 published: true
-description: "Architecting a sub-$0.02/student-hour serverless AI platform for teaching, learning, student performance, and proctored assessments on Google Cloud."
+description: "Architecting a scale-to-zero serverless AI platform for teaching, learning, student performance, and proctored assessments on Google Cloud."
 tags: googlecloud, ai, webdev, serverless
 cover_image: https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog01_cover_serverless_ai_classroom.png
 canonical_url: https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/01-serverless-ai-classroom-architecture.md
 ---
 
-# Google AI Classroom Part 1: Solving the $25-Per-Exam Problem — Architecting a Sub-$0.02/Student Serverless AI Classroom with Gemini 4 & Firebase
+# Google AI Classroom Part 1: Architecting a Scale-to-Zero Serverless AI Classroom with Gemini 4, Gemma 4 E2B & Firebase
 
 **Author:** [**Cyrus Wong (黃俊彥)**](https://www.linkedin.com/in/cyruswong/) — *Google Developer Expert - Cloud (AI), Senior Lecturer at HKIIT*
 
 ---
 
-![Google AI Classroom Part 1: Solving the $25-Per-Exam Problem — Sub-$0.02/Student Serverless AI Classroom with Gemini 4 & Firebase](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog01_cover_serverless_ai_classroom.png)
+![Google AI Classroom Part 1: Architecting a Scale-to-Zero Serverless AI Classroom with Gemini 4 & Firebase](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog01_cover_serverless_ai_classroom.png)
 
-## 1. Problem Statement: Scaling Teaching, Student Performance Tracking & Proctored Assessments Under $0.02/Student
+## 1. Problem Statement: Scaling Teaching, Student Performance Tracking & Proctored Assessments with Scale-to-Zero Serverless
 
-In our computer laboratories at the **Hong Kong Institute of Information Technology (HKIIT / VTC)**, we run hundreds of hands-on Cloud Computing, Cybersecurity, and AI/ML lectures, practical labs, and examinations every semester. Across higher education globally, educators confront three fundamental challenges across **teaching, learning, student performance, and proctored assessments**:
+In higher education computer laboratories, we run hundreds of hands-on Cloud Computing, Cybersecurity, and AI/ML lectures, practical labs, and examinations every semester. Across higher education globally, educators confront three fundamental challenges across **teaching, learning, student performance, and proctored assessments**:
 
 1. **Visibility into Live Student Performance & Hands-On Learning**: During a 40-to-100+ student practical lab, a single lecturer cannot walk behind every desk simultaneously to see who is stuck on a Kubernetes YAML error, who has mastered the lab steps, or whether a capstone team's weekly logbook matches their actual working code.
 2. **Real-Time Proctored Tests & Examinations Without Invigilator Overload**: In high-stakes practical tests and exams, screen captures, webcam frames, and audio evidence are recorded for the official exam audit trail—yet a human invigilator cannot watch 40+ screens, 40+ webcams, and listen to 40+ microphones at once to catch fleeting 3-second violations (glancing at a hidden phone, peeking at a neighbor's screen, or whispering answers).
@@ -48,8 +48,8 @@ To support both interactive daily teaching and high-integrity proctored examinat
 
 ## 3. Domain-Driven Isolation Across 7 Cloud Functions Gen 2 Codebases
 
-A classic architectural mistake in serverless Firebase applications is dumping every trigger and callable endpoint into a single monolithic `functions/index.js`. When we benchmarked a monolithic deployment early in development, we discovered two severe problems:
-- **Cold-Start Contamination**: Packaging `fluent-ffmpeg`, `@ffmpeg-installer/ffmpeg`, `sharp`, and `@google-cloud/tasks` alongside lightweight Google Cloud Identity Platform (GCIP) blocking functions (`beforeUserCreated`, `beforeUserSignedIn`) inflated container cold starts above 4.2 seconds—causing noticeable login delays for students scanning classroom QR codes.
+A classic architectural mistake in serverless Firebase applications is dumping every trigger and callable endpoint into a single monolithic `functions/index.js`. In a monolithic deployment, two architectural problems arise:
+- **Cold-Start Contamination**: Packaging `fluent-ffmpeg`, `@ffmpeg-installer/ffmpeg`, `sharp`, and `@google-cloud/tasks` alongside lightweight Google Cloud Identity Platform (GCIP) blocking functions (`beforeUserCreated`, `beforeUserSignedIn`) inflates container cold starts and causes login delays for students scanning classroom QR codes.
 - **Blast-Radius & Memory Over-Provisioning**: Video compilation (`compileVideo`) requires **2 vCPUs and 8 GiB of RAM** with a **540-second timeout**, whereas an attendance heartbeat or CSV property upload needs only **256 MiB of RAM**.
 
 In [`firebase.json`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/firebase.json), we partitioned our backend into **7 isolated Cloud Functions Gen 2 micro-codebases** running on Node.js 22, each with its own independent `package.json`, dependency tree, memory profile, and CI/CD deployment guard:
@@ -301,19 +301,18 @@ if (quota > 0 && usage > quota) {
 
 ---
 
-## 6. Production FinOps & Performance Benchmarks (`asia-east2` Hong Kong)
+## 6. Architectural FinOps Design: Why Edge AI + Scale-to-Zero Serverless Keeps Costs Minimal
 
-By executing continuous biometric vision and speech-intent classification inside the student's browser (`Gemma 4 E2B` + `Whisper-Tiny` + `MediaPipe`) and invoking **Gemini 4 Argon (`gemini-4-argon`)**, **Gemini 3.8 Flash (`gemini-3.8-flash`)**, and **Gemini 3.5 Flash-Lite (`gemini-3.5-flash-lite`)** strictly on compact, event-driven artifacts, here is our verified production cost breakdown for a **50-student, 2-hour practical examination**:
+By executing continuous biometric vision and speech-intent classification inside the student's browser (`Gemma 4 E2B` + `Whisper-Tiny` + `MediaPipe`) and invoking **Gemini 4 Argon (`gemini-4-argon`)**, **Gemini 3.8 Flash (`gemini-3.8-flash`)**, and **Gemini 3.5 Flash-Lite (`gemini-3.5-flash-lite`)** strictly on compact, event-driven artifacts, the platform eliminates continuous cloud media streaming and idle server billing:
 
-| Cost Component | Commercial Proctoring SaaS | Google AI Classroom (`asia-east2`) | Cost Reduction |
+| Architectural Component | Traditional Cloud Proctoring Approach | Google AI Classroom Design (`asia-east2`) | FinOps Architectural Advantage |
 | :--- | :--- | :--- | :--- |
-| **Live Biometric Face, Gaze & Phone Proctoring** | Cloud GPU Video Streaming | **On-Device MediaPipe Web Worker ($0.00)** | **100%** |
-| **Ambient Speech Intent Classification** | Cloud Audio Streaming | **On-Device Whisper + Gemma 4 E2B ($0.00)** | **100%** |
-| **Firestore Signaling & Telemetry** | Dedicated WebSockets Cluster | ~12,000 reads / 8,000 writes (**~$0.02**) | **99.9%** |
-| **Cloud Run FFmpeg 1-FPS MP4 Compilation** | Raw Video Storage (50+ GB) | 50 $\times$ 18 MB MP4s (**~$0.18 compute + storage**) | **95.0%** |
-| **Automated Rubric Video Grading (50 Students)** | Manual Grader (25 Hours) | `gemini-3.8-flash` (**$0.52**) or `gemini-4-argon` (**$1.85**) | **99.8%** |
-| **Idle Cost Outside Scheduled Class Hours** | Annual Seat License Lock-In | **100% Scale-to-Zero ($0.00 / month)** | **100%** |
-| **Total Per-Session Institutional Cost** | **$750.00 – $1,250.00 USD** | **$0.72 – $2.05 USD (<$0.02 / student-hr)** | **99.8% Savings** |
+| **Live Biometric Face, Gaze & Phone Proctoring** | Continuous Cloud GPU Video Streaming | **On-Device MediaPipe Web Worker** | **$0.00 Cloud Inference Cost** |
+| **Ambient Speech Intent Classification** | Continuous Cloud Audio Streaming | **On-Device Whisper + Gemma 4 E2B** | **$0.00 Cloud Inference Cost** |
+| **Signaling & Classroom Telemetry** | Dedicated Always-On WebSockets Cluster | **Single-Document Firestore `studentProperties/{uid}`** | **Pay-Per-Write Serverless** |
+| **Lab Recording Compilation** | Raw High-Bitrate Video Storage | **Cloud Run FFmpeg 1-FPS H.264 MP4 Compilation** | **Compact Storage & Token Footprint** |
+| **Automated Rubric Video Grading** | Manual Grader Review | **Teacher-Selectable `gemini-3.5-flash-lite`, `gemini-3.8-flash`, or `gemini-4-argon`** | **On-Demand Per-Job Token Billing** |
+| **Idle Cost Outside Scheduled Class Hours** | Annual Per-Seat License Lock-In | **100% Scale-to-Zero (`minInstances: 0`)** | **$0.00 Idle Infrastructure Cost** |
 
 ---
 

@@ -21,7 +21,7 @@ Building a flashy AI classroom demo for a hackathon takes a weekend; operating a
 
 1. **Granular FinOps & Atomic Quota Circuit Breakers**: Department administrators must see exact, itemized USD spending down to the sixth decimal place across **🧠 Gemini 4 Argon (`gemini-4-argon`)**, **⚡ Gemini 3.8 Flash (`gemini-3.8-flash`)**, **🪶 Gemini 3.5 Flash-Lite (`gemini-3.5-flash-lite`)**, and **🎙️ Gemini 3.5 Transcribe (`gemini-3.5-transcribe-preview`)**, combined with real-time Cloud Storage byte tracking across **9 distinct media categories** and automated circuit breakers that halt runaway spending before a single class can exceed its budget.
 2. **Self-Cleaning Storage Lifecycles & Zero-Orphan Cascading Purge**: Over a semester of recorded lectures, practical task grading videos, capstone demos, and proctored exam evidence, classes generate thousands of media files. Student screenshots, lab videos, voice consultations, and exam clips must expire automatically via configurable TTL policies after grading and exam appeals conclude—and deleting a class at the end of an academic year must purge **100% of associated Cloud Storage blobs and 20+ Firestore subcollections/collections** with zero orphaned records.
-3. **1-Command Reproducible Terraform Infrastructure-as-Code (`./setup-new-project.sh`) & Continuous Verification**: Any university, polytechnic, or Google Developer community worldwide must be able to provision a fresh Google Cloud project—enabling all 27 APIs, Firestore Native databases, Cloud Storage buckets, Identity Platform (GCIP), and a 24/7 Demo Sandbox—with a single terminal command, guarded by **2,575+ automated assertions**.
+3. **1-Command Reproducible Terraform Infrastructure-as-Code (`./setup-new-project.sh`) & Continuous Verification**: Any university, polytechnic, or Google Developer community worldwide must be able to provision a fresh Google Cloud project—enabling all 27 APIs, Firestore Native databases, Cloud Storage buckets, Identity Platform (GCIP), and a 24/7 Demo Sandbox—with a single terminal command, guarded by automated unit, security rules, and Playwright E2E test suites.
 
 In **Part 10 (the finale of our 10-part Google Developer Expert series)**, we walk through the exact production code and infrastructure patterns that deliver all three guarantees.
 
@@ -263,11 +263,11 @@ export const onClassDocDeleted = onDocumentDeleted({
 
 ---
 
-## 4. Diagram 3: 1-Command Zero-Click Terraform Onboarding & The 2,575+ Assertion Verification Pyramid
+## 4. Diagram 3: 1-Command Zero-Click Terraform Onboarding & Multi-Layer Automated Verification Pyramid
 
 To empower any university, school, or Google Developer Group (GDG) to deploy their own sovereign instance of the Google AI Classroom without clicking through dozens of Cloud Console wizards, [`setup-new-project.sh`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/setup-new-project.sh), [`terraform/`](https://github.com/wongcyrus/Google-AI-Classroom/tree/main/terraform), and [`deploy.sh`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/deploy.sh) automate the entire provisioning and verification lifecycle:
 
-![1-Command Zero-Click Terraform IaC & The 2,575+ Assertion Verification Pyramid](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog10_diagram3_terraform_verification_pyramid.png)
+![1-Command Zero-Click Terraform IaC & Automated Verification Pyramid](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog10_diagram3_terraform_verification_pyramid.png)
 
 ### How `./setup-new-project.sh` Eliminates Manual Cloud Console Clicks
 Running `./setup-new-project.sh my-school-ai-2026 01ABCD-23EFGH-45IJKL` executes an end-to-end automated pipeline:
@@ -298,7 +298,7 @@ Across this 10-part architectural deep dive, we have shared every layer of the *
 By combining **Browser WebGPU Edge AI Investigation (`Gemma 4 E2B`, `MediaPipe 3D Face Mesh`, `LiteRT Whisper`)** with **Frontier Cloud Multimodal Reasoning (`Gemini 4 Argon`, `Gemini 3.8 Flash`, `Gemini 3.5 Flash-Lite`)**, we achieved:
 - **Real-Time Proctored Exam Investigation Across 40+ Seats** (catching fleeting 3-second visual and spoken exam irregularities at 60 FPS with synchronized screen, webcam, and audio evidence),
 - **Universal Teacher Agency for Teaching & Student Performance** to choose **Gemini 4 (`gemini-4-argon`)** across every live subtitle, screen broadcast, bingo, practical video grading, and capstone supervision studio, and
-- **A 99.8% Reduction in Cloud Operating Costs** (**`<$0.02 USD` per student-hour**).
+- **Scale-to-Zero FinOps & Automated Storage Lifecycles** (eliminating idle server billing and orphaned storage via on-device edge inference, atomic AI quota circuit breakers, and cascading class purges).
 
 ### Explore the Open-Source Repository
 - [🎤 View the 45-Minute Google Cloud Tech Talk Slide Deck (`google-cloud-slides.marp.md`)](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/presentation/google-cloud-slides.marp.md)

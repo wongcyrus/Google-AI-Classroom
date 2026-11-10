@@ -17,7 +17,7 @@ canonical_url: https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/b
 
 ## 1. Problem Statement: The Proxy Account Sharing, "Fake Screen-Recording" & Keylogger Crisis in University Computer Labs & 200-Seat Lecture Theatres
 
-When running hands-on programming classes and invigilated practical assessments across physical computer labs and 200-seat lecture halls at the Hong Kong Institute of Information Technology (HKIIT / VTC), our engineering team encountered three real-world identity and physical-presence exploits that traditional username-and-password authentication and campus IP checks cannot stop:
+When running hands-on programming classes and invigilated practical assessments across physical computer labs and 200-seat lecture halls, our engineering team encountered three real-world identity and physical-presence exploits that traditional username-and-password authentication and campus IP checks cannot stop:
 
 1. **The "Give My Password to a Classmate" Proxy Lab Exploit (Fake Video Playback & Proxy Bingo)**: Even when campus CIDR IP restrictions (`checkipaddress`) block off-campus logins, an absent student simply texts their email and password to a friend sitting inside the computer lab. That single classmate sits in front of two adjacent lab workstations (or opens a second browser profile), logs into the absent student's account from a legitimate lab IP, **starts screen sharing, and plays a pre-recorded coding video on loop in full-screen** to fake live lab activity! Whenever a Classroom Bingo active-presence quiz pops up on that second monitor, the classmate simply reaches over and clicks an answer on their friend's behalf.
 2. **The "WhatsApp Proxy Attendance" Relay in 200-Seat Lecture Halls**: When instructors project a static attendance QR code or 4-digit check-in code on the lecture theatre screen, a student sitting in the front row snaps a photo and forwards it to a 150-member WhatsApp or Discord group. Within five seconds, absent students still in bed—or sitting in the campus cafeteria—mark themselves "present."
@@ -393,14 +393,14 @@ If security blocks teaching, instructors will turn security off. We engineered t
 
 ---
 
-## 6. Security & Performance Benchmarks
+## 6. Security Comparison Across Authentication & Presence Flows
 
-| Authentication & Presence Flow | Median End-to-End Latency | Keystrokes on Shared Lab PC | WhatsApp Photo Relay Vulnerable? | Proxy Account Sharing Vulnerable? | Cloud Cost per 100 Verifications |
-| :--- | :---: | :---: | :---: | :---: | :---: |
-| **Legacy Static QR / Password Form** | ~12.4 s | 25–40 keys | ❌ **Yes** (Instant group forward) | ❌ **Yes** (Shared password) | ~$0.0001 |
-| **In-Class Routine Passkey Bingo (`verifyPasskeyAuth`)** | **1.6 s** | **0 keys** | ✅ **No** (Per-student challenge) | ✅ **No** (`1-Phone = 1-Student` lock) | **~$0.0002** |
-| **200-Seat Lecture Hall Rotating QR (`verifyLecturePasskeyAuth`)** | **1.8 s** | **0 keys** | ✅ **No** (15s HMAC + Challenge Tolerance) | ✅ **No** (`credentialID` + `deviceFingerprint`) | **~$0.0003** |
-| **Shared Lab PC QR Login (`verifyDesktopLoginPasskey`)** | **2.1 s** | **0 keys** | ✅ **No** (15s HMAC + Physical monitor scan) | ✅ **No** (Hardware Secure Enclave) | **~$0.0003** |
+| Authentication & Presence Flow | Keystrokes on Shared Lab PC | Cryptographic Binding | WhatsApp Photo Relay Vulnerable? | Proxy Account Sharing Vulnerable? |
+| :--- | :---: | :--- | :---: | :---: |
+| **Legacy Static QR / Password Form** | Typing student email & password | None (Shared secret string) | ❌ **Yes** (Instant group forward) | ❌ **Yes** (Classmate logs in with shared password) |
+| **In-Class Routine Passkey Bingo (`verifyPasskeyAuth`)** | **0 keys** | FIDO2 Hardware Passkey (`credentialID`) | ✅ **No** (Per-student challenge) | ✅ **No** (`1-Phone = 1-Student` lock) |
+| **200-Seat Lecture Hall Rotating QR (`verifyLecturePasskeyAuth`)** | **0 keys** | 15s HMAC-SHA256 + Challenge Creation Stamp | ✅ **No** (Expires across 15s HMAC window) | ✅ **No** (`credentialID` + `deviceFingerprint`) |
+| **Shared Lab PC QR Login (`verifyDesktopLoginPasskey`)** | **0 keys** | 15s HMAC-SHA256 + Custom Token Exchange | ✅ **No** (Physical monitor scan required) | ✅ **No** (Hardware Secure Enclave) |
 
 ---
 

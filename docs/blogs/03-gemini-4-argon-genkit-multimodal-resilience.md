@@ -17,7 +17,7 @@ canonical_url: https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/b
 
 ## 1. Problem Statement: The Multimodal Classroom Paradox — Why Teaching, Student Performance & Proctoring Need 5 Different Models
 
-When we run an AI-powered computer science or engineering classroom for 40 to 100+ concurrent students at **HKIIT / VTC Hong Kong**, supporting **live teaching, inclusive learning, student performance evaluation, and proctored exams** requires radically different latency, context-window, and FinOps profiles:
+When running an AI-powered computer science or engineering classroom for 40 to 100+ concurrent students, supporting **live teaching, inclusive learning, student performance evaluation, and proctored exams** requires radically different latency, context-window, and FinOps profiles:
 
 1. **Every 16ms–3s on the Student's Laptop (Real-Time Proctored Exam Investigation)**: During a practical test or examination, a human invigilator cannot watch 40+ screens and webcams simultaneously, and calling cloud APIs every second for 40 seats would require 432,000+ cloud calls per exam. High-frequency posture, gaze, and speech-intent investigation **must** run locally in the browser via **MediaPipe**, **LiteRT Whisper-Tiny**, and **LiteRT-LM Gemma 4 E2B (`gemma-4-E2B-it-web.litertlm`)** at **$0.00 API cost**, immediately uploading synchronized screen + webcam + audio evidence when an irregularity is confirmed.
 2. **Every 4 Seconds at the Lecture Podium (Inclusive Teaching & Live Comprehension Checks)**: When a lecturer speaks Cantonese mixed with English Kubernetes/React jargon (*"呢個 Pod 個 Readiness Probe fail 咗"*), students need 9-language subtitles on their screens in under 800 milliseconds—making **Gemini 3.5 Flash-Lite (`gemini-3.5-flash-lite`)** ($0.25 In / $1.50 Out per 1M tokens) or on-device **Gemma 4 E2B** ideal.
@@ -296,17 +296,17 @@ Before any Genkit flow invokes Vertex AI, `checkQuota(classId, estimatedCost)` v
 
 ---
 
-## 7. FinOps & Latency Benchmark Table Across the 5-Model Constellation
+## 7.Configured Pricing & Role Matrix Across the 5-Model Constellation
 
-Here is how our 5-model architecture performs in production across real HKIIT classroom workloads in `asia-east2`:
+Here is how our 5-model architecture is configured in [`functions/ai_flows/cost.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/ai_flows/cost.js) (`MODEL_PRICING`) across classroom workloads:
 
-| Model Identifier | Execution Tier | Input / Output Rate (per 1M Tokens) | Median Latency | Typical Classroom Workload Cost | Best Pedagogical Use Case |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **`gemma-4-E2B-it-web.litertlm`** | Tier 1: Browser WebGPU (`@litert-lm/core`) | **$0.00 / $0.00** | **420 ms** | **$0.0000** (Unlimited) | Continuous exam speech-intent proctoring & $0.00 client-mode live lecture subtitles. |
-| **`gemini-3.5-flash-lite`** | Tier 4: Vertex AI Genkit | **$0.30 / $2.50** | **620 ms** | **~$0.00018 / call** | Sub-second 7-language live subtitles, Bingo screen verification & Cloud face fallback. |
-| **`gemini-3.5-transcribe-preview`** | Tier 4: Vertex AI Genkit | **$0.50 / $2.50** | **1.1 s** | **~$0.00045 / min** | Stage-1 multi-speaker Cantonese/Mandarin/English capstone consultation diarization. |
-| **`gemini-3.8-flash`** | Tier 4: Vertex AI Genkit | **$0.75 / $3.75** | **2.8 s** | **~$0.0104 / student video** | Default practical task video grading & single-pass 3-hour Opus lecture CC generation. |
-| **`gemini-4-argon`** | Tier 4: Vertex AI Genkit | **$2.00 / $10.00** | **4.6 s** | **~$0.0370 / student video** | Reference video rubric synthesis, complex multi-step code grading, cohort Map-Reduce discovery & Prompt Studio meta-optimization. |
+| Model Identifier | Execution Tier | Configured Rate in `cost.js` (Input / Output per 1M Tokens) | Primary Pedagogical Use Case |
+| :--- | :--- | :--- | :--- |
+| **`gemma-4-E2B-it-web.litertlm`** | Tier 1: Browser WebGPU (`@litert-lm/core`) | **$0.00 / $0.00** | Continuous exam speech-intent proctoring & $0.00 client-mode live lecture subtitles. |
+| **`gemini-3.5-flash-lite`** | Tier 4: Vertex AI Genkit | **$0.30 / $2.50** | Real-time 9-language live subtitles, Bingo screen verification & Cloud face fallback. |
+| **`gemini-3.5-transcribe-preview`** | Tier 4: Vertex AI Genkit | **$0.50 / $2.50** | Stage-1 multi-speaker Cantonese/Mandarin/English capstone consultation diarization. |
+| **`gemini-3.8-flash`** | Tier 4: Vertex AI Genkit | **$0.75 / $3.75** | Default practical task video grading & single-pass whole-lecture CC generation. |
+| **`gemini-4-argon`** | Tier 4: Vertex AI Genkit | **$2.00 / $10.00** | Reference video rubric synthesis, complex multi-step code grading, cohort Map-Reduce discovery & Prompt Studio meta-optimization. |
 
 ---
 

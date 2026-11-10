@@ -17,7 +17,7 @@ canonical_url: https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/b
 
 ## 1. The 80-Hour Lab Grading Bottleneck & The HTTP 429 Quota Wall
 
-In hands-on cloud computing, DevSecOps, and full-stack software engineering courses at the **Hong Kong Institute of Information Technology (HKIIT / VTC)**, students spend 2 to 3 hours building infrastructure in the AWS/GCP Console, writing Terraform modules in VS Code, and debugging container deployments in the terminal. Reviewing a single 40-student cohort's 2-hour screen recordings manually requires **80 hours of instructor time per lab**.
+In hands-on cloud computing, DevSecOps, and full-stack software engineering courses, students spend 2 to 3 hours building infrastructure in the AWS/GCP Console, writing Terraform modules in VS Code, and debugging container deployments in the terminal. Reviewing a single 40-student cohort's 2-hour screen recordings manually requires **80 hours of instructor time per lab**.
 
 However, when our engineering team first attempted to automate post-class video grading by firing 40 concurrent multimodal video analysis calls against the Gemini API at the end of a lab session, two hard distributed systems walls appeared immediately:
 
@@ -410,11 +410,11 @@ export const normalizeRubricEvaluation = (rawEvaluation = {}, effectiveSteps = [
 
 Because instructors can select the AI model per job in [`VideoLibrary.jsx`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/components/VideoLibrary.jsx), [`TaskEditorModal.jsx`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/components/tasks/TaskEditorModal.jsx) (`#task-ai-model-select`), and [`TaskGradingMatrixView.jsx`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/components/tasks/TaskGradingMatrixView.jsx) (`Grading AI Model`), here is how our lecturers allocate models across different assessment workloads:
 
-| Assessment Workload | Recommended Model | Why It Excels | Typical Cost per 40-Student Cohort |
+| Assessment Workload | Recommended Model | Why It Excels | Configured Rate in `cost.js` (Input / Output per 1M Tokens) |
 | :--- | :--- | :--- | :--- |
-| **Daily Formative Lab Practice & Self-Check Attempts** | **🪶 Gemini 3.5 Flash-Lite (`gemini-3.5-flash-lite`)** | Ultra-fast feedback within 10–15 seconds after submission; lowest token cost (`$0.30 / $2.50` per 1M tokens). | **~$0.06 USD** (40 videos) |
-| **Standard Weekly Coursework & Map-Reduce Cohort Discovery** | **⚡ Gemini 3.8 Flash (`gemini-3.8-flash`)** | Balanced multimodal OCR accuracy on dense terminal logs and IDE split-panes (`$0.75 / $3.75` per 1M tokens). | **~$0.15 USD** (40 videos) |
-| **High-Stakes Practical Exams & Complex Multi-Step Rubric Synthesis** | **🧠 Gemini 4 Argon (`gemini-4-argon`)** | Frontier visual reasoning across subtle code diffs, architecture diagrams, and multi-terminal debugging (`$2.00 / $10.00` per 1M tokens). | **~$0.42 USD** (40 videos) |
+| **Daily Formative Lab Practice & Self-Check Attempts** | **🪶 Gemini 3.5 Flash-Lite (`gemini-3.5-flash-lite`)** | Fast feedback after submission; lowest token rate for high-frequency self-checks. | **`$0.30 / $2.50`** |
+| **Standard Weekly Coursework & Map-Reduce Cohort Discovery** | **⚡ Gemini 3.8 Flash (`gemini-3.8-flash`)** | Balanced multimodal OCR on dense terminal logs and IDE split-panes. | **`$0.75 / $3.75`** |
+| **High-Stakes Practical Exams & Complex Multi-Step Rubric Synthesis** | **🧠 Gemini 4 Argon (`gemini-4-argon`)** | Frontier visual reasoning across code diffs, architecture diagrams, and multi-terminal debugging. | **`$2.00 / $10.00`** |
 
 In [`TaskGradingMatrixView.jsx`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/components/tasks/TaskGradingMatrixView.jsx), teachers see every student's per-step pill breakdown (`S1: 30/30`, `S2: 62/70`) directly in the matrix table, can click any `[⏱️ 02:15]` badge to seek the HTML5 video player to the exact frame where Gemini observed the evidence, override any individual step score or explanation with full audit trails (`isTeacherEdited: true`), and export a multi-sheet **Excel Gradebook (`.xlsx`)** or **Google Drive Archive** with one click.
 

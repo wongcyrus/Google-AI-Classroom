@@ -17,7 +17,7 @@ canonical_url: https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/b
 
 ## 1. The Capstone Supervision Bottleneck: ChatGPT Logbooks, Free-Riders & Multi-Device Consultation Friction
 
-Supervising 15 final-year engineering capstone project groups (60+ students) across a 16-week semester is one of the most rewarding yet administratively exhausting responsibilities in higher education. In our Software Engineering and Cloud Computing Higher Diploma programmes at **HKIIT / VTC Hong Kong**, three recurring pain points threatened both pedagogical quality and assessment fairness:
+Supervising 15 final-year engineering capstone project groups (60+ students) across a 16-week semester is one of the most rewarding yet administratively exhausting responsibilities in higher education. In our Software Engineering and Cloud Computing Higher Diploma programmes, three recurring pain points threatened both pedagogical quality and assessment fairness:
 
 1. **The "ChatGPT Logbook" Epidemic (`suspected_ai_fake`) & 1-Word Filler (`vague_useless`)**: Students are required to submit weekly progress logbooks via Google Forms before their consultation meeting. Some students type one-word filler (`"done"`, `"finish"`, `"thinking"`), while others paste LLM-generated corporate buzzword salads (*"Implemented real-time microservice telemetry, RBAC authentication, and mock AI chatbot"*) right after three consecutive weeks of reporting zero work.
 2. **Physical Consultation Friction (Why Desktop Screen-Capture Signaling Failed in Live Meetings)**: During a 15-minute face-to-face group consultation around a lab table, students demonstrate work across their personal laptops, physical IoT breadboards, mobile apps, and paper architecture sketches. Originally, we experimented with cross-device Firestore signaling to trigger browser screen sharing on the student's PC. In practice, waiting for a student to open the web app, authenticate, and select a display surface mid-meeting wasted 3 to 4 minutes of a 15-minute consultation—and couldn't capture mobile hardware or whiteboard diagrams at all!
@@ -38,7 +38,7 @@ Before the weekly consultation begins, the supervisor clicks **🔄 Sync Weekly 
 ![Self-Healing Google Sheets Sync & Pre-Meeting Fake-Log AI Auditor](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog08_diagram1_sheets_sync_fake_log_audit.png)
 
 ### Why Hamming Distance = 1 Student ID Healing Saved Hours of Manual Fixes
-On mobile Google Forms, students frequently mistype a single digit of their 9-digit VTC Student ID (e.g., typing `250105349` instead of `250105348`) or submit from a personal `@gmail.com` address. A strict string equality check drops those logs as orphaned records.
+On mobile Google Forms, students frequently mistype a single digit of their 9-digit Student ID (e.g., typing `250105349` instead of `250105348`) or submit from a personal `@gmail.com` address. A strict string equality check drops those logs as orphaned records.
 
 Our ingestion resolver compares any unmatched 9-digit numeric ID against the enrolled class roster (`projectGroups`). If **exactly one** enrolled student in the class has a 9-digit ID of identical length with **Hamming distance $= 1$** (differing by exactly 1 character position), or if the normalized student name uniquely matches an enrolled group member, the sync engine automatically heals the typo, links the log to the student's group and academic week, and flags the healed record in the UI!
 

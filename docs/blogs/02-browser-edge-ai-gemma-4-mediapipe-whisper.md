@@ -17,7 +17,7 @@ canonical_url: https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/b
 
 ## 1. Problem Statement: Why Proctored Tests & Practical Examinations Need an On-Device Browser Edge AI Investigator
 
-In proctored tests and practical examinations at **HKIIT / VTC**, student screen captures, webcam frames, and audio evidence are recorded and uploaded to Cloud Storage for official exam invigilation and forensic audit trails. However, relying solely on human invigilators or cloud-polled snapshots during a live 40-to-100+ student examination creates three critical operational blind spots:
+In proctored tests and practical examinations, student screen captures, webcam frames, and audio evidence are recorded and uploaded to Cloud Storage for official exam invigilation and forensic audit trails. However, relying solely on human invigilators or cloud-polled snapshots during a live 40-to-100+ student examination creates three critical operational blind spots:
 
 1. **The Human Invigilator Attention Bottleneck**: A single lecturer or invigilator cannot simultaneously watch 40+ student screens, 40+ live webcam feeds, and listen to 40+ microphones in real time to catch fleeting exam misconduct—such as glancing at a concealed smartphone, peeking at a neighbor's monitor, whispering answers, or querying a voice assistant.
 2. **Fleeting Violations Between Snapshots vs. 432,000+ Cloud AI Calls**: Periodic cloud screen and webcam snapshots provide the historical archive, but a 3.5-second glance at a cheat sheet or a whispered answer often occurs *between* polling intervals. Conversely, streaming 30-FPS video and continuous audio from 40 exam seats to Cloud LLMs for real-time AI inspection every second would require **432,000+ cloud API calls per 3-hour exam**—saturating exam lab bandwidth, triggering API rate limits, and incurring runaway cloud inference costs.
@@ -338,16 +338,16 @@ if (currentClassId && currentStudentUid) {
 
 ---
 
-## 7. Browser Edge AI Performance & Memory Benchmarks
+## 7. Browser Edge AI Model & Runtime Architecture Summary
 
-We benchmarked our 3-model browser edge stack across standard HKIIT lab hardware (Intel Core i5-12500 / 16 GB RAM integrated UHD 770 GPU, and Apple M2 MacBook Air 8 GB RAM) running Chrome 130+:
+Here is how the 3 on-device edge models and their cloud fallback are configured across the student browser runtime:
 
-| On-Device Edge Model | Runtime & Delegate | Model Size (Cached in `CacheStorage`) | Cold Load (From Cache) | Inference Latency | Main-Thread UI Frame Rate | Cloud API Cost |
-| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **MediaPipe FaceLandmarker (478-pt + Iris)** | `@mediapipe/tasks-vision` (WebGL GPU) | **~3.8 MB** | **180 ms** | **11–16 ms / frame** | **60 FPS** (`requestVideoFrameCallback`) | **$0.00** |
-| **LiteRT Whisper-Tiny (Multilingual)** | `@litertjs/core` (WebGPU / WASM + Chirp-Z FFT) | **~41 MB** | **420 ms** | **280–450 ms / segment** | **60 FPS** (Isolated Worker) | **$0.00** |
-| **LiteRT-LM Gemma 4 E2B (`gemma-4-E2B-it-web.litertlm`)** | `@litert-lm/core` v0.15.0 (WebGPU) | **~1,915 MB (1.91 GB)** | **2.4 s** (Streamed from Cache) | **380–620 ms / JSON eval** | **60 FPS** (Isolated Worker) | **$0.00** |
-| **Cloud Fallback (`analyzeFaceFallback` / `analyzeAudio`)** | Vertex AI Genkit (`gemini-3.5-flash-lite` / `gemini-4-argon`) | **0 MB** | **0 ms** | **650–1,100 ms** | **60 FPS** (Async HTTPS Callable) | **~$0.0002 / check** |
+| Model / Pipeline Stage | Runtime & Delegate | CacheStorage Key (`caches.open`) | Execution Thread | Cloud API Cost |
+| :--- | :--- | :--- | :--- | :--- |
+| **MediaPipe FaceLandmarker (478-pt + Iris)** | `@mediapipe/tasks-vision` (WebGL GPU) | Browser HTTP Cache (`.task` bundle) | Dedicated `faceMonitor.worker.js` + `requestVideoFrameCallback` | **$0.00** |
+| **LiteRT Whisper-Tiny (Multilingual)** | `@litertjs/core` (WebGPU / WASM + Chirp-Z FFT) | `webai-litert-whisper-v1` | Dedicated `litertWhisper.worker.js` | **$0.00** |
+| **LiteRT-LM Gemma 4 E2B (`gemma-4-E2B-it-web.litertlm`)** | `@litert-lm/core` v0.15.0 (WebGPU) | `webai-litert-gemma-v1` | Dedicated `litertGemma.worker.js` | **$0.00** |
+| **Cloud Fallback (`analyzeFaceFallback` / `analyzeAudio`)** | Vertex AI Genkit (`gemini-3.5-flash-lite` / `gemini-4-argon`) | Stateless Cloud Function | Async HTTPS Callable | **Pay-Per-Token (`cost.js`)** |
 
 ---
 
@@ -361,7 +361,7 @@ To record the companion demo video clip for this blog post ([full shot-by-shot s
    - Speak a normal sentence thinking aloud about the exam question. Show `[LiteRT-LM Gemma 4 E2B] 🤖 Intent Evaluation: Category: [BENIGN] | Violation: ✅ NO` in green—confirming zero cloud upload and zero false positive.
 3. **Shot 3 (00:35–00:55) — Live Cantonese/English Exam Collusion Detection**:
    - Speak into the microphone: *"喂，第三題揀 A 定係 B 呀？Can someone tell me the answer for question 3?"*
-   - Show Gemma 4 E2B flagging `Category: [COLLUSION_EXAM] | Violation: 🚨 YES` in `~450 ms` and automatically uploading the rolling 12-second `.wav` voice evidence clip (`voice_179427....wav`) to Firebase Storage.
+   - Show Gemma 4 E2B flagging `Category: [COLLUSION_EXAM] | Violation: 🚨 YES` and automatically uploading the rolling 12-second `.wav` voice evidence clip (`voice_179427....wav`) to Firebase Storage.
 4. **Shot 4 (00:55–01:15) — Teacher Replays the Captured Voice Clip**:
    - In the Teacher `IrregularitiesView` table, click the **`🎙️ Audio Clip`** button on the new **`AI Speech Alert: COLLUSION EXAM`** row to open `DualMediaPlayer` and play back the recorded `.wav` audio alongside the highlighted transcript.
 

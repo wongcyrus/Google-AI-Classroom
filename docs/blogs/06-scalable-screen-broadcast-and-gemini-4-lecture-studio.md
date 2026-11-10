@@ -341,20 +341,16 @@ Files streamed directly from browser `MediaRecorder` lack an EBML `SeekHead`, `C
 
 ---
 
-## 5. FinOps & Scalability Benchmarks: 2-Hour Lecture Broadcast & Post-Lecture Studio
+## 5. Architectural Comparison: Legacy Video Broadcasting vs. Pixel-Delta & Audio-First Lecture Studio
 
-We benchmarked a **2-hour (120-minute) Full HD 1080p lecture** broadcast to **500 concurrent auditorium spectators**, followed by post-lecture FFmpeg merging and 4-language subtitle + YouTube chapter generation (`original`, `en`, `zh-Hant`, `zh-Hans`):
-
-| Architecture / Pipeline Stage | Legacy Video / Chunked Approach | Our Gemini 4 / 3.8 Lecture Studio Architecture | Measured Improvement |
+| Architecture / Pipeline Stage | Traditional WebRTC / Raw Video Approach | Our Gemini 4 / 3.8 Lecture Studio Architecture | Architectural Advantage |
 | :--- | :--- | :--- | :--- |
-| **Presenter Laptop CPU (500 Viewers)** | ~100% CPU crash after 8 WebRTC peers | **1.4% CPU** (32×18 RGB Delta + Firestore Fanout) | **>60× Scalability** |
-| **Conference Wi-Fi Spectator Onboarding** | Blocked at 100 users/hr by Anonymous Auth NAT IP limit | **1,000+ viewers** via Zero-Auth PIN Rules (`/live/:classId?pin=XXXX`) | **Zero Auth Bottleneck** |
-| **2-Hour Lecture Media Merge Time** | ~18 mins full video re-encode | **~2.4 seconds** (`ffmpeg -f concat -c copy` + 5-Point Safety Gate) | **450× Faster Merge** |
-| **Multimodal Input Payload to Gemini** | 1.42 GB composite video (~1,850,000 tokens) | **24.8 MB 48kHz CBR MP3 audio** (~192,000 audio tokens) | **90% Token Reduction** |
-| **2-Hour Subtitle + Chapters Cost (`gemini-3.5-flash-lite`)** | ~$1.45 (Video input) | **~$0.06** (Audio-only Stage 1 + Batched Stage 2) | **95.8% Cost Savings** |
-| **2-Hour Subtitle + Chapters Cost (`gemini-3.8-flash` Default)** | ~$2.90 (Video input) | **~$0.14** (Audio-only Stage 1 + Batched Stage 2) | **95.2% Cost Savings** |
-| **2-Hour Subtitle + Chapters Cost (`gemini-4-argon` Flagship)** | ~$5.80 (Video input) | **~$0.34** (`thinkingBudget: 0` Audio-only + Batched Stage 2) | **94.1% Cost Savings** |
-| **Google Drive Archival Egress Cost** | ~$0.17 per download via Cloud Function proxy | **$0.00 GCP Egress** (Direct Browser $\rightarrow$ Google Drive OAuth upload) | **100% Egress Eliminated** |
+| **Live Screen Broadcast Transport** | Peer-to-peer WebRTC video encoding per viewer | **32×18 RGB Pixel-Delta + Firestore Single-Doc Fanout** | Constant presenter workload regardless of viewer count |
+| **Auditorium Wi-Fi Spectator Onboarding** | Blocked at 100 users/hr by Anonymous Auth NAT IP limit | **Zero-Auth PIN Rules (`/live/:classId?pin=XXXX`)** | Bypasses shared campus NAT IP throttling |
+| **Lecture Segment Merging** | Full video transcoding on every merge | **Zero-Transcode `ffmpeg -f concat -c copy` + 5-Point Safety Gate** | Stream-copy concat without re-encoding video frames |
+| **Multimodal Input Payload to Gemini** | Uploading full composite MP4/WebM video frames | **Extracted 48kHz CBR MP3 Audio (`normalizeLectureAudio`)** | Eliminates redundant video frame tokens for speech STT |
+| **Whole-Lecture Subtitle & Chapter Generation** | Single monolithic prompt with video | **Stage 1 Audio-Only STT + Stage 2 Batched Translation (50 cues/batch)** | Prevents output token truncation on multi-hour lectures |
+| **Google Drive Archival** | Proxying video buffers through Cloud Functions | **Direct Browser $\rightarrow$ Google Drive OAuth Resumable Upload** | **$0.00 GCP Cloud Function Egress** |
 
 ---
 

@@ -17,7 +17,7 @@ canonical_url: https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/b
 
 ## 1. Problem Statement: Why Standard Speech-to-Text Breaks in Bilingual Technical Classrooms
 
-In Hong Kong university and polytechnic classrooms (such as HKIIT / VTC), lecturers rarely speak monolingual formal prose. Instead, we naturally **code-switch** between colloquial **Cantonese**, **English**, and **domain-specific technical terminology** within a single breath:
+In bilingual university and polytechnic classrooms across Hong Kong and Asia, lecturers rarely speak monolingual formal prose. Instead, we naturally **code-switch** between colloquial **Cantonese**, **English**, and **domain-specific technical terminology** within a single breath:
 
 > *"大家留意呢個 React component，如果你喺 `useEffect` 入面唔記得 clean up 個 WebSocket listener，就會搞到 memory leak，甚至令個 Docker container OOM crash。"*
 
@@ -40,6 +40,29 @@ In [`TeacherSubtitleControlModal.jsx`](https://github.com/wongcyrus/Google-AI-Cl
 
 ![Dual-Engine Live Subtitle Architecture: Cloud Gemini 4/3.8/3.5 vs. Edge Gemma 4 E2B](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog05_diagram1_dual_engine_live_subtitles.png)
 
+### 2.1 How the Pipeline Captures and Translates Mixed Languages (Code-Switching)
+
+A common question when designing multilingual live subtitles for bilingual classrooms is: *how does the system actually handle mixed languages without breaking the ASR or the translation engine?*
+
+Our architecture splits this problem into two decoupled stages:
+
+#### 1. Ingestion: Capturing Spoken Mixed Speech (Cantonese + English Technical Terms)
+In Hong Kong and international polytechnics, teachers speak Cantonese while using English for technical concepts (`"大家留意呢個 React component，如果你喺 useEffect 入面唔記得 clean up 個 WebSocket listener..."`).
+- **Primary Desktop Path (Web Speech API `zh-HK`)**: In [`useTeacherLiveSubtitles.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/hooks/useTeacherLiveSubtitles.js), Chromium's `SpeechRecognition` is initialized with `recognition.lang = 'zh-HK'`. Google's Hong Kong speech recognition acoustic models natively support conversational Cantonese interleaved with English technical loanwords and acronyms.
+- **Audio Fallback Path (LiteRT Whisper & Cloud Gemini)**: When Web Speech is unavailable (e.g. specialized browsers or VAD silence flushes), 16kHz PCM audio buffers are transcribed via on-device **LiteRT Whisper Web Worker** or **Firebase AI Logic (`transcribeAudioWithFirebaseAI`)**. The prompt instructs the engine to transcribe verbatim and retain technical vocabulary rather than forcing homophone substitutions.
+
+#### 2. Translation: Why LLM-Driven Translation Replaces Rule-Based MT for Code-Switching
+Traditional machine translation engines (such as standard MT APIs) fail on code-switched technical speech because they expect grammatically formal, monolingual source text. When fed mixed Cantonese-English sentences:
+- They mistranslate colloquial Cantonese grammatical particles (*"呢個"*, *"點解"*, *"搞掂"*, *"睇下"*).
+- They attempt to literally translate programming identifiers (`useEffect`, `useState`, `Docker`, `Kubernetes`) into Chinese characters.
+- They lose pronoun referents (*"佢"* / *"it"*) across short, choppy speech bursts.
+
+To overcome this, our system forwards the raw bilingual transcript to an LLM (**Cloud Gemini 3.5/3.8/4** or **On-Device Gemma 4 E2B**) configured with tailored system instructions:
+1. **Explicit Source Identification**: Tells the model that the source is `zh-HK` containing colloquial Cantonese with English technical code-switching.
+2. **Preservation of Technical Terms**: Explicitly instructs the model to preserve programming keywords, variable names, framework identifiers, and CLI commands in their original technical English form.
+3. **Colloquial-to-Formal Transformation**: For Traditional Chinese (`zh-Hant`), transforms spoken Cantonese grammar into standard formal written Chinese (書面語); for English (`en`), translates the colloquial framing into fluent, idiomatic English rather than word-for-word calques.
+4. **Pronoun & Context Resolution via Rolling History**: Injects the preceding 4 speech cues as read-only context (`historyText`), allowing the LLM to understand what *"佢"* or *"this hook"* refers to from the previous sentence.
+
 ---
 
 ## 3. Implementation Walkthrough: Code-Switching Translation with Cloud Gemini & Edge Gemma 4 E2B
@@ -48,7 +71,7 @@ In [`TeacherSubtitleControlModal.jsx`](https://github.com/wongcyrus/Google-AI-Cl
 
 When translating live speech in a lecture theatre, latency is paramount: if subtitles lag more than 1.5 seconds behind the lecturer's voice, students lose synchronization with the slide pointer.
 
-In [`functions/ai_flows/subtitleFlows.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/ai_flows/subtitleFlows.js), `translateTeacherSpeech` achieves **~420ms median translation latency across 5 languages simultaneously** by combining three techniques:
+In [`functions/ai_flows/subtitleFlows.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/ai_flows/subtitleFlows.js), `translateTeacherSpeech` minimizes multi-language translation latency while preserving technical terminology by combining three techniques:
 1. **Zero-Thinking Fast Path (`thinkingConfig: { thinkingBudget: 0 }`)**: Disables chain-of-thought reasoning tokens for direct lexical translation while keeping `temperature: 0.1` for deterministic technical terminology preservation.
 2. **Rolling Conversational History (`historyText`)**: Passes the lecturer's preceding 4 utterances (`historyBufferRef.current.slice(-4)`) strictly as read-only context so the model resolves pronouns (*"if we omit it"* $\rightarrow$ *"if we omit the dependency array"*) without re-translating old sentences.
 3. **Resilient Multi-Model Routing (`generateWithResilience`)**: Supports `gemini-3.5-flash-lite` (default high-frequency workhorse), `gemini-3.8-flash`, and `gemini-4-argon` (`gemini-4-argon`) with automatic region/model failover and per-class FinOps quota enforcement (`checkQuota` & `logJob`).
@@ -475,16 +498,16 @@ Lecturers frequently minimize the browser and spend 40 minutes coding in VS Code
 
 ---
 
-## 6. FinOps & Latency Benchmarks: Server Gemini Models vs. Edge Gemma 4 E2B
+## 6. Architectural Comparison: Server Gemini Models vs. Edge Gemma 4 E2B
 
-We benchmarked a 60-minute bilingual Cantonese/English Computer Science lecture (~720 spoken utterances, translated simultaneously into **5 target languages**: `en`, `zh-Hant`, `zh-Hans`, `ja`, `ko`):
+Here is how the dual-engine subtitle options compare across execution mode, model configuration, and device requirements:
 
-| Translation Engine | Model Identifier | Median Latency (5 Langs) | Code-Switching Jargon Accuracy | Device RAM Overhead | Cloud Cost per 1-Hour Lecture |
-| :--- | :--- | :---: | :---: | :---: | :---: |
-| **Server Mode (Default Workhorse)** | `gemini-3.5-flash-lite` | **~380 ms** | **98.4%** | < 35 MB | **~$0.04** |
-| **Server Mode (High-Nuance Flash)** | `gemini-3.8-flash` | **~490 ms** | **99.3%** | < 35 MB | **~$0.11** |
-| **Server Mode (Flagship Reasoning)** | `gemini-4-argon` | **~640 ms** (`thinkingBudget: 0`) | **99.7%** | < 35 MB | **~$0.28** |
-| **Client Mode (Edge WebGPU/WASM)** | `gemma-4-E2B-it-web.litertlm` | **~610 ms** (Apple M3 Max) | **95.8%** (+ Cloud Hybrid Fallback) | ~1.9 GB (Cached in `CacheStorage`) | **$0.00** |
+| Translation Engine | Model Identifier | Generation Configuration | Browser Memory Footprint | Cloud Token Cost (`cost.js`) |
+| :--- | :--- | :--- | :--- | :--- |
+| **Server Mode (Default Workhorse)** | `gemini-3.5-flash-lite` | `temperature: 0.1`, `thinkingBudget: 0` | Minimal (Stateless HTTPS Callable) | `$0.30` / `$2.50` per 1M tokens |
+| **Server Mode (High-Nuance Flash)** | `gemini-3.8-flash` | `temperature: 0.1`, `thinkingBudget: 0` | Minimal (Stateless HTTPS Callable) | `$0.75` / `$3.75` per 1M tokens |
+| **Server Mode (Flagship Reasoning)** | `gemini-4-argon` | `thinkingBudget: 0` (Legacy sampling keys stripped) | Minimal (Stateless HTTPS Callable) | `$2.00` / `$10.00` per 1M tokens |
+| **Client Mode (Edge WebGPU/WASM)** | `gemma-4-E2B-it-web.litertlm` | On-Device Web Worker + Hybrid Partial Cloud Fallback | ~1.9 GB (Cached in `CacheStorage`, Desktop Only) | **$0.00** (for all locally translated languages) |
 
 ---
 

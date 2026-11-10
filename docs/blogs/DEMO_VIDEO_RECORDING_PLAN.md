@@ -33,7 +33,7 @@ This is the most important technical proof clip showing **100% local WebGPU LLM 
 #### Pre-Flight Checklist Before Recording
 1. Open Chrome on Desktop (`https://it114115-2627.web.app`).
 2. **Left Window (Teacher):** Log in as Teacher $\to$ Select class `IT114115-Demo` $\to$ Enable **Audio Capture** and set **Voice AI Mode** to `Hybrid (Local Gemma 4 + Cloud Fallback)` or `Client-Only (Local Gemma 4)`.
-3. **Right Window (Student):** Log in as Student (`David / student1@stu.vtc.edu.hk`) $\to$ Open Chrome DevTools (`F12` $\to$ **Console** tab docked at the bottom).
+3. **Right Window (Student):** Log in as Student (`David / student1@school.edu`) $\to$ Open Chrome DevTools (`F12` $\to$ **Console** tab docked at the bottom).
 
 #### Shot-by-Shot Action Script (75 Seconds)
 - **00:00 – 00:15 | Shot 1 — Verify Local Gemma 4 E2B WebGPU & Cache Status in Console:**
