@@ -113,35 +113,38 @@ if (currentAnomaly) {
 
 ---
 
-## 4. Implementation Walkthrough 2: On-Device Whisper-Tiny Log-Mel DSP & Code-Switching Dialect Detection
+## 4. Implementation Walkthrough 2: On-Device Whisper-Tiny Log-Mel DSP & Special Language Token Decoding
 
 In Hong Kong classrooms, students and lecturers naturally code-switch between **Cantonese, Mandarin, and English technical terminology** within a single sentence (e.g., *"唔該阿Sir，呢個 Question 3 個 option B 係咪啱㗎？"*).
 
-To transcribe student speech on-device with zero UI jank, [`litertWhisper.worker.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/workers/litertWhisper.worker.js) runs `@litertjs/core` inside a dedicated Web Worker:
+To transcribe student speech on-device with zero UI jank, [`litertWhisper.worker.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/workers/litertWhisper.worker.js) and [`whisperTokenizer.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/utils/whisperTokenizer.js) run `@litertjs/core` inside a dedicated Web Worker:
 1. **Dynamic Peak Auto-Gain & 80-Bin Log-Mel Spectrogram via Chirp-Z FFT**: Whisper expects a normalized `[1, 80, 3000]` Float32 tensor representing 30 seconds of 16 kHz audio. Because quiet whispering during an exam often has low amplitude ($0.003 < \text{peak} < 0.25$), `extractAudioFeatures()` applies up to $6\times$ automatic gain normalization before computing a 400-point Hann-windowed Chirp-Z Fast Fourier Transform (`hopLength = 160`) and projecting onto 80 Slaney-normalized Mel filterbanks.
-2. **Automatic WebGPU-to-WASM Delegate Failover**: `compileWhisperModel()` attempts to compile the Whisper graph on `webgpu` first, and transparently falls back to `wasm` if the browser's WebGPU implementation rejects dynamic sequence shapes.
+2. **Whisper Special Language Token Decoding & WebGPU-to-WASM Delegate Failover**: Rather than relying on brittle regex heuristics, `extractWhisperLanguageToken()` reads Whisper's native special language token (`50259..50357`, e.g. `<|en|>`, `<|zh|>`, `<|yue|>`) directly from the decoded token stream right after `<|startoftranscript|>` (`50258`), while **Gemma 4 E2B (`litertGemma.worker.js`)** and **Cloud Gemini (`analyzeAudioFlow`)** perform semantic language and code-switching classification (`"language": "cantonese|mandarin|english|mixed"`) alongside exam intent evaluation.
 
-### Production Code Listing 2: WebGPU/WASM Whisper Compilation & Code-Switching Classifier in [`web-app/src/workers/litertWhisper.worker.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/workers/litertWhisper.worker.js)
+### Production Code Listing 2: WebGPU/WASM Whisper Compilation & Special Language Token Decoder in [`litertWhisper.worker.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/workers/litertWhisper.worker.js) and [`whisperTokenizer.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/utils/whisperTokenizer.js)
 
 ```javascript
 /**
- * Identifies mixed code-switching dialect from transcribed text.
- * @param {string} text 
- * @returns {'cantonese' | 'mandarin' | 'english' | 'mixed' | 'none'}
+ * Extracts the language code emitted by Whisper's special language token
+ * (`<|en|>`, `<|zh|>`, `<|yue|>`, etc.) in the output token sequence.
  */
-export function classifyLanguage(text) {
-  if (!text || !text.trim()) return 'none';
-  const hasCantonese = /[唔點喺係嘅咗諗乜嘢睇啱掣緊]/.test(text);
-  const hasMandarin = /[什麼這是在的了看對們會]/.test(text);
-  const hasEnglish = /[a-zA-Z]/.test(text);
-
-  if ((hasCantonese && hasEnglish) || (hasCantonese && hasMandarin) || (hasMandarin && hasEnglish)) {
-    return 'mixed';
+export function extractWhisperLanguageToken(tokenIds, vocabulary = [], fallbackLanguage = 'auto') {
+  if (!tokenIds || typeof tokenIds === 'string') return fallbackLanguage;
+  const prefixLength = Math.min(tokenIds.length || 0, 8);
+  for (let i = 0; i < prefixLength; i++) {
+    const tokenId = Math.round(tokenIds[i]);
+    const vocabToken = vocabulary?.[tokenId];
+    if (typeof vocabToken === 'string') {
+      const match = vocabToken.match(/^<\|([a-z]{2,3})\|>$/i);
+      if (match) {
+        return match[1].toLowerCase();
+      }
+    }
+    if (tokenId >= WHISPER_LANGUAGE_TOKEN_START && tokenId <= WHISPER_LANGUAGE_TOKEN_END) {
+      return WHISPER_LANGUAGE_ID_MAP[tokenId] || fallbackLanguage;
+    }
   }
-  if (hasCantonese) return 'cantonese';
-  if (hasMandarin) return 'mandarin';
-  if (hasEnglish) return 'english';
-  return 'mixed';
+  return fallbackLanguage;
 }
 
 export async function compileWhisperModel(loadAndCompile, modelBuffer, preferredDelegate) {
@@ -168,12 +171,12 @@ export async function compileWhisperModel(loadAndCompile, modelBuffer, preferred
 
 ---
 
-## 5. Implementation Walkthrough 3: On-Device Gemma 4 E2B (`gemma-4-E2B-it-web.litertlm`) for Dual Proctoring & Live Translation
+## 5. Implementation Walkthrough 3: On-Device Gemma 4 E2B (`gemma-4-E2B-it-web.litertlm`) for Semantic Proctoring, Dialect Classification & Live Translation
 
 Recognizing speech tokens is only half the battle: if a student mutters *"Let me read this question carefully"* (benign self-talk) or raises their hand and says *"Mr. Wong, my Docker daemon crashed"* (legitimate inquiry), a keyword-based detector would falsely accuse them of cheating.
 
-We needed a true **Large Language Model** running locally in the browser to evaluate semantic intent. Using `@litert-lm/core` (`v0.15.0`) and the quantized **Gemma 4 E2B** model (`gemma-4-E2B-it-web.litertlm`, ~1.91 GB in WebGPU), [`litertGemma.worker.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/workers/litertGemma.worker.js) serves **two mission-critical classroom roles at $0.00 API cost**:
-1. **`EVALUATE_TRANSCRIPT` (Exam Acoustic Intent Proctor)**: Classifies student speech transcripts into one of 5 strict categories (`COLLUSION_EXAM`, `EXTERNAL_AI_ASSIST`, `UNAUTHORIZED_TALK`, `LEGITIMATE_INQUIRY`, or `BENIGN`) with severity, confidence, quoted evidence, and rationale—and supports custom teacher prompts (`{{transcript}}`, `{{classId}}`, `{{studentEmail}}`) authored in the AI Prompt Studio!
+We needed a true **Large Language Model** running locally in the browser to evaluate semantic intent and spoken dialect/code-switching. Using `@litert-lm/core` (`v0.15.0`) and the quantized **Gemma 4 E2B** model (`gemma-4-E2B-it-web.litertlm`, ~1.91 GB in WebGPU), [`litertGemma.worker.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/workers/litertGemma.worker.js) serves **two mission-critical classroom roles at $0.00 API cost**:
+1. **`EVALUATE_TRANSCRIPT` (Exam Acoustic Intent & Dialect Investigator)**: Classifies student speech transcripts into one of 5 strict categories (`COLLUSION_EXAM`, `EXTERNAL_AI_ASSIST`, `UNAUTHORIZED_TALK`, `LEGITIMATE_INQUIRY`, or `BENIGN`) along with spoken dialect/code-switching (`"language": "cantonese|mandarin|english|mixed"`), severity, confidence, quoted evidence, and rationale—and supports custom teacher prompts (`{{transcript}}`, `{{classId}}`, `{{studentEmail}}`) authored in the AI Prompt Studio!
 2. **`TRANSLATE_TRANSCRIPT` ($0.00 Client-Mode Live Subtitles)**: When a lecturer selects **On-Device Gemma 4 E2B** in the Live Subtitles modal, the same WebGPU worker translates Cantonese/English code-switched lecture speech into up to 7 target languages (`en`, `zh-Hant`, `zh-Hans`, `ja`, `ko`, `es`, `fr`) while preserving technical identifiers like `useEffect`, `Docker`, and `Python`.
 
 ### Production Code Listing 3: Gemma 4 E2B WebGPU Initialization & Structured Output Parser in [`web-app/src/workers/litertGemma.worker.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/workers/litertGemma.worker.js)
@@ -186,8 +189,10 @@ const GEMMA_OUTPUT_INSTRUCTIONS = `Use exactly one category:
 - LEGITIMATE_INQUIRY: procedural or technical help requested from the teacher or proctor
 - BENIGN: self-talk, reading aloud, ambient speech, coughing, or silence
 
+Also classify the spoken language/code-switching of the transcript in "language" as one of: "cantonese", "mandarin", "english", or "mixed".
+
 Respond with only one JSON object and no markdown:
-{"isViolation":boolean,"category":"COLLUSION_EXAM|EXTERNAL_AI_ASSIST|UNAUTHORIZED_TALK|LEGITIMATE_INQUIRY|BENIGN","severity":"critical|high|medium|low|none","confidence":number,"evidence":"quoted key phrase","rationale":"short explanation"}`;
+{"isViolation":boolean,"category":"COLLUSION_EXAM|EXTERNAL_AI_ASSIST|UNAUTHORIZED_TALK|LEGITIMATE_INQUIRY|BENIGN","severity":"critical|high|medium|low|none","confidence":number,"language":"cantonese|mandarin|english|mixed","evidence":"quoted key phrase","rationale":"short explanation"}`;
 
 async function initializeGemma(modelUrl) {
   if (gemmaEngine) return { fromCache: gemmaLoadedFromCache };

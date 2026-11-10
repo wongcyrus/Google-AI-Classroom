@@ -35,12 +35,12 @@ vi.mock('../utils/webAiLiteRTLoader.js', () => ({
 
 import {
   extractAudioFeatures,
-  classifyLanguage,
   compileWhisperModel,
   createSerialTaskQueue,
   isValidWhisperTokenSequence,
   CODE_SWITCHING_ANCHORS,
 } from './litertWhisper.worker';
+import { extractWhisperLanguageToken } from '../utils/whisperTokenizer';
 
 describe('litertWhisper.worker', () => {
   it('extracts normalized Whisper log-Mel features', () => {
@@ -60,28 +60,22 @@ describe('litertWhisper.worker', () => {
     expect(maximum).toBeGreaterThan(minimum);
   });
 
-  it('classifies mixed code-switching Cantonese and English', () => {
-    const mixedText = '點解 question 3 嘅答案係 option B?';
-    const lang = classifyLanguage(mixedText);
-    expect(lang).toBe('mixed');
-  });
-
-  it('classifies pure Cantonese text', () => {
-    const yueText = '唔該你幫我睇睇呢個題目。';
-    const lang = classifyLanguage(yueText);
-    expect(lang).toBe('cantonese');
-  });
-
-  it('classifies pure Mandarin text', () => {
-    const zhText = '這個考試的答案是什麼？';
-    const lang = classifyLanguage(zhText);
-    expect(lang).toBe('mandarin');
-  });
-
-  it('classifies pure English text', () => {
-    const enText = 'What is the answer for question five?';
-    const lang = classifyLanguage(enText);
-    expect(lang).toBe('english');
+  it('extracts language tokens directly from Whisper output token IDs', () => {
+    const vocab = {
+      50258: '<|startoftranscript|>',
+      50259: '<|en|>',
+      50260: '<|zh|>',
+      50359: '<|transcribe|>',
+    };
+    expect(
+      extractWhisperLanguageToken(new Int32Array([50258, 50259, 50359]), vocab, 'auto')
+    ).toBe('en');
+    expect(
+      extractWhisperLanguageToken(new Int32Array([50258, 50260, 50359]), vocab, 'auto')
+    ).toBe('zh');
+    expect(
+      extractWhisperLanguageToken(new Int32Array([1, 2, 3]), vocab, 'zh-HK')
+    ).toBe('zh-HK');
   });
 
   it('contains Cantonese/Mandarin anchor keywords for prompt biasing', () => {

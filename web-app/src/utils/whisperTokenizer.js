@@ -4,6 +4,48 @@
  */
 
 const WHISPER_SPECIAL_TOKEN_START = 50257;
+const WHISPER_LANGUAGE_TOKEN_START = 50259;
+const WHISPER_LANGUAGE_TOKEN_END = 50357;
+
+const WHISPER_LANGUAGE_ID_MAP = {
+  50259: 'en',
+  50260: 'zh',
+  50261: 'de',
+  50262: 'es',
+  50263: 'ru',
+  50264: 'ko',
+  50265: 'fr',
+  50266: 'ja',
+  50267: 'pt',
+  50278: 'vi',
+};
+
+/**
+ * Extracts the language code emitted by Whisper's special language token
+ * (`<|en|>`, `<|zh|>`, `<|yue|>`, etc.) in the output token sequence.
+ * @param {number[] | Int32Array | null | undefined} tokenIds
+ * @param {string[] | Record<string, string>} [vocabulary]
+ * @param {string} [fallbackLanguage='auto']
+ * @returns {string}
+ */
+export function extractWhisperLanguageToken(tokenIds, vocabulary = [], fallbackLanguage = 'auto') {
+  if (!tokenIds || typeof tokenIds === 'string') return fallbackLanguage;
+  const prefixLength = Math.min(tokenIds.length || 0, 8);
+  for (let i = 0; i < prefixLength; i++) {
+    const tokenId = Math.round(tokenIds[i]);
+    const vocabToken = vocabulary?.[tokenId];
+    if (typeof vocabToken === 'string') {
+      const match = vocabToken.match(/^<\|([a-z]{2,3})\|>$/i);
+      if (match) {
+        return match[1].toLowerCase();
+      }
+    }
+    if (tokenId >= WHISPER_LANGUAGE_TOKEN_START && tokenId <= WHISPER_LANGUAGE_TOKEN_END) {
+      return WHISPER_LANGUAGE_ID_MAP[tokenId] || fallbackLanguage;
+    }
+  }
+  return fallbackLanguage;
+}
 
 function createByteDecoder() {
   const bytes = [];

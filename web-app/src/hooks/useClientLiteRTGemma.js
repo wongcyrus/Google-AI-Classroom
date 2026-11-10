@@ -330,11 +330,12 @@ export function useClientLiteRTGemma({
         const category = result?.category || 'BENIGN';
         const severity = result?.severity || 'none';
         const confidence = result?.confidence || 0.9;
+        const language = result?.language || 'mixed';
         const evidence = result?.evidence || '';
         const rationale = result?.rationale || '';
 
         console.log(
-          `%c[LiteRT-LM Gemma 4 E2B] 🤖 Intent Evaluation: %c"${transcript}"\n%cCategory: [${category}] | Severity: ${severity.toUpperCase()} | Violation: ${isViolation ? '🚨 YES' : '✅ NO'} | Confidence: ${Math.round(confidence * 100)}%\nRationale: ${rationale}`,
+          `%c[LiteRT-LM Gemma 4 E2B] 🤖 Intent Evaluation: %c"${transcript}"\n%cCategory: [${category}] | Lang: ${language} | Severity: ${severity.toUpperCase()} | Violation: ${isViolation ? '🚨 YES' : '✅ NO'} | Confidence: ${Math.round(confidence * 100)}%\nRationale: ${rationale}`,
           'background: #1e1b4b; color: #a5b4fc; font-weight: bold; font-size: 13px; padding: 2px 6px; border-radius: 4px;',
           'color: #ffffff; font-weight: bold; font-size: 13px;',
           isViolation ? 'color: #f87171; font-weight: bold; font-size: 12px;' : 'color: #4ade80; font-weight: bold; font-size: 12px;'
@@ -387,6 +388,7 @@ export function useClientLiteRTGemma({
                 gemmaAlert: isViolation ? category : null,
                 gemmaSeverity: isViolation ? severity : null,
                 gemmaConfidence: confidence,
+                speechLanguage: language,
                 lastGemmaTimestamp: Date.now(),
               },
               { merge: true }

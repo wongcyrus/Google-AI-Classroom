@@ -25,8 +25,10 @@ const GEMMA_OUTPUT_INSTRUCTIONS = `Use exactly one category:
 - LEGITIMATE_INQUIRY: procedural or technical help requested from the teacher or proctor
 - BENIGN: self-talk, reading aloud, ambient speech, coughing, or silence
 
+Also classify the spoken language/code-switching of the transcript in "language" as one of: "cantonese", "mandarin", "english", or "mixed".
+
 Respond with only one JSON object and no markdown:
-{"isViolation":boolean,"category":"COLLUSION_EXAM|EXTERNAL_AI_ASSIST|UNAUTHORIZED_TALK|LEGITIMATE_INQUIRY|BENIGN","severity":"critical|high|medium|low|none","confidence":number,"evidence":"quoted key phrase","rationale":"short explanation"}`;
+{"isViolation":boolean,"category":"COLLUSION_EXAM|EXTERNAL_AI_ASSIST|UNAUTHORIZED_TALK|LEGITIMATE_INQUIRY|BENIGN","severity":"critical|high|medium|low|none","confidence":number,"language":"cantonese|mandarin|english|mixed","evidence":"quoted key phrase","rationale":"short explanation"}`;
 
 const GEMMA_PROCTOR_SYSTEM_PROMPT = `You are an AI exam proctor. Classify a student's spoken transcript by meaning and context.
 
@@ -344,6 +346,11 @@ export function parseGemmaOutput(rawText) {
         'BENIGN',
       ]);
       const validSeverities = new Set(['critical', 'high', 'medium', 'low', 'none']);
+      const validLanguages = new Set(['cantonese', 'mandarin', 'english', 'mixed']);
+      const rawLanguage = typeof parsed.language === 'string'
+        ? parsed.language.trim().toLowerCase()
+        : '';
+      const language = validLanguages.has(rawLanguage) ? rawLanguage : 'mixed';
       if (
         typeof parsed.isViolation === 'boolean' &&
         validCategories.has(category) &&
@@ -359,6 +366,7 @@ export function parseGemmaOutput(rawText) {
           category,
           severity,
           confidence,
+          language,
         };
       }
     }

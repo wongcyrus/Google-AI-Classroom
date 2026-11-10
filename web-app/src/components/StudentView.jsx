@@ -640,6 +640,10 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
       if (localResult) {
         return localResult;
       }
+    } else if (isGemmaWorkable && gemmaStatus === 'idle' && preloadGemmaModel) {
+      Promise.resolve(preloadGemmaModel()).catch((err) =>
+        console.debug('[StudentView] Auto-starting Gemma 4 E2B preload on transcript:', err)
+      );
     }
 
     if (!shouldSendTranscriptToCloud(effectiveVoiceAiMode)) {
@@ -674,7 +678,9 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
     gemmaEngine,
     gemmaStatus,
     isGemmaReady,
+    isGemmaWorkable,
     liveAudioPrompt,
+    preloadGemmaModel,
     shouldEvaluateVoiceWithGemma,
     user?.email,
     user?.uid,
@@ -794,8 +800,8 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
       if (isLocalVoiceAiEnabled && whisperStatus !== 'ready' && whisperStatus !== 'loading' && preloadWhisperModel) {
         preloadWhisperModel().catch(err => console.debug('[StudentView] Whisper preload error:', err));
       }
-      if (shouldEvaluateVoiceWithGemma && isGemmaCached && isGemmaWorkable && !isGemmaReady && gemmaStatus !== 'loading' && preloadGemmaModel) {
-        preloadGemmaModel().catch(err => console.debug('[StudentView] Cached Gemma preload error:', err));
+      if (shouldEvaluateVoiceWithGemma && isGemmaWorkable && !isGemmaReady && gemmaStatus !== 'loading' && preloadGemmaModel) {
+        Promise.resolve(preloadGemmaModel()).catch(err => console.debug('[StudentView] Gemma preload error:', err));
       }
     }
   }, [preloadClientAi, effectiveVoiceAiMode, isLocalVoiceAiEnabled, whisperStatus, preloadWhisperModel, shouldEvaluateVoiceWithGemma, isGemmaCached, isGemmaWorkable, isGemmaReady, gemmaStatus, preloadGemmaModel]);
@@ -1119,7 +1125,7 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
     if ((isAudioCaptureActive || isWhisperCached) && isLocalVoiceAiEnabled && whisperStatus === 'idle') {
       preloadWhisperModel?.();
     }
-    if (shouldEvaluateVoiceWithGemma && isGemmaCached && isGemmaWorkable && gemmaStatus === 'idle') {
+    if ((isAudioCaptureActive || isGemmaCached) && shouldEvaluateVoiceWithGemma && isGemmaWorkable && gemmaStatus === 'idle') {
       preloadGemmaModel?.();
     }
   }, [activeClass, aiMonitoringMode, isModelCached, isPreloading, clientAiStatus, isAudioCaptureActive, isLocalVoiceAiEnabled, isWhisperCached, whisperStatus, preloadModel, preloadWhisperModel, shouldEvaluateVoiceWithGemma, isGemmaCached, isGemmaWorkable, gemmaStatus, preloadGemmaModel]);

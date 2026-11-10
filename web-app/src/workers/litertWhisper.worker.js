@@ -6,7 +6,7 @@
  */
 
 import { fetchWithProgress, checkHardwareAcceleration, DEFAULT_WHISPER_CONFIG } from '../utils/webAiLiteRTLoader.js';
-import { decodeWhisperTokens } from '../utils/whisperTokenizer.js';
+import { decodeWhisperTokens, extractWhisperLanguageToken } from '../utils/whisperTokenizer.js';
 import FFT from 'fft.js';
 
 let compiledModel = null;
@@ -225,26 +225,6 @@ export function isValidWhisperTokenSequence(tokenIds) {
   return false;
 }
 
-/**
- * Identifies mixed code-switching dialect from transcribed text.
- * @param {string} text 
- * @returns {'cantonese' | 'mandarin' | 'english' | 'mixed'}
- */
-export function classifyLanguage(text) {
-  if (!text || !text.trim()) return 'none';
-  const hasCantonese = /[唔點喺係嘅咗諗乜嘢睇啱掣緊]/.test(text);
-  const hasMandarin = /[什麼這是在的了看對們會]/.test(text);
-  const hasEnglish = /[a-zA-Z]/.test(text);
-
-  if ((hasCantonese && hasEnglish) || (hasCantonese && hasMandarin) || (hasMandarin && hasEnglish)) {
-    return 'mixed';
-  }
-  if (hasCantonese) return 'cantonese';
-  if (hasMandarin) return 'mandarin';
-  if (hasEnglish) return 'english';
-  return 'mixed';
-}
-
 export async function compileWhisperModel(loadAndCompile, modelBuffer, preferredDelegate) {
   const compile = (accelerator) => loadAndCompile(
     new Uint8Array(modelBuffer),
@@ -378,7 +358,16 @@ async function handleMessage(event) {
           throw new Error('LiteRT Whisper worker is not initialized. Call INIT first.');
         }
 
-        const { audioPcm, studentUid, classId, deviceId = 'default', simulatedText = '', timestamp = Date.now() } = payload;
+        const {
+          audioPcm,
+          studentUid,
+          classId,
+          deviceId = 'default',
+          simulatedText = '',
+          speechLanguage = 'auto',
+          language = 'auto',
+          timestamp = Date.now(),
+        } = payload;
         self.postMessage({ type: 'STATUS', payload: { status: 'transcribing' } });
 
         const features = extractAudioFeatures(audioPcm);
@@ -401,6 +390,7 @@ async function handleMessage(event) {
         });
 
         let transcriptText = '';
+        let detectedLanguage = speechLanguage || language || 'auto';
         let confidence = 0.92;
         let words = [];
 
@@ -421,13 +411,22 @@ async function handleMessage(event) {
             const outputTokens = await readOutputTokens(results);
             if (isValidWhisperTokenSequence(outputTokens)) {
               transcriptText = decodeWhisperTokens(outputTokens, whisperVocabulary);
+              detectedLanguage = extractWhisperLanguageToken(
+                outputTokens,
+                whisperVocabulary,
+                detectedLanguage
+              );
             } else {
               console.debug(
                 '[LiteRTWorker] Segment token sequence was not recognized as valid speech; skipping segment.'
               );
             }
           } catch (inferErr) {
-            console.warn('[LiteRTWorker] On-device inference error:', inferErr);
+            clientInferenceSupported = false;
+            console.warn(
+              '[LiteRTWorker] Disabling dynamic-output TFLite run after runtime allocation error; using active speech recognition / AI transcription stream:',
+              inferErr?.message || inferErr
+            );
           } finally {
             inputTensor?.delete();
           }
@@ -439,7 +438,9 @@ async function handleMessage(event) {
           transcriptText = simulatedText;
         }
 
-        const detectedLanguage = classifyLanguage(transcriptText);
+        if (!transcriptText) {
+          detectedLanguage = 'none';
+        }
 
         if (transcriptText.length > 0) {
           console.log('[LiteRTWorker:TranscribeComplete] Local inference completed.', {
