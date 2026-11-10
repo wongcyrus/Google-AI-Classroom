@@ -9,8 +9,7 @@ canonical_url: https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/b
 
 # Google AI Classroom Part 4: Defeating Proxy Attendance & Lab Keyloggers with WebAuthn Passkeys, Rotating HMAC QRs & GCIP Blocking Functions
 
-**Author:** [**Cyrus Wong (黃俊彥)**](https://www.linkedin.com/in/cyruswong/) — *Google Developer Expert - Cloud (AI), Senior Lecturer at HKIIT*  
-[⏮️ Previous: Part 3 — Gemini 4 Argon & Genkit Resilience](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/03-gemini-4-argon-genkit-multimodal-resilience.md) | [📚 Series Index](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/README.md) | [⏭️ Next: Part 5 — Real-Time Multilingual Live Subtitles](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/05-realtime-live-subtitles-code-switching-gemini-4-gemma-4.md)
+**Author:** [**Cyrus Wong (黃俊彥)**](https://www.linkedin.com/in/cyruswong/) — *Google Developer Expert - Cloud (AI), Senior Lecturer at HKIIT*
 
 ---
 
@@ -411,7 +410,3 @@ If security blocks teaching, instructors will turn security off. We engineered t
 2. **Enforce `1-Phone = 1-Student` at the Hardware Layer**: Combining WebAuthn platform authenticators (`credentialID`) with a persistent `deviceFingerprint` check in Firestore stops students from logging into a classmate's account on their own phone.
 3. **Stamp Token Validity at Challenge Creation**: When pairing 15-second rotating HMAC QR codes with biometric prompts, validating the QR token at *challenge creation time* eliminates false rejections when the projector rotates mid-Face ID scan.
 4. **Build Audited Human Escape Hatches**: A 3-tier teacher bypass (1-click podium approval, aisle PIN, and phone-replacement reset) keeps classes moving smoothly when a student's battery dies, without weakening cryptographic enforcement for the rest of the cohort.
-
----
-
-[⏮️ Previous: Part 3 — Gemini 4 Argon & Genkit Resilience](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/03-gemini-4-argon-genkit-multimodal-resilience.md) | [📚 Series Index](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/README.md) | [⏭️ Continue to Part 5: Real-Time Multilingual Live Subtitles & Code-Switching →](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/05-realtime-live-subtitles-code-switching-gemini-4-gemma-4.md)

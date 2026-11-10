@@ -9,8 +9,7 @@ canonical_url: https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/b
 
 # Google AI Classroom Part 8: Multimodal AI Capstone Project Supervision — Streamlined Mobile 720p Demo Studio, 2-Stage Diarization & Fake-Log Auditing with Gemini 4
 
-**Author:** [**Cyrus Wong (黃俊彥)**](https://www.linkedin.com/in/cyruswong/) — *Google Developer Expert - Cloud (AI), Senior Lecturer at HKIIT*  
-[⏮️ Previous: Part 7 — Gemini 4 Map-Reduce Video & Rubric Grading](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/07-serverless-map-reduce-video-and-gemini-4-rubric-grading.md) | [📚 Series Index](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/README.md) | [⏭️ Next: Part 9 — Gamified Bingo & Zero-Trust Exam Mode](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/09-gamified-bingo-active-presence-and-zero-trust-exam-mode.md)
+**Author:** [**Cyrus Wong (黃俊彥)**](https://www.linkedin.com/in/cyruswong/) — *Google Developer Expert - Cloud (AI), Senior Lecturer at HKIIT*
 
 ---
 
@@ -282,7 +281,3 @@ At any point during the semester, clicking **`🎓 Student Profiles & History`**
 ## What's Next in Part 9?
 
 In **Part 9**, we turn to live classroom engagement and formal assessment security—exploring how we engineered **Gamified "Classroom Bingo" Active Presence Verification** (backed by a **Gemini 4 Argon Question Bank Studio** and a **Non-Punitive Two-Strike Google Cloud Tasks State Machine**) alongside **Zero-Trust Exam Mode Lockdown** and **Court-Ready Microsoft Word (`.docx`) Incident Dossiers**.
-
----
-
-[⏮️ Previous: Part 7 — Gemini 4 Map-Reduce Video & Rubric Grading](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/07-serverless-map-reduce-video-and-gemini-4-rubric-grading.md) | [📚 Series Index](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/README.md) | [⏭️ Continue to Part 9: Gamified Bingo Active Presence & Zero-Trust Exam Mode →](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/09-gamified-bingo-active-presence-and-zero-trust-exam-mode.md)

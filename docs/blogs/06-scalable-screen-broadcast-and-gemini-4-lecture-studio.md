@@ -9,8 +9,7 @@ canonical_url: https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/b
 
 # Google AI Classroom Part 6: Scaling Classroom Screen Broadcasting to 1,000+ Viewers & Single-Pass Whole-Lecture Subtitles with Gemini 4 Argon
 
-**Author:** [**Cyrus Wong (黃俊彥)**](https://www.linkedin.com/in/cyruswong/) — *Google Developer Expert - Cloud (AI), Senior Lecturer at HKIIT*  
-[⏮️ Previous: Part 5 — Real-Time Multilingual Live Subtitles](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/05-realtime-live-subtitles-code-switching-gemini-4-gemma-4.md) | [📚 Series Index](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/README.md) | [⏭️ Next: Part 7 — Gemini 4 Map-Reduce Video & Rubric Grading](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/07-serverless-map-reduce-video-and-gemini-4-rubric-grading.md)
+**Author:** [**Cyrus Wong (黃俊彥)**](https://www.linkedin.com/in/cyruswong/) — *Google Developer Expert - Cloud (AI), Senior Lecturer at HKIIT*
 
 ---
 
@@ -365,7 +364,3 @@ We benchmarked a **2-hour (120-minute) Full HD 1080p lecture** broadcast to **50
 2. **Never Delete Raw Segments Without a Multi-Point Verification Gate**: Recording in 1-minute rolling segments with IndexedDB recovery protects against browser crashes, while our 5-point Cloud Run FFmpeg check ensures intermediate clips are never purged unless the merged master video is verified healthy.
 3. **Send Pure Normalized 48kHz CBR MP3 to Gemini, Never Video Frames**: Stripping video frames saves 90% of multimodal input tokens, while normalizing to 48kHz Constant Bitrate MP3 (`normalizeLectureAudio`) and running `calibrateSubtitleTimeline` eliminates the 1.48×–1.68× Opus timescale compression drift.
 4. **Decouple Verbatim Audio STT from Batched Multilingual Translation**: Using **Gemini 4 Argon (`gemini-4-argon`)** or **Gemini 3.8 Flash (`gemini-3.8-flash`)** (`thinkingBudget: 0`, `maxOutputTokens: 65536`) for single-pass verbatim audio transcription + chaptering first, followed by 50-sentence batched translation and a zero-duration cue guard (`end > start`), guarantees 100% complete `.vtt` and YouTube Studio `.srt` packages for lectures up to 9 hours long.
-
----
-
-[⏮️ Previous: Part 5 — Real-Time Multilingual Live Subtitles](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/05-realtime-live-subtitles-code-switching-gemini-4-gemma-4.md) | [📚 Series Index](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/README.md) | [⏭️ Continue to Part 7: Serverless Map-Reduce-Map Video Intelligence & Gemini 4 Rubric Grading →](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/07-serverless-map-reduce-video-and-gemini-4-rubric-grading.md)

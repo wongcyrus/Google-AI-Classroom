@@ -9,8 +9,7 @@ canonical_url: https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/b
 
 # Google AI Classroom Part 3: Frontier Multimodal Orchestration — Right-Sizing Gemini 4 Argon (`gemini-4-argon`), Gemini 3.8 Flash & On-Device Gemma 4 E2B with Google Genkit
 
-**Author:** [**Cyrus Wong (黃俊彥)**](https://www.linkedin.com/in/cyruswong/) — *Google Developer Expert - Cloud (AI), Senior Lecturer at HKIIT*  
-[⏮️ Previous: Part 2 — Browser Edge AI Investigator](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/02-browser-edge-ai-gemma-4-mediapipe-whisper.md) | [📚 Series Index](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/README.md) | [⏭️ Next: Part 4 — WebAuthn Passkeys & Rotating HMAC QRs](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/04-webauthn-passkeys-rotating-hmac-qr-auth.md)
+**Author:** [**Cyrus Wong (黃俊彥)**](https://www.linkedin.com/in/cyruswong/) — *Google Developer Expert - Cloud (AI), Senior Lecturer at HKIIT*
 
 ---
 
@@ -317,7 +316,3 @@ Here is how our 5-model architecture performs in production across real HKIIT cl
 2. **Always Record `modelUsed` After Failover**: If a primary `gemini-4-argon` request fails over to `gemini-3.5-flash-lite` during a regional quota spike, pass the *actual* `modelUsed` returned by `generateWithResilience` into `calculateCost()` and `logJob()` so class FinOps quotas are billed at the true underlying model rate.
 3. **Decouple Acoustic Diarization from Tool-Calling Reasoning**: Using `gemini-3.5-transcribe-preview` (without tools) for verbatim multi-speaker transcription and passing the resulting text to `gemini-3.5-flash-lite`, `gemini-3.8-flash`, or `gemini-4-argon` (with tools) eliminates tool-call hallucinations on bilingual audio.
 4. **Empower Educators with Guardrailed Prompt Engineering**: Combining a 3-tier prompt resolution hierarchy with an in-app **Gemini 4 Argon (`✨ Optimize`)** meta-optimizer and required `{{placeholder}}` chip validation lets non-programmer faculty safely customize AI rubrics without breaking downstream JSON parsers.
-
----
-
-[⏮️ Previous: Part 2 — Browser Edge AI with Gemma 4 E2B](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/02-browser-edge-ai-gemma-4-mediapipe-whisper.md) | [📚 Series Index](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/README.md) | [⏭️ Continue to Part 4: Defeating Proxy Attendance with WebAuthn Passkeys →](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/04-webauthn-passkeys-rotating-hmac-qr-auth.md)

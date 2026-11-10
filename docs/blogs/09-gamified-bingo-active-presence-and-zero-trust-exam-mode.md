@@ -9,8 +9,7 @@ canonical_url: https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/b
 
 # Google AI Classroom Part 9: Gamified "Bingo" Active Presence Verification & Zero-Trust Proctored Exam Mode on Google Cloud
 
-**Author:** [**Cyrus Wong (黃俊彥)**](https://www.linkedin.com/in/cyruswong/) — *Google Developer Expert - Cloud (AI), Senior Lecturer at HKIIT*  
-[⏮️ Previous: Part 8 — Multimodal Capstone Supervision with Gemini 4](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/08-multimodal-capstone-project-supervision-gemini-4.md) | [📚 Series Index](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/README.md) | [⏭️ Next: Part 10 — Green AI FinOps, Storage Lifecycle & Terraform IaC](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/10-green-ai-finops-storage-lifecycle-and-terraform-iac.md)
+**Author:** [**Cyrus Wong (黃俊彥)**](https://www.linkedin.com/in/cyruswong/) — *Google Developer Expert - Cloud (AI), Senior Lecturer at HKIIT*
 
 ---
 
@@ -303,7 +302,3 @@ export const processReportJob = onDocumentCreated(
 We have now explored the entire pedagogical and multimodal AI stack—from Browser Edge AI (`Gemma 4 E2B`, `MediaPipe`, `LiteRT Whisper`) to Cloud Broadcasts, Gemini 4 Argon Video Grading, Capstone Mobile Supervision, and Zero-Trust Exams.
 
 In **Part 10 (our Series Finale)**, we look under the hood at **Day-2 Institutional Operations**: how we keep costs below **$0.02 USD per student-hour** using **Live Google Cloud Billing SKU Sync (`syncGeminiPricing`)**, **9-Category Event-Driven Storage Quota Enforcement (`storageQuota.js`)**, **4-Stage Zero-Orphan Cascading Class Purge (`onClassDocDeleted`)**, **1-Command Terraform Infrastructure-as-Code (`./setup-new-project.sh`)**, and our **2,575+ Assertion Verification Pyramid**.
-
----
-
-[⏮️ Previous: Part 8 — Multimodal Capstone Supervision with Gemini 4](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/08-multimodal-capstone-project-supervision-gemini-4.md) | [📚 Series Index](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/README.md) | [⏭️ Continue to Part 10: Green AI FinOps, Storage Lifecycle & 1-Command Terraform IaC →](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/10-green-ai-finops-storage-lifecycle-and-terraform-iac.md)

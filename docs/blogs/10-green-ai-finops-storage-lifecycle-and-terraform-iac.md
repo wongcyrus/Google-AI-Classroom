@@ -9,8 +9,7 @@ canonical_url: https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/b
 
 # Google AI Classroom Part 10: Green AI FinOps, Self-Cleaning Storage Lifecycles & 1-Command Terraform IaC for Multi-School Deployment
 
-**Author:** [**Cyrus Wong (黃俊彥)**](https://www.linkedin.com/in/cyruswong/) — *Google Developer Expert - Cloud (AI), Senior Lecturer at HKIIT*  
-[⏮️ Previous: Part 9 — Gamified Bingo & Zero-Trust Exam Mode](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/09-gamified-bingo-active-presence-and-zero-trust-exam-mode.md) | [📚 Back to GDE Blog Series Index](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/README.md)
+**Author:** [**Cyrus Wong (黃俊彥)**](https://www.linkedin.com/in/cyruswong/) — *Google Developer Expert - Cloud (AI), Senior Lecturer at HKIIT*
 
 ---
 
@@ -301,7 +300,6 @@ By combining **Browser WebGPU Edge AI Investigation (`Gemma 4 E2B`, `MediaPipe 3
 - **Universal Teacher Agency for Teaching & Student Performance** to choose **Gemini 4 (`gemini-4-argon`)** across every live subtitle, screen broadcast, bingo, practical video grading, and capstone supervision studio, and
 - **A 99.8% Reduction in Cloud Operating Costs** (**`<$0.02 USD` per student-hour**).
 
-### Explore the Full Series & Open-Source Repository
-- [📚 Return to the 10-Part GDE Technical Blog Series Index](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/README.md)
+### Explore the Open-Source Repository
 - [🎤 View the 45-Minute Google Cloud Tech Talk Slide Deck (`google-cloud-slides.marp.md`)](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/presentation/google-cloud-slides.marp.md)
 - [🏠 Main Repository README & Architecture Documentation Index](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/README.md)

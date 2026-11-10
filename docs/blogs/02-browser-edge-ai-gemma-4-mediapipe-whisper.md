@@ -9,8 +9,7 @@ canonical_url: https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/b
 
 # Google AI Classroom Part 2: Zero-Egress Browser Edge AI Investigator — Running Gemma 4 E2B, MediaPipe 3D Face Mesh & LiteRT Whisper in Web Workers
 
-**Author:** [**Cyrus Wong (黃俊彥)**](https://www.linkedin.com/in/cyruswong/) — *Google Developer Expert - Cloud (AI), Senior Lecturer at HKIIT*  
-[⏮️ Previous: Part 1 — 4-Tier Serverless Architecture](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/01-serverless-ai-classroom-architecture.md) | [📚 Series Index](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/README.md) | [⏭️ Next: Part 3 — Gemini 4 Argon & Genkit Resilience](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/03-gemini-4-argon-genkit-multimodal-resilience.md)
+**Author:** [**Cyrus Wong (黃俊彥)**](https://www.linkedin.com/in/cyruswong/) — *Google Developer Expert - Cloud (AI), Senior Lecturer at HKIIT*
 
 ---
 
@@ -374,7 +373,3 @@ To record the companion demo video clip for this blog post ([full shot-by-shot s
 2. **Always Dispose Ephemeral LLM Conversations**: Inside a long-running Web Worker, calling `await conversation.delete()` in a `finally` block after every single-turn `EVALUATE_TRANSCRIPT` or `TRANSLATE_TRANSCRIPT` request prevents KV-cache memory leaks over a 3-hour exam.
 3. **Guard Against Mobile/iPadOS OOMs Before Fetching**: Checking `maxTouchPoints > 1` on `MacIntel` (iPadOS), `deviceMemory < 4`, and `navigator.storage.estimate()` before downloading multi-gigabyte weights prevents browser tab crashes and seamlessly routes mobile learners to Cloud Gemini fallback.
 4. **Combine Geometric Heuristics with Debounce Gates**: Pairing MediaPipe's 11.7 mm iris depth estimation and neutral-pose calibration with a 3.0-second debounce gate and 600 ms blink grace window eliminates false-positive cheating flags while catching real irregularities with dual screen-and-webcam visual proof.
-
----
-
-[⏮️ Previous: Part 1 — 4-Tier Serverless Architecture](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/01-serverless-ai-classroom-architecture.md) | [📚 Series Index](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/README.md) | [⏭️ Continue to Part 3: Frontier Multimodal Orchestration with Gemini 4 Argon →](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/03-gemini-4-argon-genkit-multimodal-resilience.md)

@@ -9,8 +9,7 @@ canonical_url: https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/b
 
 # Google AI Classroom Part 1: Solving the $25-Per-Exam Problem — Architecting a Sub-$0.02/Student Serverless AI Classroom with Gemini 4 & Firebase
 
-**Author:** [**Cyrus Wong (黃俊彥)**](https://www.linkedin.com/in/cyruswong/) — *Google Developer Expert - Cloud (AI), Senior Lecturer at HKIIT*  
-[📚 Back to GDE Blog Series Index](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/README.md) | [⏭️ Next: Part 2 — Browser Edge AI Investigator](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/02-browser-edge-ai-gemma-4-mediapipe-whisper.md)
+**Author:** [**Cyrus Wong (黃俊彥)**](https://www.linkedin.com/in/cyruswong/) — *Google Developer Expert - Cloud (AI), Senior Lecturer at HKIIT*
 
 ---
 
@@ -324,7 +323,3 @@ By executing continuous biometric vision and speech-intent classification inside
 2. **Split Monolithic Cloud Functions by Resource Profile**: Isolating heavy `ffmpeg`/`sharp` workloads (`media-processing`, 8 GiB RAM) from authentication (`auth-triggers`, 256 MiB RAM) and Genkit AI orchestration (`ai-flows`, 1 GiB RAM) in [`firebase.json`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/firebase.json) eliminates cold-start latency and slashes container memory billing.
 3. **Give Teachers Model Choice Across Every Teaching & Grading Workflow**: By exposing **Gemini 4 Argon (`gemini-4-argon`)**, **Gemini 3.8 Flash (`gemini-3.8-flash`)**, and **Gemini 3.5 Flash-Lite (`gemini-3.5-flash-lite`)** in every UI picker, educators can use `gemini-3.5-flash-lite` for sub-second live teaching interactions and switch to `gemini-4-argon` when evaluating student performance on complex multi-step code or synthesizing new rubrics.
 4. **Automate Data Lifecycle & Cascading Storage Purges**: Pairing Firestore Native TTL (`expireAt`) with cascading `onDocumentDeleted` Storage triggers in [`cleanupTriggers.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/storage_triggers/cleanupTriggers.js) prevents silent storage bill creep after exams and semesters conclude.
-
----
-
-[📚 Back to GDE Blog Series Index](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/README.md) | [⏭️ Continue to Part 2: Zero-Egress Browser Edge AI Investigator →](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/02-browser-edge-ai-gemma-4-mediapipe-whisper.md)
