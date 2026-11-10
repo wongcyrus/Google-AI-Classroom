@@ -16,9 +16,13 @@ canonical_url: https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/b
 
 ![Google AI Classroom Part 9: Gamified Bingo Active Presence & Zero-Trust Proctored Exam Mode](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog09_cover_gamified_bingo_exam_mode.png)
 
-## 1. Problem Statement: Separating Formative Lecture Engagement from High-Stakes Proctored Exam Lockdown
+## 1. Problem Statement: Defeating "Fake Video Playback", Proxy Classmates & Static Screen Decoys
 
-In a 3-hour coding lab or a 100-student hybrid lecture, passive screen-share telemetry has a classic blind spot: **The Static Screen Decoy**. A student can open VS Code or a lecture slide deck, start screen sharing, and walk away from their workstation for 45 minutes while their screen capture continues uploading identical frames. Conversely, during a formal **proctored test or examination**, full-screen monitor capture, webcam/microphone investigation, and tamper-evident evidence retention must be strictly enforced.
+In a 3-hour coding lab or a 100-student hybrid lecture, passive screen-share telemetry has two classic blind spots:
+1. **The Static Screen Decoy (AFK)**: A student opens VS Code or a lecture slide deck, starts screen sharing, and walks away from their workstation for 45 minutes while their screen capture continues uploading identical frames.
+2. **The "Give Password to a Classmate + Play a Pre-Recorded Video" Proxy Lab Exploit**: Even worse, an absent student gives their account password to a friend sitting in the computer lab. That friend logs into the absent student's account on an adjacent lab PC, **starts screen sharing, and plays a pre-recorded coding video in full-screen** so the screen-capture feed looks like someone is typing code! When a standard web-based Bingo quiz pops up on that second monitor, the classmate tries to click an answer on their friend's behalf—unless the Bingo challenge requires **Mobile Passkey Biometric Verification (`mobile_passkey` / `lecture_passkey_qr`)**, which forces a hardware Face ID / fingerprint signature from the absent student's own `1-Phone = 1-Student` bound smartphone (as detailed in [Part 4](./04-webauthn-passkeys-rotating-hmac-qr-auth.md))!
+
+Conversely, during a formal **proctored test or examination**, full-screen monitor capture, webcam/microphone investigation, and tamper-evident evidence retention must be strictly enforced.
 
 Solving both modes effectively requires addressing three operational challenges:
 1. **Formative Teaching vs. High-Stakes Proctored Exams**: During ordinary lectures and labs, instructors want lightweight, interactive comprehension checks that keep students engaged in learning; during formal tests and exams, invigilators require strict full-monitor capture (`displaySurface === 'monitor'`), continuous webcam/audio investigation, and write-once Cloud Storage locks.

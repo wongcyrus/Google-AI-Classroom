@@ -16,16 +16,19 @@ canonical_url: https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/b
 
 ![Google AI Classroom Part 4: Defeating Proxy Attendance & Keyloggers — FIDO2 Passkeys, Rotating HMAC QRs & GCIP Blocking Functions](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog04_cover_webauthn_passkeys_rotating_qr.png)
 
-## 1. Problem Statement: The Dual Security Crisis in University Computer Labs & 200-Seat Lecture Theatres
+## 1. Problem Statement: The Proxy Account Sharing, "Fake Screen-Recording" & Keylogger Crisis in University Computer Labs & 200-Seat Lecture Theatres
 
-When running hands-on programming classes and invigilated practical assessments across physical computer labs and 200-seat lecture halls at the Hong Kong Institute of Information Technology (HKIIT / VTC), our engineering team encountered two persistent identity and physical-presence attacks that traditional username-and-password authentication cannot stop:
+When running hands-on programming classes and invigilated practical assessments across physical computer labs and 200-seat lecture halls at the Hong Kong Institute of Information Technology (HKIIT / VTC), our engineering team encountered three real-world identity and physical-presence exploits that traditional username-and-password authentication and campus IP checks cannot stop:
 
-1. **The "WhatsApp Proxy Attendance" Attack**: When instructors project a static attendance QR code or 4-digit check-in code on the lecture screen, a student sitting in the front row snaps a photo and forwards it to a 150-member WhatsApp or Discord group. Within five seconds, absent students still in bed—or sitting in the campus cafeteria—mark themselves "present." Even worse, in computer lab sessions, a single student can open an incognito window on an adjacent workstation and log in using a friend's shared credentials.
-2. **The Shared Lab PC Keylogger Risk**: Public university computer labs are high-turnover environments. Typing institutional passwords—especially an instructor's privileged account that can trigger high-quota **Gemini 4 Argon (`gemini-4-argon`)** cohort-wide video analysis or modify exam policies—on untrusted shared USB keyboards exposes faculty and students to both hardware inline keyloggers and resident TSR malware.
+1. **The "Give My Password to a Classmate" Proxy Lab Exploit (Fake Video Playback & Proxy Bingo)**: Even when campus CIDR IP restrictions (`checkipaddress`) block off-campus logins, an absent student simply texts their email and password to a friend sitting inside the computer lab. That single classmate sits in front of two adjacent lab workstations (or opens a second browser profile), logs into the absent student's account from a legitimate lab IP, **starts screen sharing, and plays a pre-recorded coding video on loop in full-screen** to fake live lab activity! Whenever a Classroom Bingo active-presence quiz pops up on that second monitor, the classmate simply reaches over and clicks an answer on their friend's behalf.
+2. **The "WhatsApp Proxy Attendance" Relay in 200-Seat Lecture Halls**: When instructors project a static attendance QR code or 4-digit check-in code on the lecture theatre screen, a student sitting in the front row snaps a photo and forwards it to a 150-member WhatsApp or Discord group. Within five seconds, absent students still in bed—or sitting in the campus cafeteria—mark themselves "present."
+3. **The Shared Lab PC Keylogger Risk**: Public university computer labs are high-turnover environments. Typing institutional passwords—especially an instructor's privileged account that can trigger high-quota **Gemini 4 Argon (`gemini-4-argon`)** cohort-wide video analysis or modify exam policies—on untrusted shared USB keyboards exposes faculty and students to both hardware inline keyloggers and resident TSR malware.
 
-To solve both problems simultaneously without requiring dedicated biometric turnstiles or proprietary native mobile apps, we engineered a zero-trust, hardware-bound identity layer built on three pillars:
+Why is a password or campus IP check completely insufficient here? Because **a password can be texted over WhatsApp in 2 seconds, and a lab PC next to your friend shares the exact same campus subnet IP—whereas a student will never hand over their personal unlocked smartphone (`Apple Secure Enclave` / `Android Titan M2` with Face ID, personal WhatsApp, and mobile banking) to a classmate for 3 hours!**
+
+To defeat all three exploits simultaneously without requiring dedicated biometric turnstiles or proprietary native mobile apps, we engineered a zero-trust, hardware-bound identity layer built on three pillars:
+- **FIDO2 / WebAuthn Hardware-Bound Mobile Passkeys (`@simplewebauthn/server`)** enforcing a strict **1-Phone = 1-Student Hardware Lock**: One physical smartphone can only ever be bound to one student account (`credentialID` + `deviceFingerprint`). Even if a classmate logs into a second lab PC using a friend's shared password and plays a fake screen recording, they **cannot pass the Mobile Passkey Bingo challenge or the Lab PC Passkey Enforcement Gate** because their own phone is already cryptographically locked to their own student UID!
 - **Google Cloud Identity Platform (GCIP) Blocking Functions** (`beforeUserCreated` & `beforeUserSignedIn`) enforcing a **4-Tier Deterministic Role Hierarchy** and schedule-aware **Campus Lab CIDR IP Gating**.
-- **FIDO2 / WebAuthn Hardware-Bound Mobile Passkeys (`@simplewebauthn/server`)** enforcing a strict **1-Phone = 1-Student Hardware Lock** backed by Apple Secure Enclave (Face ID / Touch ID) and Android Titan M2 hardware keys.
 - **15-Second Rotating HMAC-SHA256 QR Codes** for both **1.8-second Lecture Hall Biometric Roll Call** and **Zero-Keystroke Passwordless Lab PC Login**, paired with a **3-Tier Emergency Bypass & Audit System**.
 
 ---
@@ -176,16 +179,18 @@ export const checkipaddress = beforeUserSignedIn(
 
 ---
 
-## 3. FIDO2 WebAuthn Hardware Lock: Enforcing `1-Phone = 1-Student`
+## 3. FIDO2 WebAuthn Hardware Lock: Enforcing `1-Phone = 1-Student` to Stop Password-Sharing & Fake Lab Recordings
 
-Even when IP restrictions keep traffic inside the campus Wi-Fi or lab subnet, how do we guarantee that Student A sitting in the lecture hall isn't checking in on behalf of Student B?
+Even when IP restrictions keep traffic inside the campus Wi-Fi or lab subnet, how do we stop Student A from logging into an adjacent lab PC with Student B's shared password, playing a pre-recorded screen video to fake lab work, and clicking Bingo answers for Student B?
 
-We implemented a strict **1-Phone = 1-Student Hardware Lock** in [`functions/ai_flows/passkeyFlows.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/ai_flows/passkeyFlows.js) using `@simplewebauthn/server`. When a student pairs their smartphone:
-1. We require `authenticatorAttachment: 'platform'`, forcing the mobile browser to generate an asymmetric ECDSA P-256 keypair inside the phone's hardware **Apple Secure Enclave** (iOS Face ID / Touch ID) or **Android Titan M2** module.
+The root flaw of password-based lab sessions is that **credentials are zero-cost to share**: Student B can give their password to Student A without losing access to anything. By contrast, **no student will surrender their personal physical smartphone (and their Face ID / fingerprint) to a classmate for an entire morning.** And when a class enables **Mobile Passkey Bingo (`mobile_passkey`)** or the **Passkey Enforcement Gate (`PasskeyEnforcementGate.jsx`)**, every workstation must be unlocked and periodically verified by scanning a per-student challenge QR code with the student's **paired hardware passkey phone**.
+
+To prevent Student A from registering both their own account *and* Student B's account on Student A's smartphone, we implemented a strict **1-Phone = 1-Student Hardware Lock** in [`functions/ai_flows/passkeyFlows.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/ai_flows/passkeyFlows.js) using `@simplewebauthn/server`. When a student pairs their smartphone:
+1. We require `authenticatorAttachment: 'platform'`, forcing the mobile browser to generate an asymmetric ECDSA P-256 keypair inside the phone's hardware **Apple Secure Enclave** (iOS Face ID / Touch ID) or **Android Titan M2** module—non-exportable and immune to cloning.
 2. During `handleVerifyPasskeyRegistration`, we check two orthogonal hardware identifiers across the entire `studentPasskeys` collection:
    - The cryptographic WebAuthn `credentialID`.
-   - The persistent hardware `deviceFingerprint` (protecting against a student creating two different browser profiles or clearing cookies on the same physical phone to register a classmate's account).
-3. Once paired, students **cannot self-unlink** their smartphone. Unbinding a phone requires an instructor to invoke `handleResetStudentPasskey`, which records the previous `credentialID`, `deviceModel`, and teacher justification into an append-only `passkeyAuditLogs` collection.
+   - The persistent hardware `deviceFingerprint` (protecting against a student creating two different browser profiles, using Chrome + Safari, or clearing cookies on the same physical phone to register a classmate's account).
+3. Once paired, students **cannot self-unlink** their smartphone. Unbinding a phone requires an instructor to invoke `handleResetStudentPasskey`, which records the previous `credentialID`, `deviceModel`, and teacher justification into an append-only `passkeyAuditLogs` collection. As a result, a classmate sitting at two lab monitors with a shared password and a looping screen recording is immediately caught on the very first hardware Passkey check!
 
 ### Production Code: Hardware Collision Detection in `passkeyFlows.js`
 
