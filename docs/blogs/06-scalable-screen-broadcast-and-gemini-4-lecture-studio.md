@@ -1,45 +1,62 @@
 ---
-title: "Google AI Classroom Part 6: Scaling Classroom Screen Broadcasting to 1,000+ Viewers & Single-Pass Whole-Lecture Subtitles with Gemini 4 Argon"
+title: "Google AI Classroom Part 6: Low-Bandwidth Classroom Screen Broadcasting & Single-Pass Whole-Lecture Subtitles with Gemini 4 Argon"
 published: true
-description: "Scaling classroom screen broadcasting to 1,000+ zero-auth viewers and compiling single-pass whole-lecture study subtitles with Gemini 4 Argon."
-tags: googlecloud, video, webrtc, gemini
+description: "Scaling classroom screen broadcasting without WebRTC CPU collapse and compiling single-pass whole-lecture study subtitles with Gemini 4 Argon."
+tags: googlecloud, video, serverless, gemini
 cover_image: https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog06_cover_scalable_screen_broadcast.png
 canonical_url: https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/06-scalable-screen-broadcast-and-gemini-4-lecture-studio.md
 ---
 
-# Google AI Classroom Part 6: Scaling Classroom Screen Broadcasting to 1,000+ Viewers & Single-Pass Whole-Lecture Subtitles with Gemini 4 Argon
+# Google AI Classroom Part 6: Low-Bandwidth Classroom Screen Broadcasting & Single-Pass Whole-Lecture Subtitles with Gemini 4 Argon
 
 **Author:** [**Cyrus Wong (黃俊彥)**](https://www.linkedin.com/in/cyruswong/) — *Google Developer Expert - Cloud (AI), Senior Lecturer at HKIIT*
 
 ---
 
-![Google AI Classroom Part 6: Scaling Screen Broadcast to 1,000+ Viewers & Gemini 4 Lecture Studio](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog06_cover_scalable_screen_broadcast.png)
+![Google AI Classroom Part 6: Low-Bandwidth Classroom Screen Broadcasting & Gemini 4 Lecture Studio](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog06_cover_scalable_screen_broadcast.png)
 
 ## 1. Problem Statement: Breaking Two Hard Ceilings in Lecture Hall Broadcasting & Post-Lecture Publishing
 
-When broadcasting a live coding demonstration to a 1,000-seat conference auditorium or multi-cohort lecture theatre—and publishing the recorded 3-hour lecture with multilingual closed captions to YouTube Studio afterward—conventional web architectures hit two catastrophic walls:
+When broadcasting a live coding demonstration to a 50-to-100+ student lecture hall—and publishing the recorded 3-hour lecture with multilingual closed captions to YouTube Studio afterward—conventional web architectures hit two catastrophic walls:
 
 1. **The WebRTC 6-Peer CPU Wall & Firebase Anonymous Auth 100/hr NAT IP Ceiling**:
-   - Peer-to-peer WebRTC screen sharing encodes a separate VP8/H.264 video stream per connected viewer, pegging the presenter's laptop CPU at 100% after just 6–8 students.
-   - Worse, when 300+ attendees in a university auditorium scan a live broadcast QR code while connected to the same campus Wi-Fi NAT gateway IP, calling `signInAnonymously()` immediately triggers **Firebase Auth's hard 100-signups-per-hour-per-IP rate limit** (`auth/too-many-requests`), locking out two-thirds of the audience.
+   - Peer-to-peer WebRTC screen sharing encodes a separate VP8/H.264 video stream per connected viewer ($O(N)$ CPU complexity), pegging the presenter's laptop CPU at 100% after just 6–8 students.
+   - Worse, when dozens of students in a lecture hall scan a live broadcast QR code while connected to the same campus Wi-Fi NAT gateway IP, calling `signInAnonymously()` immediately triggers **Firebase Auth's hard 100-signups-per-hour-per-IP rate limit** (`auth/too-many-requests`), locking out attendees.
 2. **The Chunked Speech-Preview VAD Cutoff & Timescale Drift Bugs**:
    - Early speech-to-text preview models enforced a 45,000 audio token ceiling (~30 minutes) and mistook natural 10-second classroom pauses—while the lecturer writes code in VS Code or draws a diagram on the whiteboard—as end-of-speech (`finishReason: STOP`), silently dropping the remaining 75% of the lecture's captions.
    - Furthermore, feeding raw `MediaRecorder` WebM Opus chunks into long-context multimodal models caused **1.48×–1.68× timescale compression drift** (subtitles running faster than wall-clock video playback) and wasted **90% of the token budget** on redundant video frames.
 
 In this post, we walk through how we solved both problems using:
-- A **32×18 RGB Pixel-Delta Screen Broadcaster** (`<2%` presenter CPU) paired with **Zero-Auth Firestore PIN Security Rules** (`/live/:classId?pin=XXXX`) that scale effortlessly to **1,000+ concurrent auditorium viewers**.
+- A **32×18 RGB Pixel-Delta Screen Broadcaster** (`<2%` presenter CPU) paired with **Zero-Auth Firestore PIN Security Rules** (`/live/:classId?pin=XXXX`) that scale effortlessly across multi-seat classroom sessions.
 - A **Crash-Tolerant 1-Minute Segmented Recorder** backed by IndexedDB recovery and a **Cloud Run FFmpeg Merger** guarded by a strict **5-Point Pre-Deletion Verification Gate**.
 - A **Single-Pass Audio-Only Whole-Lecture Subtitle & YouTube Studio Pipeline** powered by **Gemini 4 Argon (`gemini-4-argon`)**, **Gemini 3.8 Flash (`gemini-3.8-flash`)**, and **Gemini 3.5 Flash-Lite (`gemini-3.5-flash-lite`)** with 48kHz CBR MP3 normalization, linear timescale calibration, and a Chromium zero-duration cue guard.
 
 ---
 
-## 2. Architectural Deep-Dive: 32×18 Pixel-Delta Broadcaster & Zero-Auth Public Presentation Mode
+## 2. Architectural Deep-Dive: Why This Architecture Scales ($O(1)$ vs. $O(N)$ Complexity)
 
-In a programming lecture or technical keynote, the presenter's screen (slides, IDE code, terminal output) needs crisp **1080p / 1440p text legibility**, not 60 FPS motion video. And when the lecturer talks over a slide for 45 seconds without scrolling, re-uploading identical frames wastes bandwidth and Firestore quota.
+In a programming lecture, the presenter's screen (slides, IDE code, terminal output) needs crisp **1080p / 1440p text legibility**, not 60 FPS motion video. And when the lecturer talks over a slide for 45 seconds without scrolling, re-uploading identical frames wastes bandwidth and compute.
 
-### Diagram 1: 32×18 Pixel-Delta Screen Broadcaster & Zero-Auth PIN Gate (`/live/:classId?pin=XXXX`)
+### Diagram 1: Why Serverless Screen Broadcast Scales — WebRTC $O(N)$ CPU Collapse vs. $O(1)$ Firestore Fanout
 
-![32×18 Pixel-Delta Screen Broadcaster & Zero-Auth 1,000-Viewer PIN Gate](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog06_diagram1_1000_viewer_broadcast.png)
+![Why Serverless Screen Broadcast Scales: WebRTC O(N) Collapse vs. O(1) Firestore Fanout](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog06_diagram1_webrtc_vs_firestore_broadcast.png)
+
+### Why WebRTC Mesh Fails in Classrooms vs. How Our $O(1)$ Design Solves It
+
+1. **The WebRTC Mesh $O(N)$ Trap**: In peer-to-peer WebRTC, the presenter's browser must establish an independent peer connection and video encoder pipeline for each connected student. For $N$ students, the presenter's CPU and upstream bandwidth scale as $O(N)$. On typical laptops, CPU load hits ~75% at 8 peers and locks up at 12–15 peers with dropped frames and audio glitching.
+2. **Our Serverless Single-Write $O(1)$ Presenter Workload**:
+   - The teacher's browser runs an inline Web Worker timer and a 32×18 thumbnail canvas to compute pixel deltas.
+   - If the screen is static, 0 frames are uploaded. When slide or code changes, it encodes **one single JPEG frame**.
+   - It writes to **exactly one Firestore document**: `classes/{classId}/screenBroadcast/liveFrame`.
+   - The presenter's machine workload is strictly $O(1)$—taking `<2%` CPU whether 5 students or 80+ students are watching.
+3. **Google Cloud Firestore Real-Time Fanout**:
+   - Google Cloud's distributed Firestore infrastructure handles the fanout to all student `onSnapshot()` listeners.
+4. **Zero-Auth Campus NAT Gate**:
+   - Standard Firebase Auth anonymous sign-ins share the campus Wi-Fi public IP and quickly hit the 100 signups/hr per-IP limit.
+   - We validate a 4-digit session PIN directly inside `firestore.rules` without invoking Firebase Auth, allowing entire student cohorts to connect simultaneously without authentication throttling.
+
+> [!NOTE]
+> **Architectural Boundary & Trade-Off**: This pipeline is intentionally designed for **slide and code demonstration at 0.5–1 FPS (1 frame every 1–3s)** where text sharpness is paramount. It is not intended for 30 FPS video streaming. Furthermore, for massive public audiences (thousands of viewers), a CDN or HLS/DASH media server would be placed in front to avoid Firestore document egress costs. For educational computer labs and lecture halls (30–100 students), this zero-infrastructure serverless pattern delivers rock-solid stability without maintaining expensive media servers.
 
 ### Implementation Walkthrough: 32×18 RGB Pixel Diffing, Hardware `ImageCapture`, & 950 KB Payload Guard
 
@@ -117,7 +134,7 @@ if (hasChanged) {
 
 ### Bypassing the 100/hr NAT Ceiling with Zero-Auth Firestore PIN Rules
 
-To let 1,000+ conference or auditorium viewers join `/live/:classId?pin=XXXX` simultaneously from the same Wi-Fi IP—and allow speakers to print the QR code on their slides *days in advance*—we store both `publicPin` and `savedPublicPin` in `classes/{classId}/screenBroadcast/session` (`configurePublicAccess` in [`useTeacherScreenBroadcast.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/hooks/useTeacherScreenBroadcast.js)) and validate the PIN directly inside [`firestore.rules`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/firestore.rules) with **zero Firebase Auth calls**:
+To let multi-cohort student audiences join `/live/:classId?pin=XXXX` simultaneously from the same campus Wi-Fi NAT IP—and allow speakers to share the QR code in advance—we store both `publicPin` and `savedPublicPin` in `classes/{classId}/screenBroadcast/session` (`configurePublicAccess` in [`useTeacherScreenBroadcast.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/hooks/useTeacherScreenBroadcast.js)) and validate the PIN directly inside [`firestore.rules`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/firestore.rules) with **zero Firebase Auth calls**:
 
 ```javascript
 // From firestore.rules
@@ -346,7 +363,7 @@ Files streamed directly from browser `MediaRecorder` lack an EBML `SeekHead`, `C
 | Architecture / Pipeline Stage | Traditional WebRTC / Raw Video Approach | Our Gemini 4 / 3.8 Lecture Studio Architecture | Architectural Advantage |
 | :--- | :--- | :--- | :--- |
 | **Live Screen Broadcast Transport** | Peer-to-peer WebRTC video encoding per viewer | **32×18 RGB Pixel-Delta + Firestore Single-Doc Fanout** | Constant presenter workload regardless of viewer count |
-| **Auditorium Wi-Fi Spectator Onboarding** | Blocked at 100 users/hr by Anonymous Auth NAT IP limit | **Zero-Auth PIN Rules (`/live/:classId?pin=XXXX`)** | Bypasses shared campus NAT IP throttling |
+| **Campus Wi-Fi Student Onboarding** | Blocked at 100 users/hr by Anonymous Auth NAT IP limit | **Zero-Auth PIN Rules (`/live/:classId?pin=XXXX`)** | Bypasses shared campus NAT IP throttling |
 | **Lecture Segment Merging** | Full video transcoding on every merge | **Zero-Transcode `ffmpeg -f concat -c copy` + 5-Point Safety Gate** | Stream-copy concat without re-encoding video frames |
 | **Multimodal Input Payload to Gemini** | Uploading full composite MP4/WebM video frames | **Extracted 48kHz CBR MP3 Audio (`normalizeLectureAudio`)** | Eliminates redundant video frame tokens for speech STT |
 | **Whole-Lecture Subtitle & Chapter Generation** | Single monolithic prompt with video | **Stage 1 Audio-Only STT + Stage 2 Batched Translation (50 cues/batch)** | Prevents output token truncation on multi-hour lectures |
@@ -356,7 +373,7 @@ Files streamed directly from browser `MediaRecorder` lack an EBML `SeekHead`, `C
 
 ## 6. Key Takeaways
 
-1. **Broadcast Slides & Code via Pixel-Delta Frames, Not Mesh WebRTC**: A `32×18` RGB pixel-diffing canvas driven by an inline Web Worker timer and gated by Zero-Auth Firestore PIN rules scales 1080p/1440p classroom screen broadcasting to 1,000+ auditorium spectators at `<2%` presenter CPU.
+1. **Broadcast Slides & Code via Pixel-Delta Frames, Not Mesh WebRTC**: A `32×18` RGB pixel-diffing canvas driven by an inline Web Worker timer and gated by Zero-Auth Firestore PIN rules scales 1080p/1440p classroom screen broadcasting across multi-seat cohorts at `<2%` presenter CPU.
 2. **Never Delete Raw Segments Without a Multi-Point Verification Gate**: Recording in 1-minute rolling segments with IndexedDB recovery protects against browser crashes, while our 5-point Cloud Run FFmpeg check ensures intermediate clips are never purged unless the merged master video is verified healthy.
 3. **Send Pure Normalized 48kHz CBR MP3 to Gemini, Never Video Frames**: Stripping video frames saves 90% of multimodal input tokens, while normalizing to 48kHz Constant Bitrate MP3 (`normalizeLectureAudio`) and running `calibrateSubtitleTimeline` eliminates the 1.48×–1.68× Opus timescale compression drift.
 4. **Decouple Verbatim Audio STT from Batched Multilingual Translation**: Using **Gemini 4 Argon (`gemini-4-argon`)** or **Gemini 3.8 Flash (`gemini-3.8-flash`)** (`thinkingBudget: 0`, `maxOutputTokens: 65536`) for single-pass verbatim audio transcription + chaptering first, followed by 50-sentence batched translation and a zero-duration cue guard (`end > start`), guarantees 100% complete `.vtt` and YouTube Studio `.srt` packages for lectures up to 9 hours long.
