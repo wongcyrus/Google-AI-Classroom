@@ -1,27 +1,27 @@
 ---
-title: "Part 10: Green AI FinOps, Self-Cleaning Storage Lifecycles & 1-Command Terraform IaC for Multi-School Deployment"
+title: "Google AI Classroom Part 10: Green AI FinOps, Self-Cleaning Storage Lifecycles & 1-Command Terraform IaC for Multi-School Deployment"
 published: true
-description: "Green AI FinOps, automated storage lifecycle policies, and 1-command Terraform IaC for multi-school classroom deployments."
+description: "Green AI FinOps, automated storage lifecycle policies, and 1-command Terraform IaC for multi-school teaching, grading, and proctored exam deployments."
 tags: finops, terraform, devops, googlecloud
 cover_image: https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog10_cover_green_ai_finops_terraform.png
 canonical_url: https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/10-green-ai-finops-storage-lifecycle-and-terraform-iac.md
 ---
 
-# Part 10: Green AI FinOps, Self-Cleaning Storage Lifecycles & 1-Command Terraform IaC for Multi-School Deployment
+# Google AI Classroom Part 10: Green AI FinOps, Self-Cleaning Storage Lifecycles & 1-Command Terraform IaC for Multi-School Deployment
 
 **Author:** [**Cyrus Wong (黃俊彥)**](https://www.linkedin.com/in/cyruswong/) — *Google Developer Expert - Cloud (AI), Senior Lecturer at HKIIT*  
 [⏮️ Previous: Part 9 — Gamified Bingo & Zero-Trust Exam Mode](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/09-gamified-bingo-active-presence-and-zero-trust-exam-mode.md) | [📚 Back to GDE Blog Series Index](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/README.md)
 
 ---
 
-![Part 10: Green AI FinOps, Storage Lifecycle & Terraform IaC](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog10_cover_green_ai_finops_terraform.png)
+![Google AI Classroom Part 10: Green AI FinOps, Storage Lifecycle & Terraform IaC](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog10_cover_green_ai_finops_terraform.png)
 
 ## 1. The Three Pillars of Institutional Day-2 Production Readiness
 
-Building a flashy AI classroom demo for a hackathon takes a weekend; operating a sovereign, privacy-compliant AI platform across an academic department with dozens of lecturers, thousands of students, and strict public-institution budget governance requires three **Day-2 Engineering Guarantees**:
+Building a flashy AI classroom demo for a hackathon takes a weekend; operating a production AI platform for **teaching, learning, student performance evaluation, and proctored examinations** across an academic department with dozens of lecturers, thousands of students, and strict public-institution budget governance requires three **Day-2 Engineering Guarantees**:
 
 1. **Granular FinOps & Atomic Quota Circuit Breakers**: Department administrators must see exact, itemized USD spending down to the sixth decimal place across **🧠 Gemini 4 Argon (`gemini-4-argon`)**, **⚡ Gemini 3.8 Flash (`gemini-3.8-flash`)**, **🪶 Gemini 3.5 Flash-Lite (`gemini-3.5-flash-lite`)**, and **🎙️ Gemini 3.5 Transcribe (`gemini-3.5-transcribe-preview`)**, combined with real-time Cloud Storage byte tracking across **9 distinct media categories** and automated circuit breakers that halt runaway spending before a single class can exceed its budget.
-2. **Self-Cleaning Privacy Lifecycles & Zero-Orphan Cascading Purge**: Under Hong Kong's **Personal Data (Privacy) Ordinance (PDPO)** and **GDPR** data minimization principles, student screenshots, lab videos, voice consultations, and capstone demo clips must expire automatically via native TTL policies—and deleting a class at the end of an academic year must purge **100% of associated Cloud Storage blobs and 20+ Firestore subcollections/collections** with zero orphaned records.
+2. **Self-Cleaning Storage Lifecycles & Zero-Orphan Cascading Purge**: Over a semester of recorded lectures, practical task grading videos, capstone demos, and proctored exam evidence, classes generate thousands of media files. Student screenshots, lab videos, voice consultations, and exam clips must expire automatically via configurable TTL policies after grading and exam appeals conclude—and deleting a class at the end of an academic year must purge **100% of associated Cloud Storage blobs and 20+ Firestore subcollections/collections** with zero orphaned records.
 3. **1-Command Reproducible Terraform Infrastructure-as-Code (`./setup-new-project.sh`) & Continuous Verification**: Any university, polytechnic, or Google Developer community worldwide must be able to provision a fresh Google Cloud project—enabling all 27 APIs, Firestore Native databases, Cloud Storage buckets, Identity Platform (GCIP), and a 24/7 Demo Sandbox—with a single terminal command, guarded by **2,575+ automated assertions**.
 
 In **Part 10 (the finale of our 10-part Google Developer Expert series)**, we walk through the exact production code and infrastructure patterns that deliver all three guarantees.
@@ -283,26 +283,26 @@ Running `./setup-new-project.sh my-school-ai-2026 01ABCD-23EFGH-45IJKL` executes
 
 ---
 
-## 5. Summary of the 10-Part Google Developer Expert Series
+## 5. Summary of the 10-Part Google AI Classroom Series
 
-Across this 10-part architectural deep dive, we have shared every layer of the **Google AI Classroom Assistant**:
+Across this 10-part architectural deep dive, we have shared every layer of the **Google AI Classroom** platform for teaching, learning, student performance evaluation, and proctored assessments:
 
 | Part | Architectural Focus | Key Google AI & Cloud Technologies |
 | :--- | :--- | :--- |
-| **[Part 1](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/01-serverless-ai-classroom-architecture.md)** | Solving the $25-Per-Exam Problem: Serverless Architecture | Gemini 4 Argon, Gemma 4 E2B, Firebase Gen 2 |
-| **[Part 2](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/02-browser-edge-ai-gemma-4-mediapipe-whisper.md)** | Zero-Egress Browser Edge AI (Gemma 4 E2B, MediaPipe, Whisper) | WebGPU Gemma 4 E2B, MediaPipe 3D Mesh, LiteRT Whisper |
-| **[Part 3](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/03-gemini-4-argon-genkit-multimodal-resilience.md)** | Frontier Multimodal Orchestration with Gemini 4 & Genkit | `gemini-4-argon`, `3.8-flash`, `3.5-lite`, Google Genkit |
-| **[Part 4](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/04-webauthn-passkeys-rotating-hmac-qr-auth.md)** | WebAuthn Passkeys, Rotating HMAC QRs & GCIP Blocking | FIDO2 WebAuthn, GCIP Blocking Hooks, 15s HMAC QR |
-| **[Part 5](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/05-realtime-live-subtitles-code-switching-gemini-4-gemma-4.md)** | Real-Time Multilingual Live Subtitles & Code-Switching | Gemini 4/3.8, LiteRT Gemma 4 E2B, Audio Worklet |
-| **[Part 6](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/06-scalable-screen-broadcast-and-gemini-4-lecture-studio.md)** | 1,000-Viewer Screen Broadcast & Lecture Recording Studio | Firestore WebP Delta Sync, Gemini 3.5 Transcribe + Gemini 4 |
-| **[Part 7](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/07-serverless-map-reduce-video-and-gemini-4-rubric-grading.md)** | Map-Reduce-Map Video Intelligence & Practical Task Grading | Cloud Run FFmpeg, Cloud Tasks, Gemini 4 Rubric Engine |
-| **[Part 8](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/08-multimodal-capstone-project-supervision-gemini-4.md)** | Streamlined Mobile 720p Capstone Supervision & Log Auditing | Single-Device Mobile Studio, 2-Stage Diarization + Gemini 4 |
-| **[Part 9](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/09-gamified-bingo-active-presence-and-zero-trust-exam-mode.md)** | Gamified Bingo Active Presence & Zero-Trust Exam Mode | Two-Strike Cloud Tasks, `.docx` Dossiers, Storage Rules |
-| **[Part 10](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/10-green-ai-finops-storage-lifecycle-and-terraform-iac.md)** | Green AI FinOps, Storage Lifecycles & 1-Command Terraform | Cloud Billing Catalog API, Cascading Purge, Terraform IaC |
+| **[Google AI Classroom Part 1](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/01-serverless-ai-classroom-architecture.md)** | Solving the $25-Per-Exam Problem: Serverless Architecture | Gemini 4 Argon, Gemma 4 E2B, Firebase Gen 2 |
+| **[Google AI Classroom Part 2](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/02-browser-edge-ai-gemma-4-mediapipe-whisper.md)** | Zero-Egress Browser Edge AI Investigator (Gemma 4 E2B, MediaPipe, Whisper) | WebGPU Gemma 4 E2B, MediaPipe 3D Mesh, LiteRT Whisper |
+| **[Google AI Classroom Part 3](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/03-gemini-4-argon-genkit-multimodal-resilience.md)** | Frontier Multimodal Orchestration with Gemini 4 & Genkit | `gemini-4-argon`, `3.8-flash`, `3.5-lite`, Google Genkit |
+| **[Google AI Classroom Part 4](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/04-webauthn-passkeys-rotating-hmac-qr-auth.md)** | WebAuthn Passkeys, Rotating HMAC QRs & GCIP Blocking | FIDO2 WebAuthn, GCIP Blocking Hooks, 15s HMAC QR |
+| **[Google AI Classroom Part 5](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/05-realtime-live-subtitles-code-switching-gemini-4-gemma-4.md)** | Real-Time Multilingual Live Subtitles & Code-Switching | Gemini 4/3.8, LiteRT Gemma 4 E2B, Audio Worklet |
+| **[Google AI Classroom Part 6](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/06-scalable-screen-broadcast-and-gemini-4-lecture-studio.md)** | 1,000-Viewer Screen Broadcast & Lecture Recording Studio | Firestore WebP Delta Sync, Gemini 3.5 Transcribe + Gemini 4 |
+| **[Google AI Classroom Part 7](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/07-serverless-map-reduce-video-and-gemini-4-rubric-grading.md)** | Map-Reduce-Map Video Intelligence & Practical Task Grading | Cloud Run FFmpeg, Cloud Tasks, Gemini 4 Rubric Engine |
+| **[Google AI Classroom Part 8](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/08-multimodal-capstone-project-supervision-gemini-4.md)** | Streamlined Mobile 720p Capstone Supervision & Log Auditing | Single-Device Mobile Studio, 2-Stage Diarization + Gemini 4 |
+| **[Google AI Classroom Part 9](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/09-gamified-bingo-active-presence-and-zero-trust-exam-mode.md)** | Gamified Bingo Active Presence & Zero-Trust Proctored Exam Mode | Two-Strike Cloud Tasks, `.docx` Dossiers, Storage Rules |
+| **[Google AI Classroom Part 10](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/10-green-ai-finops-storage-lifecycle-and-terraform-iac.md)** | Green AI FinOps, Storage Lifecycles & 1-Command Terraform | Cloud Billing Catalog API, Cascading Purge, Terraform IaC |
 
-By shifting continuous high-frequency perception to **Browser WebGPU Edge AI** and reserving **Frontier Cloud Multimodal Reasoning (`Gemini 4 Argon`, `Gemini 3.8 Flash`, `Gemini 3.5 Flash-Lite`)** for high-value pedagogical synthesis, we achieved:
-- **100% Biometric Privacy-by-Design** (zero continuous raw webcam video streams sent to the cloud),
-- **Universal Teacher Agency** to choose **Gemini 4 (`gemini-4-argon`)** across every grading, lecture, bingo, and capstone supervision studio, and
+By combining **Browser WebGPU Edge AI Investigation (`Gemma 4 E2B`, `MediaPipe 3D Face Mesh`, `LiteRT Whisper`)** with **Frontier Cloud Multimodal Reasoning (`Gemini 4 Argon`, `Gemini 3.8 Flash`, `Gemini 3.5 Flash-Lite`)**, we achieved:
+- **Real-Time Proctored Exam Investigation Across 40+ Seats** (catching fleeting 3-second visual and spoken exam irregularities at 60 FPS with synchronized screen, webcam, and audio evidence),
+- **Universal Teacher Agency for Teaching & Student Performance** to choose **Gemini 4 (`gemini-4-argon`)** across every live subtitle, screen broadcast, bingo, practical video grading, and capstone supervision studio, and
 - **A 99.8% Reduction in Cloud Operating Costs** (**`<$0.02 USD` per student-hour**).
 
 ### Explore the Full Series & Open-Source Repository

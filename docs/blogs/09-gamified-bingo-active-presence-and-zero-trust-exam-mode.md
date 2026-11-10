@@ -1,29 +1,29 @@
 ---
-title: "Part 9: Gamified \"Bingo\" Active Presence Verification & Zero-Trust Exam Mode on Google Cloud"
+title: "Google AI Classroom Part 9: Gamified \"Bingo\" Active Presence Verification & Zero-Trust Proctored Exam Mode on Google Cloud"
 published: true
-description: "Gamified active presence verification with AI question bank studio and zero-trust exam proctoring on Google Cloud."
+description: "Interactive Classroom Bingo comprehension checks and zero-trust proctored exam lockdown with forensic .docx dossiers on Google Cloud."
 tags: security, gamification, googlecloud, webdev
 cover_image: https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog09_cover_gamified_bingo_exam_mode.png
 canonical_url: https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/09-gamified-bingo-active-presence-and-zero-trust-exam-mode.md
 ---
 
-# Part 9: Gamified "Bingo" Active Presence Verification & Zero-Trust Exam Mode on Google Cloud
+# Google AI Classroom Part 9: Gamified "Bingo" Active Presence Verification & Zero-Trust Proctored Exam Mode on Google Cloud
 
 **Author:** [**Cyrus Wong (黃俊彥)**](https://www.linkedin.com/in/cyruswong/) — *Google Developer Expert - Cloud (AI), Senior Lecturer at HKIIT*  
 [⏮️ Previous: Part 8 — Multimodal Capstone Supervision with Gemini 4](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/08-multimodal-capstone-project-supervision-gemini-4.md) | [📚 Series Index](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/README.md) | [⏭️ Next: Part 10 — Green AI FinOps, Storage Lifecycle & Terraform IaC](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/10-green-ai-finops-storage-lifecycle-and-terraform-iac.md)
 
 ---
 
-![Part 9: Gamified Bingo Active Presence & Zero-Trust Exam Mode](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog09_cover_gamified_bingo_exam_mode.png)
+![Google AI Classroom Part 9: Gamified Bingo Active Presence & Zero-Trust Proctored Exam Mode](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog09_cover_gamified_bingo_exam_mode.png)
 
-## 1. Verifying Active Attention Without Punitive Surveillance or Idle Polling Bills
+## 1. Problem Statement: Separating Formative Lecture Engagement from High-Stakes Proctored Exam Lockdown
 
-In a 3-hour coding lab or a 100-student hybrid lecture, passive screen-share telemetry has a classic blind spot: **The Static Screen Decoy**. A student can open VS Code or a lecture slide deck, start screen sharing, and walk away from their workstation for 45 minutes while their screen capture continues uploading identical frames.
+In a 3-hour coding lab or a 100-student hybrid lecture, passive screen-share telemetry has a classic blind spot: **The Static Screen Decoy**. A student can open VS Code or a lecture slide deck, start screen sharing, and walk away from their workstation for 45 minutes while their screen capture continues uploading identical frames. Conversely, during a formal **proctored test or examination**, full-screen monitor capture, webcam/microphone investigation, and tamper-evident evidence retention must be strictly enforced.
 
-However, solving this problem naively introduces three severe trade-offs:
-1. **Psychological Surveillance Fatigue**: Continuous webcam micro-policing during ordinary lectures creates student anxiety and erodes classroom trust.
-2. **Punishing Honest Comprehension Mistakes**: If an instructor sends a pop quiz to check attendance and docks attendance marks when a student selects the wrong answer, students are penalized for struggling with new technical material even though they were sitting attentively at their desks!
-3. **Serverless Polling Bills**: Running a Cloud Scheduler cron job every 60 seconds to scan pending attendance timers across 50 classes burns tens of thousands of idle Firestore reads per month.
+Solving both modes effectively requires addressing three operational challenges:
+1. **Formative Teaching vs. High-Stakes Proctored Exams**: During ordinary lectures and labs, instructors want lightweight, interactive comprehension checks that keep students engaged in learning; during formal tests and exams, invigilators require strict full-monitor capture (`displaySurface === 'monitor'`), continuous webcam/audio investigation, and write-once Cloud Storage locks.
+2. **Distinguishing Honest Learning Mistakes from Absence**: If an instructor sends a pop quiz during a lecture and docks attendance marks when a student selects the wrong answer, students are penalized for struggling with new technical material even though they were sitting attentively at their desks!
+3. **Eliminating Idle Polling Bills**: Running a Cloud Scheduler cron job every 60 seconds to scan pending attendance timers across 50 classes burns tens of thousands of idle Firestore reads per month.
 
 In **Part 9** of our Google Developer Expert series, we detail how we engineered two complementary classroom integrity systems:
 - **Gamified "Classroom Bingo" Active Presence Verification** ([`BingoModal.jsx`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/components/BingoModal.jsx), [`BingoQuestionBankModal.jsx`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/components/BingoQuestionBankModal.jsx), [`BingoResultsView.jsx`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/components/BingoResultsView.jsx), [`LectureQrBingoModal.jsx`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/components/monitor/LectureQrBingoModal.jsx), and [`bingoFlows.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/ai_flows/bingoFlows.js)) featuring **3 FinOps-Tiered Verification Modes**, a **Gemini 4 Argon (`gemini-4-argon`) Question Bank AI Studio**, Fisher-Yates positional bias elimination, and an event-driven **Non-Punitive Two-Strike State Machine** powered by **Google Cloud Tasks (`dispatchBingoRetryTask`)**.

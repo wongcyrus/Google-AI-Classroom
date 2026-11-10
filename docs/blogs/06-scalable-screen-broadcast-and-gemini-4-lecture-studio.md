@@ -1,20 +1,20 @@
 ---
-title: "Part 6: Scaling Classroom Screen Broadcasting to 1,000+ Viewers & Single-Pass Whole-Lecture Subtitles with Gemini 4 Argon"
+title: "Google AI Classroom Part 6: Scaling Classroom Screen Broadcasting to 1,000+ Viewers & Single-Pass Whole-Lecture Subtitles with Gemini 4 Argon"
 published: true
-description: "Scaling proctored screen broadcasting to 1,000+ zero-auth viewers and compiling single-pass whole-lecture subtitles with Gemini 4 Argon."
+description: "Scaling classroom screen broadcasting to 1,000+ zero-auth viewers and compiling single-pass whole-lecture study subtitles with Gemini 4 Argon."
 tags: googlecloud, video, webrtc, gemini
 cover_image: https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog06_cover_scalable_screen_broadcast.png
 canonical_url: https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/06-scalable-screen-broadcast-and-gemini-4-lecture-studio.md
 ---
 
-# Part 6: Scaling Classroom Screen Broadcasting to 1,000+ Viewers & Single-Pass Whole-Lecture Subtitles with Gemini 4 Argon
+# Google AI Classroom Part 6: Scaling Classroom Screen Broadcasting to 1,000+ Viewers & Single-Pass Whole-Lecture Subtitles with Gemini 4 Argon
 
 **Author:** [**Cyrus Wong (黃俊彥)**](https://www.linkedin.com/in/cyruswong/) — *Google Developer Expert - Cloud (AI), Senior Lecturer at HKIIT*  
 [⏮️ Previous: Part 5 — Real-Time Multilingual Live Subtitles](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/05-realtime-live-subtitles-code-switching-gemini-4-gemma-4.md) | [📚 Series Index](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/README.md) | [⏭️ Next: Part 7 — Gemini 4 Map-Reduce Video & Rubric Grading](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/07-serverless-map-reduce-video-and-gemini-4-rubric-grading.md)
 
 ---
 
-![Part 6: Scaling Screen Broadcast to 1,000+ Viewers & Gemini 4 Lecture Studio](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog06_cover_scalable_screen_broadcast.png)
+![Google AI Classroom Part 6: Scaling Screen Broadcast to 1,000+ Viewers & Gemini 4 Lecture Studio](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog06_cover_scalable_screen_broadcast.png)
 
 ## 1. Problem Statement: Breaking Two Hard Ceilings in Lecture Hall Broadcasting & Post-Lecture Publishing
 

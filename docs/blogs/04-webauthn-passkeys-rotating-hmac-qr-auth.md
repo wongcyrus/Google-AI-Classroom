@@ -1,20 +1,20 @@
 ---
-title: "Part 4: Defeating Proxy Attendance & Lab Keyloggers with WebAuthn Passkeys, Rotating HMAC QRs & GCIP Blocking Functions"
+title: "Google AI Classroom Part 4: Defeating Proxy Attendance & Lab Keyloggers with WebAuthn Passkeys, Rotating HMAC QRs & GCIP Blocking Functions"
 published: true
-description: "Defeating proxy attendance and keyloggers with FIDO2 WebAuthn Passkeys, 10-second rotating HMAC QR codes, and GCIP Cloud Identity blocking hooks."
+description: "Verifiable classroom attendance and keylogger-proof proctored exam lab sign-in with FIDO2 WebAuthn Passkeys, 15s rotating HMAC QRs, and GCIP blocking hooks."
 tags: security, passkeys, webauthn, googlecloud
 cover_image: https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog04_cover_webauthn_passkeys_rotating_qr.png
 canonical_url: https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/04-webauthn-passkeys-rotating-hmac-qr-auth.md
 ---
 
-# Part 4: Defeating Proxy Attendance & Lab Keyloggers with WebAuthn Passkeys, Rotating HMAC QRs & GCIP Blocking Functions
+# Google AI Classroom Part 4: Defeating Proxy Attendance & Lab Keyloggers with WebAuthn Passkeys, Rotating HMAC QRs & GCIP Blocking Functions
 
 **Author:** [**Cyrus Wong (黃俊彥)**](https://www.linkedin.com/in/cyruswong/) — *Google Developer Expert - Cloud (AI), Senior Lecturer at HKIIT*  
 [⏮️ Previous: Part 3 — Gemini 4 Argon & Genkit Resilience](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/03-gemini-4-argon-genkit-multimodal-resilience.md) | [📚 Series Index](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/README.md) | [⏭️ Next: Part 5 — Real-Time Multilingual Live Subtitles](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/05-realtime-live-subtitles-code-switching-gemini-4-gemma-4.md)
 
 ---
 
-![Part 4: Defeating Proxy Attendance & Keyloggers — FIDO2 Passkeys, Rotating HMAC QRs & GCIP Blocking Functions](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog04_cover_webauthn_passkeys_rotating_qr.png)
+![Google AI Classroom Part 4: Defeating Proxy Attendance & Keyloggers — FIDO2 Passkeys, Rotating HMAC QRs & GCIP Blocking Functions](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog04_cover_webauthn_passkeys_rotating_qr.png)
 
 ## 1. Problem Statement: The Dual Security Crisis in University Computer Labs & 200-Seat Lecture Theatres
 

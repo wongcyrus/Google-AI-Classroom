@@ -1,29 +1,29 @@
 ---
-title: "Part 3: Frontier Multimodal Orchestration — Right-Sizing Gemini 4 Argon, Gemini 3.8 Flash & On-Device Gemma 4 E2B with Google Genkit"
+title: "Google AI Classroom Part 3: Frontier Multimodal Orchestration — Right-Sizing Gemini 4 Argon, Gemini 3.8 Flash & On-Device Gemma 4 E2B with Google Genkit"
 published: true
-description: "Orchestrating Gemini 4 Argon, Gemini 3.8 Flash, and on-device Gemma 4 with Google Genkit resilience patterns and multi-tier prompt governance."
+description: "Orchestrating Gemini 4 Argon, Gemini 3.8 Flash, and on-device Gemma 4 E2B for teaching, student performance grading, and proctored assessments with Google Genkit."
 tags: googlecloud, genkit, gemini, ai
 cover_image: https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog03_cover_frontier_multimodal_orchestration.png
 canonical_url: https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/03-gemini-4-argon-genkit-multimodal-resilience.md
 ---
 
-# Part 3: Frontier Multimodal Orchestration — Right-Sizing Gemini 4 Argon (`gemini-4-argon`), Gemini 3.8 Flash & On-Device Gemma 4 E2B with Google Genkit
+# Google AI Classroom Part 3: Frontier Multimodal Orchestration — Right-Sizing Gemini 4 Argon (`gemini-4-argon`), Gemini 3.8 Flash & On-Device Gemma 4 E2B with Google Genkit
 
 **Author:** [**Cyrus Wong (黃俊彥)**](https://www.linkedin.com/in/cyruswong/) — *Google Developer Expert - Cloud (AI), Senior Lecturer at HKIIT*  
-[⏮️ Previous: Part 2 — Browser Edge AI with Gemma 4 E2B](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/02-browser-edge-ai-gemma-4-mediapipe-whisper.md) | [📚 Series Index](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/README.md) | [⏭️ Next: Part 4 — WebAuthn Passkeys & Rotating HMAC QRs](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/04-webauthn-passkeys-rotating-hmac-qr-auth.md)
+[⏮️ Previous: Part 2 — Browser Edge AI Investigator](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/02-browser-edge-ai-gemma-4-mediapipe-whisper.md) | [📚 Series Index](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/README.md) | [⏭️ Next: Part 4 — WebAuthn Passkeys & Rotating HMAC QRs](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/04-webauthn-passkeys-rotating-hmac-qr-auth.md)
 
 ---
 
-![Part 3: Frontier Multimodal Orchestration — Right-Sizing Gemini 4 Argon, Gemini 3.8 Flash & Genkit Resilience](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog03_cover_frontier_multimodal_orchestration.png)
+![Google AI Classroom Part 3: Frontier Multimodal Orchestration — Right-Sizing Gemini 4 Argon, Gemini 3.8 Flash & Genkit Resilience](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog03_cover_frontier_multimodal_orchestration.png)
 
-## 1. Problem Statement: The Multimodal Classroom Paradox — Why One Model Size Never Fits All
+## 1. Problem Statement: The Multimodal Classroom Paradox — Why Teaching, Student Performance & Proctoring Need 5 Different Models
 
-When we run an AI-powered computer science or engineering classroom for 40 concurrent students at **HKIIT / VTC Hong Kong**, "AI" is not a single monolithic workload. It is a spectrum of radically different latency, privacy, context-window, and FinOps constraints:
+When we run an AI-powered computer science or engineering classroom for 40 to 100+ concurrent students at **HKIIT / VTC Hong Kong**, supporting **live teaching, inclusive learning, student performance evaluation, and proctored exams** requires radically different latency, context-window, and FinOps profiles:
 
-1. **Every 16ms–3s on the Student's Laptop (Biometric & Acoustic Proctoring)**: Streaming 40 webcams and microphones to the cloud 24/7 would violate student biometric privacy (GDPR / Hong Kong PDPO) and cost hundreds of dollars per day. It **must** run locally in the browser via **MediaPipe**, **LiteRT Whisper-Tiny**, and **LiteRT-LM Gemma 4 E2B (`gemma-4-E2B-it-web.litertlm`)** at **$0.00 API cost**.
-2. **Every 4 Seconds at the Lecture Podium (Live Multilingual Subtitles & Instant Screen Checks)**: When a lecturer speaks Cantonese mixed with English Kubernetes/React jargon (*"呢個 Pod 個 Readiness Probe fail 咗"*), students need 7-language subtitles on their screens in under 800 milliseconds—making **Gemini 3.5 Flash-Lite (`gemini-3.5-flash-lite`)** ($0.30 In / $2.50 Out per 1M tokens) or on-device **Gemma 4 E2B** ideal.
-3. **Standard Multimodal Video Grading & Whole-Lecture CC Generation**: Analyzing a 45-minute 1-FPS student lab recording or generating bilingual subtitles and YouTube chapters from a 3-hour pure Opus lecture audio stream requires balanced multimodal throughput—where **Gemini 3.8 Flash (`gemini-3.8-flash`)** ($0.75 In / $3.75 Out per 1M tokens) shines.
-4. **Complex Rubric Synthesis, Multi-Step Code Debugging & Capstone Supervision (Frontier Reasoning)**: When a teacher wants to watch an instructor demonstration video and synthesize a partial-credit grading rubric, audit 60 weekly capstone logs for ChatGPT fabrication against live 720p mobile hardware demos, or meta-optimize a complex JSON-schema prompt, the workload demands **Gemini 4 Argon (`gemini-4-argon`)** ($2.00 In / $10.00 Out per 1M tokens) with its 1-million-token shared multimodal context window and deep reasoning capabilities.
+1. **Every 16ms–3s on the Student's Laptop (Real-Time Proctored Exam Investigation)**: During a practical test or examination, a human invigilator cannot watch 40+ screens and webcams simultaneously, and calling cloud APIs every second for 40 seats would require 432,000+ cloud calls per exam. High-frequency posture, gaze, and speech-intent investigation **must** run locally in the browser via **MediaPipe**, **LiteRT Whisper-Tiny**, and **LiteRT-LM Gemma 4 E2B (`gemma-4-E2B-it-web.litertlm`)** at **$0.00 API cost**, immediately uploading synchronized screen + webcam + audio evidence when an irregularity is confirmed.
+2. **Every 4 Seconds at the Lecture Podium (Inclusive Teaching & Live Comprehension Checks)**: When a lecturer speaks Cantonese mixed with English Kubernetes/React jargon (*"呢個 Pod 個 Readiness Probe fail 咗"*), students need 9-language subtitles on their screens in under 800 milliseconds—making **Gemini 3.5 Flash-Lite (`gemini-3.5-flash-lite`)** ($0.25 In / $1.50 Out per 1M tokens) or on-device **Gemma 4 E2B** ideal.
+3. **Standard Student Performance Video Grading & Whole-Lecture CC Generation**: Evaluating a 45-minute 1-FPS student lab recording against a practical task rubric or generating bilingual subtitles and YouTube study chapters from a 3-hour Opus lecture audio stream requires balanced multimodal throughput—where **Gemini 3.8 Flash (`gemini-3.8-flash`)** ($0.50 In / $3.00 Out per 1M tokens) shines.
+4. **Complex Rubric Synthesis, Multi-Step Code Evaluation & Capstone Supervision (Frontier Reasoning)**: When a teacher wants to watch an instructor demonstration video and synthesize a partial-credit grading rubric, evaluate complex student coding performance, audit 60 weekly capstone logs against live 720p mobile hardware demos, or meta-optimize a JSON-schema prompt, the workload demands **Gemini 4 Argon (`gemini-4-argon`)** ($2.00 In / $10.00 Out per 1M tokens) with its 1-million-token shared multimodal context window and deep reasoning capabilities.
 
 With the arrival of **Gemini 4 (`gemini-4-argon`)** in Vertex AI alongside **Gemma 4 E2B (`gemma-4-E2B-it-web.litertlm`)** in the browser via LiteRT-LM WebGPU, we engineered our **Google Genkit** orchestration layer in `functions/ai_flows/` so teachers can pick **`gemini-4-argon`** across every single classroom workflow—while automatically enforcing parameter sanitization, exponential backoff with jitter, cross-model failover, and real-time FinOps quota governance.
 

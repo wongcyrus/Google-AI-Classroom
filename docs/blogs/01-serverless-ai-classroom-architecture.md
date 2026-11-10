@@ -1,47 +1,47 @@
 ---
-title: "Part 1: Solving the $25-Per-Exam Problem — Architecting a Sub-$0.02/Student Serverless AI Classroom with Gemini 4 & Firebase"
+title: "Google AI Classroom Part 1: Solving the $25-Per-Exam Problem — Architecting a Sub-$0.02/Student Serverless AI Classroom with Gemini 4 & Firebase"
 published: true
-description: "Architecting a production sub-$0.02/student-hour serverless AI classroom on Google Cloud with Gemini 4, Firebase, and browser-edge AI."
+description: "Architecting a sub-$0.02/student-hour serverless AI platform for teaching, learning, student performance, and proctored assessments on Google Cloud."
 tags: googlecloud, ai, webdev, serverless
 cover_image: https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog01_cover_serverless_ai_classroom.png
 canonical_url: https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/01-serverless-ai-classroom-architecture.md
 ---
 
-# Part 1: Solving the $25-Per-Exam Problem — Architecting a Sub-$0.02/Student Serverless AI Classroom with Gemini 4 & Firebase
+# Google AI Classroom Part 1: Solving the $25-Per-Exam Problem — Architecting a Sub-$0.02/Student Serverless AI Classroom with Gemini 4 & Firebase
 
 **Author:** [**Cyrus Wong (黃俊彥)**](https://www.linkedin.com/in/cyruswong/) — *Google Developer Expert - Cloud (AI), Senior Lecturer at HKIIT*  
-[📚 Back to GDE Blog Series Index](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/README.md) | [⏭️ Next: Part 2 — Browser Edge AI with Gemma 4 E2B](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/02-browser-edge-ai-gemma-4-mediapipe-whisper.md)
+[📚 Back to GDE Blog Series Index](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/README.md) | [⏭️ Next: Part 2 — Browser Edge AI Investigator](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/02-browser-edge-ai-gemma-4-mediapipe-whisper.md)
 
 ---
 
-![Part 1: Solving the $25-Per-Exam Problem — Sub-$0.02/Student Serverless AI Classroom with Gemini 4 & Firebase](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog01_cover_serverless_ai_classroom.png)
+![Google AI Classroom Part 1: Solving the $25-Per-Exam Problem — Sub-$0.02/Student Serverless AI Classroom with Gemini 4 & Firebase](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog01_cover_serverless_ai_classroom.png)
 
-## 1. Problem Statement: The Classroom Trilemma — Integrity vs. Privacy vs. Cloud FinOps
+## 1. Problem Statement: Scaling Teaching, Student Performance Tracking & Proctored Assessments Under $0.02/Student
 
-In our computer laboratories at the **Hong Kong Institute of Information Technology (HKIIT / VTC)**, we run hundreds of hands-on Cloud Computing, Cybersecurity, and AI/ML practical sessions every semester. Across higher education globally, every engineering faculty today confronts what we call the **Assessment & Classroom Trilemma**:
+In our computer laboratories at the **Hong Kong Institute of Information Technology (HKIIT / VTC)**, we run hundreds of hands-on Cloud Computing, Cybersecurity, and AI/ML lectures, practical labs, and examinations every semester. Across higher education globally, educators confront three fundamental challenges across **teaching, learning, student performance, and proctored assessments**:
 
-1. **Academic Integrity in the AI Copilot Era**: Unsupervised coding labs and practical examinations are easily bypassed via second monitors, screen swapping, remote desktop tunnels, or external AI chat windows. Traditional multiple-choice quizzes no longer measure whether a student can actually configure a Kubernetes cluster, debug a Docker Compose network, or train a PyTorch model.
-2. **Student Biometric Privacy (GDPR / Hong Kong PDPO)**: Legacy commercial proctoring suites require students to install invasive ring-0 kernel drivers and continuously stream raw webcam video and bedroom/lab microphone feeds to third-party cloud servers. This sparks justified student pushback and creates massive institutional liability under the **Hong Kong Personal Data (Privacy) Ordinance (PDPO)** and **EU GDPR**.
-3. **Institutional Cost Sustainability**: Commercial proctoring SaaS platforms charge **$15 to $25 USD per student per exam** ($750–$1,250 USD for a single 50-student cohort). Public universities and vocational institutions simply cannot afford that price tag for daily formative lab exercises, weekly capstone consultations, and continuous assessment.
+1. **Visibility into Live Student Performance & Hands-On Learning**: During a 40-to-100+ student practical lab, a single lecturer cannot walk behind every desk simultaneously to see who is stuck on a Kubernetes YAML error, who has mastered the lab steps, or whether a capstone team's weekly logbook matches their actual working code.
+2. **Real-Time Proctored Tests & Examinations Without Invigilator Overload**: In high-stakes practical tests and exams, screen captures, webcam frames, and audio evidence are recorded for the official exam audit trail—yet a human invigilator cannot watch 40+ screens, 40+ webcams, and listen to 40+ microphones at once to catch fleeting 3-second violations (glancing at a hidden phone, peeking at a neighbor's screen, or whispering answers).
+3. **Institutional Cloud FinOps Sustainability**: Commercial exam-proctoring SaaS platforms charge **$15 to $25 USD per student per exam** ($750–$1,250 USD for a single 50-student test) and offer zero tools for daily lecture subtitles, live screen broadcasting, formative lab grading, or capstone project supervision.
 
 ![The Classroom Assessment Trilemma](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/presentation/images/slide_assessment_trilemma.png)
 
-When we set out to replace legacy proctoring and manual lab grading with an open-source, cloud-native platform in `asia-east2` (Hong Kong), we established a strict architectural mandate:
-- **Zero Continuous Raw Video/Audio Streaming to the Cloud**: 95% of high-frequency biometric gaze, posture, object detection, and speech-intent proctoring must execute **100% locally inside the student's browser** using WebGPU and WebAssembly (**LiteRT-LM Gemma 4 E2B** `gemma-4-E2B-it-web.litertlm`, **LiteRT Whisper-Tiny**, and **MediaPipe Tasks-Vision**) at **$0.00 cloud API cost**.
-- **Right-Sized Frontier Cloud Reasoning**: Reserve Google Cloud's frontier models—led by **Gemini 4 Argon (`gemini-4-argon`)**, **Gemini 3.8 Flash (`gemini-3.8-flash`)**, **Gemini 3.5 Flash-Lite (`gemini-3.5-flash-lite`)**, and **Gemini 3.5 Transcribe (`gemini-3.5-transcribe-preview`)**—for event-driven pedagogical synthesis, automated video rubric grading, live multilingual lecture subtitles, and multi-modal capstone supervision.
-- **Scale-to-Zero Serverless FinOps**: Total cloud infrastructure cost must stay **under $0.02 USD per student-hour** during active classes and drop to **$0.00 during weekends and semester breaks**.
+When we engineered **Google AI Classroom** in `asia-east2` (Hong Kong), we unified **daily teaching, student performance analytics, and proctored examinations** on a single serverless architecture governed by three design principles:
+- **On-Device Browser Edge AI Investigator for Proctored Exams**: Every student's browser runs **LiteRT-LM Gemma 4 E2B** (`gemma-4-E2B-it-web.litertlm`), **LiteRT Whisper-Tiny**, and **MediaPipe 3D Face Mesh** in Web Workers to continuously investigate 3D head pose, iris distance, and spoken semantic intent at 60 FPS with **$0.00 cloud AI inference cost**, immediately uploading synchronized dual screen + webcam + audio evidence whenever a confirmed exam irregularity occurs.
+- **Right-Sized Frontier Cloud Reasoning for Teaching & Student Performance**: Reserve Google Cloud's frontier models—led by **Gemini 4 Argon (`gemini-4-argon`)**, **Gemini 3.8 Flash (`gemini-3.8-flash`)**, **Gemini 3.5 Flash-Lite (`gemini-3.5-flash-lite`)**, and **Gemini 3.5 Transcribe (`gemini-3.5-transcribe-preview`)**—for automated 1-FPS video rubric grading, live 9-language lecture subtitles, interactive Classroom Bingo comprehension checks, and multimodal capstone project supervision.
+- **Scale-to-Zero Serverless FinOps**: Total cloud infrastructure cost stays **under $0.02 USD per student-hour** during active classes and exams, and drops to **$0.00 during weekends and semester breaks**.
 
 ---
 
 ## 2. Architectural Deep-Dive: The 4-Tier Hybrid Edge-to-Cloud Blueprint
 
-Instead of streaming 50 concurrent 1080p WebRTC video feeds to cloud GPU clusters, we decoupled high-frequency sensory perception (**Tier 1 Browser Edge**) from low-latency signaling (**Tier 2 Firestore & Cloud Storage**), domain-isolated serverless compute (**Tier 3 Cloud Functions Gen 2 / Cloud Run**), and multimodal reasoning (**Tier 4 Vertex AI / Google Genkit**).
+To support both interactive daily teaching and high-integrity proctored examinations without saturating campus Wi-Fi or cloud API quotas, we decoupled high-frequency on-device investigation (**Tier 1 Browser Edge**) from real-time classroom signaling & evidence storage (**Tier 2 Firestore & Cloud Storage**), domain-isolated serverless compute (**Tier 3 Cloud Functions Gen 2 / Cloud Run**), and multimodal AI evaluation (**Tier 4 Vertex AI / Google Genkit**).
 
 ![4-Tier Hybrid Edge-to-Cloud Serverless Classroom Architecture](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog01_diagram1_4tier_architecture.png)
 
-### How the 4 Tiers Work Together in a Live Lab
-1. **Tier 1 (Student Browser Edge)**: Every frame from the student's webcam is analyzed in a dedicated Web Worker via MediaPipe's 478-point 3D Face Landmarker (including iris rings `468..477`), while ambient microphone audio is gated by an RMS energy detector, transcribed locally by **LiteRT Whisper-Tiny**, and evaluated for exam collusion by **LiteRT-LM Gemma 4 E2B** (`gemma-4-E2B-it-web.litertlm`). Raw video and audio frames are immediately garbage-collected in browser RAM unless a sustained (>3.0s) violation occurs.
-2. **Tier 2 (Firebase Real-Time Backbone)**: Low-frequency screen captures (every 15–30 seconds) and debounced irregularity snapshots are uploaded directly to Google Cloud Storage (`asia-east2`) with signed Firebase Security Rules, while lightweight JSON telemetry updates Firestore.
+### How the 4 Tiers Work Together in Live Labs & Proctored Exams
+1. **Tier 1 (Student Browser Edge Investigator)**: Every frame from the student's webcam is analyzed in a dedicated Web Worker via MediaPipe's 478-point 3D Face Landmarker (including iris rings `468..477`), while ambient microphone audio is gated by an RMS energy detector, transcribed locally by **LiteRT Whisper-Tiny**, and evaluated for exam collusion by **LiteRT-LM Gemma 4 E2B** (`gemma-4-E2B-it-web.litertlm`). When a sustained (>3.0s) visual or spoken exam irregularity is confirmed, synchronized dual screen + webcam + audio evidence is immediately captured and uploaded for the invigilator.
+2. **Tier 2 (Firebase Real-Time Backbone & Evidence Archive)**: Periodic screen captures (every 15–30 seconds), webcam snapshots, audio segments, and irregularity evidence are uploaded directly to Google Cloud Storage (`asia-east2`) under strict Firebase Security Rules (`isExam` write-once locks during exams), while lightweight JSON telemetry updates the teacher's live monitoring grid in Firestore.
 3. **Tier 3 (7 Cloud Functions Gen 2 Codebases)**: Event-driven Cloud Run microservices compile 1-FPS time-lapse MP4s via `ffmpeg`, enforce minute-by-minute attendance bitmasks, track 9-category storage quotas, and dispatch rate-limited AI grading tasks through Google Cloud Tasks.
 4. **Tier 4 (Gemini 4 & 3 Model Matrix)**: Teachers can choose **Gemini 4 Argon (`gemini-4-argon`)**, **Gemini 3.8 Flash (`gemini-3.8-flash`)**, or **Gemini 3.5 Flash-Lite (`gemini-3.5-flash-lite`)** across every classroom workflow—from live IDE code inspection and practical task rubric synthesis to post-class cohort Map-Reduce video grading.
 
@@ -198,7 +198,7 @@ batch.set(docRef, updatePayload, { merge: true });
 
 Another silent cost killer in educational cloud platforms is **orphaned media storage**. Over a 15-week semester, a single class generates thousands of periodic WebP/JPEG screenshots, student audio clips, 1-FPS compiled MP4 videos, lecture recordings, `.vtt`/`.srt` subtitle tracks, and 720p capstone demo videos across 13 Cloud Storage prefixes and 27+ Firestore collections/subcollections.
 
-If a teacher deletes an old class document (`classes/{classId}`) or shortens the class's data-retention window (`retentionDays` / `videoRetentionDays`), standard Firestore deletion leaves every subcollection document and gigabytes of Cloud Storage blobs behind—accumulating perpetual storage bills and violating PDPO data-retention commitments.
+If a teacher deletes an old class document (`classes/{classId}`) or shortens the class's data-retention window (`retentionDays` / `videoRetentionDays`), standard Firestore deletion leaves every subcollection document and gigabytes of Cloud Storage blobs behind—accumulating perpetual storage bills across semesters.
 
 ![Cloud Storage & FFmpeg TTL Governance](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/presentation/images/slide_cloud_storage_ffmpeg_ttl.png)
 
@@ -320,11 +320,11 @@ By executing continuous biometric vision and speech-intent classification inside
 
 ## 7. Key Takeaways for Google Cloud & EdTech Builders
 
-1. **Push High-Frequency Perception to the Browser Edge**: Never stream continuous 30-FPS video or raw microphone audio to cloud servers when WebGPU and WebAssembly can run **LiteRT-LM Gemma 4 E2B** and **MediaPipe** locally on the student's machine at $0.00 cost and zero biometric privacy exposure.
+1. **Run Real-Time Exam Investigation at the Browser Edge**: Use WebGPU and WebAssembly to run **LiteRT-LM Gemma 4 E2B**, **LiteRT Whisper**, and **MediaPipe 3D Face Mesh** locally in Web Workers—catching fleeting 3-second exam irregularities across 40+ seats at 60 FPS and $0.00 cloud inference cost while automatically uploading synchronized dual screen + webcam + audio evidence.
 2. **Split Monolithic Cloud Functions by Resource Profile**: Isolating heavy `ffmpeg`/`sharp` workloads (`media-processing`, 8 GiB RAM) from authentication (`auth-triggers`, 256 MiB RAM) and Genkit AI orchestration (`ai-flows`, 1 GiB RAM) in [`firebase.json`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/firebase.json) eliminates cold-start latency and slashes container memory billing.
-3. **Give Teachers Model Choice Across Every Workflow**: By exposing **Gemini 4 Argon (`gemini-4-argon`)**, **Gemini 3.8 Flash (`gemini-3.8-flash`)**, and **Gemini 3.5 Flash-Lite (`gemini-3.5-flash-lite`)** in every UI picker, educators can use `gemini-3.5-flash-lite` for sub-second live interactions and switch to `gemini-4-argon` when grading complex multi-step code or synthesizing new rubrics.
-4. **Automate Data Lifecycle & Cascading Storage Purges**: Pairing Firestore Native TTL (`expireAt`) with cascading `onDocumentDeleted` Storage triggers in [`cleanupTriggers.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/storage_triggers/cleanupTriggers.js) ensures strict compliance with Hong Kong PDPO and GDPR while preventing silent storage bill creep.
+3. **Give Teachers Model Choice Across Every Teaching & Grading Workflow**: By exposing **Gemini 4 Argon (`gemini-4-argon`)**, **Gemini 3.8 Flash (`gemini-3.8-flash`)**, and **Gemini 3.5 Flash-Lite (`gemini-3.5-flash-lite`)** in every UI picker, educators can use `gemini-3.5-flash-lite` for sub-second live teaching interactions and switch to `gemini-4-argon` when evaluating student performance on complex multi-step code or synthesizing new rubrics.
+4. **Automate Data Lifecycle & Cascading Storage Purges**: Pairing Firestore Native TTL (`expireAt`) with cascading `onDocumentDeleted` Storage triggers in [`cleanupTriggers.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/storage_triggers/cleanupTriggers.js) prevents silent storage bill creep after exams and semesters conclude.
 
 ---
 
-[📚 Back to GDE Blog Series Index](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/README.md) | [⏭️ Continue to Part 2: Zero-Egress Browser Edge AI with Gemma 4 E2B →](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/02-browser-edge-ai-gemma-4-mediapipe-whisper.md)
+[📚 Back to GDE Blog Series Index](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/README.md) | [⏭️ Continue to Part 2: Zero-Egress Browser Edge AI Investigator →](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/02-browser-edge-ai-gemma-4-mediapipe-whisper.md)
