@@ -352,7 +352,23 @@ We benchmarked our 3-model browser edge stack across standard HKIIT lab hardware
 
 ---
 
-## 8. Key Takeaways for Web AI & Google Cloud Builders
+## 8. Companion Demo Video Recording Plan (60–90s Split-Screen Proof)
+
+To record the companion demo video clip for this blog post ([full shot-by-shot script in `DEMO_VIDEO_RECORDING_PLAN.md`](./DEMO_VIDEO_RECORDING_PLAN.md)), place the **Teacher Dashboard (`IrregularitiesView`)** on the left half of your screen and the **Student Portal (`StudentView` + Chrome DevTools Console)** on the right half:
+
+1. **Shot 1 (00:00–00:15) — Verify Cached Gemma 4 E2B WebGPU Engine in Console**:
+   - Run `await window.__gemma4Status()` in DevTools Console to show `status: "ready"`, `engine: "litert_lm_gemma_e2b"`, `isModelCached: true`, and `delegateUsed: "webgpu"`.
+2. **Shot 2 (00:15–00:35) — Benign Self-Talk (Zero Network Upload)**:
+   - Speak a normal sentence thinking aloud about the exam question. Show `[LiteRT-LM Gemma 4 E2B] 🤖 Intent Evaluation: Category: [BENIGN] | Violation: ✅ NO` in green—confirming zero cloud upload and zero false positive.
+3. **Shot 3 (00:35–00:55) — Live Cantonese/English Exam Collusion Detection**:
+   - Speak into the microphone: *"喂，第三題揀 A 定係 B 呀？Can someone tell me the answer for question 3?"*
+   - Show Gemma 4 E2B flagging `Category: [COLLUSION_EXAM] | Violation: 🚨 YES` in `~450 ms` and automatically uploading the rolling 12-second `.wav` voice evidence clip (`voice_179427....wav`) to Firebase Storage.
+4. **Shot 4 (00:55–01:15) — Teacher Replays the Captured Voice Clip**:
+   - In the Teacher `IrregularitiesView` table, click the **`🎙️ Audio Clip`** button on the new **`AI Speech Alert: COLLUSION EXAM`** row to open `DualMediaPlayer` and play back the recorded `.wav` audio alongside the highlighted transcript.
+
+---
+
+## 9. Key Takeaways for Web AI & Google Cloud Builders
 
 1. **Stream Large `.litertlm` Models Directly into `Engine.create()`**: Instead of buffering a 1.91 GB `ArrayBuffer` twice in memory, tee the `fetch` / `CacheStorage` `ReadableStream` directly into `@litert-lm/core` `Engine.create({ model: modelStream })` while reporting live download percentages (`5%..90%`) to the UI.
 2. **Always Dispose Ephemeral LLM Conversations**: Inside a long-running Web Worker, calling `await conversation.delete()` in a `finally` block after every single-turn `EVALUATE_TRANSCRIPT` or `TRANSLATE_TRANSCRIPT` request prevents KV-cache memory leaks over a 3-hour exam.

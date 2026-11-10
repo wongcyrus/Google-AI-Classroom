@@ -3,7 +3,7 @@
 
 **Author:** [**Cyrus Wong (黃俊彥)**](https://www.linkedin.com/in/cyruswong/) — *Google Developer Expert - Cloud (AI), Senior Lecturer at HKIIT*  
 **Live Production Platform:** [https://it114115-2627.web.app](https://it114115-2627.web.app)  
-**Presentation Deck & Script:** [Google Cloud Tech Talk Slide Deck (`google-cloud-slides.marp.md`)](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/presentation/google-cloud-slides.marp.md) | [Interactive HTML Slides](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/presentation/google-cloud-slides.html) | [Speaker Notes & Delivery Script](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/presentation/speaker-notes-and-script.md)
+**Presentation Deck & Script:** [Google Cloud Tech Talk Slide Deck (`google-cloud-slides.marp.md`)](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/presentation/google-cloud-slides.marp.md) | [Interactive HTML Slides](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/presentation/google-cloud-slides.html) | [Speaker Notes & Delivery Script](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/presentation/speaker-notes-and-script.md) | [🎬 Demo Video Recording Plan (`DEMO_VIDEO_RECORDING_PLAN.md`)](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/DEMO_VIDEO_RECORDING_PLAN.md)
 
 ---
 
