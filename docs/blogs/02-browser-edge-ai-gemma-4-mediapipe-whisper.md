@@ -1,30 +1,30 @@
 ---
-title: "Part 2: Zero-Egress Browser Edge AI — Running Gemma 4 E2B, MediaPipe 3D Face Mesh & LiteRT Whisper in Web Workers"
+title: "Google AI Classroom Part 2: Zero-Egress Browser Edge AI Investigator — Running Gemma 4 E2B, MediaPipe 3D Face Mesh & LiteRT Whisper in Web Workers"
 published: true
-description: "Run on-device AI in browser Web Workers with LiteRT-LM Gemma 4 E2B, MediaPipe 478-pt Face Mesh, and LiteRT Whisper with zero cloud egress cost."
+description: "Turn every student browser into a real-time Edge AI Exam Investigator with LiteRT-LM Gemma 4 E2B, MediaPipe 478-pt Face Mesh, and LiteRT Whisper in Web Workers."
 tags: webgpu, ai, webdev, javascript
 cover_image: https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog02_cover_browser_edge_ai_gemma4.png
 canonical_url: https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/02-browser-edge-ai-gemma-4-mediapipe-whisper.md
 ---
 
-# Part 2: Zero-Egress Browser Edge AI — Running Gemma 4 E2B, MediaPipe 3D Face Mesh & LiteRT Whisper in Web Workers
+# Google AI Classroom Part 2: Zero-Egress Browser Edge AI Investigator — Running Gemma 4 E2B, MediaPipe 3D Face Mesh & LiteRT Whisper in Web Workers
 
 **Author:** [**Cyrus Wong (黃俊彥)**](https://www.linkedin.com/in/cyruswong/) — *Google Developer Expert - Cloud (AI), Senior Lecturer at HKIIT*  
 [⏮️ Previous: Part 1 — 4-Tier Serverless Architecture](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/01-serverless-ai-classroom-architecture.md) | [📚 Series Index](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/README.md) | [⏭️ Next: Part 3 — Gemini 4 Argon & Genkit Resilience](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/03-gemini-4-argon-genkit-multimodal-resilience.md)
 
 ---
 
-![Part 2: Zero-Egress Browser Edge AI — Gemma 4 E2B, MediaPipe 3D Face Mesh & LiteRT Whisper in Web Workers](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog02_cover_browser_edge_ai_gemma4.png)
+![Google AI Classroom Part 2: Zero-Egress Browser Edge AI Investigator — Running Gemma 4 E2B, MediaPipe 3D Face Mesh & LiteRT Whisper in Web Workers](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog02_cover_browser_edge_ai_gemma4.png)
 
-## 1. Problem Statement: Why Privacy-by-Design Requires Running LLMs & Vision Models in the Browser
+## 1. Problem Statement: Why Proctored Tests & Practical Examinations Need an On-Device Browser Edge AI Investigator
 
-In our Hong Kong computer labs and hybrid examinations at **HKIIT / VTC**, streaming 40 students' webcams and microphones continuously to cloud servers creates three showstopping engineering and legal roadblocks:
+In proctored tests and practical examinations at **HKIIT / VTC**, student screen captures, webcam frames, and audio evidence are recorded and uploaded to Cloud Storage for official exam invigilation and forensic audit trails. However, relying solely on human invigilators or cloud-polled snapshots during a live 40-to-100+ student examination creates three critical operational blind spots:
 
-1. **Biometric Privacy & Regulatory Liability (PDPO / GDPR)**: Under the Hong Kong Personal Data (Privacy) Ordinance and European GDPR, continuous webcam video and unedited ambient audio from a student's desk or bedroom constitute sensitive biometric personal data. Streaming raw video/audio to cloud servers creates massive compliance friction.
-2. **Campus Wi-Fi Saturation**: 40 concurrent WebRTC or RTMP video streams in a single computer laboratory saturate campus access points—starving students of bandwidth when they need to pull Docker images, clone Git repositories, or interact with cloud consoles during practical exams.
-3. **Runaway Cloud Inference Costs**: Invoking a cloud multimodal API every second for 40 students over a 3-hour lab would require **432,000 API calls per session**.
+1. **The Human Invigilator Attention Bottleneck**: A single lecturer or invigilator cannot simultaneously watch 40+ student screens, 40+ live webcam feeds, and listen to 40+ microphones in real time to catch fleeting exam misconduct—such as glancing at a concealed smartphone, peeking at a neighbor's monitor, whispering answers, or querying a voice assistant.
+2. **Fleeting Violations Between Snapshots vs. 432,000+ Cloud AI Calls**: Periodic cloud screen and webcam snapshots provide the historical archive, but a 3.5-second glance at a cheat sheet or a whispered answer often occurs *between* polling intervals. Conversely, streaming 30-FPS video and continuous audio from 40 exam seats to Cloud LLMs for real-time AI inspection every second would require **432,000+ cloud API calls per 3-hour exam**—saturating exam lab bandwidth, triggering API rate limits, and incurring runaway cloud inference costs.
+3. **High False-Positive Rates Without Local Geometric & Semantic Reasoning**: During a practical coding or cloud exam, students naturally blink, glance down at their keyboard, read exam questions aloud to themselves (*"Let me check Question 3"*), or call the invigilator for technical assistance (*"Mr. Wong, my Docker daemon crashed"*). Naive motion or audio-level triggers flood invigilators with false alarms.
 
-Using **Google MediaPipe (`@mediapipe/tasks-vision`)**, **Google LiteRT.js (`@litertjs/core` Whisper-Tiny)**, and **LiteRT-LM WebGPU (`@litert-lm/core` Gemma 4 E2B `gemma-4-E2B-it-web.litertlm`)**, we moved **100% of continuous visual and acoustic invigilation inside the student's browser**—achieving **60 FPS UI responsiveness**, **zero raw media egress**, and **$0.00 cloud API cost**.
+Using **Google MediaPipe (`@mediapipe/tasks-vision`)**, **Google LiteRT.js (`@litertjs/core` Whisper-Tiny)**, and **LiteRT-LM WebGPU (`@litert-lm/core` Gemma 4 E2B `gemma-4-E2B-it-web.litertlm`)**, we turned every student's browser into an always-on **Zero-Egress Browser Edge AI Investigator**—continuously inspecting 3D head pose, iris metric distance, and spoken semantic intent at 60 FPS with **$0.00 cloud AI inference egress**, and immediately flagging confirmed exam irregularities with synchronized dual screen + webcam + audio evidence for the invigilator.
 
 ![Edge Vision Gaze & 3D Face Mesh](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/presentation/images/slide_edge_vision_gaze.png)
 
