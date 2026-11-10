@@ -1,19 +1,19 @@
 ---
-title: "Google AI Classroom Part 5: Real-Time Multilingual Live Subtitles & Hong Kong Code-Switching with Gemini 4 / 3.8 & On-Device Gemma 4 E2B"
+title: "Google AI Classroom Part 5: Real-Time Multilingual Live Subtitles & Hong Kong Code-Switching with Cloud Gemini & On-Device Gemma 4 E2B"
 published: true
-description: "Inclusive teaching and learning with real-time 9-language live subtitles handling Hong Kong English-Cantonese code-switching via Gemini 4 and Gemma 4 E2B."
+description: "Inclusive teaching and learning with real-time 9-language live subtitles handling Hong Kong English-Cantonese code-switching via Cloud Gemini and Gemma 4 E2B."
 tags: ai, webdev, speech, gemini
 cover_image: https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog05_cover_realtime_live_subtitles.png
 canonical_url: https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/05-realtime-live-subtitles-code-switching-gemini-4-gemma-4.md
 ---
 
-# Google AI Classroom Part 5: Real-Time Multilingual Live Subtitles & Hong Kong Code-Switching with Gemini 4 / 3.8 & On-Device Gemma 4 E2B
+# Google AI Classroom Part 5: Real-Time Multilingual Live Subtitles & Hong Kong Code-Switching with Cloud Gemini & On-Device Gemma 4 E2B
 
 **Author:** [**Cyrus Wong (黃俊彥)**](https://www.linkedin.com/in/cyruswong/) — *Google Developer Expert - Cloud (AI), Senior Lecturer at HKIIT*
 
 ---
 
-![Google AI Classroom Part 5: Real-Time Multilingual Live Subtitles — Hong Kong Code-Switching with Gemini 4 / 3.8 & Edge Gemma 4](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog05_cover_realtime_live_subtitles.png)
+![Google AI Classroom Part 5: Real-Time Multilingual Live Subtitles — Hong Kong Code-Switching with Cloud Gemini & Edge Gemma 4](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog05_cover_realtime_live_subtitles.png)
 
 ## 1. Problem Statement: Why Standard Speech-to-Text Breaks in Bilingual Technical Classrooms
 

@@ -1,5 +1,5 @@
 ---
-title: "Google AI Classroom Part 1: Architecting a Scale-to-Zero Serverless AI Classroom with Gemini 4, Gemma 4 E2B & Firebase"
+title: "Google AI Classroom Part 1: Architecting a Scale-to-Zero Serverless AI Classroom with Multimodal Gemini, Gemma 4 E2B & Firebase"
 published: true
 description: "Architecting a scale-to-zero serverless AI platform for teaching, learning, student performance, and proctored assessments on Google Cloud."
 tags: googlecloud, ai, webdev, serverless
@@ -7,13 +7,13 @@ cover_image: https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/mai
 canonical_url: https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/01-serverless-ai-classroom-architecture.md
 ---
 
-# Google AI Classroom Part 1: Architecting a Scale-to-Zero Serverless AI Classroom with Gemini 4, Gemma 4 E2B & Firebase
+# Google AI Classroom Part 1: Architecting a Scale-to-Zero Serverless AI Classroom with Multimodal Gemini, Gemma 4 E2B & Firebase
 
 **Author:** [**Cyrus Wong (黃俊彥)**](https://www.linkedin.com/in/cyruswong/) — *Google Developer Expert - Cloud (AI), Senior Lecturer at HKIIT*
 
 ---
 
-![Google AI Classroom Part 1: Architecting a Scale-to-Zero Serverless AI Classroom with Gemini 4 & Firebase](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog01_cover_serverless_ai_classroom.png)
+![Google AI Classroom Part 1: Architecting a Scale-to-Zero Serverless AI Classroom with Multimodal Gemini & Firebase](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog01_cover_serverless_ai_classroom.png)
 
 ## 1. Problem Statement: Scaling Teaching, Student Performance Tracking & Proctored Assessments with Scale-to-Zero Serverless
 

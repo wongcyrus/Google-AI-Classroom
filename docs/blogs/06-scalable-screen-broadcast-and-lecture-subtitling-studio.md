@@ -1,19 +1,19 @@
 ---
-title: "Google AI Classroom Part 6: Low-Bandwidth Classroom Screen Broadcasting & Single-Pass Whole-Lecture Subtitles with Gemini 4 Argon"
+title: "Google AI Classroom Part 6: Low-Bandwidth Classroom Screen Broadcasting & Audio-First Whole-Lecture Subtitling Studio"
 published: true
-description: "Scaling classroom screen broadcasting without WebRTC CPU collapse and compiling single-pass whole-lecture study subtitles with Gemini 4 Argon."
+description: "Scaling classroom screen broadcasting without WebRTC CPU collapse and compiling whole-lecture study subtitles with audio-first multimodal Gemini."
 tags: googlecloud, video, serverless, gemini
 cover_image: https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog06_cover_scalable_screen_broadcast.png
-canonical_url: https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/06-scalable-screen-broadcast-and-gemini-4-lecture-studio.md
+canonical_url: https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/06-scalable-screen-broadcast-and-lecture-subtitling-studio.md
 ---
 
-# Google AI Classroom Part 6: Low-Bandwidth Classroom Screen Broadcasting & Single-Pass Whole-Lecture Subtitles with Gemini 4 Argon
+# Google AI Classroom Part 6: Low-Bandwidth Classroom Screen Broadcasting & Audio-First Whole-Lecture Subtitling Studio
 
 **Author:** [**Cyrus Wong (黃俊彥)**](https://www.linkedin.com/in/cyruswong/) — *Google Developer Expert - Cloud (AI), Senior Lecturer at HKIIT*
 
 ---
 
-![Google AI Classroom Part 6: Low-Bandwidth Classroom Screen Broadcasting & Gemini 4 Lecture Studio](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog06_cover_scalable_screen_broadcast.png)
+![Google AI Classroom Part 6: Low-Bandwidth Classroom Screen Broadcasting & Whole-Lecture Subtitling Studio](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog06_cover_scalable_screen_broadcast.png)
 
 ## 1. Problem Statement: Breaking Two Hard Ceilings in Lecture Hall Broadcasting & Post-Lecture Publishing
 
@@ -29,7 +29,7 @@ When broadcasting a live coding demonstration to a 30-to-80 student lab or up to
 In this post, we walk through how we solved both problems using:
 - A **32×18 RGB Pixel-Delta Screen Broadcaster** (`<2%` presenter CPU) paired with **Zero-Auth Firestore PIN Security Rules** (`/live/:classId?pin=XXXX`) that scale effortlessly from daily 30-student labs up to 600-student multi-cohort lecture halls.
 - A **Crash-Tolerant 1-Minute Segmented Recorder** backed by IndexedDB recovery and a **Cloud Run FFmpeg Merger** guarded by a strict **5-Point Pre-Deletion Verification Gate**.
-- A **Single-Pass Audio-Only Whole-Lecture Subtitle & YouTube Studio Pipeline** powered by **Gemini 4 Argon (`gemini-4-argon`)**, **Gemini 3.8 Flash (`gemini-3.8-flash`)**, and **Gemini 3.5 Flash-Lite (`gemini-3.5-flash-lite`)** with 48kHz CBR MP3 normalization, linear timescale calibration, and a Chromium zero-duration cue guard.
+- An **Audio-First Whole-Lecture Subtitle & YouTube Studio Pipeline** powered by multimodal **Gemini 3.8 Flash (`gemini-3.8-flash`, Default)**, **Gemini 3.5 Flash-Lite (`gemini-3.5-flash-lite`)**, and **Gemini 4 Argon (`gemini-4-argon`)** with 48kHz CBR MP3 normalization, linear timescale calibration, and a Chromium zero-duration cue guard.
 
 ---
 
@@ -293,22 +293,22 @@ if (durationSeconds <= 0 && videoStats.size < 1024) {
 
 ---
 
-## 4. Single-Pass Audio-Only Whole-Lecture Subtitles with Gemini 4 Argon (`gemini-4-argon`)
+## 4. Single-Pass Audio-Only Whole-Lecture Subtitles with Multimodal Gemini
 
 Why send 1.2 GB of video frames into a multimodal LLM when closed captions and YouTube chapter markers come entirely from the lecturer's voice?
 
-In [`ClassManagement.jsx`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/components/ClassManagement.jsx) and [`LectureRecordingsView.jsx`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/components/LectureRecordingsView.jsx), instructors can select their preferred lecture intelligence model—**🧠 Gemini 4 Argon (`gemini-4-argon`)**, **⚡ Gemini 3.8 Flash (`gemini-3.8-flash`, Default)**, or **🚀 Gemini 3.5 Flash-Lite (`gemini-3.5-flash-lite`)** (`SUPPORTED_LECTURE_AI_MODELS` in [`functions/ai_flows/config.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/ai_flows/config.js)).
+In [`ClassManagement.jsx`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/components/ClassManagement.jsx) and [`LectureRecordingsView.jsx`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/components/LectureRecordingsView.jsx), instructors can select their preferred lecture intelligence model—**⚡ Gemini 3.8 Flash (`gemini-3.8-flash`, Default)**, **🚀 Gemini 3.5 Flash-Lite (`gemini-3.5-flash-lite`)**, or **🧠 Gemini 4 Argon (`gemini-4-argon`)** (`SUPPORTED_LECTURE_AI_MODELS` in [`functions/ai_flows/config.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/ai_flows/config.js)).
 
 ### Diagram 3: Two-Stage Whole-Lecture Audio Pipeline, Timescale Calibration & YouTube Studio Packaging
 
-![Single-Pass Whole-Lecture Audio Subtitles & YouTube Studio Packaging with Gemini 4 Argon](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog06_diagram3_gemini4_lecture_subtitles_sequence.png)
+![Single-Pass Whole-Lecture Audio Subtitles & YouTube Studio Packaging with Multimodal Gemini](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog06_diagram3_gemini4_lecture_subtitles_sequence.png)
 
 ### Why We Split Whole-Lecture Subtitling into Stage 1 (Single-Pass Audio STT) + Stage 2 (Batched Translation)
 
 When we initially asked the model to transcribe a 2-hour lecture *and* translate every sentence inline into 4 languages within a single JSON response, the output exceeded `65,536 completion tokens` (`maxOutputTokens`) around minute 70, truncating the JSON!
 
 In [`functions/ai_flows/processLectureSubtitles.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/ai_flows/processLectureSubtitles.js), we architected a **Two-Stage Pipeline** that handles up to **9-hour audio recordings** without ever hitting the 65,536 output token ceiling:
-1. **Stage 1 — Single-Pass Whole-Audio Verbatim Transcription & Chaptering**: We pass the normalized 48kHz CBR MP3 (`gs://.../lecture_audio_normalized.mp3`) to **Gemini 4 Argon (`gemini-4-argon`)** or **Gemini 3.8 Flash (`gemini-3.8-flash`)** with `maxOutputTokens: 65536` and `thinkingConfig: { thinkingBudget: 0 }`. Because Stage 1 outputs *only* the `original` spoken cues and 4–10 YouTube chapter milestones, a full 3-hour lecture takes only ~18,000 output tokens and never cuts off on whiteboard pauses.
+1. **Stage 1 — Single-Pass Whole-Audio Verbatim Transcription & Chaptering**: We pass the normalized 48kHz CBR MP3 (`gs://.../lecture_audio_normalized.mp3`) to **Gemini 3.8 Flash (`gemini-3.8-flash`)** or **Gemini 4 Argon (`gemini-4-argon`)** with `maxOutputTokens: 65536` and `thinkingConfig: { thinkingBudget: 0 }`. Because Stage 1 outputs *only* the `original` spoken cues and 4–10 YouTube chapter milestones, a full 3-hour lecture takes only ~18,000 output tokens and never cuts off on whiteboard pauses.
 2. **Stage 2 — Controlled-Concurrency Batched Translation**: We slice the transcribed segments into batches of `50 sentences` (`BATCH_SIZE = 50`, `CONCURRENCY = 3`) and translate each target language independently via `buildLectureTranslationPrompt`.
 
 ### Solving Three Production Media & Subtitle Failure Modes
@@ -395,7 +395,7 @@ Files streamed directly from browser `MediaRecorder` lack an EBML `SeekHead`, `C
 
 ## 5. Architectural Comparison: Legacy Video Broadcasting vs. Pixel-Delta & Audio-First Lecture Studio
 
-| Architecture / Pipeline Stage | Traditional WebRTC / Raw Video Approach | Our Gemini 4 / 3.8 Lecture Studio Architecture | Architectural Advantage |
+| Architecture / Pipeline Stage | Traditional WebRTC / Raw Video Approach | Our Audio-First Gemini Lecture Studio Architecture | Architectural Advantage |
 | :--- | :--- | :--- | :--- |
 | **Live Screen Broadcast Transport** | Peer-to-peer WebRTC video encoding per viewer | **32×18 RGB Pixel-Delta + Firestore Single-Doc Fanout** | Constant presenter workload regardless of viewer count |
 | **Campus Wi-Fi Student Onboarding** | Blocked at 100 users/hr by Anonymous Auth NAT IP limit | **Zero-Auth PIN Rules (`/live/:classId?pin=XXXX`)** | Bypasses shared campus NAT IP throttling |
@@ -411,4 +411,4 @@ Files streamed directly from browser `MediaRecorder` lack an EBML `SeekHead`, `C
 1. **Broadcast Slides & Code via Pixel-Delta Frames, Not Mesh WebRTC**: A `32×18` RGB pixel-diffing canvas driven by an inline Web Worker timer and gated by Zero-Auth Firestore PIN rules scales 1080p/1440p classroom screen broadcasting across multi-seat cohorts at `<2%` presenter CPU.
 2. **Never Delete Raw Segments Without a Multi-Point Verification Gate**: Recording in 1-minute rolling segments with IndexedDB recovery protects against browser crashes, while our 5-point Cloud Run FFmpeg check ensures intermediate clips are never purged unless the merged master video is verified healthy.
 3. **Send Pure Normalized 48kHz CBR MP3 to Gemini, Never Video Frames**: Stripping video frames saves 90% of multimodal input tokens, while normalizing to 48kHz Constant Bitrate MP3 (`normalizeLectureAudio`) and running `calibrateSubtitleTimeline` eliminates the 1.48×–1.68× Opus timescale compression drift.
-4. **Decouple Verbatim Audio STT from Batched Multilingual Translation**: Using **Gemini 4 Argon (`gemini-4-argon`)** or **Gemini 3.8 Flash (`gemini-3.8-flash`)** (`thinkingBudget: 0`, `maxOutputTokens: 65536`) for single-pass verbatim audio transcription + chaptering first, followed by 50-sentence batched translation and a zero-duration cue guard (`end > start`), guarantees 100% complete `.vtt` and YouTube Studio `.srt` packages for lectures up to 9 hours long.
+4. **Decouple Verbatim Audio STT from Batched Multilingual Translation**: Using **Gemini 3.8 Flash (`gemini-3.8-flash`, Default)** or **Gemini 4 Argon (`gemini-4-argon`)** (`thinkingBudget: 0`, `maxOutputTokens: 65536`) for single-pass verbatim audio transcription + chaptering first, followed by 50-sentence batched translation and a zero-duration cue guard (`end > start`), guarantees 100% complete `.vtt` and YouTube Studio `.srt` packages for lectures up to 9 hours long.
