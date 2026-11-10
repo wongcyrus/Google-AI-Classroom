@@ -34,8 +34,6 @@ To solve both problems simultaneously without requiring dedicated biometric turn
 
 On multi-campus educational domains, distinguishing faculty from students at the exact moment of registration is critical. In our platform, a user with `role: 'teacher'` can orchestrate **Gemini 4 Argon (`gemini-4-argon`)** multimodal grading jobs, inspect live student screen feeds, and reset hardware passkeys, whereas `role: 'student'` is strictly scoped to submitting their own telemetry and viewing authorized course materials. An accidental privilege escalation is both a data-privacy violation and a FinOps risk.
 
-![4-Tier Hybrid Role Resolution](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/presentation/images/slide_hybrid_role_resolution.png)
-
 ### Diagram 1: 4-Tier Deterministic Role Hierarchy & GCIP Blocking Gate
 
 In [`functions/auth_triggers/userManagement.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/auth_triggers/userManagement.js), [`functions/auth_triggers/ipRestriction.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/auth_triggers/ipRestriction.js), and [`functions/auth_triggers/config.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/auth_triggers/config.js), our GCIP blocking functions intercept every signup and sign-in request *before* a Firebase JWT is ever minted:

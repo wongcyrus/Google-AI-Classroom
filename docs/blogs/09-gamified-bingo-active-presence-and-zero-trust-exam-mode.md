@@ -190,8 +190,6 @@ In [`AttendanceView.jsx`](https://github.com/wongcyrus/Google-AI-Classroom/blob/
 
 ## 4. Diagram 3: Zero-Trust Exam Mode Lockdown & Court-Ready `.docx` Forensic Dossiers
 
-![Zero-Trust Assessment Security & Live Exam Mode](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/presentation/images/slide_exam_mode_zero_trust.png)
-
 While Classroom Bingo keeps daily lectures and labs lively and non-punitive, formal practical examinations require **Zero-Trust Assessment Security**. When a class enters a scheduled `examPeriods` window (or `lessonType === 'exam'`), four defense-in-depth layers activate automatically across the client browser, Cloud Run FFmpeg, Cloud Storage Security Rules, and our Signed URL Broker:
 
 ![Zero-Trust Exam Mode Lockdown & Court-Ready .docx Forensic Dossiers](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog09_diagram3_zero_trust_exam_lockdown.png)

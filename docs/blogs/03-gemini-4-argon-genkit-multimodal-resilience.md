@@ -59,8 +59,6 @@ One of the most important engineering lessons when adopting **Gemini 4 (`gemini-
 - **Strict Parameter Contract on `gemini-4-*`**: Passing legacy sampling parameters (`temperature`, `topP`, `top_p`, `topK`, `top_k`) inside `config` to `gemini-4-argon` throws an immediate `400 INVALID_ARGUMENT` error because Gemini 4 manages internal reasoning sampling natively.
 - **Transient Overload & Quota Spikes in Live Labs**: When 40 students submit their practical exam videos simultaneously or a teacher triggers `analyzeAllImagesFlow` across 40 screens with up to `maxToolRoundtrips = numScreenshots * 3`, regional Vertex AI endpoints can return `429 RESOURCE_EXHAUSTED`, `503 UNAVAILABLE`, or `ECONNRESET`. The pipeline must never fail a student's submission—it must retry with exponential backoff + random jitter and seamlessly fail over to `gemini-3.5-flash-lite` if the primary model is exhausted.
 
-![Genkit Resilience Flow](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/presentation/images/slide_genkit_resilience_flow.png)
-
 Here is the exact sequence executed by [`generateWithResilience`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/ai_flows/analysisFlows.js) for every Genkit invocation across our backend:
 
 ![Genkit generateWithResilience: Gemini 4 Sanitization & Self-Healing Failover](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog03_diagram2_genkit_resilience_sequence.png)
@@ -201,8 +199,6 @@ const cost = calculateCost(usage, res.modelUsed || preferredModel);
 ## 5. Implementation Walkthrough 3: Three-Tier Prompt Governance & Modality-Specific Meta-Prompting (`✨ Optimize`)
 
 Hardcoding system prompts inside backend code prevents lecturers from adapting AI grading to their specific syllabus (e.g., Cybersecurity Penetration Testing vs. Frontend React Development). At the same time, writing JSON-schema-safe prompts with required runtime template placeholders (`{{transcript}}`, `{{captureInterval}}`, `{{studentEmail}}`) is error-prone for busy educators.
-
-![Teacher AI Prompt Studio](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/presentation/images/slide_prompt_management_studio.png)
 
 We solved this in [`PromptForm.jsx`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/components/prompt/PromptForm.jsx) and `promptRegistry.js` with a **Three-Tier Prompt Governance Architecture** and an in-place **Gemini 4 Prompt Optimizer**:
 

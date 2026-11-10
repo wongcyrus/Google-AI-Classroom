@@ -36,8 +36,6 @@ In **Part 7** of our 10-part Google Developer Expert engineering series, we walk
 
 ## 2. Diagram 1: From Periodic Screenshots to Forensic 1-FPS H.264 MP4s (80% Storage & 90% Token Reduction)
 
-![Serverless Cloud FFmpeg Image-to-Video Pipeline](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/presentation/images/slide_ffmpeg_compilation.png)
-
 Why record a 30-FPS desktop video stream when a student coding in VS Code or configuring a VPC in the browser changes meaningful visual state every 5 to 15 seconds?
 
 Before Gemini ever evaluates a student's work, [`StudentView.jsx`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/components/StudentView.jsx) and our high-memory Cloud Run worker [`processVideoJob.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/media_processing/processVideoJob.js) (`2 vCPU, 8 GiB RAM, 540s timeout`) transform periodic screenshots into a razor-sharp, tamper-evident **1-FPS H.264 MP4 timelapse** that is **80% smaller** than continuous screen recordings:

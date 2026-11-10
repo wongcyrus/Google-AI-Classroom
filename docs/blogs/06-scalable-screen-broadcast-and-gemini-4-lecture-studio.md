@@ -155,8 +155,6 @@ match /screenBroadcastViewers/{studentUid} {
 
 ## 3. Crash-Tolerant 1-Minute Segmented Recording & The 5-Point Cloud Run FFmpeg Safety Gate
 
-![Batch Lecture Video Pipeline & 5-Point Safety Gate](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/presentation/images/slide_batch_lecture_video_pipeline.png)
-
 Recording a 3-hour lecture into a single in-memory browser `Blob` is a ticking time bomb: if the browser tab crashes or the laptop battery dies at minute 179, the entire 3-hour recording is lost.
 
 ### Diagram 2: Resilient 1-Minute Rolling Ingestion & 5-Point Pre-Deletion Safety Gate
@@ -245,8 +243,6 @@ if (durationSeconds <= 0 && videoStats.size < 1024) {
 ---
 
 ## 4. Single-Pass Audio-Only Whole-Lecture Subtitles with Gemini 4 Argon (`gemini-4-argon`)
-
-![Teacher Lecture Recording & YouTube CC Workflow](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/presentation/images/slide_lecture_recording_youtube.png)
 
 Why send 1.2 GB of video frames into a multimodal LLM when closed captions and YouTube chapter markers come entirely from the lecturer's voice?
 

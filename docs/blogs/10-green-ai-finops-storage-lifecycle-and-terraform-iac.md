@@ -107,8 +107,6 @@ In [`AiCostReportView.jsx`](https://github.com/wongcyrus/Google-AI-Classroom/blo
 
 ## 3. Diagram 2: 9-Category Event-Driven Storage Quota & 4-Stage Cascading Class Purge (`onClassDocDeleted`)
 
-![Cloud Media Lifecycle & Automated Storage Governance](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/presentation/images/slide_cloud_storage_ffmpeg_ttl.png)
-
 How do we prevent a class from uploading unlimited gigabytes of video, and how do we guarantee zero orphaned files when a class is deleted?
 
 ### Production Code 2: 9-Category Event-Driven Cloud Storage Quota Metering & Self-Healing Non-Negative Drift Guard (`storageQuota.js`)
@@ -267,8 +265,6 @@ export const onClassDocDeleted = onDocumentDeleted({
 ---
 
 ## 4. Diagram 3: 1-Command Zero-Click Terraform Onboarding & The 2,575+ Assertion Verification Pyramid
-
-![1-Command Terraform IaC & DevSecOps Safeguards](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/presentation/images/slide_terraform_demo_sandbox.png)
 
 To empower any university, school, or Google Developer Group (GDG) to deploy their own sovereign instance of the Google AI Classroom without clicking through dozens of Cloud Console wizards, [`setup-new-project.sh`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/setup-new-project.sh), [`terraform/`](https://github.com/wongcyrus/Google-AI-Classroom/tree/main/terraform), and [`deploy.sh`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/deploy.sh) automate the entire provisioning and verification lifecycle:
 

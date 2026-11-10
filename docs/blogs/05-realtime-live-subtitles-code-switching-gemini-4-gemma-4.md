@@ -197,8 +197,6 @@ return { ...gemmaTranslations, ...(response.data?.translations || {}) };
 
 ## 4. Discipline Glossary Injection & Zero-Restart Dynamic Prompt Propagation
 
-![Course Subject Domains & Multilingual Intelligence](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/presentation/images/slide_subject_domain_multilingual.png)
-
 A single university deployment spans multiple faculties—from **Computer Science & Software Engineering** to **Healthcare, Nursing & Medical Sciences**, **Business & Corporate Finance (`EBITDA`, `IFRS`)**, and **Electrical & Mechanical Engineering**.
 
 ### Diagram 2: Discipline Glossary Injection & Zero-Restart Dynamic Prompt Propagation
