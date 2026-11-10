@@ -6,6 +6,8 @@
  */
 
 export const GEMMA_CACHE_NAME = 'webai-litert-gemma-v1';
+export const GEMMA_IDB_NAME = 'webai-litert-gemma-idb-v1';
+export const GEMMA_IDB_STORE = 'models';
 
 export const DEFAULT_GEMMA_CONFIG = {
   modelUrl: 'https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/b3ca0d2f076785a8f4b2219ddbd2bdb99954eae1/gemma-4-E2B-it-web.litertlm',
@@ -13,21 +15,56 @@ export const DEFAULT_GEMMA_CONFIG = {
   approximateSizeMB: 1915,
 };
 
+function checkGemmaInIndexedDb(modelUrl) {
+  if (typeof indexedDB === 'undefined') return Promise.resolve(false);
+  return new Promise((resolve) => {
+    try {
+      const req = indexedDB.open(GEMMA_IDB_NAME, 1);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains(GEMMA_IDB_STORE)) {
+          db.createObjectStore(GEMMA_IDB_STORE);
+        }
+      };
+      req.onsuccess = () => {
+        try {
+          const db = req.result;
+          const tx = db.transaction(GEMMA_IDB_STORE, 'readonly');
+          const getReq = tx.objectStore(GEMMA_IDB_STORE).get(modelUrl);
+          getReq.onsuccess = () => {
+            const blob = getReq.result;
+            resolve(Boolean(blob && typeof blob.size === 'number' && blob.size > 0));
+          };
+          getReq.onerror = () => resolve(false);
+        } catch {
+          resolve(false);
+        }
+      };
+      req.onerror = () => resolve(false);
+    } catch {
+      resolve(false);
+    }
+  });
+}
+
 /**
- * Checks if the Gemma model is already cached in CacheStorage.
+ * Checks if the Gemma model is already cached in CacheStorage or IndexedDB.
  * @returns {Promise<boolean>}
  */
 export async function isGemmaModelCached(modelUrl = DEFAULT_GEMMA_CONFIG.modelUrl) {
-  if (!modelUrl || typeof window === 'undefined' || !('caches' in window)) {
+  if (!modelUrl || typeof window === 'undefined') {
     return false;
   }
-  try {
-    const cache = await caches.open(GEMMA_CACHE_NAME);
-    const match = await cache.match(modelUrl);
-    return Boolean(match);
-  } catch (err) {
-    return false;
+  if ('caches' in window) {
+    try {
+      const cache = await caches.open(GEMMA_CACHE_NAME);
+      const match = await cache.match(modelUrl);
+      if (match) return true;
+    } catch {
+      // Fall through to IndexedDB check
+    }
   }
+  return checkGemmaInIndexedDb(modelUrl);
 }
 
 /**

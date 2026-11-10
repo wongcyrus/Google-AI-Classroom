@@ -454,6 +454,56 @@ export function useClientLiteRTGemma({
     });
   }, []);
 
+  // Expose interactive DevTools console helpers (`window.__testGemma4` and `window.__gemma4Status`)
+  // so instructors/developers can verify local Gemma 4 E2B WebGPU inference and cache status directly.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.__gemma4Status = async () => {
+      const cached = await isGemmaModelCached();
+      const estimate = await navigator.storage?.estimate?.().catch(() => null);
+      const snapshot = {
+        status: statusRef.current,
+        engine: engineRef.current,
+        loadingProgress,
+        isModelCached: cached,
+        isWorkable,
+        delegateUsed,
+        unavailableReason,
+        storageUsedMB: estimate?.usage ? Number((estimate.usage / 1e6).toFixed(1)) : null,
+        storageQuotaMB: estimate?.quota ? Number((estimate.quota / 1e6).toFixed(1)) : null,
+      };
+      console.table(snapshot);
+      return snapshot;
+    };
+    window.__testGemma4 = async (
+      sampleTranscript = '喂，第三題揀 A 定係 B 呀？What is the answer for question 3?'
+    ) => {
+      console.log('%c[window.__testGemma4] 🧪 Starting interactive Gemma 4 E2B test...', 'background:#4f46e5;color:white;font-weight:bold;padding:2px 6px;border-radius:4px;', {
+        sampleTranscript,
+        currentStatus: statusRef.current,
+        currentEngine: engineRef.current,
+      });
+      if (statusRef.current !== 'ready' || engineRef.current !== 'litert_lm_gemma_e2b') {
+        console.log('[window.__testGemma4] ⏳ Model not ready yet; triggering preloadGemmaModel()...');
+        await preloadGemmaModel();
+      }
+      const res = await evaluateTranscript(sampleTranscript);
+      console.log('%c[window.__testGemma4] ✅ Result:', 'background:#059669;color:white;font-weight:bold;padding:2px 6px;border-radius:4px;', res);
+      return res;
+    };
+    return () => {
+      if (window.__testGemma4) delete window.__testGemma4;
+      if (window.__gemma4Status) delete window.__gemma4Status;
+    };
+  }, [
+    delegateUsed,
+    evaluateTranscript,
+    isWorkable,
+    loadingProgress,
+    preloadGemmaModel,
+    unavailableReason,
+  ]);
+
   return {
     status,
     loadingProgress,

@@ -9,6 +9,8 @@ import { Engine } from '@litert-lm/core';
 import {
   DEFAULT_GEMMA_CONFIG,
   GEMMA_CACHE_NAME,
+  GEMMA_IDB_NAME,
+  GEMMA_IDB_STORE,
 } from '../utils/gemmaLiteRTLoader.js';
 
 let gemmaEngine = null;
@@ -175,6 +177,56 @@ function configureLiteRtLmWasmLocation() {
   };
 }
 
+function openGemmaIdb() {
+  const idb = typeof indexedDB !== 'undefined' ? indexedDB : self.indexedDB;
+  if (!idb) return Promise.resolve(null);
+  return new Promise((resolve) => {
+    try {
+      const req = idb.open(GEMMA_IDB_NAME, 1);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains(GEMMA_IDB_STORE)) {
+          db.createObjectStore(GEMMA_IDB_STORE);
+        }
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => resolve(null);
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
+async function getModelFromIdb(modelUrl) {
+  const db = await openGemmaIdb();
+  if (!db) return null;
+  return new Promise((resolve) => {
+    try {
+      const tx = db.transaction(GEMMA_IDB_STORE, 'readonly');
+      const req = tx.objectStore(GEMMA_IDB_STORE).get(modelUrl);
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => resolve(null);
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
+async function saveModelToIdb(modelUrl, blob) {
+  const db = await openGemmaIdb();
+  if (!db) return false;
+  return new Promise((resolve) => {
+    try {
+      const tx = db.transaction(GEMMA_IDB_STORE, 'readwrite');
+      tx.objectStore(GEMMA_IDB_STORE).put(blob, modelUrl);
+      tx.oncomplete = () => resolve(true);
+      tx.onerror = () => resolve(false);
+    } catch {
+      resolve(false);
+    }
+  });
+}
+
 export async function getGemmaModelResponse(modelUrl) {
   const cacheStorage = typeof caches !== 'undefined' ? caches : self.caches;
   if (cacheStorage) {
@@ -193,42 +245,97 @@ export async function getGemmaModelResponse(modelUrl) {
     }
   }
 
+  // Fallback check in IndexedDB (handles cross-origin opaque/redirected 1.91GB Blob storage)
+  try {
+    const idbBlob = await getModelFromIdb(modelUrl);
+    if (idbBlob && typeof idbBlob.size === 'number' && idbBlob.size > 0) {
+      const idbResponse = new Response(idbBlob, {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/octet-stream',
+          'Content-Length': String(idbBlob.size),
+        },
+      });
+      return {
+        response: idbResponse,
+        fromCache: true,
+        cacheWritePromise: Promise.resolve(true),
+      };
+    }
+  } catch (idbErr) {
+    console.warn('[LiteRTGemmaWorker] Gemma IDB lookup failed:', idbErr);
+  }
+
   const response = await fetch(modelUrl, { credentials: 'omit' });
   if (!response.ok || !response.body) {
     throw new Error(`Failed to download Gemma E2B model (${response.status})`);
   }
 
-  let cacheWritePromise = Promise.resolve(false);
+  return { response, fromCache: false, cacheWritePromise: null };
+}
+
+async function persistDownloadedModelChunks(modelUrl, chunks, totalBytes) {
+  if (!chunks || chunks.length === 0) return false;
+  const modelBlob = new Blob(chunks, { type: 'application/octet-stream' });
+  let persisted = false;
+
+  const cacheStorage = typeof caches !== 'undefined' ? caches : self.caches;
   if (cacheStorage) {
     try {
       const cache = await cacheStorage.open(GEMMA_CACHE_NAME);
-      cacheWritePromise = cache.put(modelUrl, response.clone())
-        .then(() => true)
-        .catch((error) => {
-          console.warn('[LiteRTGemmaWorker] Failed to persist Gemma model:', error);
-          return false;
-        });
-    } catch (error) {
-      console.warn('[LiteRTGemmaWorker] Failed to open Gemma cache:', error);
+      const syntheticResponse = new Response(modelBlob, {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/octet-stream',
+          'Content-Length': String(modelBlob.size || totalBytes || 0),
+        },
+      });
+      await cache.put(modelUrl, syntheticResponse);
+      persisted = true;
+      console.log('[LiteRTGemmaWorker] 💾 Persisted Gemma 4 E2B model in CacheStorage:', {
+        modelUrl,
+        sizeMB: (modelBlob.size / (1024 * 1024)).toFixed(1),
+      });
+    } catch (cacheErr) {
+      console.warn('[LiteRTGemmaWorker] CacheStorage put failed, falling back to IndexedDB:', cacheErr);
     }
   }
 
-  return { response, fromCache: false, cacheWritePromise };
+  if (!persisted) {
+    try {
+      persisted = await saveModelToIdb(modelUrl, modelBlob);
+      if (persisted) {
+        console.log('[LiteRTGemmaWorker] 💾 Persisted Gemma 4 E2B model in IndexedDB:', {
+          modelUrl,
+          sizeMB: (modelBlob.size / (1024 * 1024)).toFixed(1),
+        });
+      }
+    } catch (idbErr) {
+      console.warn('[LiteRTGemmaWorker] IndexedDB persistence failed:', idbErr);
+    }
+  }
+
+  return persisted;
 }
 
 async function streamModelWithProgress(modelUrl) {
   const {
     response,
     fromCache,
-    cacheWritePromise,
+    cacheWritePromise: existingCachePromise,
   } = await getGemmaModelResponse(modelUrl);
-  const totalBytes = Number(response.headers.get('content-length')) || 0;
+  const totalBytes = Number(response.headers.get('content-length')) || DEFAULT_GEMMA_CONFIG.approximateSizeMB * 1024 * 1024;
   console.log(`[LiteRTGemmaWorker] Gemma 4 E2B ${fromCache ? 'cache load' : 'download'} started.`, {
     modelUrl,
     totalBytes,
   });
   const reader = response.body.getReader();
   let receivedBytes = 0;
+  const downloadedChunks = fromCache ? null : [];
+  let resolveCacheWrite;
+  const cacheWritePromise = existingCachePromise || new Promise((resolve) => {
+    resolveCacheWrite = resolve;
+  });
 
   const modelStream = new ReadableStream({
     async pull(controller) {
@@ -239,10 +346,18 @@ async function streamModelWithProgress(modelUrl) {
         });
         self.postMessage({ type: 'PROGRESS', payload: { progress: 90 } });
         controller.close();
+        if (!fromCache && resolveCacheWrite) {
+          persistDownloadedModelChunks(modelUrl, downloadedChunks, receivedBytes)
+            .then((ok) => resolveCacheWrite(ok))
+            .catch(() => resolveCacheWrite(false));
+        }
         return;
       }
 
       receivedBytes += value.byteLength;
+      if (downloadedChunks) {
+        downloadedChunks.push(value.slice ? value.slice() : new Uint8Array(value));
+      }
       if (totalBytes > 0) {
         const progress = Math.min(89, 5 + Math.round((receivedBytes / totalBytes) * 84));
         self.postMessage({ type: 'PROGRESS', payload: { progress } });
@@ -250,6 +365,7 @@ async function streamModelWithProgress(modelUrl) {
       controller.enqueue(value);
     },
     cancel(reason) {
+      if (resolveCacheWrite) resolveCacheWrite(false);
       return reader.cancel(reason);
     },
   });
