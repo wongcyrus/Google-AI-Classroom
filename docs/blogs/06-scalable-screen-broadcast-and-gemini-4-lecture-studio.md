@@ -17,7 +17,7 @@ canonical_url: https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/b
 
 ## 1. Problem Statement: Breaking Two Hard Ceilings in Lecture Hall Broadcasting & Post-Lecture Publishing
 
-When broadcasting a live coding demonstration to a 50-to-100+ student lecture hall—and publishing the recorded 3-hour lecture with multilingual closed captions to YouTube Studio afterward—conventional web architectures hit two catastrophic walls:
+When broadcasting a live coding demonstration to a 30-to-80 student lab or up to a 600-seat multi-cohort lecture hall—and publishing the recorded 3-hour lecture with multilingual closed captions to YouTube Studio afterward—conventional web architectures hit two catastrophic walls:
 
 1. **The WebRTC 6-Peer CPU Wall & Firebase Anonymous Auth 100/hr NAT IP Ceiling**:
    - Peer-to-peer WebRTC screen sharing encodes a separate VP8/H.264 video stream per connected viewer ($O(N)$ CPU complexity), pegging the presenter's laptop CPU at 100% after just 6–8 students.
@@ -27,7 +27,7 @@ When broadcasting a live coding demonstration to a 50-to-100+ student lecture ha
    - Furthermore, feeding raw `MediaRecorder` WebM Opus chunks into long-context multimodal models caused **1.48×–1.68× timescale compression drift** (subtitles running faster than wall-clock video playback) and wasted **90% of the token budget** on redundant video frames.
 
 In this post, we walk through how we solved both problems using:
-- A **32×18 RGB Pixel-Delta Screen Broadcaster** (`<2%` presenter CPU) paired with **Zero-Auth Firestore PIN Security Rules** (`/live/:classId?pin=XXXX`) that scale effortlessly across multi-seat classroom sessions.
+- A **32×18 RGB Pixel-Delta Screen Broadcaster** (`<2%` presenter CPU) paired with **Zero-Auth Firestore PIN Security Rules** (`/live/:classId?pin=XXXX`) that scale effortlessly from daily 30-student labs up to 600-student multi-cohort lecture halls.
 - A **Crash-Tolerant 1-Minute Segmented Recorder** backed by IndexedDB recovery and a **Cloud Run FFmpeg Merger** guarded by a strict **5-Point Pre-Deletion Verification Gate**.
 - A **Single-Pass Audio-Only Whole-Lecture Subtitle & YouTube Studio Pipeline** powered by **Gemini 4 Argon (`gemini-4-argon`)**, **Gemini 3.8 Flash (`gemini-3.8-flash`)**, and **Gemini 3.5 Flash-Lite (`gemini-3.5-flash-lite`)** with 48kHz CBR MP3 normalization, linear timescale calibration, and a Chromium zero-duration cue guard.
 
@@ -48,7 +48,7 @@ In a programming lecture, the presenter's screen (slides, IDE code, terminal out
    - The teacher's browser runs an inline Web Worker timer and a 32×18 thumbnail canvas to compute pixel deltas.
    - If the screen is static, 0 frames are uploaded. When slide or code changes, it encodes **one single JPEG frame**.
    - It writes to **exactly one Firestore document**: `classes/{classId}/screenBroadcast/liveFrame`.
-   - The presenter's machine workload is strictly $O(1)$—taking `<2%` CPU whether 5 students or 80+ students are watching.
+   - The presenter's machine workload is strictly $O(1)$—taking `<2%` CPU whether 5 students or 600 students are watching.
 3. **Google Cloud Firestore Real-Time Fanout**:
    - Google Cloud's distributed Firestore infrastructure handles the fanout to all student `onSnapshot()` listeners.
 4. **Zero-Auth Campus NAT Gate**:
@@ -56,7 +56,7 @@ In a programming lecture, the presenter's screen (slides, IDE code, terminal out
    - We validate a 4-digit session PIN directly inside `firestore.rules` without invoking Firebase Auth, allowing entire student cohorts to connect simultaneously without authentication throttling.
 
 > [!NOTE]
-> **Architectural Boundary & Trade-Off**: This pipeline is intentionally designed for **slide and code demonstration at 0.5–1 FPS (1 frame every 1–3s)** where text sharpness is paramount. It is not intended for 30 FPS video streaming. Furthermore, for massive public audiences (thousands of viewers), a CDN or HLS/DASH media server would be placed in front to avoid Firestore document egress costs. For educational computer labs and lecture halls (30–100 students), this zero-infrastructure serverless pattern delivers rock-solid stability without maintaining expensive media servers.
+> **Architectural Boundary & Sizing**: This pipeline is intentionally designed for **slide and code demonstration at 0.5–1 FPS (1 frame every 1–3s)** where text sharpness is paramount. It is not intended for 30 FPS video streaming. For higher education computer labs (30–80 students) and peak joint multi-cohort lecture halls (up to 600 seats), this zero-infrastructure serverless pattern delivers rock-solid stability without maintaining expensive media servers. Beyond 600 seats (e.g. multi-thousand public MOOCs or stadium keynotes), an institution would transition to CDN-backed HLS/DASH media distribution.
 
 ### Implementation Walkthrough: 32×18 RGB Pixel Diffing, Hardware `ImageCapture`, & 950 KB Payload Guard
 
