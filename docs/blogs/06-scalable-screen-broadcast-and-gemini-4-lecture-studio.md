@@ -132,6 +132,26 @@ if (hasChanged) {
 }
 ```
 
+### Architectural Decision: Why In-Document Base64 Over Cloud Storage Bucket Links
+
+A frequent architectural question is: *why write Base64 image payloads directly to a single Firestore document (`liveFrame`) instead of uploading `.jpg` files to a Google Cloud Storage bucket and broadcasting the download link?*
+
+While Cloud Storage is the standard choice for large assets and long recordings, four critical real-world requirements led us to choose in-document Base64 for live screen broadcasts:
+
+1. **Sub-Second Real-Time Push vs. Multi-Hop HTTP Roundtrips**:
+   - **With Firestore Base64**: The teacher's browser pushes a single `setDoc()` call over an existing, persistent bidirectional WebSocket/gRPC channel. All connected student listeners receive the raw image data immediately in a single push (~200–400 ms latency).
+   - **With Cloud Storage**: The teacher would need to (1) upload the JPEG blob via `uploadBytes()`, (2) wait for upload confirmation, (3) write the storage URL to Firestore, and (4) every student browser would receive the metadata and then fire an *additional* HTTP GET request to download the image from the bucket. This doubles or triples latency (~1,000–1,500 ms) and introduces network race conditions where frame #42 might finish downloading after frame #43 over student mobile Wi-Fi.
+2. **Fine-Grained Dynamic Security Rules (Cross-Checking PINs & Enrollment)**:
+   - In `firestore.rules`, we can dynamically cross-check whether the student is currently enrolled in `classes/{classId}`, or if a guest's 4-digit PIN matches the active lecture session document.
+   - **Firebase Storage rules cannot query Firestore documents** (there is no `get()` in `storage.rules`). Storage rules have no way to verify whether a public PIN in a URL matches a dynamic session document in Firestore, nor can they verify real-time class roster membership without a dedicated backend token broker.
+3. **Instant, Atomic Session Revocation**:
+   - The moment an instructor clicks **Stop Broadcast**, Firestore sets `isBroadcasting: false`. `firestore.rules` instantly denies further reads to all listeners across the entire cohort.
+   - In contrast, Storage public URLs (`getDownloadURL`) contain persistent bearer tokens (`?alt=media&token=...`) that remain readable on Google Cloud CDN caches even after the lecture ends, creating potential privacy leaks.
+4. **Zero Orphan File Accumulation**:
+   - Writing to `liveFrame` continuously overwrites a single document in place. Cloud Storage would either require overwriting a single object (which causes aggressive browser HTTP caching issues where students see frozen frames) or writing sequential frame files (`frame_001.jpg`, `frame_002.jpg`) which would accumulate tens of thousands of orphaned image files requiring complex Lifecycle cleanup policies.
+
+---
+
 ### Bypassing the 100/hr NAT Ceiling with Zero-Auth Firestore PIN Rules
 
 To let multi-cohort student audiences join `/live/:classId?pin=XXXX` simultaneously from the same campus Wi-Fi NAT IP—and allow speakers to share the QR code in advance—we store both `publicPin` and `savedPublicPin` in `classes/{classId}/screenBroadcast/session` (`configurePublicAccess` in [`useTeacherScreenBroadcast.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/hooks/useTeacherScreenBroadcast.js)) and validate the PIN directly inside [`firestore.rules`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/firestore.rules) with **zero Firebase Auth calls**:
