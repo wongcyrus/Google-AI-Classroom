@@ -44,6 +44,8 @@ In [`TeacherSubtitleControlModal.jsx`](https://github.com/wongcyrus/Google-AI-Cl
 
 A common question when designing multilingual live subtitles for bilingual classrooms is: *how does the system actually handle mixed languages without breaking the ASR or the translation engine?*
 
+![Code-Switching & Mixed-Language Live Subtitle Pipeline: Ingestion & LLM Translation](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog05_diagram4_code_switching_pipeline.png)
+
 Our architecture splits this problem into two decoupled stages:
 
 #### 1. Ingestion: Capturing Spoken Mixed Speech (Cantonese + English Technical Terms)
