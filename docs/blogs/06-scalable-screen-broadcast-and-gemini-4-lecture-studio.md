@@ -150,6 +150,21 @@ While Cloud Storage is the standard choice for large assets and long recordings,
 4. **Zero Orphan File Accumulation**:
    - Writing to `liveFrame` continuously overwrites a single document in place. Cloud Storage would either require overwriting a single object (which causes aggressive browser HTTP caching issues where students see frozen frames) or writing sequential frame files (`frame_001.jpg`, `frame_002.jpg`) which would accumulate tens of thousands of orphaned image files requiring complex Lifecycle cleanup policies.
 
+### 2.2 FinOps & Cost Breakdown: Firestore Document Fanout at Classroom Scale
+
+Because Google Cloud Firestore bills on **document operations** ($0.18 per 100K writes, $0.06 per 100K reads in `asia-east2`) and **network egress** (~$0.12 per GiB), here is the empirical cost model for a typical **1-hour lecture** (~500 emitted frames, leveraging 32×18 pixel-delta suppression when slides are static):
+
+| Workload Scale | Active Attendees | Firestore Writes (~500 Frames) | Firestore Reads | Network Egress (~450 KB/frame) | Total Google Cloud Cost (1-Hour Session) |
+| :--- | :---: | :---: | :---: | :---: | :---: |
+| **Typical Computer Lab** | **30 Students** | 500 writes ($0.0009) | 15,000 reads ($0.009) | ~6.75 GB (Within 10 GB Free Tier) | **~$0.01 USD** |
+| **Standard Lecture Hall** | **60 Students** | 500 writes ($0.0009) | 30,000 reads ($0.018) | ~13.5 GB (~$0.42 after free tier) | **~$0.44 USD** |
+| **Multi-Cohort Joint Lecture** | **150 Students** | 500 writes ($0.0009) | 75,000 reads ($0.045) | ~33.7 GB (~$2.84) | **~$2.89 USD** |
+| **Peak Auditorium / Keynote** | **600 Students** | 500 writes ($0.0009) | 300,000 reads ($0.180) | ~135 GB (~$15.00) | **~$15.18 USD** |
+
+#### Why Serverless Wins Over Dedicated Media Streaming Servers (SFU)
+- **Traditional WebRTC SFU / Media Server**: Hosting dedicated media servers (e.g. Janus, Mediasoup, or LiveKit clusters on 2–4 `c2-standard-4` Cloud Compute VMs) incurs a fixed baseline cost of **$250 – $500 USD per month** 24/7—even during nights, weekends, and semester breaks when no classes take place.
+- **Our Serverless Firestore Pattern**: When no lecture is broadcasting, infrastructure costs drop strictly to **$0.00**. For daily classroom teaching (30–60 students), a complete 1-hour broadcast costs **less than half a dollar**, scaling up to ~$15 for an occasional 600-student symposium without provisioning a single server.
+
 ---
 
 ### Bypassing the 100/hr NAT Ceiling with Zero-Auth Firestore PIN Rules
