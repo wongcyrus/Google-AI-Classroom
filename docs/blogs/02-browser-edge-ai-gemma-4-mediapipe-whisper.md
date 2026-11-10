@@ -245,31 +245,34 @@ async function initializeGemma(modelUrl) {
 
 Deploying a 1.91 GB WebGPU LLM (`gemma-4-E2B-it-web.litertlm`) and an on-device Whisper TFLite worker across university computer labs and BYOD student devices exposed four real-world failure modes that we engineered around in [`StudentView.jsx`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/components/StudentView.jsx), [`gemmaLiteRTLoader.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/utils/gemmaLiteRTLoader.js), [`useClientLiteRTGemma.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/hooks/useClientLiteRTGemma.js), and [`litertWhisper.worker.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/workers/litertWhisper.worker.js):
 
-1. **"DeepFreeze" Wiped Lab PCs, Stream Tee Backpressure & Dual `CacheStorage` + `IndexedDB` Persistence**: University lab PCs reboot into a clean image every morning, wiping `CacheStorage` (`isGemmaCached === false`). Furthermore, calling `cache.put(modelUrl, response.clone())` concurrently while `@litert-lm/core` `Engine.create({ model: modelStream })` consumes a 1.91 GB HuggingFace redirect stream can fail in Chromium because `ReadableStreamDataStreamWrapper` discards loaded slices mid-stream, leaving the cloned tee stream stalled or rejected by `CacheStorage`. To guarantee 100% cache persistence, [`litertGemma.worker.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/workers/litertGemma.worker.js) accumulates the streamed chunks as `Engine.create()` reads them (`persistDownloadedModelChunks`) and writes a synthetic `Response(modelBlob)` to `CacheStorage` (`webai-litert-gemma-v1`) with an automatic fallback to `IndexedDB` (`webai-litert-gemma-idb-v1`) if cross-origin cache quota fails. And [`StudentView.jsx`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/components/StudentView.jsx) automatically triggers `preloadGemmaModel()` as soon as the student enters an active class (`shouldEvaluateVoiceWithGemma && isGemmaWorkable && gemmaStatus === 'idle'`).
-2. **Non-Blocking Cloud-to-Edge Live Hot-Swap & Interactive DevTools Console Verification (`window.__testGemma4`)**: If an exam begins while Gemma 4 E2B is still downloading on a wiped lab PC, the student is never blocked from starting their exam. Any speech detected while `isGemmaReady` is `false` is transparently routed to our Cloud Genkit flow (`analyzeAudio` using `gemini-3.5-transcribe-preview` + `gemini-3.5-flash-lite`), or waits up to 6 seconds if the cached/in-progress model (`isGemmaCached || gemmaLoadingProgress >= 85`) is finishing WebGPU compilation, and **automatically hot-swaps to 100% local Gemma 4 E2B WebGPU inference the millisecond the worker emits `INIT_COMPLETE` (`ready: true`)**! Developers and instructors can also verify local WebGPU inference and cache status directly in Chrome DevTools at any time via `await window.__gemma4Status()` and `await window.__testGemma4("喂，第三題揀 A 定係 B 呀？")`.
-3. **Dynamic-Output TFLite Tensor Allocation Guard (`clientInferenceSupported` & `Module.printErr`)**: Certain exported Whisper TFLite graphs declare their output `sequences` tensor with `kTfLiteDynamic` allocation, which causes `@litertjs/core` WASM `LiteRtCompiledModel.run()` to print `compiled_model.cc:1714` to Emscripten `stderr` and resolve with an uninitialized buffer rather than throwing a JS exception. Our worker intercepts `Module.printErr` and checks `isValidWhisperTokenSequence(outputTokens)` on the first segment, immediately flipping `clientInferenceSupported = false` to prevent repeated WASM C++ error spam while seamlessly continuing transcription via the bound `MediaStreamTrack` recognizer and Firebase AI Logic STT fallback.
-4. **iOS / iPadOS WebKit Jetsam OOM Guard & Storage Quota Pre-Flight**: Allocating a 1.91 GB WebGPU buffer on an iPhone or iPad (which masquerades as `MacIntel` with `maxTouchPoints > 1` on iPadOS) triggers Apple's kernel Jetsam killer, crashing the browser tab. Similarly, laptops with `< 2.5 GB` free disk space throw `QuotaExceededError` mid-download. Our `isMobileOrIosBrowser()`, `deviceMemory < 4`, and `precheckGemmaViability()` guards fail fast in `< 5ms` and route mobile/low-RAM devices cleanly to Cloud Fallback.
+1. **"DeepFreeze" Wiped Lab PCs, Stream Tee Backpressure & Dual `CacheStorage` + `IndexedDB` Persistence**: University lab PCs reboot into a clean image every morning, wiping `CacheStorage` (`isGemmaCached === false`). Furthermore, calling `cache.put(modelUrl, response.clone())` concurrently while `@litert-lm/core` `Engine.create({ model: modelStream })` consumes a 1.91 GB HuggingFace redirect stream can fail in Chromium because `ReadableStreamDataStreamWrapper` discards loaded slices mid-stream, leaving the cloned tee stream stalled or rejected by `CacheStorage`. To guarantee 100% cache persistence, [`litertGemma.worker.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/workers/litertGemma.worker.js) accumulates the streamed chunks as `Engine.create()` reads them (`persistDownloadedModelChunks`) and writes a synthetic `Response(modelBlob)` to `CacheStorage` (`webai-litert-gemma-v1`) with an automatic fallback to `IndexedDB` (`webai-litert-gemma-idb-v1`) if cross-origin cache quota fails. And [`StudentView.jsx`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/components/StudentView.jsx) strictly gates `preloadGemmaModel()` behind `(enableAudioCapture || isAudioCaptureActive || isGemmaCached) && shouldEvaluateVoiceWithGemma && isGemmaWorkable && gemmaStatus === 'idle'` so the 1.91 GB model is **never** downloaded when Voice AI is set to `'disabled'` or `'cloud_only'` or when audio capture is inactive.
+2. **Zero-Egress Rolling PCM Ring Buffer & On-Demand Voice Evidence Upload (`isViolation === true`)**: Because client-side Gemma 4 E2B evaluates speech locally without streaming continuous audio to the cloud, [`useClientLiteRTWhisper.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/hooks/useClientLiteRTWhisper.js) maintains a 12-second rolling 16 kHz PCM ring buffer (`rollingPcmChunksRef`) and encodes an in-memory 16-bit mono `audio/wav` `Blob` (`encodePcmFloat32ToWavBlob` in [`audioDecoder.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/utils/audioDecoder.js)) whenever an utterance is transcribed. Benign speech is discarded in RAM with zero network egress; **only when `isViolation === true`** does [`useClientLiteRTGemma.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/hooks/useClientLiteRTGemma.js) upload the voice clip to Firebase Storage (`irregularities/{classId}/{studentUid}/voice_{timestamp}.wav`) and attach `audioPath` + `audioUrl` to the irregularity document so proctors can replay the exact spoken audio clip inside `IrregularitiesView`.
+3. **Non-Blocking Cloud-to-Edge Live Hot-Swap & Interactive DevTools Console Verification (`window.__testGemma4`)**: If an exam begins while Gemma 4 E2B is still downloading on a wiped lab PC, the student is never blocked from starting their exam. Any speech detected while `isGemmaReady` is `false` is transparently routed to our Cloud Genkit flow (`analyzeAudio` using `gemini-3.5-transcribe-preview` + `gemini-3.5-flash-lite`), or waits up to 6 seconds if the cached/in-progress model (`isGemmaCached || gemmaLoadingProgress >= 85`) is finishing WebGPU compilation, and **automatically hot-swaps to 100% local Gemma 4 E2B WebGPU inference the millisecond the worker emits `INIT_COMPLETE` (`ready: true`)**! Developers and instructors can also verify local WebGPU inference and cache status directly in Chrome DevTools at any time via `await window.__gemma4Status()` and `await window.__testGemma4("喂，第三題揀 A 定係 B 呀？")`.
+4. **Dynamic-Output TFLite Tensor Allocation Guard (`clientInferenceSupported` & `Module.printErr`)**: Certain exported Whisper TFLite graphs declare their output `sequences` tensor with `kTfLiteDynamic` allocation, which causes `@litertjs/core` WASM `LiteRtCompiledModel.run()` to print `compiled_model.cc:1714` to Emscripten `stderr` and resolve with an uninitialized buffer rather than throwing a JS exception. Our worker intercepts `Module.printErr` and checks `isValidWhisperTokenSequence(outputTokens)` on the first segment, immediately flipping `clientInferenceSupported = false` to prevent repeated WASM C++ error spam while seamlessly continuing transcription via the bound `MediaStreamTrack` recognizer and Firebase AI Logic STT fallback.
+5. **iOS / iPadOS WebKit Jetsam OOM Guard & Storage Quota Pre-Flight**: Allocating a 1.91 GB WebGPU buffer on an iPhone or iPad (which masquerades as `MacIntel` with `maxTouchPoints > 1` on iPadOS) triggers Apple's kernel Jetsam killer, crashing the browser tab. Similarly, laptops with `< 2.5 GB` free disk space throw `QuotaExceededError` mid-download. Our `isMobileOrIosBrowser()`, `deviceMemory < 4`, and `precheckGemmaViability()` guards fail fast in `< 5ms` and route mobile/low-RAM devices cleanly to Cloud Fallback.
 
 ![Step-1 Readiness Pre-Warming & Cloud-to-Edge Live Hot-Swap](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog02_diagram3_gemma4_hotswap_sequence.png)
 
-### Production Code Listing 4: Cloud-to-Edge Hot-Swap & Dual Firestore Alerting in [`StudentView.jsx`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/components/StudentView.jsx) and [`useClientLiteRTGemma.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/hooks/useClientLiteRTGemma.js)
+### Production Code Listing 4: Cloud-to-Edge Hot-Swap, On-Demand Voice Evidence Upload & Dual Firestore Alerting in [`StudentView.jsx`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/components/StudentView.jsx) and [`useClientLiteRTGemma.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/hooks/useClientLiteRTGemma.js)
 
-Notice how [`StudentView.jsx`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/components/StudentView.jsx) automatically starts `preloadGemmaModel()` if `gemmaStatus === 'idle'` while routing transcripts to Cloud Genkit until `isGemmaReady` becomes `true`, and how [`useClientLiteRTGemma.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/hooks/useClientLiteRTGemma.js) writes confirmed violations and LLM-classified `speechLanguage` to Firestore:
+Notice how [`StudentView.jsx`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/components/StudentView.jsx) forwards the rolling PCM `audioBlob` metadata to `evaluateSpeechWithGemma(transcript, metadata)`, and how [`useClientLiteRTGemma.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/hooks/useClientLiteRTGemma.js) uploads the `.wav` voice evidence clip to Firebase Storage **only when `isViolation === true`** before writing the irregularity and status telemetry to Firestore:
 
 ```javascript
-// In StudentView.jsx: Non-blocking Cloud-to-Edge Hot-Swap + Auto-Start on Idle
-const handleLiveVoiceTranscript = useCallback(async (transcript) => {
+// In StudentView.jsx: Non-blocking Cloud-to-Edge Hot-Swap + Rolling Voice Evidence Forwarding
+const handleLiveVoiceTranscript = useCallback(async (transcript, metadata = {}) => {
   if (!shouldEvaluateVoiceWithGemma) return null;
 
   if (isGemmaReady) {
-    const localResult = await evaluateSpeechWithGemma(transcript);
+    const localResult = await evaluateSpeechWithGemma(transcript, metadata);
     if (localResult) {
       return localResult;
     }
-  } else if (isGemmaWorkable && gemmaStatus === 'idle' && preloadGemmaModel) {
-    Promise.resolve(preloadGemmaModel()).catch((err) =>
-      console.debug('[StudentView] Auto-starting Gemma 4 E2B preload on transcript:', err)
-    );
+  } else if (isGemmaWorkable && preloadGemmaModel) {
+    if (gemmaStatus === 'idle') {
+      Promise.resolve(preloadGemmaModel()).catch((err) =>
+        console.debug('[StudentView] Auto-starting Gemma 4 E2B preload on transcript:', err)
+      );
+    }
   }
 
   if (!shouldSendTranscriptToCloud(effectiveVoiceAiMode)) return null;
@@ -284,8 +287,19 @@ const handleLiveVoiceTranscript = useCallback(async (transcript) => {
   return response?.data || null;
 }, [activeClass, effectiveVoiceAiMode, evaluateSpeechWithGemma, gemmaStatus, isGemmaReady, isGemmaWorkable, preloadGemmaModel, shouldEvaluateVoiceWithGemma, user?.email, user?.uid]);
 
-// In useClientLiteRTGemma.js: Dual Firestore Irregularity & Status Telemetry Update
+// In useClientLiteRTGemma.js: On-Demand Voice Clip Upload (Zero-Egress for Benign Speech) + Dual Firestore Irregularity
 if (isViolation && currentClassId && currentStudentUid) {
+  let resolvedAudioPath = existingAudioPath || '';
+  let resolvedAudioUrl = existingAudioUrl || '';
+
+  if (!resolvedAudioUrl && !resolvedAudioPath && audioBlob && audioBlob.size > 0) {
+    const incidentAudioPath = `irregularities/${currentClassId}/${currentStudentUid}/voice_${Date.now()}.wav`;
+    const fileRef = storageRef(storage, incidentAudioPath);
+    await uploadBytes(fileRef, audioBlob, { contentType: audioBlob.type || 'audio/wav' });
+    resolvedAudioPath = incidentAudioPath;
+    resolvedAudioUrl = await getDownloadURL(fileRef);
+  }
+
   const irregPayload = {
     classId: currentClassId,
     studentUid: currentStudentUid,
@@ -301,6 +315,8 @@ if (isViolation && currentClassId && currentStudentUid) {
     rationale: rationale || '',
     transcriptSnippet: transcript,
     transcript: transcript,
+    audioPath: resolvedAudioPath || null,
+    audioUrl: resolvedAudioUrl || null,
     source: 'on_device_gemma',
     timestamp: serverTimestamp(),
   };

@@ -603,7 +603,8 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
   const lastMessageTimestampRef = useRef(null);
   const effectiveVoiceAiMode = normalizeVoiceAiMode(voiceAiMode);
   const isLocalVoiceAiEnabled = allowsLocalVoiceAi(effectiveVoiceAiMode);
-  const shouldEvaluateVoiceWithGemma = effectiveVoiceAiMode === 'hybrid';
+  const shouldEvaluateVoiceWithGemma =
+    effectiveVoiceAiMode === 'hybrid' || effectiveVoiceAiMode === 'client_only';
 
   const [gemmaIntentPrompt, setGemmaIntentPrompt] = useState(null);
   const [liveAudioPrompt, setLiveAudioPrompt] = useState(null);
@@ -630,13 +631,13 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
   const isGemmaReady =
     gemmaEngine === 'litert_lm_gemma_e2b' &&
     (gemmaStatus === 'ready' || gemmaStatus === 'evaluating');
-  const handleLiveVoiceTranscript = useCallback(async (transcript) => {
+  const handleLiveVoiceTranscript = useCallback(async (transcript, metadata = {}) => {
     if (!shouldEvaluateVoiceWithGemma) return null;
 
     // 1. When on-device Gemma 4 E2B is ready, run client-side evaluation first
     // and skip Cloud Genkit call if local evaluation succeeds.
     if (isGemmaReady) {
-      const localResult = await evaluateSpeechWithGemma(transcript);
+      const localResult = await evaluateSpeechWithGemma(transcript, metadata);
       if (localResult) {
         return localResult;
       }
@@ -656,7 +657,7 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
             new Promise((resolve) => setTimeout(() => resolve(null), 6000)),
           ]);
           if (initRes?.ready) {
-            const localResult = await evaluateSpeechWithGemma(transcript);
+            const localResult = await evaluateSpeechWithGemma(transcript, metadata);
             if (localResult) {
               return localResult;
             }
@@ -677,9 +678,28 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
       gemmaEngine,
     });
     try {
+      let resolvedAudioUrl = metadata?.audioUrl || null;
+      let resolvedAudioPath = metadata?.audioPath || null;
+      const audioBlob = metadata?.audioBlob || null;
+      if (!resolvedAudioUrl && audioBlob && typeof audioBlob.size === 'number' && audioBlob.size > 0 && activeClass && user?.uid) {
+        try {
+          const ext = (audioBlob.type || '').includes('webm') ? 'webm' : 'wav';
+          resolvedAudioPath = `irregularities/${activeClass}/${user.uid}/voice_${Date.now()}.${ext}`;
+          const fileRef = ref(storage, resolvedAudioPath);
+          await uploadBytes(fileRef, audioBlob, {
+            contentType: audioBlob.type || 'audio/wav',
+          });
+          resolvedAudioUrl = await getDownloadURL(fileRef);
+        } catch (uploadErr) {
+          console.debug('[StudentView:CloudTranscriptAnalysis] Voice clip upload note:', uploadErr);
+        }
+      }
+
       const analyzeAudioCallable = httpsCallable(functions, 'analyzeAudio');
       const response = await analyzeAudioCallable({
         transcript,
+        audioUrl: resolvedAudioUrl || undefined,
+        audioPath: resolvedAudioPath || undefined,
         classId: activeClass,
         studentUid: user?.uid,
         studentEmail: user?.email,
@@ -1013,7 +1033,11 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
       }
 
       if (shouldEvaluateVoiceWithGemma && evaluateSpeechWithGemma) {
-        await evaluateSpeechWithGemma(transcriptText);
+        await evaluateSpeechWithGemma(transcriptText, {
+          audioPath: path || '',
+          audioUrl: url || '',
+          audioBlob: blob || null,
+        });
       }
     }
   }, [transcribeAudioChunk, audioSegmentDuration, evaluateSpeechWithGemma, setWhisperTranscript, effectiveVoiceAiMode, isLocalVoiceAiEnabled, shouldEvaluateVoiceWithGemma, voiceAiCloudFallbackRate, activeClass, targetClasses, user, selectedMicDeviceId, classSpeechLanguage]);
@@ -1148,10 +1172,12 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
     if ((isAudioCaptureActive || isWhisperCached) && isLocalVoiceAiEnabled && whisperStatus === 'idle') {
       preloadWhisperModel?.();
     }
-    if (shouldEvaluateVoiceWithGemma && isGemmaWorkable && gemmaStatus === 'idle') {
+    // Only auto-preload Gemma 4 E2B (~1.91 GB) when Voice AI is configured to use Gemma
+    // ('hybrid' or 'client_only') AND audio capture is enabled/active (or the model is already cached locally).
+    if ((enableAudioCapture || isAudioCaptureActive || isGemmaCached) && shouldEvaluateVoiceWithGemma && isGemmaWorkable && gemmaStatus === 'idle') {
       preloadGemmaModel?.();
     }
-  }, [activeClass, aiMonitoringMode, isModelCached, isPreloading, clientAiStatus, isAudioCaptureActive, isLocalVoiceAiEnabled, isWhisperCached, whisperStatus, preloadModel, preloadWhisperModel, shouldEvaluateVoiceWithGemma, isGemmaCached, isGemmaWorkable, gemmaStatus, preloadGemmaModel]);
+  }, [activeClass, aiMonitoringMode, isModelCached, isPreloading, clientAiStatus, enableAudioCapture, isAudioCaptureActive, isLocalVoiceAiEnabled, isWhisperCached, whisperStatus, preloadModel, preloadWhisperModel, shouldEvaluateVoiceWithGemma, isGemmaCached, isGemmaWorkable, gemmaStatus, preloadGemmaModel]);
 
   const lastTelemetrySyncRef = useRef(0);
   const telemetryTimerRef = useRef(null);

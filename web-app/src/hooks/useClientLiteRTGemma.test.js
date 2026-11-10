@@ -3,6 +3,7 @@ import { renderHook, act } from '@testing-library/react';
 import { useClientLiteRTGemma } from './useClientLiteRTGemma';
 import * as gemmaLoader from '../utils/gemmaLiteRTLoader';
 import * as firestore from 'firebase/firestore';
+import * as firebaseStorage from 'firebase/storage';
 
 // Mock Firebase Firestore
 vi.mock('firebase/firestore', () => ({
@@ -14,9 +15,17 @@ vi.mock('firebase/firestore', () => ({
   serverTimestamp: vi.fn(() => 'MOCK_TIMESTAMP'),
 }));
 
+// Mock Firebase Storage
+vi.mock('firebase/storage', () => ({
+  ref: vi.fn((_storage, path) => ({ fullPath: path })),
+  uploadBytes: vi.fn().mockResolvedValue({}),
+  getDownloadURL: vi.fn().mockResolvedValue('https://storage.googleapis.com/mock-bucket/irregularities/voice.wav'),
+}));
+
 // Mock Firebase Config
 vi.mock('../firebase-config', () => ({
   db: {},
+  storage: {},
 }));
 
 let mockWorkerInstance = null;
@@ -308,6 +317,67 @@ describe('useClientLiteRTGemma Hook', () => {
         gemmaConfidence: 0.98,
       }),
       { merge: true }
+    );
+  });
+
+  it('uploads audioBlob evidence to Firebase Storage when isViolation is true', async () => {
+    const { result } = renderHook(() =>
+      useClientLiteRTGemma({
+        classId: 'CLASS_TEST',
+        studentUid: 'student_123',
+        studentEmail: 'student@test.com',
+      })
+    );
+
+    await initializeGemma(result);
+
+    const mockWavBlob = new Blob([new Uint8Array([1, 2, 3, 4])], { type: 'audio/wav' });
+    let evalPromise;
+    act(() => {
+      evalPromise = result.current.evaluateTranscript('Tell me the answer for Q1', {
+        audioBlob: mockWavBlob,
+      });
+    });
+
+    const evalCall = mockWorkerInstance.postMessage.mock.calls.find(
+      (c) => c[0].type === 'EVALUATE_TRANSCRIPT'
+    );
+    const reqId = evalCall[0].id;
+
+    await act(async () => {
+      mockWorkerInstance.onmessage({
+        data: {
+          type: 'EVALUATION_COMPLETE',
+          id: reqId,
+          payload: {
+            isViolation: true,
+            category: 'COLLUSION_EXAM',
+            severity: 'critical',
+            confidence: 0.97,
+            evidence: 'answer for Q1',
+            rationale: 'Requesting exam answer from peer',
+            transcript: 'Tell me the answer for Q1',
+            studentUid: 'student_123',
+            classId: 'CLASS_TEST',
+            engine: 'litert_lm_gemma_e2b',
+          },
+        },
+      });
+      await evalPromise;
+    });
+
+    expect(firebaseStorage.uploadBytes).toHaveBeenCalledTimes(1);
+    expect(firebaseStorage.getDownloadURL).toHaveBeenCalledTimes(1);
+    expect(firestore.addDoc).toHaveBeenCalledWith(
+      undefined,
+      expect.objectContaining({
+        classId: 'CLASS_TEST',
+        studentUid: 'student_123',
+        category: 'COLLUSION_EXAM',
+        audioPath: expect.stringMatching(/^irregularities\/CLASS_TEST\/student_123\/voice_\d+\.wav$/),
+        audioUrl: 'https://storage.googleapis.com/mock-bucket/irregularities/voice.wav',
+        source: 'on_device_gemma',
+      })
     );
   });
 

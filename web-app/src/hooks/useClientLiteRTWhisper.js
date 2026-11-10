@@ -10,11 +10,12 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { doc, setDoc, serverTimestamp, collection, addDoc } from 'firebase/firestore';
 import { db } from '../firebase-config';
 import { isWhisperModelCached, DEFAULT_WHISPER_CONFIG } from '../utils/webAiLiteRTLoader';
-import { downsamplePcmTo16k } from '../utils/audioDecoder';
+import { downsamplePcmTo16k, encodePcmFloat32ToWavBlob } from '../utils/audioDecoder';
 import { transcribeAudioWithFirebaseAI } from '../utils/aiLogic';
 import { attachAudioProcessor } from '../utils/audioWorkletHelper';
 
 const MAX_CONTINUOUS_SPEECH_SAMPLES = 16000 * 15;
+const MAX_ROLLING_EVIDENCE_SAMPLES = 16000 * 12; // 12 seconds of rolling 16kHz PCM for voice incident evidence
 
 /**
  * Detects common Whisper silence/background-noise hallucination tokens so they
@@ -57,6 +58,23 @@ export function useClientLiteRTWhisper({
   const reqIdCounterRef = useRef(0);
   const lastSpeechRecInterimAtRef = useRef(0);
   const clearPendingVadBufferRef = useRef(null);
+  const rollingPcmChunksRef = useRef([]);
+  const rollingPcmSamplesRef = useRef(0);
+
+  const buildRecentVoiceEvidenceBlob = useCallback(() => {
+    const chunks = rollingPcmChunksRef.current;
+    const totalSamples = rollingPcmSamplesRef.current;
+    if (!chunks || chunks.length === 0 || totalSamples < 1600) {
+      return null;
+    }
+    const merged = new Float32Array(totalSamples);
+    let offset = 0;
+    for (const chunk of chunks) {
+      merged.set(chunk, offset);
+      offset += chunk.length;
+    }
+    return encodePcmFloat32ToWavBlob(merged, 16000);
+  }, []);
 
   // Check initial cache state
   useEffect(() => {
@@ -250,7 +268,17 @@ export function useClientLiteRTWhisper({
           setLatestTranscript(text);
           if (onTranscriptRef.current) {
             try {
-              onTranscriptRef.current(text, { language, timestamp, isFinal: true });
+              const audioBlob =
+                (audioPcm && audioPcm.length >= 1600
+                  ? encodePcmFloat32ToWavBlob(audioPcm, 16000)
+                  : null) || buildRecentVoiceEvidenceBlob();
+              onTranscriptRef.current(text, {
+                language,
+                timestamp,
+                isFinal: true,
+                audioPath: audioPath || '',
+                audioBlob,
+              });
             } catch (err) {
               console.warn('[useClientLiteRTWhisper] onTranscript callback error:', err);
             }
@@ -369,18 +397,20 @@ export function useClientLiteRTWhisper({
       if (!cleaned || cleaned === lastDispatchedText) return;
       lastDispatchedText = cleaned;
       lastSpeechRecInterimAtRef.current = 0;
+      const audioBlob = buildRecentVoiceEvidenceBlob();
       clearPendingVadBufferRef.current?.();
       if (onTranscriptRef.current) {
         try {
           console.log(
             '%c[Selected Track Speech STT] 🚀 Triggering intent check:',
             'background:#4f46e5;color:white;font-weight:bold;padding:2px 6px;border-radius:4px;',
-            { transcript: cleaned, language: speechLanguage || 'zh-HK' }
+            { transcript: cleaned, language: speechLanguage || 'zh-HK', hasAudioEvidenceBlob: Boolean(audioBlob) }
           );
           onTranscriptRef.current(cleaned, {
             language: speechLanguage || 'zh-HK',
             timestamp: Date.now(),
             isFinal: true,
+            audioBlob,
           });
         } catch (err) {
           console.warn('[useClientLiteRTWhisper] onTranscript callback error:', err);
@@ -601,6 +631,20 @@ export function useClientLiteRTWhisper({
         source = audioCtx.createMediaStreamSource(targetStream);
         processor = attachAudioProcessor(audioCtx, source, (pcm16k) => {
           if (!isMounted) return;
+
+          // Maintain rolling 12-second PCM ring buffer for on-demand voice irregularity evidence
+          if (pcm16k && pcm16k.length > 0) {
+            const copy = pcm16k.slice ? pcm16k.slice() : new Float32Array(pcm16k);
+            rollingPcmChunksRef.current.push(copy);
+            rollingPcmSamplesRef.current += copy.length;
+            while (
+              rollingPcmSamplesRef.current > MAX_ROLLING_EVIDENCE_SAMPLES &&
+              rollingPcmChunksRef.current.length > 1
+            ) {
+              const removed = rollingPcmChunksRef.current.shift();
+              rollingPcmSamplesRef.current -= removed.length;
+            }
+          }
 
           // Calculate RMS volume on 16kHz chunk
           let sumSq = 0;

@@ -99,3 +99,50 @@ export function downsamplePcmTo16k(buffer, inputSampleRate = 48000, targetSample
   return result;
 }
 
+/**
+ * Encodes a 16kHz mono Float32Array PCM buffer into a playable WAV Blob (`audio/wav`).
+ * Used to persist zero-egress voice irregularity evidence to Firebase Storage only when
+ * an acoustic violation (`isViolation: true`) is detected.
+ *
+ * @param {Float32Array} float32Array
+ * @param {number} [sampleRate=16000]
+ * @returns {Blob|null}
+ */
+export function encodePcmFloat32ToWavBlob(float32Array, sampleRate = 16000) {
+  if (!float32Array || float32Array.length === 0) return null;
+
+  const numChannels = 1;
+  const bytesPerSample = 2;
+  const dataSize = float32Array.length * bytesPerSample;
+  const buffer = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(buffer);
+
+  const writeString = (offset, str) => {
+    for (let i = 0; i < str.length; i++) {
+      view.setUint8(offset + i, str.charCodeAt(i));
+    }
+  };
+
+  writeString(0, 'RIFF');
+  view.setUint32(4, 36 + dataSize, true);
+  writeString(8, 'WAVE');
+  writeString(12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true); // PCM
+  view.setUint16(22, numChannels, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * numChannels * bytesPerSample, true);
+  view.setUint16(32, numChannels * bytesPerSample, true);
+  view.setUint16(34, 16, true);
+  writeString(36, 'data');
+  view.setUint32(40, dataSize, true);
+
+  let offset = 44;
+  for (let i = 0; i < float32Array.length; i++, offset += 2) {
+    const s = Math.max(-1, Math.min(1, float32Array[i]));
+    view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+  }
+
+  return new Blob([buffer], { type: 'audio/wav' });
+}
+

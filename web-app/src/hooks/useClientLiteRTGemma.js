@@ -7,7 +7,8 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { doc, setDoc, collection, addDoc, serverTimestamp } from 'firebase/firestore';
-import { db } from '../firebase-config';
+import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { db, storage } from '../firebase-config';
 import { isGemmaModelCached, DEFAULT_GEMMA_CONFIG } from '../utils/gemmaLiteRTLoader';
 
 function isMobileOrIosBrowser() {
@@ -340,6 +341,15 @@ export function useClientLiteRTGemma({
       return null;
     }
 
+    const {
+      audioBlob = null,
+      audioPath: existingAudioPath = '',
+      audioUrl: existingAudioUrl = '',
+      screenUrl: existingScreenUrl = null,
+      webcamUrl: existingWebcamUrl = null,
+      ...workerMetadata
+    } = metadata || {};
+
     return new Promise((resolve) => {
       evaluationInFlightRef.current = true;
       setStatus('evaluating');
@@ -368,11 +378,52 @@ export function useClientLiteRTGemma({
           isViolation ? 'color: #f87171; font-weight: bold; font-size: 12px;' : 'color: #4ade80; font-weight: bold; font-size: 12px;'
         );
 
-        // 1. If Violation: Create record in /irregularities (root & class subcollection)
+        // 1. If Violation: Upload voice evidence clip (zero-egress for benign speech) & create record in /irregularities
         const currentClassId = classIdRef.current;
         const currentStudentUid = studentUidRef.current;
         const currentStudentEmail = studentEmailRef.current;
         if (isViolation && currentClassId && currentStudentUid) {
+          let resolvedAudioPath = existingAudioPath || '';
+          let resolvedAudioUrl = existingAudioUrl || '';
+
+          if (!resolvedAudioUrl && !resolvedAudioPath && audioBlob && typeof audioBlob.size === 'number' && audioBlob.size > 0) {
+            try {
+              const ext = (audioBlob.type || '').includes('webm') ? 'webm' : 'wav';
+              const incidentAudioPath = `irregularities/${currentClassId}/${currentStudentUid}/voice_${Date.now()}.${ext}`;
+              const fileRef = storageRef(storage, incidentAudioPath);
+              await uploadBytes(fileRef, audioBlob, {
+                contentType: audioBlob.type || 'audio/wav',
+              });
+              resolvedAudioPath = incidentAudioPath;
+              resolvedAudioUrl = await getDownloadURL(fileRef);
+              console.log(
+                `[useClientLiteRTGemma] 🎙️ Uploaded voice irregularity evidence (${audioBlob.size} bytes) to ${incidentAudioPath}`
+              );
+            } catch (uploadErr) {
+              console.warn('[useClientLiteRTGemma] Failed to upload voice irregularity evidence:', uploadErr);
+            }
+          }
+
+          if (resolvedAudioPath || resolvedAudioUrl) {
+            try {
+              await addDoc(collection(db, 'audio'), {
+                classId: currentClassId,
+                studentUid: currentStudentUid,
+                studentEmail: currentStudentEmail || '',
+                audioPath: resolvedAudioPath || null,
+                audioUrl: resolvedAudioUrl || null,
+                transcript,
+                language,
+                sttEngine: 'litert_gemma_e2b',
+                isIrregularityEvidence: true,
+                timestamp: serverTimestamp(),
+                deleted: false,
+              });
+            } catch (audioDocErr) {
+              console.debug('[useClientLiteRTGemma] Note when logging audio evidence doc:', audioDocErr);
+            }
+          }
+
           const irregPayload = {
             classId: currentClassId,
             studentUid: currentStudentUid,
@@ -388,6 +439,10 @@ export function useClientLiteRTGemma({
             rationale: rationale || '',
             transcriptSnippet: transcript,
             transcript: transcript,
+            audioPath: resolvedAudioPath || null,
+            audioUrl: resolvedAudioUrl || null,
+            screenUrl: existingScreenUrl || null,
+            webcamUrl: existingWebcamUrl || null,
             source: 'on_device_gemma',
             timestamp: serverTimestamp(),
           };
@@ -448,7 +503,7 @@ export function useClientLiteRTGemma({
           classId: classIdRef.current,
           timestamp: Date.now(),
           systemPrompt,
-          ...metadata,
+          ...workerMetadata,
         },
       });
     });
