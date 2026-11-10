@@ -264,6 +264,19 @@ async function handleMessage(event) {
   try {
     switch (type) {
       case 'INIT': {
+        if (isReady && compiledModel) {
+          self.postMessage({
+            type: 'INIT_COMPLETE',
+            id,
+            payload: {
+              ready: true,
+              delegate: activeDelegate,
+              engine: 'litert_compiled',
+              cached: true,
+            },
+          });
+          break;
+        }
         const { modelUrl = DEFAULT_WHISPER_CONFIG.modelUrl } = payload || {};
         self.postMessage({ type: 'STATUS', payload: { status: 'loading', progress: 5 } });
 

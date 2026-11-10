@@ -100,11 +100,15 @@ export function useClientLiteRTWhisper({
         const { type, payload, id } = event.data;
 
         if (type === 'STATUS') {
-          if (payload?.status) setStatus(payload.status);
+          if (payload?.status) {
+            statusRef.current = payload.status;
+            setStatus(payload.status);
+          }
           if (typeof payload?.progress === 'number') setLoadingProgress(payload.progress);
         } else if (type === 'PROGRESS') {
           setLoadingProgress(payload.progress);
         } else if (type === 'INIT_COMPLETE') {
+          statusRef.current = 'ready';
           setStatus('ready');
           setLoadingProgress(100);
           setIsModelCached(true);
@@ -115,6 +119,7 @@ export function useClientLiteRTWhisper({
             pendingRequestsRef.current.delete(id);
           }
         } else if (type === 'TRANSCRIBE_COMPLETE') {
+          statusRef.current = 'ready';
           setStatus('ready');
           const rawTranscript = (payload?.transcript || '').trim();
           if (rawTranscript && !isWhisperNoiseArtifact(rawTranscript)) {
@@ -128,6 +133,7 @@ export function useClientLiteRTWhisper({
           }
         } else if (type === 'ERROR') {
           setError(payload?.error || 'Worker error');
+          statusRef.current = 'error';
           setStatus('error');
           const pending = pendingRequestsRef.current.get(id);
           if (pending) {
@@ -160,10 +166,14 @@ export function useClientLiteRTWhisper({
    */
   const preloadModel = useCallback(() => {
     if (!workerRef.current) return Promise.resolve(null);
+    if (statusRef.current === 'ready' || statusRef.current === 'transcribing') {
+      return Promise.resolve({ ready: true });
+    }
     if (initializationPromiseRef.current) {
       return initializationPromiseRef.current;
     }
 
+    statusRef.current = 'loading';
     setStatus('loading');
     setLoadingProgress(5);
     setError(null);
@@ -228,7 +238,7 @@ export function useClientLiteRTWhisper({
   const transcribeAudioChunk = useCallback(async (audioPcm, metadata = {}) => {
     if (!workerRef.current) return null;
 
-    if (statusRef.current !== 'ready') {
+    if (statusRef.current !== 'ready' && statusRef.current !== 'transcribing') {
       await preloadModelRef.current?.();
     }
 
