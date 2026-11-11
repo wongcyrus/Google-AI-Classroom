@@ -48,6 +48,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
   const [classId, setClassId] = useState(embeddedClassId || '');
   const [className, setClassName] = useState('');
   const [studentEmails, setStudentEmails] = useState('');
+  const [showRawEmailList, setShowRawEmailList] = useState(false);
   const [studentProfiles, setStudentProfiles] = useState({});
   const [studentDirectory, setStudentDirectory] = useState({});
   const [showBatchUploadModal, setShowBatchUploadModal] = useState(false);
@@ -179,7 +180,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
   const [newExamStart, setNewExamStart] = useState('');
   const [newExamEnd, setNewExamEnd] = useState('');
   const [examPeriodError, setExamPeriodError] = useState('');
-  const [studentRecordingsPolicy, setStudentRecordingsPolicy] = useState('always_enabled');
+  const [studentRecordingsPolicy, setStudentRecordingsPolicy] = useState('disabled');
   const [studentRecordingsReleaseDate, setStudentRecordingsReleaseDate] = useState('');
   const [defaultLectureRecording, setDefaultLectureRecording] = useState(true);
   const [allowShareTeacherRecordings, setAllowShareTeacherRecordings] = useState(false);
@@ -588,7 +589,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           setNewExamStart('');
           setNewExamEnd('');
           setExamPeriodError('');
-          setStudentRecordingsPolicy(classData.studentRecordingsPolicy || 'always_enabled');
+          setStudentRecordingsPolicy(classData.studentRecordingsPolicy || 'disabled');
           setStudentRecordingsReleaseDate(classData.studentRecordingsReleaseDate || '');
           setDefaultLectureRecording(classData.defaultLectureRecording !== undefined ? Boolean(classData.defaultLectureRecording) : true);
           const tPolicy = classData.teacherRecordingsPolicy || (classData.allowShareTeacherRecordings ? 'selective' : 'private');
@@ -1200,7 +1201,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
       audioMovingWindowDuration: parseInt(audioMovingWindowDuration, 10) || 30,
       audioMovingWindowStride: parseInt(audioMovingWindowStride, 10) || 15,
       examPeriods: examPeriods || [],
-      studentRecordingsPolicy: studentRecordingsPolicy || 'always_enabled',
+      studentRecordingsPolicy: studentRecordingsPolicy || 'disabled',
       studentRecordingsReleaseDate: studentRecordingsReleaseDate || '',
       defaultLectureRecording: defaultLectureRecording !== false,
       teacherRecordingsPolicy: teacherRecordingsPolicy || (allowShareTeacherRecordings ? 'selective' : 'private'),
@@ -1518,7 +1519,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           audioMovingWindowDuration: parseInt(audioMovingWindowDuration, 10) || 30,
           audioMovingWindowStride: parseInt(audioMovingWindowStride, 10) || 15,
           examPeriods: examPeriods || [],
-          studentRecordingsPolicy: studentRecordingsPolicy || 'always_enabled',
+          studentRecordingsPolicy: studentRecordingsPolicy || 'disabled',
           studentRecordingsReleaseDate: studentRecordingsReleaseDate || '',
           defaultLectureRecording: defaultLectureRecording !== false,
           teacherRecordingsPolicy: teacherRecordingsPolicy || (allowShareTeacherRecordings ? 'selective' : 'private'),
@@ -2388,15 +2389,69 @@ const ClassManagement = ({ user, embeddedClassId }) => {
               >
                 📤 Export Excel
               </button>
+              <button
+                type="button"
+                className="btn-secondary"
+                style={{ padding: '0.25rem 0.65rem', fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}
+                onClick={() => setShowRawEmailList((prev) => !prev)}
+                title={showRawEmailList ? 'Hide raw student email list' : 'Show and edit raw student email list'}
+              >
+                {showRawEmailList ? '🙈 Hide Raw Emails' : '👁️ Show / Edit Raw Emails'}
+              </button>
             </div>
           </div>
-          <textarea
-            placeholder="Enter student emails (one per line or comma separated)..."
-            value={studentEmails}
-            onChange={(e) => setStudentEmails(e.target.value)}
-            rows="5"
-          />
-          <p className="input-hint">Students with these emails will gain access to this class. Entering emails automatically reuses names and Chinese nicknames from other classes and the institutional directory. Use "📄 Download Template" or "👥 Batch Upload Roster" to provide or update full profile metadata.</p>
+          {!showRawEmailList && (
+            <div
+              className="raw-email-privacy-notice"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '10px 14px',
+                background: 'var(--color-bg-secondary, #f8fafc)',
+                border: '1px dashed var(--color-border, #cbd5e1)',
+                borderRadius: '6px',
+                margin: '8px 0 12px 0',
+                flexWrap: 'wrap',
+                gap: '8px',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.85rem', color: 'var(--color-text-secondary, #64748b)' }}>
+                <span style={{ fontSize: '1.1rem' }}>🔒</span>
+                <span>
+                  Raw student email list is hidden by default to protect student privacy on shared screens. ({studentEmails ? studentEmails.split(/[\n,]+/).map((s) => s.trim().toLowerCase()).filter(Boolean).length : 0} enrolled)
+                </span>
+              </div>
+              <button
+                type="button"
+                className="btn-secondary btn-sm"
+                style={{ fontSize: '0.8rem', padding: '0.25rem 0.65rem', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                onClick={() => setShowRawEmailList(true)}
+              >
+                👁️ Show Raw Email List
+              </button>
+            </div>
+          )}
+
+          <div style={{ display: showRawEmailList ? 'block' : 'none' }}>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '6px' }}>
+              <button
+                type="button"
+                className="btn-secondary btn-sm"
+                style={{ fontSize: '0.75rem', padding: '0.2rem 0.5rem' }}
+                onClick={() => setShowRawEmailList(false)}
+              >
+                🙈 Hide Raw Emails
+              </button>
+            </div>
+            <textarea
+              placeholder="Enter student emails (one per line or comma separated)..."
+              value={studentEmails}
+              onChange={(e) => setStudentEmails(e.target.value)}
+              rows="5"
+            />
+            <p className="input-hint">Students with these emails will gain access to this class. Entering emails automatically reuses names and Chinese nicknames from other classes and the institutional directory. Use "📄 Download Template" or "👥 Batch Upload Roster" to provide or update full profile metadata.</p>
+          </div>
 
           {/* Roster Profiles Overview */}
           {(() => {
@@ -3403,10 +3458,128 @@ const ClassManagement = ({ user, embeddedClassId }) => {
 
       {/* Section 6: Exam & Test Periods (Restricted from Students) */}
       <div className="settings-section-card">
-        <h3>📝 6. Exam & Test Periods (Restricted from Students)</h3>
+        <h3>📝 6. Exam & Test Periods (Restricted from Students) &amp; Student Screen Recording Policy</h3>
         <p className="input-hint" style={{ marginTop: 0, marginBottom: '1rem' }}>
-          Define dates and time windows for exams or tests. The system will compile all MP4 recordings for instructor invigilation and auditing, but will <strong>NEVER share recordings from these periods with students</strong> to protect assessment questions.
+          Configure whether student lab screen recordings are shared back to students, and define exam windows that are strictly confidential.
         </p>
+
+        {/* Student Screen Recording Access Policy */}
+        <div className="form-group" style={{ marginBottom: '1.5rem', paddingBottom: '1.25rem', borderBottom: '1px solid #e2e8f0' }}>
+          <label style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span>🖥️</span>
+            <span>Student Lab Screen Recording Access Policy</span>
+          </label>
+          <p className="input-hint">
+            Controls whether students can view or download their compiled lab session screen recordings in "My Records".
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '10px', marginTop: '8px' }}>
+            <label
+              style={{
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '10px',
+                padding: '12px',
+                borderRadius: '8px',
+                border: studentRecordingsPolicy === 'disabled' ? '2px solid #3b82f6' : '1px solid #cbd5e1',
+                backgroundColor: studentRecordingsPolicy === 'disabled' ? '#eff6ff' : '#ffffff',
+                cursor: 'pointer',
+              }}
+            >
+              <input
+                type="radio"
+                name="studentRecordingsPolicy"
+                value="disabled"
+                checked={studentRecordingsPolicy === 'disabled'}
+                onChange={() => setStudentRecordingsPolicy('disabled')}
+                style={{ marginTop: '3px', accentColor: '#3b82f6' }}
+              />
+              <div>
+                <div style={{ fontWeight: 600, fontSize: '0.88rem', color: '#1e293b' }}>
+                  🔒 Do Not Share with Students (Default Deny - Recommended)
+                </div>
+                <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '2px' }}>
+                  Recordings remain private for instructor invigilation, grading, and auditing only. Students cannot view or download recordings.
+                </div>
+              </div>
+            </label>
+
+            <label
+              style={{
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '10px',
+                padding: '12px',
+                borderRadius: '8px',
+                border: studentRecordingsPolicy === 'always_enabled' ? '2px solid #3b82f6' : '1px solid #cbd5e1',
+                backgroundColor: studentRecordingsPolicy === 'always_enabled' ? '#eff6ff' : '#ffffff',
+                cursor: 'pointer',
+              }}
+            >
+              <input
+                type="radio"
+                name="studentRecordingsPolicy"
+                value="always_enabled"
+                checked={studentRecordingsPolicy === 'always_enabled'}
+                onChange={() => setStudentRecordingsPolicy('always_enabled')}
+                style={{ marginTop: '3px', accentColor: '#3b82f6' }}
+              />
+              <div>
+                <div style={{ fontWeight: 600, fontSize: '0.88rem', color: '#1e293b' }}>
+                  🌐 Share with Students (Continuous Access)
+                </div>
+                <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '2px' }}>
+                  Enables students to view and download their own lab screen recordings in "My Records" (exam periods remain confidential).
+                </div>
+              </div>
+            </label>
+
+            <label
+              style={{
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '10px',
+                padding: '12px',
+                borderRadius: '8px',
+                border: studentRecordingsPolicy === 'delayed_release' ? '2px solid #3b82f6' : '1px solid #cbd5e1',
+                backgroundColor: studentRecordingsPolicy === 'delayed_release' ? '#eff6ff' : '#ffffff',
+                cursor: 'pointer',
+              }}
+            >
+              <input
+                type="radio"
+                name="studentRecordingsPolicy"
+                value="delayed_release"
+                checked={studentRecordingsPolicy === 'delayed_release'}
+                onChange={() => setStudentRecordingsPolicy('delayed_release')}
+                style={{ marginTop: '3px', accentColor: '#3b82f6' }}
+              />
+              <div>
+                <div style={{ fontWeight: 600, fontSize: '0.88rem', color: '#1e293b' }}>
+                  ⏳ Delayed Release (Unlock on Date)
+                </div>
+                <div style={{ fontSize: '0.78rem', color: '#64748b', marginTop: '2px' }}>
+                  Withholds screen recordings from students until a scheduled date/time (e.g. after course grading finishes).
+                </div>
+              </div>
+            </label>
+          </div>
+
+          {studentRecordingsPolicy === 'delayed_release' && (
+            <div style={{ marginTop: '12px', background: '#f8fafc', padding: '12px', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+              <label htmlFor="student-recordings-release-date" style={{ fontSize: '0.85rem', fontWeight: 600, color: '#334155' }}>
+                📅 Scheduled Release Date &amp; Time
+              </label>
+              <input
+                id="student-recordings-release-date"
+                type="datetime-local"
+                value={studentRecordingsReleaseDate}
+                onChange={(e) => setStudentRecordingsReleaseDate(e.target.value)}
+                style={{ marginTop: '4px', maxWidth: '300px' }}
+                aria-label="Student Screen Recordings Release Date"
+              />
+            </div>
+          )}
+        </div>
 
         {examPeriodError && (
           <div className="error-message" style={{ marginBottom: '1rem', color: '#dc2626', fontWeight: 600 }}>

@@ -123,15 +123,27 @@ describe('getStudentVideoPlaybackUrl Logic', () => {
       expect(resultLessonType.allowed).toBe(false);
     });
 
-    it('allows access for regular lab sessions outside exam periods', () => {
+    it('allows access for regular lab sessions outside exam periods when policy is always_enabled', () => {
       const result = evaluateStudentRecordingsAccess({
         examPeriods,
+        policy: 'always_enabled',
         jobData: {
           startTime: '2026-12-05T09:30:00.000Z',
           isExam: false,
         },
       });
       expect(result.allowed).toBe(true);
+    });
+
+    it('blocks access by default when policy is omitted (defaults to disabled)', () => {
+      const result = evaluateStudentRecordingsAccess({
+        jobData: {
+          startTime: '2026-12-05T09:30:00.000Z',
+          isExam: false,
+        },
+      });
+      expect(result.allowed).toBe(false);
+      expect(result.reason).toContain('disabled by the instructor');
     });
 
     it('blocks access when policy is disabled', () => {

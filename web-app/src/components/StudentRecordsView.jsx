@@ -427,7 +427,7 @@ const StudentRecordsView = ({ user }) => {
                 timeZone: data.schedule?.timeZone || 'UTC',
                 schedule: data.schedule || null,
                 examPeriods: data.examPeriods || [],
-                studentRecordingsPolicy: data.studentRecordingsPolicy || 'always_enabled',
+                studentRecordingsPolicy: data.studentRecordingsPolicy || 'disabled',
                 studentRecordingsReleaseDate: data.studentRecordingsReleaseDate || null,
                 teacherRecordingsPolicy: data.teacherRecordingsPolicy || (data.allowShareTeacherRecordings ? 'selective' : 'private'),
                 allowShareTeacherRecordings: Boolean(data.allowShareTeacherRecordings),
@@ -1058,7 +1058,7 @@ const StudentRecordsView = ({ user }) => {
     }
 
     const classObj = enrolledClasses.find((c) => c.id === video.classId);
-    const policy = classObj?.studentRecordingsPolicy || 'always_enabled';
+    const policy = classObj?.studentRecordingsPolicy || 'disabled';
     const releaseDate = classObj?.studentRecordingsReleaseDate;
 
     if (policy === 'disabled') {

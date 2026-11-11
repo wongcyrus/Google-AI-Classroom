@@ -426,7 +426,7 @@ This directory contains Cloud Functions responsible for handling media-related t
     -   **Security & Data Isolation**: Validates caller authentication and enforces strict student isolation (`auth.uid === job.studentUid`). Non-owner students are rejected with `PERMISSION_DENIED`. Users with a verified `teacher` or `admin` role bypass student restrictions to allow pedagogical review.
     -   **Assessment Integrity & Exam Confidentiality**: Evaluates whether the requested recording falls within any instructor-defined `examPeriods` (`startDate` to `endDate`), or has `isExam === true` or `lessonType === 'exam'`. If so, signed URL generation is strictly blocked for students (`PERMISSION_DENIED: Access denied: Screen recordings for exam sessions are restricted for academic integrity.`).
     -   **Class Policy Enforcement**: Enforces `studentRecordingsPolicy` configured on the class document:
-        -   `disabled`: Blocks all student screencast access.
+        -   `disabled` (default): Blocks student screencast access to keep student lab recordings private to instructors.
         -   `delayed_release`: Blocks student access until the specified `releaseTimestamp` has elapsed.
     -   **Ephemeral Signed URL Broker**: Upon successful authorization, signs a 60-minute Google Cloud Storage v4 signed URL (`getSignedUrl({ action: 'read', expires: Date.now() + 60 * 60 * 1000 })`) pointing directly to the MP4 file in Cloud Storage, preventing public bucket exposure.
 

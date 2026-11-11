@@ -42,7 +42,7 @@ export function isTimestampInExamPeriods(timestamp, examPeriods = [], timeZone =
  */
 export function evaluateStudentRecordingsAccess({
   examPeriods = [],
-  policy = 'always_enabled',
+  policy = 'disabled',
   releaseDate = null,
   jobData = {},
   timeZone = 'Asia/Hong_Kong',
@@ -127,7 +127,7 @@ export async function executeGetStudentVideoPlaybackUrl(request, { db = getFires
   if (!isTeacher && classData) {
     const accessCheck = evaluateStudentRecordingsAccess({
       examPeriods: classData.examPeriods || [],
-      policy: classData.studentRecordingsPolicy || 'always_enabled',
+      policy: classData.studentRecordingsPolicy || 'disabled',
       releaseDate: classData.studentRecordingsReleaseDate || null,
       jobData,
       timeZone: classData.schedule?.timeZone || 'Asia/Hong_Kong',

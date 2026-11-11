@@ -124,7 +124,7 @@ describe('StudentRecordsView Component', () => {
         return {
           exists: () => true,
           id: 'CLASS_A',
-          data: () => ({ name: 'Cloud Computing 101' }),
+          data: () => ({ name: 'Cloud Computing 101', studentRecordingsPolicy: 'always_enabled' }),
         };
       }
       return { exists: () => false };
@@ -495,6 +495,61 @@ describe('StudentRecordsView Component', () => {
     expect(screen.queryByRole('button', { name: /▶ Watch/i })).not.toBeInTheDocument();
   });
 
+  it('defaults to disabled screen recordings policy when class configuration omits studentRecordingsPolicy', async () => {
+    mockGetDoc.mockImplementation(async (docRef) => {
+      if (docRef.col === 'studentProfiles' || docRef.id === 'student-test-123') {
+        return { exists: () => true, data: () => ({ classes: ['CLASS_UNCONFIGURED'] }) };
+      }
+      if (docRef.col === 'classes' || docRef.id === 'CLASS_UNCONFIGURED') {
+        return {
+          exists: () => true,
+          id: 'CLASS_UNCONFIGURED',
+          data: () => ({
+            name: 'Unconfigured Policy Lab',
+            // studentRecordingsPolicy omitted to test default
+          }),
+        };
+      }
+      return { exists: () => false };
+    });
+
+    mockGetDocs.mockImplementation(async (queryOrCol) => {
+      const args = queryOrCol?.args || [];
+      const colPath = queryOrCol?.path || (args[0]?.path);
+      if (colPath && colPath.includes('videoJobs')) {
+        return {
+          docs: [
+            {
+              id: 'job_unconf_1',
+              data: () => ({
+                classId: 'CLASS_UNCONFIGURED',
+                studentUid: 'student-test-123',
+                videoPath: 'videos/CLASS_UNCONFIGURED/job_unconf_1.mp4',
+                duration: 120,
+                status: 'completed',
+                startTime: '2026-09-12T10:00:00Z',
+                endTime: '2026-09-12T10:02:00Z',
+                size: 2048000,
+              }),
+            },
+          ],
+        };
+      }
+      return { docs: [] };
+    });
+
+    render(<StudentRecordsView user={mockUser} />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Assessment Integrity Active: Screen Recordings Disabled/i)).toBeInTheDocument();
+    });
+
+    const lockedBtn = screen.getByRole('button', { name: /Locked/i });
+    expect(lockedBtn).toBeInTheDocument();
+    expect(lockedBtn).toBeDisabled();
+    expect(screen.queryByRole('button', { name: /▶ Watch/i })).not.toBeInTheDocument();
+  });
+
   it('enforces delayed_release policy when release date is in the future', async () => {
     const futureDate = '2030-01-01T00:00:00Z';
     mockGetDoc.mockImplementation(async (docRef) => {
@@ -564,6 +619,7 @@ describe('StudentRecordsView Component', () => {
           id: 'CLASS_MIXED',
           data: () => ({
             name: 'Hybrid Lab & Exam Class',
+            studentRecordingsPolicy: 'always_enabled',
             examPeriods: [
               {
                 id: 'ep1',
@@ -1706,7 +1762,7 @@ describe('StudentRecordsView Component', () => {
           return {
             exists: () => true,
             id: 'CLASS_A',
-            data: () => ({ name: 'Cloud Computing 101' }),
+            data: () => ({ name: 'Cloud Computing 101', studentRecordingsPolicy: 'always_enabled' }),
           };
         }
         return { exists: () => false };
@@ -1776,7 +1832,7 @@ describe('StudentRecordsView Component', () => {
           return {
             exists: () => true,
             id: 'CLASS_A',
-            data: () => ({ name: 'Cloud Computing 101' }),
+            data: () => ({ name: 'Cloud Computing 101', studentRecordingsPolicy: 'always_enabled' }),
           };
         }
         return { exists: () => false };
@@ -1848,7 +1904,7 @@ describe('StudentRecordsView Component', () => {
           return {
             exists: () => true,
             id: 'CLASS_A',
-            data: () => ({ name: 'Cloud Computing 101' }),
+            data: () => ({ name: 'Cloud Computing 101', studentRecordingsPolicy: 'always_enabled' }),
           };
         }
         return { exists: () => false };

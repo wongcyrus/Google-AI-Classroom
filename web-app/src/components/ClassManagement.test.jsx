@@ -241,6 +241,7 @@ vi.mock('firebase/firestore', () => ({
 describe('ClassManagement Full Component Test Suite', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.setItem('teacher_privacy_mode', 'false');
     mockHttpsCallable.mockImplementation(defaultHttpsCallableImpl);
     mockGetDoc.mockImplementation(() =>
       Promise.resolve({
@@ -641,7 +642,19 @@ describe('ClassManagement Full Component Test Suite', () => {
     fireEvent.click(removeBtn);
     expect(screen.queryByText(/🔒 Midterm Examination/i)).not.toBeInTheDocument();
 
-    // 4. Save settings
+    // 4. Test Student Screen Recording Policy Radios & Delayed Release Date
+    const disabledRadio = screen.getByRole('radio', { name: /Do Not Share with Students/i });
+    expect(disabledRadio).toBeChecked();
+
+    const delayedRadio = screen.getByRole('radio', { name: /Delayed Release/i });
+    fireEvent.click(delayedRadio);
+    expect(delayedRadio).toBeChecked();
+
+    const releaseDateInput = screen.getByLabelText(/Student Screen Recordings Release Date/i);
+    fireEvent.change(releaseDateInput, { target: { value: '2026-12-25T18:00' } });
+    expect(releaseDateInput.value).toBe('2026-12-25T18:00');
+
+    // 5. Save settings
     const saveBtn = screen.getByRole('button', { name: /Save Class Settings/i });
     await act(async () => {
       fireEvent.click(saveBtn);
@@ -651,6 +664,8 @@ describe('ClassManagement Full Component Test Suite', () => {
       expect(mockUpdateDoc).toHaveBeenCalledWith(
         expect.anything(),
         expect.objectContaining({
+          studentRecordingsPolicy: 'delayed_release',
+          studentRecordingsReleaseDate: '2026-12-25T18:00',
           examPeriods: expect.arrayContaining([
             expect.objectContaining({
               name: 'Final Exam',
@@ -661,6 +676,36 @@ describe('ClassManagement Full Component Test Suite', () => {
         })
       );
     });
+  });
+
+  it('hides raw student email list by default and toggles visibility upon clicking show button', async () => {
+    render(<ClassManagement user={{ uid: 't1', email: 'teacher@school.edu' }} embeddedClassId="CLASS_101" />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/3\. Student Roster/i)).toBeInTheDocument();
+    });
+
+    // 1. By default, the privacy banner is rendered
+    expect(screen.getByText(/Raw student email list is hidden by default to protect student privacy/i)).toBeInTheDocument();
+
+    // The textarea container has display: none
+    const textarea = screen.getByPlaceholderText(/Enter student emails/i);
+    expect(textarea.closest('div')).toHaveStyle({ display: 'none' });
+
+    // 2. Click "Show Raw Email List"
+    const showBtn = screen.getByRole('button', { name: /👁️ Show Raw Email List/i });
+    fireEvent.click(showBtn);
+
+    // Now the textarea container has display: block
+    expect(textarea.closest('div')).toHaveStyle({ display: 'block' });
+
+    // 3. Click "Hide Raw Emails"
+    const hideBtn = screen.getAllByRole('button', { name: /🙈 Hide Raw Emails/i })[0];
+    fireEvent.click(hideBtn);
+
+    // Back to hidden
+    expect(textarea.closest('div')).toHaveStyle({ display: 'none' });
+    expect(screen.getByText(/Raw student email list is hidden by default/i)).toBeInTheDocument();
   });
 
   it('renders and updates Bingo retry grace delay in class settings', async () => {
