@@ -8,7 +8,7 @@ import usePaginatedQuery from '../hooks/useCollectionQuery';
 import VideoPlayerModal from './VideoPlayerModal';
 import { formatSessionTime } from './VideoTable';
 import { exportToExcel } from '../utils/exportUtils';
-import { getStudentDisplayName, getStudentProfile } from '../utils/studentDisplayUtils';
+import { getStudentDisplayName, getStudentProfile, maskStudentName } from '../utils/studentDisplayUtils';
 
 const SessionReviewView = ({ classId, startTime, endTime }) => {
   console.log('SessionReviewView rendered for class:', classId);
@@ -317,9 +317,9 @@ const SessionReviewView = ({ classId, startTime, endTime }) => {
               ))
               .map(student => (
                 <option key={student.uid} value={student.uid}>
-                  {student.displayName && student.displayName !== student.email
+                  {student.displayName && !student.displayName.includes('@')
                     ? `${student.displayName}${student.studentClass ? ` - [${student.studentClass}]` : ''}`
-                    : `${student.email}${student.studentClass ? ` - [${student.studentClass}]` : ''}`}
+                    : `${student.displayName || maskStudentName(student.email)}${student.studentClass ? ` - [${student.studentClass}]` : ''}`}
                 </option>
             ))}
         </select>

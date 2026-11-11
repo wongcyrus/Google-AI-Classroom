@@ -18,17 +18,17 @@ const StudentBadge = ({
   className = '',
 }) => {
   const identity = formatStudentIdentity(student, profileMap);
-  const { displayName, fullName, nickname, studentClass, programme, email, maskedEmail, hasCustomProfile } = identity;
+  const { displayName, fullName, nickname, studentClass, programme, email, maskedEmail, hasCustomProfile, isPrivacyMode } = identity;
   const hasDistinctName = Boolean(email && displayName && email.toLowerCase() !== displayName.toLowerCase());
 
   // Build a privacy-safe tooltip for teachers (never combine full Name + raw ID + raw Email simultaneously)
   const tooltipParts = [];
   if (displayName) tooltipParts.push(`Name: ${displayName}`);
-  if (fullName && fullName !== displayName) tooltipParts.push(`Full Name: ${fullName}`);
-  if (nickname) tooltipParts.push(`Nickname: ${nickname}`);
+  if (!isPrivacyMode && fullName && fullName !== displayName) tooltipParts.push(`Full Name: ${fullName}`);
+  if (!isPrivacyMode && nickname) tooltipParts.push(`Nickname: ${nickname}`);
   if (studentClass) tooltipParts.push(`Class / Cohort: ${studentClass}`);
   if (programme) tooltipParts.push(`Programme: ${programme}`);
-  if (email && !hasDistinctName) tooltipParts.push(`Email: ${email}`);
+  if (!isPrivacyMode && email && !hasDistinctName) tooltipParts.push(`Email: ${email}`);
   const tooltip = tooltipParts.join('\n');
 
   return (
