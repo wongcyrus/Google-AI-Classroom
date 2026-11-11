@@ -510,7 +510,7 @@ const ClassView = ({ user }) => {
           <button
             type="button"
             className={`privacy-mode-btn ${isPrivacyMode ? 'privacy-active' : 'privacy-inactive'}`}
-            onClick={togglePrivacyMode}
+            onClick={() => togglePrivacyMode()}
             title={isPrivacyMode ? 'Masked Privacy Mode is ON (Names & IDs masked across all views). Click to reveal full names.' : 'Privacy Mode is OFF (Full names shown). Click to activate Masked Privacy Mode.'}
             aria-label="Toggle student privacy mask mode"
             aria-pressed={isPrivacyMode}

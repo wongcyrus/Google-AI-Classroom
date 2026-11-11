@@ -55,9 +55,10 @@ export const setPrivacyMode = (enabled) => {
 export const togglePrivacyMode = (skipConfirm = false) => {
   const current = isPrivacyModeActive();
   const next = !current;
+  const shouldSkip = skipConfirm === true;
 
   // Confirmation is required only before turning OFF privacy mode (revealing unmasked names)
-  if (!skipConfirm && current && !next && typeof window !== 'undefined' && typeof window.confirm === 'function') {
+  if (!shouldSkip && current && !next && typeof window !== 'undefined' && typeof window.confirm === 'function') {
     const message = '⚠️ Turn Privacy Mode OFF?\n\nThis will reveal full student names and IDs on screen. If you are projecting or sharing your screen, sensitive student information will be visible.\n\nAre you sure you want to reveal full student names?';
 
     const confirmed = window.confirm(message);
@@ -91,8 +92,9 @@ export const usePrivacyMode = () => {
     };
   }, []);
 
-  const toggle = useCallback((skipConfirm = false) => {
-    const next = togglePrivacyMode(skipConfirm);
+  const toggle = useCallback((eOrSkip) => {
+    const skip = eOrSkip === true;
+    const next = togglePrivacyMode(skip);
     setLocalPrivacyMode(next);
   }, []);
 
