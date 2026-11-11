@@ -147,12 +147,22 @@ While Cloud Storage is the standard choice for large assets and long recordings,
 3. **Instant, Atomic Session Revocation**:
    - The moment an instructor clicks **Stop Broadcast**, Firestore sets `isBroadcasting: false`. `firestore.rules` instantly denies further reads to all listeners across the entire cohort.
    - In contrast, Storage public URLs (`getDownloadURL`) contain persistent bearer tokens (`?alt=media&token=...`) that remain readable on Google Cloud CDN caches even after the lecture ends, creating potential privacy leaks.
-4. **Zero Orphan File Accumulation**:
-   - Writing to `liveFrame` continuously overwrites a single document in place. Cloud Storage would either require overwriting a single object (which causes aggressive browser HTTP caching issues where students see frozen frames) or writing sequential frame files (`frame_001.jpg`, `frame_002.jpg`) which would accumulate tens of thousands of orphaned image files requiring complex Lifecycle cleanup policies.
+4. **Ephemeral Single-Document In-Place Overwrite & Zero Long-Term Database Storage**:
+   - **Never Accumulates Historical Frame Documents**: During a broadcast, frames are *never* appended as a growing collection of documents. Every new frame calls `setDoc()` on the exact same single document path (`classes/{classId}/screenBroadcast/liveFrame`), **completely overwriting the previous frame in-place**. Whether a lecture runs for 15 minutes or 3 hours, the total Firestore storage footprint is bounded to **at most 1 frame (~150–350 KB)** at any moment.
+   - **Immediate `null` Wipe on Broadcast Stop**: The instant the lecturer stops sharing, `stopBroadcast()` in [`useTeacherScreenBroadcast.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/hooks/useTeacherScreenBroadcast.js) wipes `frameData` to `null`—leaving **0 bytes of image data stored in Firestore long-term** and avoiding the tens of thousands of orphaned `.jpg` files that sequential Cloud Storage uploads (`frame_001.jpg`, `frame_002.jpg`) would leave behind:
+
+```javascript
+// From web-app/src/hooks/useTeacherScreenBroadcast.js — Wiping frame payload on stop
+const liveFrameDocRef = doc(db, `classes/${classId}/screenBroadcast/liveFrame`);
+await setDoc(liveFrameDocRef, {
+  frameData: null,
+  endedAt: serverTimestamp(),
+}, { merge: true });
+```
 
 ### 2.2 FinOps & Cost Breakdown: Firestore Document Fanout at Classroom Scale
 
-Because Google Cloud Firestore bills on **document operations** ($0.18 per 100K writes, $0.06 per 100K reads in `asia-east2`) and **network egress** (~$0.12 per GiB), here is the empirical cost model for a typical **1-hour lecture** (~500 emitted frames, leveraging 32×18 pixel-delta suppression when slides are static):
+Because each frame overwrites the single `liveFrame` document in-place and is wiped to `null` when the session ends, **long-term Firestore disk storage cost is $0.00**. Runtime billing is strictly limited to **document operations** ($0.18 per 100K writes, $0.06 per 100K reads in `asia-east2`) and **network egress** (~$0.12 per GiB). Here is the empirical cost model for a typical **1-hour lecture** (~500 emitted frames, leveraging 32×18 pixel-delta suppression when slides are static):
 
 | Workload Scale | Active Attendees | Firestore Writes (~500 Frames) | Firestore Reads | Network Egress (~450 KB/frame) | Total Google Cloud Cost (1-Hour Session) |
 | :--- | :---: | :---: | :---: | :---: | :---: |
