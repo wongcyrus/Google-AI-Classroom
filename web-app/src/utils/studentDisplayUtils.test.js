@@ -312,10 +312,10 @@ describe('studentDisplayUtils Utility', () => {
       expect(getStudentDisplayName('david@school.edu', sampleProfiles)).toBe('D**** (C*** T** M**)');
     });
 
-    it('prompts confirmation dialog before changing mode and respects cancellation', () => {
+    it('prompts confirmation dialog only before turning OFF and respects cancellation', () => {
       window.confirm = vi.fn().mockReturnValue(false); // User clicks Cancel
       togglePrivacyMode();
-      expect(window.confirm).toHaveBeenCalled();
+      expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('Turn Privacy Mode OFF'));
       // Should remain in masked mode
       expect(isPrivacyModeActive()).toBe(true);
 
@@ -325,9 +325,10 @@ describe('studentDisplayUtils Utility', () => {
       // Now toggled to unmasked mode
       expect(isPrivacyModeActive()).toBe(false);
 
-      // Now toggle back ON with confirmation
+      // Turning ON is safe and does not prompt confirmation
+      window.confirm.mockClear();
       togglePrivacyMode();
-      expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('Turn Privacy Mode ON'));
+      expect(window.confirm).not.toHaveBeenCalled();
       expect(isPrivacyModeActive()).toBe(true);
     });
   });

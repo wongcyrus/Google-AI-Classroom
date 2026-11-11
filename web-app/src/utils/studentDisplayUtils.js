@@ -47,7 +47,8 @@ export const setPrivacyMode = (enabled) => {
 };
 
 /**
- * Toggles Masked Privacy Mode with user confirmation alert and broadcasts the change.
+ * Toggles Masked Privacy Mode and broadcasts the change.
+ * Prompts user confirmation only before turning OFF (to prevent accidental exposure of full names).
  * @param {boolean} [skipConfirm=false]
  * @returns {boolean}
  */
@@ -55,10 +56,9 @@ export const togglePrivacyMode = (skipConfirm = false) => {
   const current = isPrivacyModeActive();
   const next = !current;
 
-  if (!skipConfirm && typeof window !== 'undefined' && typeof window.confirm === 'function') {
-    const message = next
-      ? '🛡️ Turn Privacy Mode ON?\n\nThis will mask all student names and student IDs across the classroom UI.'
-      : '⚠️ Turn Privacy Mode OFF?\n\nThis will reveal full student names and IDs on screen. If you are projecting or sharing your screen, sensitive student information will be visible.\n\nAre you sure you want to reveal full student names?';
+  // Confirmation is required only before turning OFF privacy mode (revealing unmasked names)
+  if (!skipConfirm && current && !next && typeof window !== 'undefined' && typeof window.confirm === 'function') {
+    const message = '⚠️ Turn Privacy Mode OFF?\n\nThis will reveal full student names and IDs on screen. If you are projecting or sharing your screen, sensitive student information will be visible.\n\nAre you sure you want to reveal full student names?';
 
     const confirmed = window.confirm(message);
     if (!confirmed) {

@@ -273,28 +273,11 @@ describe('MonitorView Component Suite', () => {
     expect(filterSelect.value).toBe('ai_alert');
   });
 
-  it('toggles student privacy mode between ON and OFF and persists to localStorage', async () => {
+  it('respects global privacy mode and does not render redundant local toggle in monitor view', () => {
     localStorage.clear();
     render(<MonitorView {...defaultProps} />);
 
-    const privacyBtn = screen.getByRole('button', { name: /Toggle student privacy mask mode/i });
-    expect(privacyBtn).toBeInTheDocument();
-    // Default is MASKED (Privacy: ON)
-    expect(privacyBtn).toHaveTextContent('Privacy: ON');
-
-    await act(async () => {
-      fireEvent.click(privacyBtn);
-    });
-
-    expect(privacyBtn).toHaveTextContent('Privacy: OFF');
-    expect(localStorage.getItem('teacher_privacy_mode')).toBe('false');
-
-    await act(async () => {
-      fireEvent.click(privacyBtn);
-    });
-
-    expect(privacyBtn).toHaveTextContent('Privacy: ON');
-    expect(localStorage.getItem('teacher_privacy_mode')).toBe('true');
+    expect(screen.queryByRole('button', { name: /Toggle student privacy mask mode/i })).not.toBeInTheDocument();
   });
 
   it('handles lesson change and go live button click', () => {

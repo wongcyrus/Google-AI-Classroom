@@ -104,7 +104,7 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
   const [isGridHovered, setIsGridHovered] = useState(false);
   const studentsGridRef = useRef(null);
 
-  const [isPrivacyMode, handleTogglePrivacyMode] = usePrivacyMode();
+  const [isPrivacyMode] = usePrivacyMode();
 
   const handleAutoRollChange = (e) => {
     const val = e.target.value;
@@ -2851,17 +2851,6 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
                   📢 Nudge ({filteredStudents.length})
                 </button>
               )}
-
-              <button
-                type="button"
-                className={`monitor-btn ${isPrivacyMode ? 'monitor-btn-privacy-active' : 'monitor-btn-secondary'}`}
-                onClick={handleTogglePrivacyMode}
-                title={isPrivacyMode ? 'Privacy Mode is ON (Student names and IDs are masked for classroom display). Click to reveal full names.' : 'Privacy Mode is OFF. Click to mask student names and IDs.'}
-                aria-label="Toggle student privacy mask mode"
-                aria-pressed={isPrivacyMode}
-              >
-                {isPrivacyMode ? '🛡️ Privacy: ON' : '👁️ Privacy: OFF'}
-              </button>
 
               {filteredStudents.length > 0 && (
                 <button

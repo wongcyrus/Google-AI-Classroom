@@ -565,6 +565,7 @@ describe('ClassView Component Full Suite', () => {
 
   it('renders Privacy Mode toggle in Class Hub header and toggles state across tabs', async () => {
     localStorage.clear();
+    window.confirm = vi.fn().mockReturnValue(true);
     render(
       <MemoryRouter initialEntries={['/class/CLASS-101?tab=monitor']}>
         <Routes>
