@@ -152,7 +152,117 @@ export const generateLabTaskPrompt = onCall(
 );
 ```
 
-When the teacher runs **Phase 3 (the Milestone Evaluation Map)** using that synthesized prompt, each Cloud Tasks worker invokes Genkit tools (`recordActualWorkingTime`, `recordTaskDuration`, and `recordLessonSummary`) that populate [`TaskGradingMatrixView.jsx`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/components/tasks/TaskGradingMatrixView.jsx)—giving the lecturer a color-coded cohort progress matrix showing exactly how many minutes each student spent on Task 1, Task 2, and Task 3, and where they got stuck!
+### The 3 Prompts Powering the Map-Reduce-Map Video Pipeline
+
+To make this architecture concrete and reproducible, here are the exact prompts executed at each stage of the **Map-Reduce-Map** workflow:
+
+#### 1. Phase 1 (Exploratory Map Prompt) — Unsupervised Activity Discovery (`Summarize Student's Work.md`)
+In Phase 1, the lecturer does not need to write a lab rubric in advance. Each Cloud Tasks worker (`analyzeSingleVideoTask` $\rightarrow$ `analyzeSingleVideoFlow` in [`functions/ai_flows/analysisFlows.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/ai_flows/analysisFlows.js)) wraps the exploratory template ([`admin/prompts/videos/Summarize Student's Work.md`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/admin/prompts/videos/Summarize%20Student's%20Work.md)) with the class's time-lapse capture interval (`captureInterval = 15s`) and dispatches it in parallel across all 40 student videos:
+
+```markdown
+# Summarize Student's Activity
+
+**You are an AI teaching assistant. Your task is to summarize the activity of each student based on their video.**
+
+## Video Context
+* The video is a fast-forwarded time-lapse of screen captures, not a real-time recording (compiled at 1 frame per second from screenshots captured roughly every {{captureInterval}} seconds).
+* Each frame includes a burned-in timestamp (date and time). All calculations of duration (e.g., for attendance, concentration time) **MUST** be based on these in-frame timestamps.
+* **Do not use the video's playback length for any time-based calculations.**
+
+## Attendance & Engagement Analysis
+* Compare the timeframe of the student's activity (derived from the in-frame timestamps) with the scheduled lesson time ({{startTime}} to {{endTime}}) to estimate attendance. Note any late starts, early leaves, or gaps in screen sharing.
+* Based on the student's on-screen activity and focus, estimate the total "concentration minutes" during the observed period using the in-frame timestamps, and call the `recordActualWorkingTime` tool.
+
+## Analysis Guidelines
+* Identify the main tasks, cloud consoles, CLI commands, and code files the student is working on throughout the video.
+* Describe the student's pace, milestones achieved, and any test scores or verification outputs visible on screen.
+* Note any periods of inactivity, error messages, or technical struggle.
+
+## Actions
+* Call `recordActualWorkingTime` to record your estimate of the student's concentration minutes.
+* Call `recordLessonSummary` to record a concise, informative summary of their activity, progress, and blockers.
+* Provide the exact same summary as your final text response.
+```
+
+#### 2. Phase 2 (Reduce Meta-Prompt) — Synthesizing a Cohort Rubric from 40 Observations (`Two-Stage Map-Reduce Lab Rubric Synthesizer.md`)
+Once the Phase 1 Map workers finish, clicking **✨ Generate Lab Task Prompt** in [`VideoAnalysisJobs.jsx`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/components/VideoAnalysisJobs.jsx) invokes `generateLabTaskPrompt.js`, which injects all 40 student summaries into `{{compiledObservations}}` inside [`admin/prompts/videos/Two-Stage Map-Reduce Lab Rubric Synthesizer.md`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/admin/prompts/videos/Two-Stage%20Map-Reduce%20Lab%20Rubric%20Synthesizer.md):
+
+```markdown
+You are an expert Computer Science university curriculum designer and AI prompt engineer for classroom invigilation and automated lab assessment.
+
+Below are student activity observations collected from an initial video analysis across a class session (Class ID: "{{classId}}"):
+
+=== BEGIN OBSERVED STUDENT ACTIVITIES ===
+{{compiledObservations}}
+=== END OBSERVED STUDENT ACTIVITIES ===
+
+Based on these actual classroom observations, analyze the student activities and generate an optimized, comprehensive, ready-to-use Markdown task prompt for a high-precision second-pass evaluation of this lab.
+
+The generated prompt MUST strictly follow this Markdown structure:
+
+# [Descriptive Lab Title Based on Discovered Coursework]
+
+**You are an AI teaching assistant evaluating student screen recording time-lapses for [Lab Topic/Subject].**
+
+## Video Timing Rules
+* The video is a fast-forward time-lapse with on-screen timestamps.
+* All duration, attendance, and task timing calculations **MUST** be derived from the in-frame date/time stamps, NOT the video playback length.
+
+## Coursework Tasks to Evaluate
+[Break down the lab into 3-5 clearly numbered, specific tasks discovered from the student observations. Include specific platforms (e.g. AWS, Azure, Cloud Shell, VS Code), repositories, scripts, resource names, and milestones].
+
+## Milestones, Scores & Rubrics
+[Detail any test numbers, scoring points (e.g., 10 pts, 20 pts), or completion verifications discovered from the observations].
+
+## Known Blockers & Technical Obstacles to Watch For
+[List the common technical errors, blockers, or pitfalls students encountered, such as backend errors, incorrect regions, or setup issues].
+
+## Required Tool Actions
+1. **Working Time**: Call 'recordActualWorkingTime' with the total estimated active concentration minutes (clamped to lesson duration).
+2. **Task Durations**: For each identified task above, call 'recordTaskDuration' with studentUid, classId, taskName, and estimated durationMinutes spent on that task.
+3. **Student Summary**: Call 'recordLessonSummary' with a structured bulleted summary of their progress across each task, points earned, blockers encountered, and engagement verdict.
+4. **Final Response**: Output the exact same structured summary text provided to 'recordLessonSummary'.
+
+Return ONLY the clean Markdown prompt text. Do not wrap in markdown code fence blocks.
+```
+
+#### 3. Phase 3 (Second-Map Evaluation Prompt) — Example Output Synthesized by Gemini 4 Argon
+Here is an actual example of the Markdown prompt synthesized by Phase 2 from a 40-student cloud infrastructure lab, which the teacher reviews in the modal and dispatches back to Cloud Tasks (`analyzeSingleVideoTask`) for the **Second Map** pass:
+
+```markdown
+# Serverless Cloud Run & Terraform Infrastructure Lab Evaluation
+
+**You are an AI teaching assistant evaluating student screen recording time-lapses for Cloud Infrastructure & Serverless Container Deployment.**
+
+## Video Timing Rules
+* The video is a fast-forward time-lapse with on-screen timestamps (`YYYY-MM-DD HH:mm:ss`).
+* All duration, attendance, and task timing calculations **MUST** be derived from the in-frame date/time stamps, NOT the video playback length.
+
+## Coursework Tasks to Evaluate
+1. **Task 1: Environment Setup & Repository Cloning**: Cloning the starter repo in VS Code / Cloud Shell, configuring `.env` variables, and running `npm install`.
+2. **Task 2: Docker Containerization & Local Verification**: Writing the multi-stage `Dockerfile`, building the container image via `docker build` / `gcloud builds submit`, and verifying `localhost:8080/healthz` returns `HTTP 200 OK`.
+3. **Task 3: Terraform Cloud Run & Firestore Provisioning**: Writing `main.tf` (`google_cloud_run_v2_service` and `google_firestore_database`), running `terraform init && terraform plan`, and applying infrastructure via `terraform apply -auto-approve`.
+4. **Task 4: End-to-End Automated Grading Script Verification**: Executing `./run-lab-tests.sh` in the terminal and verifying all 5 integration assertions pass against the live `.run.app` endpoint.
+
+## Milestones, Scores & Rubrics
+* **Task 1 (15 pts)**: Starter repository cloned and dependencies installed without missing package errors.
+* **Task 2 (25 pts)**: Container image built and local health check (`200 OK`) verified in terminal or browser.
+* **Task 3 (35 pts)**: `terraform apply` completes with `Apply complete! Resources: 4 added, 0 changed, 0 destroyed` and outputs the live Cloud Run URL.
+* **Task 4 (25 pts)**: Automated test script outputs `SCORE: 100/100 (5/5 tests passed)`.
+
+## Known Blockers & Technical Obstacles to Watch For
+* **Port Mismatch (`PORT=8080`)**: Container failing Cloud Run startup probe because the Express server listened on port `3000` instead of `process.env.PORT`.
+* **IAM Permission Denied (`403`)**: `terraform apply` failing on Cloud Run IAM binding due to missing `roles/run.admin` or unenabled `run.googleapis.com` API.
+* **Region Mismatch**: Deploying Firestore in `us-central1` while Cloud Run is configured in `asia-east2`.
+
+## Required Tool Actions
+1. **Working Time**: Call `recordActualWorkingTime` with the total estimated active concentration minutes (clamped to lesson duration).
+2. **Task Durations**: For each identified task above (`Task 1`, `Task 2`, `Task 3`, `Task 4`), call `recordTaskDuration` with `studentUid`, `classId`, `taskName`, and estimated `durationMinutes` spent on that task.
+3. **Student Summary**: Call `recordLessonSummary` with a structured bulleted summary of their progress across each task, points earned (out of 100), blockers encountered, and engagement verdict.
+4. **Final Response**: Output the exact same structured summary text provided to `recordLessonSummary`.
+```
+
+When the teacher runs **Phase 3 (the Milestone Evaluation Map)** using that synthesized prompt, each Cloud Tasks worker invokes Genkit tools (`recordActualWorkingTime`, `recordTaskDuration`, and `recordLessonSummary`) that populate [`VideoAnalysisJobs.jsx`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/components/VideoAnalysisJobs.jsx) and [`TaskGradingMatrixView.jsx`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/components/tasks/TaskGradingMatrixView.jsx)—giving the lecturer a color-coded cohort progress matrix showing exactly how many minutes each student spent on Task 1, Task 2, Task 3, and Task 4, and where they got stuck!
 
 ---
 
@@ -236,6 +346,38 @@ export const handleExtractTaskDemoSteps = async ({
 };
 ```
 
+Here is the `metaPrompt` inside [`extractTaskDemoSteps.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/ai_flows/extractTaskDemoSteps.js) (backed by [`admin/prompts/rubrics/Practical Task Demo Step Extractor.md`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/admin/prompts/rubrics/Practical%20Task%20Demo%20Step%20Extractor.md)) that extracts a chronological JSON rubric from a teacher's demo video:
+
+```markdown
+You are an expert technical educator and curriculum designer creating a structured grading rubric for a hands-on practical assignment or lab test.
+Analyze the visual actions, commands, code editor steps, browser verifications, and results shown in the demonstration video.
+
+Extract a structured, chronological step-by-step assessment rubric (between 3 and 8 distinct milestones).
+For each milestone:
+1. Provide a concise, clear title.
+2. Describe the specific action or requirement (e.g. terminal command, file created, setting configured).
+3. Specify the expected visual proof/evidence that an AI evaluator should search for in a student's screen recording (e.g. terminal output text, open ports, browser UI, green test checks).
+4. Provide explicit marking / partial-credit criteria (how full marks vs. partial marks vs. 0 marks should be awarded).
+5. Assign a point weight (total across all steps must equal 100 points).
+
+You MUST respond strictly with valid JSON conforming to this schema:
+{
+  "title": "A concise, descriptive title for this practical task",
+  "description": "A clear 2-3 sentence overview of what the student is required to reproduce",
+  "suggestedMaxScore": 100,
+  "steps": [
+    {
+      "stepNumber": 1,
+      "title": "Short Step Title",
+      "description": "Specific action performed by the student",
+      "expectedEvidence": "Specific visual evidence, keywords, or UI elements on screen",
+      "gradingCriteria": "Full marks if completed and verified; partial marks if configured with minor syntax errors",
+      "points": 20
+    }
+  ]
+}
+```
+
 ---
 
 ### Production Code 3: Eliminating the Post-Lesson Screenshot Deletion Race Condition with Ultrafast Stream-Copy Slicing (`slicePendingTaskSubmissions`)
@@ -310,6 +452,35 @@ In [`functions/ai_flows/evaluateTaskSubmission.js`](https://github.com/wongcyrus
 2. **Strict `[0, maxPoints]` Clamping**: Every step's `scoreAwarded` is clamped via `Math.max(0, Math.min(maxPoints, ...))` so the AI can never award negative points or exceed a step's point ceiling.
 3. **Zero-Defaulting Omitted Steps**: If a student stopped halfway through the lab and the LLM omitted Steps 4 and 5 from its JSON array, `normalizeRubricEvaluation` deterministically populates Steps 4 and 5 with `scoreAwarded: 0`, `status: 'missing'`, and explicit feedback (`No evidence of "${stepTitle}" was observed in the submitted screen recording.`).
 4. **Exact Bottom-Up Summation & Multi-Attempt Scoring Strategy**: `finalScore` is computed strictly as the sum of reconciled `scoreAwarded` values across all steps, and the student's root submission document automatically updates `bestScore`, `latestScore`, `averageScore`, and `effectiveScore` based on the task's configured scoring strategy (`highest`, `latest`, or `average`).
+
+First, here is the strict rubric-driven evaluation prompt dispatched by [`evaluateTaskSubmission.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/ai_flows/evaluateTaskSubmission.js):
+
+```markdown
+You are an expert technical invigilator and automated practical exam evaluator.
+Evaluate the student's continuous screen recording time-lapse video strictly against the following practical assignment rubric.
+
+=== ASSIGNMENT DETAILS ===
+Title: "{{taskData.title}}"
+Overview: "{{taskData.description}}"
+Total Possible Score: {{maxScore}} points
+
+=== REQUIRED RUBRIC MILESTONES (STRICT MARK BREAKDOWN) ===
+{{effectiveStepsJson}}
+
+=== INSTRUCTIONS FOR RUBRIC-DRIVEN EVALUATION ===
+1. Watch the student's screen actions chronologically from start to finish.
+2. You MUST evaluate EVERY SINGLE milestone listed in REQUIRED RUBRIC MILESTONES above in exact order:
+   - Determine whether the step was "completed", "partial", "error", or "missing".
+   - Record the approximate "mm:ss" timestamp ("timestampInVideo") where the step was attempted or completed (or null if missing).
+   - Describe the concrete visual proof observed on the student's screen ("evidenceObserved", e.g., terminal command output, code written, browser state, or what was missing).
+   - Award marks ("scoreAwarded") strictly between 0 and the step's allocated "points" ("maxPoints") based on the step's "expectedEvidence" and "gradingCriteria".
+   - Provide a clear, detailed per-step explanation ("feedback") for the student and teacher explaining WHY those exact marks were awarded or deducted according to the rubric.
+3. Highlight 2-3 specific technical strengths demonstrated by this student in the video.
+4. Highlight any errors, warnings, configuration oversights, or suspicious anomalies (e.g. abrupt paste of whole codebase, unhandled exceptions).
+5. Calculate "finalScore" as the exact sum of "scoreAwarded" across all rubric steps (out of {{maxScore}}).
+```
+
+And here is how `normalizeRubricEvaluation` deterministically reconciles Gemini's JSON response against the task rubric:
 
 ```javascript
 // Source: functions/ai_flows/evaluateTaskSubmission.js
