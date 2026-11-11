@@ -157,6 +157,23 @@ describe('studentDisplayUtils Utility', () => {
       expect(getStudentDisplayName('david@school.edu', sampleProfiles)).toBe('David (Chan Tai Man)');
     });
 
+    it('Tier 1: Never combines nickname with an email or email-like direct name from status', () => {
+      const vtcProfiles = {
+        '260047062@stu.vtc.edu.hk': {
+          studentName: 'LUO,Chun',
+          nickname: '羅晉',
+          programme: 'IT114115',
+          studentClass: '1C',
+        },
+      };
+      // When status has name: "260047062@stu.vtc.edu.hk"
+      const statusStudent = {
+        email: '260047062@stu.vtc.edu.hk',
+        name: '260047062@stu.vtc.edu.hk',
+      };
+      expect(getStudentDisplayName(statusStudent, vtcProfiles)).toBe('羅晉 (LUO,Chun)');
+    });
+
     it('Tier 2: Formats Student Name when no nickname is present', () => {
       expect(getStudentDisplayName('kelly@school.edu', sampleProfiles)).toBe('Wong Ka Yan');
     });

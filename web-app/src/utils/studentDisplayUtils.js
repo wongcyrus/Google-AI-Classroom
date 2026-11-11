@@ -143,13 +143,9 @@ export const getStudentProfile = (studentOrEmail, profileMap = {}) => {
     }
   }
 
-  const studentName = (
-    directProfile?.studentName ||
-    directProfile?.displayName ||
-    directProfile?.name ||
-    directProfile?.fullname ||
-    directProfile?.fullName ||
-    directProfile?.chineseName ||
+  const isEmailLike = (val) => !val || typeof val !== 'string' || val.includes('@') || (email && val.trim().toLowerCase() === email.toLowerCase());
+
+  const rawMapName = (
     mapProfile?.studentName ||
     mapProfile?.displayName ||
     mapProfile?.name ||
@@ -159,11 +155,22 @@ export const getStudentProfile = (studentOrEmail, profileMap = {}) => {
     ''
   ).trim();
 
-  const nickname = (
-    directProfile?.nickname ||
-    mapProfile?.nickname ||
+  const rawDirectName = (
+    directProfile?.studentName ||
+    directProfile?.displayName ||
+    directProfile?.name ||
+    directProfile?.fullname ||
+    directProfile?.fullName ||
+    directProfile?.chineseName ||
     ''
   ).trim();
+
+  // Prefer official mapProfile roster name; ignore any direct name that is just the student's email
+  const studentName = (!isEmailLike(rawMapName) ? rawMapName : (!isEmailLike(rawDirectName) ? rawDirectName : '')).trim();
+
+  const rawMapNick = (mapProfile?.nickname || '').trim();
+  const rawDirectNick = (directProfile?.nickname || '').trim();
+  const nickname = (!isEmailLike(rawMapNick) ? rawMapNick : (!isEmailLike(rawDirectNick) ? rawDirectNick : '')).trim();
 
   const programme = (
     directProfile?.programme ||
@@ -235,7 +242,7 @@ export const getStudentDisplayName = (studentOrEmail, profileMap = {}) => {
   // Tier 4: Existing student.displayName / student.name if distinct from email
   if (typeof studentOrEmail === 'object' && studentOrEmail) {
     const rawName = String(studentOrEmail.displayName || studentOrEmail.name || '').trim();
-    if (rawName && rawName.toLowerCase() !== email.toLowerCase() && rawName.toLowerCase() !== uid.toLowerCase()) {
+    if (rawName && !rawName.includes('@') && rawName.toLowerCase() !== email.toLowerCase() && rawName.toLowerCase() !== uid.toLowerCase()) {
       return rawName;
     }
   }
