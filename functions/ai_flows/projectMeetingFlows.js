@@ -96,7 +96,7 @@ export function resolveAudioMimeType(storagePath = '', explicitMime = '') {
 
 /**
  * Reconciles AI-extracted attendance and student contributions against the authoritative group member roster,
- * honoring manual supervisor overrides, 1-tap voice anchors, and Student PC screen presenter clips.
+ * honoring manual supervisor overrides, 1-tap voice anchors, and 720p mobile camera demo video clips.
  */
 export function reconcileMeetingRosterResults({
   members = [],
@@ -366,8 +366,8 @@ For EVERY student listed above:
 2. Assign \`logQualityScore\` from \`0\` to \`10\` (e.g., 8-10 for genuine detailed logs; 3-5 for suspected AI/fake logs pending verification; 1-4 for vague/useless logs; 0-2 for inactive/missing).
 3. Write a concise \`logAuditSummary\` (1-2 sentences explaining why the log received this score and what looks genuine, vague, or AI-faked).
 4. Generate 2 to 3 sharp, specific \`challengeQuestions\` for the supervisor to ask the student live during the meeting:
-   - If \`suspected_ai_fake\`: Ask live code-walkthrough & debugging challenge questions that a student who faked the log with AI cannot answer without showing real code (e.g., "Open the exact Flask route / database table on screen now and show how X handles Y", "What specific error did you hit when integrating X and how did you fix it?").
-   - If \`vague_useless\`: Demand immediate screen demonstration of concrete artifacts and measurable next-week deliverables.
+   - If \`suspected_ai_fake\`: Ask live code-walkthrough & debugging challenge questions that a student who faked the log with AI cannot answer without demonstrating real code or hardware live (e.g., "Open the exact Flask route / database table on your laptop right now for our 720p demo recording and show how X handles Y", "What specific error did you hit when integrating X and how did you fix it?").
+   - If \`vague_useless\`: Demand an immediate live demonstration (captured via 720p mobile demo video or photo snap) of concrete artifacts and measurable next-week deliverables.
    - If \`genuine\`: Ask constructive technical design & edge-case verification questions about their reported findings.
 
 Respond strictly with valid JSON matching this structure:
@@ -381,7 +381,7 @@ Respond strictly with valid JSON matching this structure:
       "logQualityScore": 4,
       "logAuditSummary": "Sudden leap from 'done' in Weeks 6-7 to claiming full Flask backend, real-time dashboards, mock AI chatbot, and RBAC in one week.",
       "challengeQuestions": [
-        "Share your screen and open your Flask route file: walk us through how the Doctor/Patient role-based access control check is implemented in code.",
+        "Open your Flask route file for a live demonstration: walk us through how the Doctor/Patient role-based access control check is implemented in code.",
         "Which database tables back your real-time dashboard and history page, and can you trigger a live state update right now?",
         "What was the hardest bug you fixed while connecting the frontend to Flask this week?"
       ]
@@ -576,10 +576,17 @@ export async function handleAnalyzeProjectMeeting({
       ]
     : [];
 
-  if (rawClips.length === 0 && !meetingData.rawDiarizedTranscript) {
+  const hasScreenClips =
+    Array.isArray(meetingData.screenClips) &&
+    meetingData.screenClips.some((c) => c.storagePath || c.downloadUrl);
+  const hasPhotos =
+    Array.isArray(meetingData.photos) &&
+    meetingData.photos.some((p) => p.storagePath || p.downloadUrl);
+
+  if (rawClips.length === 0 && !hasScreenClips && !hasPhotos && !meetingData.rawDiarizedTranscript) {
     throw new HttpsError(
       'failed-precondition',
-      'No voice recording clips found on this meeting. Please record or upload at least one voice clip before analyzing.'
+      'No voice recording clips, 720p demo videos, or meeting photos found on this meeting. Please record or upload at least one voice clip, demo video, or photo before analyzing.'
     );
   }
 
@@ -824,7 +831,7 @@ If a speaker states their name or is addressed by name, include their name next 
     const screenClipLines =
       screenClips.length > 0
         ? screenClips.map((s, idx) => {
-            const typeLabel = s.type === 'mobile_camera' ? '📹 Mobile Demo Video (720p)' : '💻 Student PC Screen Demo';
+            const typeLabel = s.type === 'mobile_camera' ? '📹 Mobile Demo Video (720p)' : '📹 Live Demo Clip';
             const stu = s.studentName ? `by ${s.studentName} (${s.studentEmail || s.studentUid})` : '';
             return `- Demonstration Clip ${idx + 1} [${typeLabel}]: ${s.label || 'Demo'} ${stu} (${s.durationSeconds || 0}s)`;
           })
@@ -876,7 +883,7 @@ If a speaker states their name or is addressed by name, include their name next 
 ## Enrolled Group Student Roster (${rosterLines.length} members)
 ${rosterLines.length > 0 ? rosterLines.join('\n') : 'No pre-assigned group members listed; infer student names from the transcript.'}
 
-## Deterministic Speaker Anchors (1-Tap Supervisor Voice Tags & Student PC Screen Recordings)
+## Deterministic Speaker & Multimodal Evidence Anchors (1-Tap Supervisor Voice Tags, 720p Mobile Demo Videos & Snapped Meeting Photos)
 ### 1-Tap Supervisor "Speaking Now" Anchors (100% Ground Truth Speaker Identity at Timestamp):
 ${voiceAnchorLines.join('\n')}
 
@@ -893,20 +900,20 @@ ${priorWeekContext}
 ## Students' Submitted Weekly Log Sheet Entries for Week ${meetingData.weekNumber || 1} (for Log Quality Grading & Fake-Log Verification)
 ${weeklyLogsLines.join('\n')}
 
-## Stage 1 Diarized Audio Transcript (from gemini-3.5-transcribe-preview)
+## Stage 1 Diarized Audio & Demo Video Transcript (from gemini-3.5-transcribe-preview / gemini-3.8-flash)
 """
 ${combinedDiarizedTranscript}
 """
 
 ## Task Instructions
-Using the Stage 1 Diarized Audio Transcript, the Deterministic Speaker Anchors, and the Students' Submitted Weekly Logs above:
-1. Resolve anonymous speaker labels (Speaker 1, Speaker 2, etc.) to the exact students in the Enrolled Group Student Roster or the Supervisor. Students are required to introduce themselves at the start of the meeting (e.g. "Hi, I'm Alex..."). Use these opening self-introductions, their discussed project tasks matching their submitted weekly logs, and any student PC screen demonstrations to decisively attribute each speaker.
+Using the Stage 1 Diarized Audio & Demo Video Transcript, the Deterministic Speaker & Multimodal Evidence Anchors, the attached Meeting Photo Artifacts and 720p Mobile Demo Videos, and the Students' Submitted Weekly Logs above:
+1. Resolve anonymous speaker labels (Speaker 1, Speaker 2, etc.) to the exact students in the Enrolled Group Student Roster or the Supervisor. Students are required to introduce themselves at the start of the meeting (e.g. "Hi, I'm Alex..."). Use these opening self-introductions, 1-tap voice anchors, their discussed project tasks matching their submitted weekly logs, and any live 720p mobile camera demonstrations to decisively attribute each speaker.
 2. Determine the Attendance Record for every student in the roster ('present', 'late', or 'absent'), their speakingContribution ('high', 'moderate', 'low', 'none'), a concise evidence string with [MM:SS] timestamp, and firstHeardTimestamp ('MM:SS').
 3. Extract Key Meeting Insights (executiveSummary, overallGroupProgress: 'on_track' | 'ahead' | 'at_risk' | 'behind', keyDecisions[], blockersAndRisks[], supervisorFeedback[], and weeklyGroupFeedback: a 2-4 sentence constructive post-meeting weekly feedback message for the group).
-4. Cross-verify each student's **Submitted Weekly Log** against what they **actually discussed/demonstrated in the meeting**, including any attached **Meeting Photo Artifacts** (whiteboard diagrams, hardware wiring, terminal code) and **Demonstration Clips**:
+4. Cross-verify each student's **Submitted Weekly Log** against what they **actually discussed/demonstrated in the meeting**, including any attached **Meeting Photo Artifacts** (whiteboard diagrams, hardware wiring, terminal code) and **720p Mobile Camera Demonstration Videos**:
    - High-quality weekly logs that reflect real work are an explicit grading criterion.
-   - Flag **vague/useless logs** (e.g. "done", "thinking") as \`"vague_useless"\` and **AI-generated/fake logs** that were NOT backed up by real understanding, code, or visual demonstration in the meeting as \`"suspected_ai_unverified"\` or \`"contradicted_in_meeting"\`. If verified by their spoken explanation/demo or photo artifacts, mark \`"genuine_verified"\`.
-   - Grade \`logQualityScore\` (0 to 10) and \`realWorkScore\` (0 to 10). Cite specific visual evidence from photos or demo clips when available.
+   - Flag **vague/useless logs** (e.g. "done", "thinking") as \`"vague_useless"\` and **AI-generated/fake logs** that were NOT backed up by real understanding, code, or visual demonstration in the meeting as \`"suspected_ai_unverified"\` or \`"contradicted_in_meeting"\`. If verified by their spoken explanation, 720p demo video, or photo artifacts, mark \`"genuine_verified"\`.
+   - Grade \`logQualityScore\` (0 to 10) and \`realWorkScore\` (0 to 10). Cite specific visual evidence from photos or 720p demo clips when available.
    - If no photos or demo clips are attached (voice-only session), evaluate based on the spoken discussion and weekly logs.
    - Provide 1-2 \`challengeQuestions\` (to challenge fake/vague log claims or verify next week's work) and a constructive 2-3 sentence \`weeklyFeedback\` for the student covering both their real project work and how to improve their weekly log quality.
 5. Output speaker-attributed transcriptSegments[] with startTime ('MM:SS'), endTime ('MM:SS'), speaker (resolved student name or Supervisor), and text.
@@ -920,7 +927,7 @@ Respond strictly with valid JSON matching this exact structure:
       "name": "Student Name",
       "status": "present",
       "speakingContribution": "high",
-      "evidence": "[00:42] Reported completion of backend API and demonstrated screen.",
+      "evidence": "[00:42] Reported completion of backend API and demonstrated live prototype.",
       "firstHeardTimestamp": "00:42"
     }
   ],
@@ -973,6 +980,22 @@ Respond strictly with valid JSON matching this exact structure:
       if (pPath) {
         const pGsUri = pPath.startsWith('gs://') ? pPath : `gs://${bucketName}/${pPath.replace(/^\/+/, '')}`;
         reasoningMediaParts.push({ media: { url: pGsUri, contentType: 'image/jpeg' } });
+      }
+    }
+    for (const vClip of mobileDemoClips.slice(0, 3)) {
+      let vPath = (vClip.storagePath || '').trim();
+      if (vPath.startsWith('http://') || vPath.startsWith('https://')) {
+        const match = vPath.match(/\/o\/([^?#]+)/);
+        if (match) vPath = decodeURIComponent(match[1]);
+      }
+      if (!vPath && vClip.downloadUrl) {
+        const match = vClip.downloadUrl.match(/\/o\/([^?#]+)/);
+        if (match) vPath = decodeURIComponent(match[1]);
+      }
+      if (vPath) {
+        const vGsUri = vPath.startsWith('gs://') ? vPath : `gs://${bucketName}/${vPath.replace(/^\/+/, '')}`;
+        const vContentType = vClip.mimeType?.includes('mp4') ? 'video/mp4' : 'video/webm';
+        reasoningMediaParts.push({ media: { url: vGsUri, contentType: vContentType } });
       }
     }
 

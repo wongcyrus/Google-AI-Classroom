@@ -4461,7 +4461,7 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
 
                     {(selectedMeeting.screenClips || []).length > 0 && (
                       <div className="clip-pills-group">
-                        <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#334155' }}>💻 Student PC Screens &amp; 📹 Mobile Demos:</span>
+                        <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#334155' }}>📹 720p Mobile Demo Videos:</span>
                         {selectedMeeting.screenClips.map((sc, idx) => (
                           <button
                             key={sc.clipId || idx}

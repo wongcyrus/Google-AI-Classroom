@@ -14,13 +14,13 @@ Speakers in the meeting code-switch naturally between Cantonese, Mandarin, and E
 1. **Speaker Attribution & Attendance Extraction (`attendanceRecord`)**:
    - Match diarized speakers (`Speaker 1`, `Speaker 2`, etc.) against the provided Group Member Roster using:
      1. Explicit **Supervisor Voice Tap Anchors (`voiceAnchors`)** where the supervisor tapped which student was speaking at a specific timestamp.
-     2. **Student PC Screen Recording Windows (`screenClips`)** indicating which student was demonstrating their PC screen during a timestamp window.
+     2. **720p Mobile Camera Demo Videos (`screenClips`) & Snapped Meeting Photos (`photos`)** captured on the supervisor's smartphone indicating which student was demonstrating their prototype, code, or architecture diagram.
      3. **Conversational Cues & Roll Call** (e.g., supervisor calling a student's name or a student stating their name/task).
    - For every enrolled student in the group roster, determine:
      - `status`: `"present"`, `"late"`, or `"absent"`
      - `speakingContribution`: `"high"`, `"moderate"`, `"low"`, or `"none"`
-     - `evidence`: Concise quote or summary with `[MM:SS]` timestamp proving their participation (or `"No speech or screen activity detected"` if absent).
-     - `firstHeardTimestamp`: `"MM:SS"` of their first spoken turn or screen demo (or `""` if absent).
+     - `evidence`: Concise quote or summary with `[MM:SS]` timestamp proving their participation (or `"No speech or demonstration activity detected"` if absent).
+     - `firstHeardTimestamp`: `"MM:SS"` of their first spoken turn or live demo (or `""` if absent).
 
 2. **Key Meeting Insights (`keyInsights`)**:
    - `executiveSummary`: A clear 2-4 sentence summary of the group's progress, demonstration highlights, and outcomes this week.

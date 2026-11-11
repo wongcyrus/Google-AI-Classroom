@@ -20,8 +20,8 @@ canonical_url: https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/b
 Supervising 15 final-year engineering capstone project groups (60+ students) across a 16-week semester is one of the most rewarding yet administratively exhausting responsibilities in higher education. In our Software Engineering and Cloud Computing Higher Diploma programmes, three recurring pain points threatened both pedagogical quality and assessment fairness:
 
 1. **The "ChatGPT Logbook" Epidemic (`suspected_ai_fake`) & 1-Word Filler (`vague_useless`)**: Students are required to submit weekly progress logbooks via Google Forms before their consultation meeting. Some students type one-word filler (`"done"`, `"finish"`, `"thinking"`), while others paste LLM-generated corporate buzzword salads (*"Implemented real-time microservice telemetry, RBAC authentication, and mock AI chatbot"*) right after three consecutive weeks of reporting zero work.
-2. **Physical Consultation Friction (Why Desktop Screen-Capture Signaling Failed in Live Meetings)**: During a 15-minute face-to-face group consultation around a lab table, students demonstrate work across their personal laptops, physical IoT breadboards, mobile apps, and paper architecture sketches. Originally, we experimented with cross-device Firestore signaling to trigger browser screen sharing on the student's PC. In practice, waiting for a student to open the web app, authenticate, and select a display surface mid-meeting wasted 3 to 4 minutes of a 15-minute consultation—and couldn't capture mobile hardware or whiteboard diagrams at all!
-3. **Multilingual Speaker Attribution in Noisy Labs**: When 4 project teammates and a supervisor debate system architecture around a single table—code-switching rapidly between conversational Cantonese, Mandarin, and English technical terms (`React`, `Firestore`, `Docker`, `Cloud Run`, `PR`)—a single-pass LLM prompt cannot reliably separate *who* actually answered the technical challenge questions from *who* sat silently and free-rode on their teammates' work.
+2. **Why Capstone Supervision Is Never "Just Voice" — And Why We Replaced Student PC Screen Sharing with a Single-Device Mobile Studio**: A real engineering capstone consultation is **inherently multimodal, not just a voice conversation**. Around a physical lab table, students show physical IoT microcontroller breadboards, hand-drawn ER diagrams on paper/whiteboards, mobile app prototypes, and live code/terminal outputs on their personal laptops. We no longer ask students to join a web session and share their PC screen—waiting for 4 students to authenticate and switch desktop screen shares wasted 3 to 4 minutes of a 15-minute consultation and could never capture hardware wiring or whiteboard architecture diagrams. Instead, the supervisor captures **all three modalities from a single smartphone**: **🎙️ Continuous Voice Consultation**, **📸 Zero-Pause `0.1s` Instant Photo Snaps (`1280px` JPEG)**, and **📹 Auto-Sliced `720p` (`1280×720`) Mobile Camera Demo Videos**.
+3. **Multilingual Speaker Attribution in Noisy Labs**: When 4 project teammates and a supervisor debate system architecture around a single table—code-switching rapidly between conversational Cantonese, Mandarin, and English technical terms (`React`, `Firestore`, `Docker`, `Cloud Run`, `PR`)—a single-pass LLM prompt cannot reliably separate *who* actually answered the technical challenge questions and demonstrated working prototypes from *who* sat silently and free-rode on their teammates' work.
 
 In **Part 8** of our Google Developer Expert series, we dive deep into the architecture of the **Capstone Project Supervision & Weekly Log AI Pipeline** ([`ProjectMeetingsView.jsx`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/components/meetings/ProjectMeetingsView.jsx) and [`projectMeetingFlows.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/ai_flows/projectMeetingFlows.js)), showing how we engineered:
 - **A Self-Healing On-Demand Google Sheets Logbook Sync** with **Hamming Distance = 1 Student ID Typo Healing** and holiday-aware academic week calculation.
@@ -35,7 +35,7 @@ In **Part 8** of our Google Developer Expert series, we dive deep into the archi
 
 Before the weekly consultation begins, the supervisor clicks **🔄 Sync Weekly Logs** inside [`ProjectMeetingsView.jsx`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/components/meetings/ProjectMeetingsView.jsx). Rather than running wasteful background cron jobs every 5 minutes, the platform performs an on-demand incremental delta sync against the class's linked Google Form spreadsheet (`Form Responses 2`), fetching only newly appended rows (`startRow = lastSyncedRowCount + 1`).
 
-![Self-Healing Google Sheets Sync & Pre-Meeting Fake-Log AI Auditor](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog08_diagram1_sheets_sync_fake_log_audit.png)
+![Self-Healing Google Sheets Sync & Pre-Meeting Fake-Log AI Auditor](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog08_diagram1_sheets_sync_fake_log_audit.png?v=2)
 
 ### Why Hamming Distance = 1 Student ID Healing Saved Hours of Manual Fixes
 On mobile Google Forms, students frequently mistype a single digit of their 9-digit Student ID (e.g., typing `250105349` instead of `250105348`) or submit from a personal `@gmail.com` address. A strict string equality check drops those logs as orphaned records.
@@ -125,8 +125,8 @@ For EVERY student listed above:
 2. Assign `logQualityScore` from `0` to `10` (e.g., 8-10 for genuine detailed logs; 3-5 for suspected AI/fake logs pending verification; 1-4 for vague/useless logs; 0-2 for inactive/missing).
 3. Write a concise `logAuditSummary` (1-2 sentences explaining why the log received this score and what looks genuine, vague, or AI-faked).
 4. Generate 2 to 3 sharp, specific `challengeQuestions` for the supervisor to ask the student live during the meeting:
-   - If `suspected_ai_fake`: Ask live code-walkthrough & debugging challenge questions that a student who faked the log with AI cannot answer without showing real code (e.g., "Open the exact Flask route / database table on screen now and show how X handles Y", "What specific error did you hit when integrating X and how did you fix it?").
-   - If `vague_useless`: Demand immediate screen demonstration of concrete artifacts and measurable next-week deliverables.
+   - If `suspected_ai_fake`: Ask live code-walkthrough & debugging challenge questions that a student who faked the log with AI cannot answer without demonstrating real code or hardware live (e.g., "Open the exact Flask route / database table on your laptop right now for our 720p demo recording and show how X handles Y", "What specific error did you hit when integrating X and how did you fix it?").
+   - If `vague_useless`: Demand an immediate live demonstration (captured via 720p mobile demo video or photo snap) of concrete artifacts and measurable next-week deliverables.
    - If `genuine`: Ask constructive technical design & edge-case verification questions about their reported findings.
 
 Respond strictly with valid JSON matching this structure:
@@ -140,7 +140,7 @@ Respond strictly with valid JSON matching this structure:
       "logQualityScore": 4,
       "logAuditSummary": "Sudden leap from 'done' in Weeks 6-7 to claiming full Flask backend, real-time dashboards, mock AI chatbot, and RBAC in one week.",
       "challengeQuestions": [
-        "Share your screen and open your Flask route file: walk us through how the Doctor/Patient role-based access control check is implemented in code.",
+        "Open your Flask route file for a live demonstration: walk us through how the Doctor/Patient role-based access control check is implemented in code.",
         "Which database tables back your real-time dashboard and history page, and can you trigger a live state update right now?",
         "What was the hardest bug you fixed while connecting the frontend to Flask this week?"
       ]
@@ -149,9 +149,9 @@ Respond strictly with valid JSON matching this structure:
 }
 ```
 
-When a student submits a suspected ChatGPT log claiming they built an entire Flask RBAC backend in one week after writing `"done"` in Weeks 6 and 7, Gemini flags the badge as **`🟠 Suspected AI / Fake (4/10)`** right on the supervisor's smartphone card and prepares 3 targeted verification questions:
-> 1. *"Open your Flask route file right now and walk us through how the Doctor/Patient role-based access control decorator is implemented in code."*
-> 2. *"Which database tables back your real-time dashboard, and can you trigger a live state update on screen right now?"*
+When a student submits a suspected ChatGPT log claiming they built an entire Flask RBAC backend in one week after writing `"done"` in Weeks 6 and 7, Gemini flags the badge as **`🟠 Suspected AI / Fake (4/10)`** right on the supervisor's smartphone card and prepares 3 targeted verification questions for live in-person demonstration:
+> 1. *"Open your Flask route file for a live demonstration: walk us through how the Doctor/Patient role-based access control decorator is implemented in code."*
+> 2. *"Which database tables back your real-time dashboard, and can you trigger a live state update right now while we capture a 720p demo clip?"*
 > 3. *"What was the hardest bug you hit while connecting the React frontend to Flask this week?"*
 
 ---
@@ -169,7 +169,7 @@ To make live supervision effortless with **one thumb**, we eliminated cross-devi
    - It activates the mobile rear/front camera at **`720p` (`1280×720`, `~1.5 Mbps` bitrate)**—sharp enough for Gemini 4 Argon to read laptop UI states and terminal output, yet compact enough (`~11 MB/min`) to upload in seconds over campus Wi-Fi.
    - The instant the supervisor taps **`⏹️ Stop Demo`**, the studio uploads the `720p` demo clip (`type: 'mobile_camera'`) and **automatically resumes `Voice Part N+1`** so not a single second of verbal feedback is lost!
 
-![Streamlined Single-Device Teacher Mobile Supervision Studio State Machine](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog08_diagram2_mobile_supervision_studio_state.png)
+![Streamlined Single-Device Teacher Mobile Supervision Studio State Machine](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog08_diagram2_mobile_supervision_studio_state.png?v=2)
 
 ### Atomic Stale Analysis Invalidation When Moving Clips Across Groups or Weeks
 During back-to-back consultations with 10 project groups, a supervisor occasionally records Group 3's voice clip or demo video while Group 2's card is still open. In [`ProjectMeetingsView.jsx`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/components/meetings/ProjectMeetingsView.jsx), we built a **1-Click Clip Reassignment Modal (`➡️ Move Clip to Another Meeting / Week`)**.
@@ -183,10 +183,15 @@ Whenever a voice clip, 720p demo video, or photo is moved from Meeting $A$ to Me
 Once the consultation concludes, the supervisor selects **🧠 Gemini 4 Argon (`gemini-4-argon`)** or **⚡ Gemini 3.8 Flash (`gemini-3.8-flash`)** directly in the meeting toolbar (or triggers **Smart Batch AI Mode 1 Queuing**, which sequentially processes all ready meetings in Week $W$ and skips already-analyzed meetings unless `needsReanalysis === true`).
 
 Why split `analyzeProjectMeeting` into **two distinct AI stages** instead of feeding raw audio, video, photos, and logs into a single prompt?
-- **Stage 1 (`gemini-3.5-transcribe-preview` with `gemini-3.8-flash` Resilience Fallbacks)** is dedicated 100% to **verbatim multilingual acoustic speaker diarization** across every audio clip and 720p demo video, shifting timestamps cumulatively (`offsetTranscriptTimestamps`) across `Voice Part 1`, `Demo 1`, and `Voice Part 2`.
-- **Stage 2 (`gemini-4-argon` or `gemini-3.8-flash`)** receives the complete diarized transcript, the supervisor's 1-tap `voiceAnchors[]`, the `720p` mobile demo videos (`screenClips[]`), the whiteboard/hardware photos (`photos[]`), the students' written weekly logs (`weeklyLogs[]`), and last week's assigned action items (`priorWeekContext`) to perform a rigorous **Multimodal Cross-Examination**:
+- **Stage 1 (`gemini-3.5-transcribe-preview` with `gemini-3.8-flash` Resilience Fallbacks)** is dedicated 100% to **verbatim multilingual acoustic & demo-video dialogue diarization** across every voice clip (`audioClips[]`) and `720p` mobile camera demo video (`screenClips[]`), shifting timestamps cumulatively (`offsetTranscriptTimestamps`) across `Voice Part 1`, `Demo 1`, and `Voice Part 2`.
+- **Stage 2 (`gemini-4-argon` or `gemini-3.8-flash`)** receives **five multimodal evidence streams simultaneously**:
+  1. The **Stage 1 Diarized Audio & Demo Video Transcript**,
+  2. The supervisor's **1-Tap `voiceAnchors[]` Ground Truth Speaker Stamps**,
+  3. The **`720p` Mobile Camera Demo Videos (`screenClips[]`)** attached as native `video/mp4` / `video/webm` multimodal `media` parts (`reasoningMediaParts`),
+  4. The **Snapped Meeting Photos (`photos[]`)** of hardware breadboards, whiteboard ERDs, and laptop code attached as `image/jpeg` `media` parts (`reasoningMediaParts`), and
+  5. The **Students' Submitted Weekly Log Sheet Entries (`weeklyLogs[]`)** + **Prior Week's Assigned Action Items (`priorWeekContext`)**.
 
-![Two-Stage Multimodal Diarization & Gemini 4 Argon Cross-Examination (analyzeProjectMeeting)](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog08_diagram3_two_stage_capstone_diarization.png)
+![Two-Stage Multimodal Diarization & Gemini 4 Argon Cross-Examination (analyzeProjectMeeting)](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog08_diagram3_two_stage_capstone_diarization.png?v=2)
 
 ---
 
@@ -259,6 +264,40 @@ Transcribe any speech or spoken dialogue during this live project demonstration 
 
 #### 2. Stage 2 Prompt — Multimodal Roster Attribution & Weekly Log vs. Live Demo Cross-Examination (`gemini-4-argon` / `gemini-3.8-flash`)
 
+In Stage 2, [`functions/ai_flows/projectMeetingFlows.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/ai_flows/projectMeetingFlows.js) packages both the snapped `image/jpeg` meeting photos (`meetingPhotos.slice(0, 8)`) and the `720p` `video/mp4` / `video/webm` mobile demo clips (`mobileDemoClips.slice(0, 3)`) into `reasoningMediaParts` alongside the text prompt so **Gemini 4 Argon (`gemini-4-argon`)** or **Gemini 3.8 Flash (`gemini-3.8-flash`)** visually inspects the student's actual hardware/code demonstrations as well as their spoken answers:
+
+```javascript
+// Source: functions/ai_flows/projectMeetingFlows.js (Stage 2 Multimodal Media Assembly)
+const reasoningMediaParts = [];
+for (const photo of meetingPhotos.slice(0, 8)) {
+  const pGsUri = resolveGsUri(photo.storagePath || photo.downloadUrl, bucketName);
+  if (pGsUri) {
+    reasoningMediaParts.push({ media: { url: pGsUri, contentType: 'image/jpeg' } });
+  }
+}
+for (const vClip of mobileDemoClips.slice(0, 3)) {
+  const vGsUri = resolveGsUri(vClip.storagePath || vClip.downloadUrl, bucketName);
+  if (vGsUri) {
+    const vContentType = vClip.mimeType?.includes('mp4') ? 'video/mp4' : 'video/webm';
+    reasoningMediaParts.push({ media: { url: vGsUri, contentType: vContentType } });
+  }
+}
+
+const { response: reasoningResponse, modelUsed: reasoningModelUsed } = await generateWithResilience(
+  {
+    prompt: [{ text: reasoningPrompt }, ...reasoningMediaParts],
+    config: {
+      temperature: 0.1,
+      maxOutputTokens: 65536,
+      responseMimeType: 'application/json',
+    },
+  },
+  reasoningModel
+);
+```
+
+Here is the Stage 2 `reasoningPrompt` sent with `...reasoningMediaParts`:
+
 ```markdown
 You are an expert academic project supervisor and technical meeting analyst for higher education Capstone / Final Year Project (FYP) weekly supervision meetings in Hong Kong.
 Speakers in the meeting code-switch naturally between Cantonese, Mandarin, and English technical terminology (e.g., `React`, `Firestore`, `Docker`, `Cloud Run`, `CI/CD`, `API`, `Git`, `PR`).
@@ -273,7 +312,7 @@ Speakers in the meeting code-switch naturally between Cantonese, Mandarin, and E
 ## Enrolled Group Student Roster
 {{rosterLines}}
 
-## Deterministic Speaker Anchors (1-Tap Supervisor Voice Tags & Student Demo Clips)
+## Deterministic Speaker & Multimodal Evidence Anchors (1-Tap Supervisor Voice Tags, 720p Mobile Demo Videos & Snapped Meeting Photos)
 ### 1-Tap Supervisor "Speaking Now" Anchors (100% Ground Truth Speaker Identity at Timestamp):
 {{voiceAnchorLines}}
 
@@ -290,19 +329,19 @@ Speakers in the meeting code-switch naturally between Cantonese, Mandarin, and E
 ## Students' Submitted Weekly Log Sheet Entries for Week {{weekNumber}} (for Log Quality Grading & Fake-Log Verification)
 {{weeklyLogsLines}}
 
-## Stage 1 Diarized Audio Transcript (from gemini-3.5-transcribe-preview)
+## Stage 1 Diarized Audio & Demo Video Transcript (from gemini-3.5-transcribe-preview / gemini-3.8-flash)
 """
 {{combinedDiarizedTranscript}}
 """
 
 ## Task Instructions
-Using the Stage 1 Diarized Audio Transcript, the Deterministic Speaker Anchors, and the Students' Submitted Weekly Logs above:
-1. Resolve anonymous speaker labels (Speaker 1, Speaker 2, etc.) to the exact students in the Enrolled Group Student Roster or the Supervisor using opening self-introductions, 1-tap voice anchors, discussed project tasks, and 720p demo clips.
+Using the Stage 1 Diarized Audio & Demo Video Transcript, the Deterministic Speaker & Multimodal Evidence Anchors, the attached Meeting Photo Artifacts and 720p Mobile Demo Videos, and the Students' Submitted Weekly Logs above:
+1. Resolve anonymous speaker labels (Speaker 1, Speaker 2, etc.) to the exact students in the Enrolled Group Student Roster or the Supervisor using opening self-introductions, 1-tap voice anchors, discussed project tasks, and live 720p mobile camera demonstrations.
 2. Determine the Attendance Record for every student in the roster ('present', 'late', or 'absent'), their speakingContribution ('high', 'moderate', 'low', 'none'), a concise evidence string with [MM:SS] timestamp, and firstHeardTimestamp ('MM:SS').
 3. Extract Key Meeting Insights (executiveSummary, overallGroupProgress: 'on_track' | 'ahead' | 'at_risk' | 'behind', keyDecisions[], blockersAndRisks[], supervisorFeedback[], and weeklyGroupFeedback).
-4. Cross-verify each student's **Submitted Weekly Log** against what they **actually discussed/demonstrated in the meeting**, including any attached **Meeting Photo Artifacts** (whiteboard diagrams, hardware wiring, terminal code) and **Demonstration Clips**:
-   - Flag **vague/useless logs** (e.g. "done", "thinking") as `"vague_useless"` and **AI-generated/fake logs** that were NOT backed up by real understanding, code, or visual demonstration in the meeting as `"suspected_ai_unverified"` or `"contradicted_in_meeting"`. If verified by their spoken explanation/demo or photo artifacts, mark `"genuine_verified"`.
-   - Grade `logQualityScore` (0 to 10) and `realWorkScore` (0 to 10). Cite specific visual evidence from photos or demo clips when available.
+4. Cross-verify each student's **Submitted Weekly Log** against what they **actually discussed/demonstrated in the meeting**, including any attached **Meeting Photo Artifacts** (whiteboard diagrams, hardware wiring, terminal code) and **720p Mobile Camera Demonstration Videos**:
+   - Flag **vague/useless logs** (e.g. "done", "thinking") as `"vague_useless"` and **AI-generated/fake logs** that were NOT backed up by real understanding, code, or visual demonstration in the meeting as `"suspected_ai_unverified"` or `"contradicted_in_meeting"`. If verified by their spoken explanation, 720p demo video, or photo artifacts, mark `"genuine_verified"`.
+   - Grade `logQualityScore` (0 to 10) and `realWorkScore` (0 to 10). Cite specific visual evidence from photos or 720p demo clips when available.
    - Provide 1-2 `challengeQuestions` and a constructive 2-3 sentence `weeklyFeedback` for the student covering both their real project work and how to improve their weekly log quality.
 5. Output speaker-attributed transcriptSegments[] with startTime ('MM:SS'), endTime ('MM:SS'), speaker (resolved student name or Supervisor), and text.
 ```
