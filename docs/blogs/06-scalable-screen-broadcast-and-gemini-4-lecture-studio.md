@@ -3,7 +3,7 @@ title: "Google AI Classroom Part 6: Low-Bandwidth Classroom Screen Broadcasting 
 published: true
 description: "Scaling classroom screen broadcasting without WebRTC CPU collapse and compiling single-pass whole-lecture study subtitles with Gemini 4 Argon."
 tags: googlecloud, video, serverless, gemini
-cover_image: https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog06_cover_scalable_screen_broadcast.png
+cover_image: https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog06_cover_scalable_screen_broadcast.png?v=2
 canonical_url: https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/06-scalable-screen-broadcast-and-gemini-4-lecture-studio.md
 ---
 
@@ -13,7 +13,7 @@ canonical_url: https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/b
 
 ---
 
-![Google AI Classroom Part 6: Low-Bandwidth Classroom Screen Broadcasting & Gemini 4 Lecture Studio](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog06_cover_scalable_screen_broadcast.png)
+![Google AI Classroom Part 6: Low-Bandwidth Classroom Screen Broadcasting & Gemini 4 Lecture Studio](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog06_cover_scalable_screen_broadcast.png?v=2)
 
 ## 1. Problem Statement: Breaking Two Hard Ceilings in Lecture Hall Broadcasting & Post-Lecture Publishing
 

@@ -3,7 +3,7 @@ title: "Google AI Classroom Part 2: Zero-Egress Browser Edge AI Investigator —
 published: true
 description: "Turn every student browser into a real-time Edge AI Exam Investigator with LiteRT-LM Gemma 4 E2B, MediaPipe 478-pt Face Mesh, and LiteRT Whisper in Web Workers."
 tags: webgpu, ai, webdev, javascript
-cover_image: https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog02_cover_browser_edge_ai_gemma4.png
+cover_image: https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog02_cover_browser_edge_ai_gemma4.png?v=2
 canonical_url: https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/02-browser-edge-ai-gemma-4-mediapipe-whisper.md
 ---
 
@@ -13,7 +13,7 @@ canonical_url: https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/b
 
 ---
 
-![Google AI Classroom Part 2: Zero-Egress Browser Edge AI Investigator — Running Gemma 4 E2B, MediaPipe 3D Face Mesh & LiteRT Whisper in Web Workers](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog02_cover_browser_edge_ai_gemma4.png)
+![Google AI Classroom Part 2: Zero-Egress Browser Edge AI Investigator — Running Gemma 4 E2B, MediaPipe 3D Face Mesh & LiteRT Whisper in Web Workers](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog02_cover_browser_edge_ai_gemma4.png?v=2)
 
 ## 1. Problem Statement: Why Proctored Tests & Practical Examinations Need an On-Device Browser Edge AI Investigator
 

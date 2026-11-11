@@ -3,7 +3,7 @@ title: "Google AI Classroom Part 5: Real-Time Multilingual Live Subtitles & Hong
 published: true
 description: "Inclusive teaching and learning with real-time 9-language live subtitles handling Hong Kong English-Cantonese code-switching via Gemini 4 and Gemma 4 E2B."
 tags: ai, webdev, speech, gemini
-cover_image: https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog05_cover_realtime_live_subtitles.png
+cover_image: https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog05_cover_realtime_live_subtitles.png?v=2
 canonical_url: https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/05-realtime-live-subtitles-code-switching-gemini-4-gemma-4.md
 ---
 
@@ -13,7 +13,7 @@ canonical_url: https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/b
 
 ---
 
-![Google AI Classroom Part 5: Real-Time Multilingual Live Subtitles — Hong Kong Code-Switching with Gemini 4 / 3.8 & Edge Gemma 4](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog05_cover_realtime_live_subtitles.png)
+![Google AI Classroom Part 5: Real-Time Multilingual Live Subtitles — Hong Kong Code-Switching with Gemini 4 / 3.8 & Edge Gemma 4](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog05_cover_realtime_live_subtitles.png?v=2)
 
 ## 1. Problem Statement: Why Standard Speech-to-Text Breaks in Bilingual Technical Classrooms
 

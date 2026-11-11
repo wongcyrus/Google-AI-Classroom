@@ -3,7 +3,7 @@ title: "Google AI Classroom Part 10: Green AI FinOps, Self-Cleaning Storage Life
 published: true
 description: "Green AI FinOps, automated storage lifecycle policies, and 1-command Terraform IaC for multi-school teaching, grading, and proctored exam deployments."
 tags: finops, terraform, devops, googlecloud
-cover_image: https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog10_cover_green_ai_finops_terraform.png
+cover_image: https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog10_cover_green_ai_finops_terraform.png?v=2
 canonical_url: https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/10-green-ai-finops-storage-lifecycle-and-terraform-iac.md
 ---
 
@@ -13,7 +13,7 @@ canonical_url: https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/b
 
 ---
 
-![Google AI Classroom Part 10: Green AI FinOps, Storage Lifecycle & Terraform IaC](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog10_cover_green_ai_finops_terraform.png)
+![Google AI Classroom Part 10: Green AI FinOps, Storage Lifecycle & Terraform IaC](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog10_cover_green_ai_finops_terraform.png?v=2)
 
 ## 1. The Three Pillars of Institutional Day-2 Production Readiness
 

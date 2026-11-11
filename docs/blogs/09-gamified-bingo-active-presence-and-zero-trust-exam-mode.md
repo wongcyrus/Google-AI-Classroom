@@ -3,7 +3,7 @@ title: "Google AI Classroom Part 9: Gamified \"Bingo\" Active Presence Verificat
 published: true
 description: "Interactive Classroom Bingo comprehension checks and zero-trust proctored exam lockdown with forensic .docx dossiers on Google Cloud."
 tags: security, gamification, googlecloud, webdev
-cover_image: https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog09_cover_gamified_bingo_exam_mode.png
+cover_image: https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog09_cover_gamified_bingo_exam_mode.png?v=2
 canonical_url: https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/09-gamified-bingo-active-presence-and-zero-trust-exam-mode.md
 ---
 
@@ -13,7 +13,7 @@ canonical_url: https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/b
 
 ---
 
-![Google AI Classroom Part 9: Gamified Bingo Active Presence & Zero-Trust Proctored Exam Mode](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog09_cover_gamified_bingo_exam_mode.png)
+![Google AI Classroom Part 9: Gamified Bingo Active Presence & Zero-Trust Proctored Exam Mode](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog09_cover_gamified_bingo_exam_mode.png?v=2)
 
 ## 1. Problem Statement: Defeating "Fake Video Playback", Proxy Classmates & Static Screen Decoys
 

@@ -3,7 +3,7 @@ title: "Google AI Classroom Part 8: Multimodal AI Capstone Project Supervision â
 published: true
 description: "Measuring authentic student performance in capstone projects with a mobile 720p demo studio, 2-stage diarization, and fake-log auditing using Gemini 4."
 tags: ai, mobile, gemini, education
-cover_image: https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog08_cover_multimodal_capstone_supervision.png
+cover_image: https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog08_cover_multimodal_capstone_supervision.png?v=2
 canonical_url: https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/08-multimodal-capstone-project-supervision-gemini-4.md
 ---
 
@@ -13,7 +13,7 @@ canonical_url: https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/b
 
 ---
 
-![Google AI Classroom Part 8: Multimodal AI Capstone Project Supervision](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog08_cover_multimodal_capstone_supervision.png)
+![Google AI Classroom Part 8: Multimodal AI Capstone Project Supervision](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog08_cover_multimodal_capstone_supervision.png?v=2)
 
 ## 1. The Capstone Supervision Bottleneck: ChatGPT Logbooks, Free-Riders & Multi-Device Consultation Friction
 

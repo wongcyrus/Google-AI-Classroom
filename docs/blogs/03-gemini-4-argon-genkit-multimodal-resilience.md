@@ -3,7 +3,7 @@ title: "Google AI Classroom Part 3: Frontier Multimodal Orchestration — Right-
 published: true
 description: "Orchestrating Gemini 4 Argon, Gemini 3.8 Flash, and on-device Gemma 4 E2B for teaching, student performance grading, and proctored assessments with Google Genkit."
 tags: googlecloud, genkit, gemini, ai
-cover_image: https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog03_cover_frontier_multimodal_orchestration.png
+cover_image: https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog03_cover_frontier_multimodal_orchestration.png?v=2
 canonical_url: https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/03-gemini-4-argon-genkit-multimodal-resilience.md
 ---
 
@@ -13,7 +13,7 @@ canonical_url: https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/b
 
 ---
 
-![Google AI Classroom Part 3: Frontier Multimodal Orchestration — Right-Sizing Gemini 4 Argon, Gemini 3.8 Flash & Genkit Resilience](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog03_cover_frontier_multimodal_orchestration.png)
+![Google AI Classroom Part 3: Frontier Multimodal Orchestration — Right-Sizing Gemini 4 Argon, Gemini 3.8 Flash & Genkit Resilience](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog03_cover_frontier_multimodal_orchestration.png?v=2)
 
 ## 1. Problem Statement: The Multimodal Classroom Paradox — Why Teaching, Student Performance & Proctoring Need 5 Different Models
 

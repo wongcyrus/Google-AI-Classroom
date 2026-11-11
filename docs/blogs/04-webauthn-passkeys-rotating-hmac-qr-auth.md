@@ -3,7 +3,7 @@ title: "Google AI Classroom Part 4: Defeating Proxy Attendance & Lab Keyloggers 
 published: true
 description: "Verifiable classroom attendance and keylogger-proof proctored exam lab sign-in with FIDO2 WebAuthn Passkeys, 15s rotating HMAC QRs, and GCIP blocking hooks."
 tags: security, passkeys, webauthn, googlecloud
-cover_image: https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog04_cover_webauthn_passkeys_rotating_qr.png
+cover_image: https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog04_cover_webauthn_passkeys_rotating_qr.png?v=2
 canonical_url: https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/04-webauthn-passkeys-rotating-hmac-qr-auth.md
 ---
 
@@ -13,7 +13,7 @@ canonical_url: https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/b
 
 ---
 
-![Google AI Classroom Part 4: Defeating Proxy Attendance & Keyloggers — FIDO2 Passkeys, Rotating HMAC QRs & GCIP Blocking Functions](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog04_cover_webauthn_passkeys_rotating_qr.png)
+![Google AI Classroom Part 4: Defeating Proxy Attendance & Keyloggers — FIDO2 Passkeys, Rotating HMAC QRs & GCIP Blocking Functions](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog04_cover_webauthn_passkeys_rotating_qr.png?v=2)
 
 ## 1. Problem Statement: The Proxy Account Sharing, "Fake Screen-Recording" & Keylogger Crisis in University Computer Labs & 200-Seat Lecture Theatres
 

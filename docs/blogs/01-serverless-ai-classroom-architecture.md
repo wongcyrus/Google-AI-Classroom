@@ -3,7 +3,7 @@ title: "Google AI Classroom Part 1: Architecting a Scale-to-Zero Serverless AI C
 published: true
 description: "Architecting a scale-to-zero serverless AI platform for teaching, learning, student performance, and proctored assessments on Google Cloud."
 tags: googlecloud, ai, webdev, serverless
-cover_image: https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog01_cover_serverless_ai_classroom.png
+cover_image: https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog01_cover_serverless_ai_classroom.png?v=2
 canonical_url: https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/01-serverless-ai-classroom-architecture.md
 ---
 
@@ -13,7 +13,7 @@ canonical_url: https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/b
 
 ---
 
-![Google AI Classroom Part 1: Architecting a Scale-to-Zero Serverless AI Classroom with Gemini 4 & Firebase](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog01_cover_serverless_ai_classroom.png)
+![Google AI Classroom Part 1: Architecting a Scale-to-Zero Serverless AI Classroom with Gemini 4 & Firebase](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog01_cover_serverless_ai_classroom.png?v=2)
 
 ## 1. Problem Statement: Scaling Teaching, Student Performance Tracking & Proctored Assessments with Scale-to-Zero Serverless
 
