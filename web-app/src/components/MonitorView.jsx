@@ -25,7 +25,7 @@ import { DEFAULT_LIVE_SUBTITLE_TRANSLATION_PROMPT } from '../constants/promptReg
 import useTeacherScreenBroadcast from '../hooks/useTeacherScreenBroadcast';
 import useLectureRecorder from '../hooks/useLectureRecorder';
 import LectureRecordingsView from './LectureRecordingsView';
-import { getStudentDisplayName, getStudentProfile } from '../utils/studentDisplayUtils';
+import { getStudentDisplayName, getStudentProfile, maskStudentEmail } from '../utils/studentDisplayUtils';
 import BingoResultsView from './BingoResultsView';
 import LectureQrBingoModal from './monitor/LectureQrBingoModal';
 
@@ -103,6 +103,25 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
   const [gridColumns, setGridColumns] = useState(4);
   const [isGridHovered, setIsGridHovered] = useState(false);
   const studentsGridRef = useRef(null);
+
+  const [isPrivacyMode, setIsPrivacyMode] = useState(() => {
+    try {
+      const saved = localStorage.getItem('teacher_privacy_mode');
+      return saved === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const handleTogglePrivacyMode = useCallback(() => {
+    setIsPrivacyMode(prev => {
+      const next = !prev;
+      try {
+        localStorage.setItem('teacher_privacy_mode', String(next));
+      } catch {}
+      return next;
+    });
+  }, []);
 
   const handleAutoRollChange = (e) => {
     const val = e.target.value;
@@ -1456,7 +1475,7 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
       const status = studentStatuses.find(s => s.id === uid);
       const email = uidToEmailMap.get(uid) || (status ? status.email : '');
       const studentProfile = getStudentProfile(email, studentProfiles);
-      const friendlyName = getStudentDisplayName({ email, name: status?.name }, studentProfiles);
+      const friendlyName = getStudentDisplayName({ email, name: status?.name }, studentProfiles, { privacyMode: isPrivacyMode });
       const statusTs = getTs(status);
       const isStatusFresh = reviewTime
         ? true
@@ -1466,7 +1485,8 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
 
       return {
         id: uid,
-        email: email,
+        email: isPrivacyMode ? maskStudentEmail(email) : email,
+        rawEmail: email,
         name: friendlyName,
         displayName: friendlyName,
         profile: studentProfile,
@@ -1501,7 +1521,7 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
         lastHeartbeat: statusTs,
       };
     });
-  }, [classList, studentStatuses, uidToEmailMap, studentProfiles, now, frameRate, reviewTime]);
+  }, [classList, studentStatuses, uidToEmailMap, studentProfiles, now, frameRate, reviewTime, isPrivacyMode]);
 
   // Live screenshot URL resolution with bounded concurrency and in-flight deduplication
   useEffect(() => {
@@ -1838,7 +1858,7 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
       const isEmailUid = typeof uid === 'string' && uid.includes('@');
       const email = uidToEmailMap.get(uid) || status?.email || status?.studentEmail || status?.userEmail || (isEmailUid ? uid : '');
       const prof = getStudentProfile(email || uid, studentProfiles);
-      const displayName = status?.displayName || status?.studentName || prof.studentName || getStudentDisplayName(email || uid, studentProfiles);
+      const displayName = getStudentDisplayName({ email: email || uid, ...status }, studentProfiles, { privacyMode: isPrivacyMode });
       const studentClass = prof.studentClass || status?.studentClass || status?.cohort || '';
       const programme = prof.programme || status?.programme || '';
 
@@ -2345,7 +2365,7 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
       .map(([studentId, result]) => {
       const studentObj = students.find(s => s.id === studentId);
       const email = studentObj?.email || uidToEmailMap.get(studentId) || studentId;
-      const displayName = studentObj?.displayName || getStudentDisplayName(email, studentProfiles);
+      const displayName = studentObj?.displayName || getStudentDisplayName(email, studentProfiles, { privacyMode: isPrivacyMode });
       
       let textContent = '';
       let isError = false;
@@ -2848,6 +2868,17 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
                   📢 Nudge ({filteredStudents.length})
                 </button>
               )}
+
+              <button
+                type="button"
+                className={`monitor-btn ${isPrivacyMode ? 'monitor-btn-privacy-active' : 'monitor-btn-secondary'}`}
+                onClick={handleTogglePrivacyMode}
+                title={isPrivacyMode ? 'Privacy Mode is ON (Student names and IDs are masked for classroom display). Click to reveal full names.' : 'Privacy Mode is OFF. Click to mask student names and IDs.'}
+                aria-label="Toggle student privacy mask mode"
+                aria-pressed={isPrivacyMode}
+              >
+                {isPrivacyMode ? '🛡️ Privacy: ON' : '👁️ Privacy: OFF'}
+              </button>
 
               {filteredStudents.length > 0 && (
                 <button

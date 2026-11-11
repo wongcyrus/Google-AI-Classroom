@@ -272,6 +272,29 @@ describe('MonitorView Component Suite', () => {
     expect(filterSelect.value).toBe('ai_alert');
   });
 
+  it('toggles student privacy mode between ON and OFF and persists to localStorage', async () => {
+    localStorage.clear();
+    render(<MonitorView {...defaultProps} />);
+
+    const privacyBtn = screen.getByRole('button', { name: /Toggle student privacy mask mode/i });
+    expect(privacyBtn).toBeInTheDocument();
+    expect(privacyBtn).toHaveTextContent('Privacy: OFF');
+
+    await act(async () => {
+      fireEvent.click(privacyBtn);
+    });
+
+    expect(privacyBtn).toHaveTextContent('Privacy: ON');
+    expect(localStorage.getItem('teacher_privacy_mode')).toBe('true');
+
+    await act(async () => {
+      fireEvent.click(privacyBtn);
+    });
+
+    expect(privacyBtn).toHaveTextContent('Privacy: OFF');
+    expect(localStorage.getItem('teacher_privacy_mode')).toBe('false');
+  });
+
   it('handles lesson change and go live button click', () => {
     const handleLessonChange = vi.fn();
     render(<MonitorView {...defaultProps} handleLessonChange={handleLessonChange} />);

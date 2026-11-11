@@ -3,6 +3,9 @@ import {
   normalizeStudentEmail,
   maskStudentId,
   maskStudentEmail,
+  maskChineseName,
+  maskEnglishWord,
+  maskStudentName,
   getStudentProfile,
   getStudentDisplayName,
   formatStudentIdentity,
@@ -36,6 +39,34 @@ describe('studentDisplayUtils Utility', () => {
       expect(maskStudentEmail('990000101@stu.vtc.edu.hk')).toBe('***0101@stu.vtc.edu.hk');
       expect(maskStudentEmail('alice.chan@vtc.edu.hk')).toBe('al***@vtc.edu.hk');
       expect(maskStudentEmail('ab@vtc.edu.hk')).toBe('a***@vtc.edu.hk');
+    });
+  });
+
+  describe('maskChineseName, maskEnglishWord & maskStudentName', () => {
+    it('masks Chinese names per HK / institutional privacy standards', () => {
+      expect(maskChineseName('羅晉')).toBe('羅*');
+      expect(maskChineseName('陳正洋')).toBe('陳*洋');
+      expect(maskChineseName('歐陽梓樂')).toBe('歐**樂');
+      expect(maskChineseName('李')).toBe('李');
+      expect(maskChineseName('')).toBe('');
+    });
+
+    it('masks English words keeping first character and replacing rest with asterisks', () => {
+      expect(maskEnglishWord('Ching')).toBe('C****');
+      expect(maskEnglishWord('Yeung')).toBe('Y****');
+      expect(maskEnglishWord('David')).toBe('D****');
+      expect(maskEnglishWord('A')).toBe('A');
+    });
+
+    it('centrally masks display names, nicknames, and full names', () => {
+      expect(maskStudentName('CHAN,Ching Yeung')).toBe('C***,C**** Y****');
+      expect(maskStudentName('陳正洋')).toBe('陳*洋');
+      expect(maskStudentName('羅晉')).toBe('羅*');
+      expect(maskStudentName('陳正洋 (CHAN,Ching Yeung)')).toBe('陳*洋 (C***,C**** Y****)');
+      expect(maskStudentName('David (Chan Tai Man)')).toBe('D**** (C*** T** M**)');
+      expect(maskStudentName('260047062@stu.vtc.edu.hk')).toBe('Student ***7062');
+      expect(maskStudentName('Student ***7062')).toBe('Student ***7062');
+      expect(maskStudentName('')).toBe('');
     });
   });
 
@@ -196,6 +227,25 @@ describe('studentDisplayUtils Utility', () => {
 
     it('Tier 5: Falls back to email address when no profile metadata exists', () => {
       expect(getStudentDisplayName('raw.email@school.edu', {})).toBe('raw.email@school.edu');
+    });
+
+    it('Privacy Mode: Respects privacyMode option by masking student names and fallback IDs', () => {
+      expect(getStudentDisplayName('david@school.edu', sampleProfiles, { privacyMode: true })).toBe('D**** (C*** T** M**)');
+      expect(getStudentDisplayName('kelly@school.edu', sampleProfiles, { privacyMode: true })).toBe('W*** K* Y**');
+      expect(getStudentDisplayName('sam@school.edu', sampleProfiles, { privacyMode: true })).toBe('S****');
+      expect(getStudentDisplayName('260047062@stu.vtc.edu.hk', {}, { privacyMode: true })).toBe('Student ***7062');
+      expect(getStudentDisplayName('uid_987654321', {}, { privacyMode: true })).toBe('Student ***4321');
+
+      const vtcProfiles = {
+        '260047062@stu.vtc.edu.hk': {
+          studentName: 'LUO,Chun',
+          nickname: '羅晉',
+          programme: 'IT114115',
+          studentClass: '1C',
+        },
+      };
+      expect(getStudentDisplayName('260047062@stu.vtc.edu.hk', vtcProfiles, { privacyMode: true })).toBe('羅* (L**,C***)');
+      expect(getStudentDisplayName('260047062@stu.vtc.edu.hk', vtcProfiles, { privacyMode: false })).toBe('羅晉 (LUO,Chun)');
     });
 
     it('Handles null / undefined input gracefully', () => {

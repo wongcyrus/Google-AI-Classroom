@@ -56,6 +56,83 @@ export const maskStudentEmail = (email) => {
 };
 
 /**
+ * Masks a Chinese name per standard HK/institutional privacy conventions:
+ * 2 characters: "羅晉" -> "羅*"
+ * 3 characters: "陳正洋" -> "陳*洋"
+ * 4 characters: "歐陽梓樂" -> "歐**樂"
+ * @param {string} str
+ * @returns {string}
+ */
+export const maskChineseName = (str) => {
+  if (!str) return '';
+  const chars = Array.from(str.trim());
+  if (chars.length <= 1) return str;
+  if (chars.length === 2) return `${chars[0]}*`;
+  return `${chars[0]}${'*'.repeat(chars.length - 2)}${chars[chars.length - 1]}`;
+};
+
+/**
+ * Masks an English word by keeping the first letter and replacing the rest with asterisks:
+ * "Ching" -> "C****"
+ * @param {string} word
+ * @returns {string}
+ */
+export const maskEnglishWord = (word) => {
+  const clean = word.replace(/[^a-zA-Z]/g, '');
+  if (!clean) return word;
+  if (clean.length <= 1) return word;
+  return `${clean[0]}${'*'.repeat(clean.length - 1)}`;
+};
+
+/**
+ * Centrally masks a student display name, nickname, or full name for public/projector privacy:
+ * - "CHAN,Ching Yeung" -> "C***,C**** Y****"
+ * - "陳正洋" -> "陳*洋"
+ * - "陳正洋 (CHAN,Ching Yeung)" -> "陳*洋 (C***,C**** Y****)"
+ * - "David (Chan Tai Man)" -> "D**** (C*** T** M**)"
+ * - "260047062@stu.vtc.edu.hk" -> "Student ***7062"
+ * @param {string} name
+ * @returns {string}
+ */
+export const maskStudentName = (name) => {
+  if (!name || typeof name !== 'string') return '';
+  const trimmed = name.trim();
+  if (!trimmed) return '';
+
+  if (trimmed.startsWith('Student ***')) {
+    return trimmed;
+  }
+
+  if (trimmed.includes('@')) {
+    const idMatch = trimmed.match(/\d{5,}/);
+    return idMatch ? `Student ***${idMatch[0].slice(-4)}` : `${trimmed.split('@')[0].slice(0, 2)}***`;
+  }
+
+  // Check if contains parenthesized part: Nickname (Full Name)
+  const parenMatch = trimmed.match(/^([^(]+)\s*\(([^)]+)\)$/);
+  if (parenMatch) {
+    const part1 = parenMatch[1].trim();
+    const part2 = parenMatch[2].trim();
+    return `${maskStudentName(part1)} (${maskStudentName(part2)})`;
+  }
+
+  // Pure CJK
+  if (/^[\u4e00-\u9fa5]+$/.test(trimmed)) {
+    return maskChineseName(trimmed);
+  }
+
+  // Mixed or English
+  return trimmed
+    .split(/([\s,]+)/)
+    .map((token) => {
+      if (/^[\s,]+$/.test(token)) return token;
+      if (/^[\u4e00-\u9fa5]+$/.test(token)) return maskChineseName(token);
+      return maskEnglishWord(token);
+    })
+    .join('');
+};
+
+/**
  * Retrieves the normalized student profile from a profileMap or student object.
  * @param {string|object} studentOrEmail 
  * @param {object} profileMap - Map of normalized email -> profile object
@@ -218,42 +295,50 @@ export const getStudentProfile = (studentOrEmail, profileMap = {}) => {
  * 
  * @param {string|object} studentOrEmail 
  * @param {object} profileMap 
+ * @param {object|boolean} [options={}] - Options object or boolean privacyMode flag. e.g. { privacyMode: true }
  * @returns {string}
  */
-export const getStudentDisplayName = (studentOrEmail, profileMap = {}) => {
+export const getStudentDisplayName = (studentOrEmail, profileMap = {}, options = {}) => {
+  let isPrivacy = false;
+  if (typeof options === 'boolean') {
+    isPrivacy = options;
+  } else if (options && typeof options.privacyMode === 'boolean') {
+    isPrivacy = options.privacyMode;
+  }
+
   const profile = getStudentProfile(studentOrEmail, profileMap);
   const { studentName, nickname, email, uid } = profile;
 
+  let rawDisplay = '';
+
   // Tier 1: Nickname + Student Name
   if (nickname && studentName) {
-    return `${nickname} (${studentName})`;
-  }
-
-  // Tier 2: Student Name Only
-  if (studentName) {
-    return studentName;
-  }
-
-  // Tier 3: Nickname Only
-  if (nickname) {
-    return nickname;
-  }
-
-  // Tier 4: Existing student.displayName / student.name if distinct from email
-  if (typeof studentOrEmail === 'object' && studentOrEmail) {
+    rawDisplay = `${nickname} (${studentName})`;
+  } else if (studentName) {
+    // Tier 2: Student Name Only
+    rawDisplay = studentName;
+  } else if (nickname) {
+    // Tier 3: Nickname Only
+    rawDisplay = nickname;
+  } else if (typeof studentOrEmail === 'object' && studentOrEmail) {
+    // Tier 4: Existing student.displayName / student.name if distinct from email
     const rawName = String(studentOrEmail.displayName || studentOrEmail.name || '').trim();
     if (rawName && !rawName.includes('@') && rawName.toLowerCase() !== email.toLowerCase() && rawName.toLowerCase() !== uid.toLowerCase()) {
-      return rawName;
+      rawDisplay = rawName;
     }
+  }
+
+  if (rawDisplay) {
+    return isPrivacy ? maskStudentName(rawDisplay) : rawDisplay;
   }
 
   // Tier 5: Email or fallback
   if (email) {
-    return email;
+    return isPrivacy ? maskStudentName(email) : email;
   }
 
   if (uid) {
-    return uid;
+    return isPrivacy ? (uid.length > 4 ? `Student ***${uid.slice(-4)}` : `Student ***${uid}`) : uid;
   }
 
   return 'Unknown Student';
@@ -263,11 +348,13 @@ export const getStudentDisplayName = (studentOrEmail, profileMap = {}) => {
  * Extracts a structured student identity object for UI badges, cards, and tooltips.
  * @param {string|object} studentOrEmail 
  * @param {object} profileMap 
+ * @param {object|boolean} [options={}]
  * @returns {object}
  */
-export const formatStudentIdentity = (studentOrEmail, profileMap = {}) => {
+export const formatStudentIdentity = (studentOrEmail, profileMap = {}, options = {}) => {
+  const isPrivacy = typeof options === 'boolean' ? options : Boolean(options && options.privacyMode);
   const profile = getStudentProfile(studentOrEmail, profileMap);
-  const displayName = getStudentDisplayName(studentOrEmail, profileMap);
+  const displayName = getStudentDisplayName(studentOrEmail, profileMap, options);
   const hasCustomProfile = Boolean(
     profile.studentName || profile.nickname || profile.programme || profile.studentClass
   );
@@ -275,10 +362,13 @@ export const formatStudentIdentity = (studentOrEmail, profileMap = {}) => {
   return {
     ...profile,
     displayName,
-    fullName: profile.studentName,
+    fullName: isPrivacy ? (profile.studentName ? maskStudentName(profile.studentName) : '') : profile.studentName,
+    nickname: isPrivacy ? (profile.nickname ? maskStudentName(profile.nickname) : '') : profile.nickname,
+    email: isPrivacy ? maskStudentEmail(profile.email) : profile.email,
     maskedEmail: maskStudentEmail(profile.email),
-    maskedStudentId: maskStudentId(profile.studentId || ''),
+    maskedStudentId: maskStudentId(profile.studentId || profile.email?.split('@')[0] || ''),
     hasCustomProfile,
+    isPrivacyMode: isPrivacy,
   };
 };
 
