@@ -418,7 +418,6 @@ export default function ProjectGroupEditorModal({
                     >
                       <div>
                         <div style={{ fontWeight: 600, fontSize: '0.85rem', color: '#1e293b' }}>{stu.name || stu.email}</div>
-                        <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{stu.email}</div>
                       </div>
                       <span className="btn-quick-assign">➕ Add</span>
                     </div>
@@ -533,8 +532,7 @@ export default function ProjectGroupEditorModal({
                                 >
                                   {m.role === 'Leader' ? '⭐ Leader' : '👤 Member'}
                                 </button>
-                                <span style={{ fontWeight: 600, fontSize: '0.84rem' }}>{m.name}</span>
-                                <span style={{ fontSize: '0.75rem', color: '#64748b' }}>({m.email})</span>
+                                <span style={{ fontWeight: 600, fontSize: '0.84rem' }}>{m.name || m.email}</span>
                               </div>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                 {draftGroups.length > 1 && (

@@ -1235,13 +1235,13 @@ describe('Tasks Component Suite', () => {
       fireEvent.click(playBtn);
 
       // Modal appears
-      expect(screen.getByText(/Alice Chan \(alice@vtc\.edu\.hk\) - Attempt Video/i)).toBeInTheDocument();
+      expect(screen.getByText(/Alice Chan - Attempt Video/i)).toBeInTheDocument();
 
       // Close modal
       const closeBtn = screen.getByRole('button', { name: 'Close' });
       fireEvent.click(closeBtn);
 
-      expect(screen.queryByText(/Alice Chan \(alice@vtc\.edu\.hk\) - Attempt Video/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/Alice Chan - Attempt Video/i)).not.toBeInTheDocument();
     });
 
     it('opens and closes retroactive slicing modal, changes window mode', async () => {

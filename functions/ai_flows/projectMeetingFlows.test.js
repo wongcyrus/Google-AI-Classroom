@@ -324,8 +324,8 @@ describe('projectMeetingFlows', () => {
         text: JSON.stringify({
           preMeetingLogAudit: [
             {
-              studentId: '250105348',
-              email: '250105348@stu.vtc.edu.hk',
+              studentId: '990000101',
+              email: '990000101@stu.vtc.edu.hk',
               name: 'Chan Tai Man',
               logQualityStatus: 'suspected_ai_fake',
               logQualityScore: 4,
@@ -350,8 +350,8 @@ describe('projectMeetingFlows', () => {
       weekNumber: 8,
       weeklyLogs: [
         {
-          studentId: '250105348',
-          email: '250105348@stu.vtc.edu.hk',
+          studentId: '990000101',
+          email: '990000101@stu.vtc.edu.hk',
           studentName: 'Chan Tai Man',
           isDoingSomething: true,
           workDone: 'Completed frontend and backend integration using Flask. Implemented real-time dashboards, history pages, mock AI chatbot, and basic role-based access control (Doctor/Patient).',

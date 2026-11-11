@@ -331,7 +331,7 @@ export async function handlePrepareProjectLogQuestions({
             )
             .join('\n')
         : '  * No prior weekly logs submitted.';
-      return `### Student ${idx + 1}: ${l.studentName || l.name || 'Student'} (ID: ${l.studentId || 'N/A'}, Email: ${l.email || 'N/A'})
+      return `### Student ${idx + 1}: ${l.studentName || l.name || 'Student'}
 - Week ${weekNumber} Submitted: ${l.submitted === false ? 'NO LOG SUBMITTED THIS WEEK' : 'Yes'}
 - "I am doing something this week": ${l.isDoingSomething ? 'Yes' : 'No'}
 - "Work done & findings since last recording": "${l.workDone || ''}"
@@ -374,8 +374,8 @@ Respond strictly with valid JSON matching this structure:
 {
   "preMeetingLogAudit": [
     {
-      "studentId": "250105348",
-      "email": "250105348@stu.vtc.edu.hk",
+      "studentId": "990000101",
+      "email": "student01@stu.vtc.edu.hk",
       "name": "Student Name",
       "logQualityStatus": "suspected_ai_fake",
       "logQualityScore": 4,

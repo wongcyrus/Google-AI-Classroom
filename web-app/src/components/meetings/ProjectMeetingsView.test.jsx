@@ -12,8 +12,8 @@ const mockHttpsCallable = vi.fn().mockResolvedValue({
   data: {
     preMeetingLogAudit: [
       {
-        studentId: '250105348',
-        email: '250105348@stu.vtc.edu.hk',
+        studentId: '990000101',
+        email: '990000101@stu.vtc.edu.hk',
         name: 'Chan Tai Man',
         logQualityStatus: 'suspected_ai_fake',
         logQualityScore: 3,
@@ -112,11 +112,11 @@ import ProjectMeetingsView, { isMeetingPendingAnalysis, compressPhotoBlob } from
 import ProjectGroupEditorModal from './ProjectGroupEditorModal';
 
 const SAMPLE_FORM_RESPONSES_2_CSV = `Timestamp,Group ID,Student Name,Student ID,Supervisor,I am doing something this week,Work done & findings since last recording,State which part of the last plan not yet finished (leave it blank if you finished all the work of the last plan,Plan of work before the next recording,Description
-10/15/2026 10:00:00,A11,Chan Tai Man,250105348,Kitson Cheung,Yes,done,,do website,
-10/22/2026 10:00:00,A11,Chan Tai Man,250105348,Kitson Cheung,Yes,done,,do website,
-10/29/2026 10:00:00,A11,Chan Tai Man,250105348,Kitson Cheung,Yes,"Completed frontend and backend integration using Flask. Implemented real-time dashboards, history pages, mock AI chatbot, and basic role-based access control (Doctor/Patient).",Swagger docs pending,Deploy to cloud,
-10/15/2026 11:00:00,A09,Leung Chun Ho Jason,250231955,Elka Leung,Yes,Designed ER diagram and normalized 6 tables for booking module,Payment table pending,Implement SQL migrations and seed script,
-10/22/2026 11:00:00,A09,Leung Chun Ho Jason,20231955,Elka Leung,No,,,,sick`;
+10/15/2026 10:00:00,A11,Chan Tai Man,990000101,Kitson Cheung,Yes,done,,do website,
+10/22/2026 10:00:00,A11,Chan Tai Man,990000101,Kitson Cheung,Yes,done,,do website,
+10/29/2026 10:00:00,A11,Chan Tai Man,990000101,Kitson Cheung,Yes,"Completed frontend and backend integration using Flask. Implemented real-time dashboards, history pages, mock AI chatbot, and basic role-based access control (Doctor/Patient).",Swagger docs pending,Deploy to cloud,
+10/15/2026 11:00:00,A09,Alex Lee,990000202,Elka Leung,Yes,Designed ER diagram and normalized 6 tables for booking module,Payment table pending,Implement SQL migrations and seed script,
+10/22/2026 11:00:00,A09,Alex Lee,99000202,Elka Leung,No,,,,sick`;
 
 describe('projectGroupUtils & ProjectMeetingsView & ProjectGroupEditorModal', () => {
   const originalFetch = global.fetch;
@@ -158,7 +158,7 @@ describe('projectGroupUtils & ProjectMeetingsView & ProjectGroupEditorModal', ()
           members: [
             { uid: 'stu_1', email: 'alice@stu.vtc.edu.hk', name: 'Alice Chan', role: 'Leader' },
             { uid: 'stu_2', email: 'bob@stu.vtc.edu.hk', name: 'Bob Lee', role: 'Member' },
-            { uid: '250105348@stu.vtc.edu.hk', email: '250105348@stu.vtc.edu.hk', name: 'Chan Tai Man', role: 'Member' },
+            { uid: '990000101@stu.vtc.edu.hk', email: '990000101@stu.vtc.edu.hk', name: 'Chan Tai Man', role: 'Member' },
           ],
         }),
       },
@@ -268,8 +268,8 @@ describe('projectGroupUtils & ProjectMeetingsView & ProjectGroupEditorModal', ()
               timestamps: ['00:35', '01:02:10'],
             },
             {
-              uid: '250105348@stu.vtc.edu.hk',
-              email: '250105348@stu.vtc.edu.hk',
+              uid: '990000101@stu.vtc.edu.hk',
+              email: '990000101@stu.vtc.edu.hk',
               name: 'Chan Tai Man',
               workCompleted: [],
               currentChallenges: [],
@@ -685,8 +685,8 @@ Group Beta,New Beta Topic,other@vtc.edu.hk,eva@stu.vtc.edu.hk,Eva Ho,Leader`;
     fireEvent.change(groupFilterSelect, { target: { value: 'all' } });
 
     const profileSearch = screen.getByLabelText(/Search student profile by name or student ID/i);
-    fireEvent.change(profileSearch, { target: { value: 'Leung Chun Ho' } });
-    expect(screen.getAllByText(/Leung Chun Ho Jason/i).length).toBeGreaterThan(0);
+    fireEvent.change(profileSearch, { target: { value: 'Alex Lee' } });
+    expect(screen.getAllByText(/Alex Lee/i).length).toBeGreaterThan(0);
     fireEvent.change(profileSearch, { target: { value: '' } });
 
     // Export Student Profiles (.xlsx)

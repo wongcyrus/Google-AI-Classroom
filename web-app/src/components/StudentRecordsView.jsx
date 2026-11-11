@@ -3226,7 +3226,6 @@ const StudentRecordsView = ({ user }) => {
                           <span key={m.uid || m.email || idx} className={`member-chip ${isMe ? 'is-me' : ''}`}>
                             {m.role === 'Leader' ? '👑 ' : '👤 '}
                             <strong>{m.name || m.email}</strong>
-                            {m.studentId ? ` (${m.studentId})` : ''}
                             {isMe ? ' (You)' : ''}
                           </span>
                         );

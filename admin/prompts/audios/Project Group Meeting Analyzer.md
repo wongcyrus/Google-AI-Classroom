@@ -38,4 +38,4 @@ Speakers in the meeting code-switch naturally between Cantonese, Mandarin, and E
      - `timestamps`: Array of `"MM:SS"` timestamps where this student spoke or demonstrated their work.
 
 4. **Speaker-Attributed Transcript (`transcriptSegments`)**:
-   - Replace generic `Speaker N` labels with the resolved student name (`"Alice Chan (alice@stu.vtc.edu.hk)"`) or `"Supervisor ({{supervisorEmail}})"` whenever identifiable.
+   - Replace generic `Speaker N` labels with the resolved student name (`"Alice Chan"`) or `"Supervisor"` whenever identifiable (never append raw student IDs or email addresses to transcript speaker labels).

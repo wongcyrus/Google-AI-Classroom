@@ -3109,7 +3109,7 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
               <option value="">👥 Whole Group / Unassigned</option>
               {(activeStudioGroup?.members || []).map((m) => (
                 <option key={m.uid || m.email} value={m.uid || m.email}>
-                  👤 {m.name} ({m.email})
+                  👤 {m.name || m.email}
                 </option>
               ))}
             </select>
@@ -3442,10 +3442,7 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
                     <div key={card.email || card.studentId} className={`studio-log-member-card ${statusClass}`}>
                       <div className="studio-log-member-top">
                         <div>
-                          <strong>👤 {card.name}</strong>
-                          <span style={{ fontSize: '0.74rem', color: '#64748b', marginLeft: '6px' }}>
-                            ({card.studentId || card.email})
-                          </span>
+                          <strong>👤 {card.name || card.studentId || card.email}</strong>
                         </div>
                         <span className={`log-quality-pill ${statusClass}`}>
                           {statusBadgeText}
@@ -3615,7 +3612,7 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
             <input
               type="search"
               aria-label="Search student profile by name or student ID"
-              placeholder="🔎 Search student name, ID (e.g. 250105348), or supervisor..."
+              placeholder="🔎 Search student name, group, or supervisor..."
               value={profileSearchQuery}
               onChange={(e) => setProfileSearchQuery(e.target.value)}
               style={{ flex: 1, minWidth: '220px' }}
@@ -3644,7 +3641,7 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
                             👤 {prof.name}
                           </strong>
                           <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
-                            ID: {prof.studentId} • 📁 Group <strong>{prof.groupCode}</strong>
+                            📁 Group <strong>{prof.groupCode}</strong>
                             {prof.supervisorName ? ` • 👨‍🏫 ${prof.supervisorName}` : ''}
                           </div>
                         </div>
@@ -3698,11 +3695,10 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
                   <div className="dossier-header">
                     <div>
                       <h3 style={{ margin: 0 }}>
-                        👤 {selectedStudentProfile.name} ({selectedStudentProfile.studentId})
+                        👤 {selectedStudentProfile.name}
                       </h3>
                       <div style={{ fontSize: '0.82rem', color: '#475569', marginTop: '4px', display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
                         <span>📁 Group: <strong>{selectedStudentProfile.groupName}</strong></span>
-                        <span>📧 <code>{selectedStudentProfile.email}</code></span>
                         {selectedStudentProfile.supervisorName && (
                           <span>👨‍🏫 Supervisor: <strong>{selectedStudentProfile.supervisorName}</strong></span>
                         )}
@@ -3998,8 +3994,7 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
                           return (
                             <tr key={email}>
                               <td>
-                                <strong>{member.name}</strong>
-                                <div style={{ fontSize: '0.74rem', color: '#64748b' }}>{email}</div>
+                                <strong>{member.name || email}</strong>
                               </td>
                               <td>{member.role || 'Member'}</td>
                               <td>
@@ -4708,8 +4703,7 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
                       <div key={att.uid || att.email} className={`attendance-member-card ${att.status || 'absent'}`}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
                           <div>
-                            <strong style={{ fontSize: '0.9rem', color: '#0f172a' }}>{att.name}</strong>
-                            <div style={{ fontSize: '0.75rem', color: '#64748b' }}>{att.email}</div>
+                            <strong style={{ fontSize: '0.9rem', color: '#0f172a' }}>{att.name || att.email}</strong>
                           </div>
                           <span className={`speaking-level-badge ${att.speakingContribution || 'none'}`}>
                             🗣️ {att.speakingContribution || 'none'}
@@ -4940,10 +4934,7 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
                         <div key={sc.uid || sc.email} className="student-contribution-card">
                           <div className="student-contrib-header">
                             <div>
-                              <strong>👤 {sc.name}</strong>
-                              <span style={{ fontSize: '0.76rem', color: '#64748b', marginLeft: '6px' }}>
-                                ({sc.email})
-                              </span>
+                              <strong>👤 {sc.name || sc.email}</strong>
                             </div>
                             <button
                               type="button"
@@ -5477,7 +5468,7 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
                   ✏️ Edit Student Contribution &amp; Feedback
                 </h3>
                 <div style={{ margin: '4px 0 0', fontSize: '0.82rem', color: '#64748b' }}>
-                  <strong>👤 {editingStudentContrib.name}</strong> ({editingStudentContrib.email}) • {selectedMeeting?.groupName || 'Group'} — Week {selectedMeeting?.weekNumber || 1}
+                  <strong>👤 {editingStudentContrib.name || editingStudentContrib.email}</strong> • {selectedMeeting?.groupName || 'Group'} — Week {selectedMeeting?.weekNumber || 1}
                 </div>
               </div>
               <button
@@ -5738,7 +5729,7 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
                           disabled={isSendingEmail}
                         />
                         <span>
-                          <strong>{m.name || m.email}</strong> {m.email && `<${m.email}>`}
+                          <strong>{m.name || m.email}</strong>
                         </span>
                       </label>
                     );
@@ -6412,7 +6403,7 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
                 <option value="">👥 Whole Group / General Evidence</option>
                 {((activeStudioGroup || selectedGroup)?.members || []).map((m) => (
                   <option key={m.uid || m.email} value={m.uid || m.email}>
-                    👤 {m.name} ({m.email})
+                    👤 {m.name || m.email}
                   </option>
                 ))}
               </select>
@@ -6579,7 +6570,7 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
                     <option value="">👥 Whole Group</option>
                     {((activeStudioGroup || selectedGroup)?.members || []).map((m) => (
                       <option key={m.uid || m.email} value={m.uid || m.email}>
-                        👤 {m.name} ({m.email})
+                        👤 {m.name || m.email}
                       </option>
                     ))}
                   </select>

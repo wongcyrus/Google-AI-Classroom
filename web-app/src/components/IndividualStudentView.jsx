@@ -356,7 +356,6 @@ const IndividualStudentView = ({
                 </span>
               )}
             </div>
-            <p className="student-subemail" style={{ margin: '0.2rem 0 0 0', color: '#475569', fontSize: '0.82rem', fontWeight: 500 }}>{student.email}</p>
           </div>
 
           <div className="channel-tab-group" role="tablist" aria-label="Student video channels">

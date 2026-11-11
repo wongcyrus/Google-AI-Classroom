@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
@@ -16,16 +18,32 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 
 const CLASS_ID = 'it114115-fyp-2627';
+
+// Load private roster & sheet URLs from git-ignored local JSON file or environment variables
+// Never commit real student IDs, full names, or private Google Sheet URLs to source control.
+const rosterJsonPath =
+  process.env.FYP_ROSTER_JSON_PATH ||
+  path.resolve(process.cwd(), 'admin/backups/fyp_roster.local.json');
+const localRosterConfig = fs.existsSync(rosterJsonPath)
+  ? JSON.parse(fs.readFileSync(rosterJsonPath, 'utf8'))
+  : {};
+
 const GROUPING_SHEET_URL =
-  'https://docs.google.com/spreadsheets/d/1cAikA_VoL0tSI6MoGiIF070B3GvE5QcO4IChGjRKYsk/edit?gid=0#gid=0';
+  process.env.FYP_GROUPING_SHEET_URL ||
+  localRosterConfig.groupingSheetUrl ||
+  'https://docs.google.com/spreadsheets/d/EXAMPLE_GROUPING_SHEET_ID/edit?gid=0#gid=0';
 const WEEKLY_LOG_SHEET_URL =
-  'https://docs.google.com/spreadsheets/d/1mKWVAkdM0RedTQ2wjk1GMmh6bxNQ6S-A4YP-85s77Ps/edit?gid=1601202239#gid=1601202239';
+  process.env.FYP_WEEKLY_LOG_SHEET_URL ||
+  localRosterConfig.weeklyLogSheetUrl ||
+  'https://docs.google.com/spreadsheets/d/EXAMPLE_WEEKLY_LOG_SHEET_ID/edit?gid=0#gid=0';
 const WEEKLY_LOG_CSV_EXPORT_URL =
-  'https://docs.google.com/spreadsheets/d/1mKWVAkdM0RedTQ2wjk1GMmh6bxNQ6S-A4YP-85s77Ps/export?format=csv&gid=1601202239';
+  process.env.FYP_WEEKLY_LOG_CSV_EXPORT_URL ||
+  localRosterConfig.weeklyLogCsvExportUrl ||
+  '';
 
 const isDevProject = projectId.includes('dev');
 
-const TEACHERS = [
+const TEACHERS = localRosterConfig.teachers || [
   { email: 'cywong@vtc.edu.hk', displayName: 'Cyrus Wong' },
   { email: 'kcheung@vtc.edu.hk', displayName: 'Kitson Cheung' },
   { email: 'kakaleung@vtc.edu.hk', displayName: 'Elka Leung' },
@@ -40,351 +58,24 @@ const TEACHERS = [
     : []),
 ];
 
-// Chinese nicknames mapped from spreadsheet tabs ("Not in Group" gid=176958916 & "IT314115 Year 2&3" gid=302007501)
-const CHINESE_NAME_BY_SID = {
-  '250107201': '陳家俊',
-  '250595462': '陳嘉軒',
-  '250323388': '陳深',
-  '250352974': '陳日進',
-  '250384197': '陈枫伊',
-  '250030740': '陳文軒',
-  '250016155': '張曉彤',
-  '250114972': '戴睿然',
-  '250097891': '何浩宇',
-  '250266200': '何雋軒',
-  '250715175': '黃志鵬',
-  '250024757': '關匡廷',
-  '250216860': '李梓謙',
-  '250018289': '李鎵宝',
-  '250599067': '李劍鋒',
-  '250267012': '李明臻',
-  '250147211': '罗尔捷',
-  '250349656': '吳逸靜',
-  '250477390': '譚宇匡',
-  '250280581': '黃俊豪',
-  '250057659': '姚嘉俊',
-  '250093818': '楊洋',
-  '250322392': '张骏宁',
-  '250320718': '张旋',
-  '250325530': '陳卓文',
-  '250044688': '陳珈銘',
-  '250044707': '陳德楨',
-  '250108351': '陳賢峰',
-  '250250576': '陈星羽',
-  '250294087': '周以謙',
-  '250034726': '徐健強',
-  '250105348': '郭雋庭',
-  '250044572': '林奧深',
-  '250018554': '羅威',
-  '250031367': '李明謙',
-  '250231955': '梁駿豪',
-  '250392775': '李栢濂',
-  '250047494': '吳錕洋',
-  '250407166': '彭昊琛',
-  '250103226': '蘇炳杰',
-  '250214264': '戴卓宏',
-  '250003922': '鄧騏瑋',
-  '250016978': '鄧偉圖',
-  '250114843': '丁家俊',
-  '250437785': '蔡繼晟',
-  '250131330': '黃詠濠',
-  '250035133': '楊一',
-  '250002058': '殷杰輝',
-  '250235862': '袁景軒',
-};
+const CHINESE_NAME_BY_SID = localRosterConfig.chineseNameBySid || {};
 
-const FYP_GROUPS = [
-  // ================= IT114115 Year 2 (A01 - A11) =================
+const FYP_GROUPS = localRosterConfig.fypGroups || [
   {
     id: 'grp_a01',
     name: 'A01',
     cohort: 'IT114115 Year 2',
-    projectTopic:
-      'A project topic related to CECS (Childcare, Elderly and Community Services) — CECS - ChildCare',
+    projectTopic: 'Cloud-Native AI Classroom Assistant (Synthetic Demo Group)',
     supervisorEmail: 'kcheung@vtc.edu.hk',
     supervisorName: 'Kitson Cheung / Elka Leung',
     coSupervisorEmails: ['kakaleung@vtc.edu.hk', 'cywong@vtc.edu.hk'],
     assessorEmail: 'cywong@vtc.edu.hk',
     assessorName: 'Cyrus Wong',
     students: [
-      { sid: '250107201', name: 'CHAN Ka Chun', classCode: 'IT114115/2A', role: 'Leader' },
-      { sid: '250349656', name: 'NG YAT CHING', classCode: 'IT114115/2A', role: 'Member' },
-      { sid: '250016155', name: 'Cheung Hiu Tung', classCode: 'IT114115/2A', role: 'Member' },
-      { sid: '250131330', name: 'Wong Wing Ho', classCode: 'IT114115/2A', role: 'Member' },
-    ],
-  },
-  {
-    id: 'grp_a02',
-    name: 'A02',
-    cohort: 'IT114115 Year 2',
-    projectTopic:
-      'A Cloud-Based Digital Companion with Emotional Early Warning for Vulnerable Groups (Daily companionship through chat, with voice and emotion analysis for early risk alerts)',
-    supervisorEmail: 'kcheung@vtc.edu.hk',
-    supervisorName: 'Kitson Cheung / Elka Leung',
-    coSupervisorEmails: ['kakaleung@vtc.edu.hk', 'cywong@vtc.edu.hk'],
-    assessorEmail: 'cywong@vtc.edu.hk',
-    assessorName: 'Cyrus Wong',
-    students: [
-      { sid: '250114972', name: 'DAI RUIRAN', classCode: 'IT114115/2A', role: 'Leader' },
-      { sid: '250384197', name: 'CHEN Fengyi', classCode: 'IT114115/2A', role: 'Member' },
-      { sid: '250320718', name: 'ZHANG XUAN', classCode: 'IT114115/2A', role: 'Member' },
-    ],
-  },
-  {
-    id: 'grp_a03',
-    name: 'A03',
-    cohort: 'IT114115 Year 2',
-    projectTopic:
-      'An Automated Cloud-Assisted Mobile Safety Monitoring System Utilizing Multi-Stage AI Verification for Elderly and Child Care',
-    supervisorEmail: 'james.chan@vtc.edu.hk',
-    supervisorName: 'James Chan',
-    coSupervisorEmails: ['cywong@vtc.edu.hk'],
-    assessorEmail: 'cywong@vtc.edu.hk',
-    assessorName: 'Cyrus Wong',
-    students: [
-      { sid: '250280581', name: 'Wong Chun Ho', classCode: 'IT114115/2A', role: 'Leader' },
-      { sid: '250715175', name: 'HUANG ZHIPENG', classCode: 'IT114115/2A', role: 'Member' },
-      { sid: '250267012', name: 'Li Ming Chun', classCode: 'IT114115/2A', role: 'Member' },
-      { sid: '250093818', name: 'YEUNG Yeung', classCode: 'IT114115/2A', role: 'Member' },
-    ],
-  },
-  {
-    id: 'grp_a04',
-    name: 'A04',
-    cohort: 'IT114115 Year 2',
-    projectTopic: 'AI Music Learning Platform — beyond music score sharing',
-    supervisorEmail: 'kcheung@vtc.edu.hk',
-    supervisorName: 'Kitson Cheung / Elka Leung',
-    coSupervisorEmails: ['kakaleung@vtc.edu.hk', 'cywong@vtc.edu.hk'],
-    assessorEmail: 'cywong@vtc.edu.hk',
-    assessorName: 'Cyrus Wong',
-    students: [
-      { sid: '250407166', name: 'Pang Ho Sum', classCode: 'IT114115/2A', role: 'Leader' },
-      { sid: '250016978', name: 'Tang Wai To', classCode: 'IT114115/2A', role: 'Member' },
-      { sid: '250214264', name: 'Tai Check Wang Jeffrey', classCode: 'IT114115/2A', role: 'Member' },
-      { sid: '250044572', name: 'Lam Ou Sum', classCode: 'IT114115/2A', role: 'Member' },
-    ],
-  },
-  {
-    id: 'grp_a05',
-    name: 'A05',
-    cohort: 'IT114115 Year 2',
-    projectTopic: 'Open Data Hackathon 2026',
-    supervisorEmail: 'hli852@vtc.edu.hk',
-    supervisorName: 'Harry Li',
-    coSupervisorEmails: ['cywong@vtc.edu.hk'],
-    assessorEmail: 'cywong@vtc.edu.hk',
-    assessorName: 'Cyrus Wong',
-    students: [
-      { sid: '250325530', name: 'Chan Cheuk Man Jimmy', classCode: 'IT114115/2A', role: 'Leader' },
-      { sid: '250108351', name: 'Chan Yin Fung', classCode: 'IT114115/2A', role: 'Member' },
-      { sid: '250034726', name: 'CHUI Kin Keung Kenny', classCode: 'IT114115/2B', role: 'Member' },
-      { sid: '250294087', name: 'Chow Yee Him', classCode: 'IT114115/2A', role: 'Member' },
-    ],
-  },
-  {
-    id: 'grp_a06',
-    name: 'A06',
-    cohort: 'IT114115 Year 2',
-    projectTopic:
-      'A Cloud-Based Multimodal System for Companionship and Family Support (Using a Raspberry Pi–Based Robot)',
-    supervisorEmail: 'james.chan@vtc.edu.hk',
-    supervisorName: 'James Chan',
-    coSupervisorEmails: ['cywong@vtc.edu.hk'],
-    assessorEmail: 'cywong@vtc.edu.hk',
-    assessorName: 'Cyrus Wong',
-    students: [
-      { sid: '250147211', name: 'LUO ERJIE', classCode: 'IT114115/2A', role: 'Leader' },
-      { sid: '250322392', name: 'ZHANG JUNNING', classCode: 'IT114115/2A', role: 'Member' },
-      { sid: '250030740', name: 'CHEN Man Hin', classCode: 'IT114115/2A', role: 'Member' },
-      { sid: '250097891', name: 'HE HAO YU', classCode: 'IT114115/2A', role: 'Member' },
-    ],
-  },
-  {
-    id: 'grp_a07',
-    name: 'A07',
-    cohort: 'IT114115 Year 2',
-    projectTopic: 'Dangerous Puppy Alarm',
-    supervisorEmail: 'hli852@vtc.edu.hk',
-    supervisorName: 'Harry Li',
-    coSupervisorEmails: ['cywong@vtc.edu.hk'],
-    assessorEmail: 'cywong@vtc.edu.hk',
-    assessorName: 'Cyrus Wong',
-    students: [
-      { sid: '250266200', name: 'HO Chun Hin', classCode: 'IT114115/2B', role: 'Leader' },
-      { sid: '250024757', name: 'KWAN Hong Ting', classCode: 'IT114115/2B', role: 'Member' },
-      { sid: '250235862', name: 'YUEN King Hin', classCode: 'IT114115/2B', role: 'Member' },
-      { sid: '250352974', name: 'Chan Yat Chun', classCode: 'IT114115/2B', role: 'Member' },
-    ],
-  },
-  {
-    id: 'grp_a08',
-    name: 'A08',
-    cohort: 'IT114115 Year 2',
-    projectTopic: 'Bus Information System',
-    supervisorEmail: 'hli852@vtc.edu.hk',
-    supervisorName: 'Harry Li',
-    coSupervisorEmails: ['cywong@vtc.edu.hk'],
-    assessorEmail: 'cywong@vtc.edu.hk',
-    assessorName: 'Cyrus Wong',
-    students: [
-      { sid: '250057659', name: 'Yao Ka Chun', classCode: 'IT114115/2B', role: 'Leader' },
-      { sid: '250477390', name: 'Tam Yu Hong', classCode: 'IT114115/2B', role: 'Member' },
-      { sid: '250595462', name: 'Chan Ka Hin', classCode: 'IT114115/2B', role: 'Member' },
-    ],
-  },
-  {
-    id: 'grp_a09',
-    name: 'A09',
-    cohort: 'IT114115 Year 2',
-    projectTopic: 'Assistive Tool for SEN student',
-    supervisorEmail: 'kakaleung@vtc.edu.hk',
-    supervisorName: 'Elka Leung',
-    coSupervisorEmails: ['cywong@vtc.edu.hk'],
-    assessorEmail: 'cywong@vtc.edu.hk',
-    assessorName: 'Cyrus Wong',
-    students: [
-      { sid: '250103226', name: 'So Ping Kit', classCode: 'IT114115/2B', role: 'Leader' },
-      { sid: '250035133', name: 'Yeung Yat', classCode: 'IT114115/2B', role: 'Member' },
-      { sid: '250047494', name: 'Ng Kwan Yeung', classCode: 'IT114115/2B', role: 'Member' },
-      { sid: '250231955', name: 'Leung Chun Ho Jason', classCode: 'IT114115/2B', role: 'Member' },
-    ],
-  },
-  {
-    id: 'grp_a10',
-    name: 'A10',
-    cohort: 'IT114115 Year 2',
-    projectTopic: 'Stock/Delivery monitoring',
-    supervisorEmail: 'hli852@vtc.edu.hk',
-    supervisorName: 'Harry Li',
-    coSupervisorEmails: ['cywong@vtc.edu.hk'],
-    assessorEmail: 'cywong@vtc.edu.hk',
-    assessorName: 'Cyrus Wong',
-    students: [
-      { sid: '250114843', name: 'Ting Ka Chun', classCode: 'IT114115/2B', role: 'Leader' },
-      { sid: '250437785', name: 'Tsoi Kai Shing', classCode: 'IT114115/2B', role: 'Member' },
-      { sid: '250002058', name: 'Yan Kit Fai', classCode: 'IT114115/2B', role: 'Member' },
-    ],
-  },
-  {
-    id: 'grp_a11',
-    name: 'A11',
-    cohort: 'IT114115 Year 2',
-    projectTopic: 'HealthTech + IOT (Heart rate, Ox, Temp)',
-    supervisorEmail: 'james.chan@vtc.edu.hk',
-    supervisorName: 'James Chan',
-    coSupervisorEmails: ['cywong@vtc.edu.hk'],
-    assessorEmail: 'cywong@vtc.edu.hk',
-    assessorName: 'Cyrus Wong',
-    students: [
-      { sid: '250044688', name: 'CHAN Ka Ming', classCode: 'IT114115/2B', role: 'Leader' },
-      { sid: '250018289', name: 'LI Jia Bao', classCode: 'IT114115/2B', role: 'Member' },
-      { sid: '250216860', name: 'LEE Tsz Him', classCode: 'IT114115/2B', role: 'Member' },
-      { sid: '250105348', name: 'KWOK Chun Ting', classCode: 'IT114115/2B', role: 'Member' },
-    ],
-  },
-
-  // ================= IT314115 Year 2&3 (L01 - L04, E01 - E02) =================
-  {
-    id: 'grp_l01',
-    name: 'L01',
-    cohort: 'IT314115 Year 3 (EL3A)',
-    projectTopic: 'AI weather adaptive life planning',
-    supervisorEmail: 'kcheung@vtc.edu.hk',
-    supervisorName: 'Kitson Cheung',
-    coSupervisorEmails: ['cywong@vtc.edu.hk'],
-    assessorEmail: 'cywong@vtc.edu.hk',
-    assessorName: 'Cyrus Wong',
-    students: [
-      { sid: '240060771', name: 'CHAN Kwan Lam', classCode: 'IT314115/EL3A', role: 'Leader' },
-      { sid: '240207539', name: 'LAU Ka Chun', classCode: 'IT314115/EL3A', role: 'Member' },
-      { sid: '240075803', name: 'NGAN Ka Ho Alex', classCode: 'IT314115/EL3A', role: 'Member' },
-      { sid: '240000701', name: 'HUI Hiu Tung', classCode: 'IT314115/EL3A', role: 'Member' },
-    ],
-  },
-  {
-    id: 'grp_l02',
-    name: 'L02',
-    cohort: 'IT314115 Year 3 (EL3A)',
-    projectTopic: 'Mr. Typing',
-    supervisorEmail: 'kcheung@vtc.edu.hk',
-    supervisorName: 'Kitson Cheung',
-    coSupervisorEmails: ['cywong@vtc.edu.hk'],
-    assessorEmail: 'cywong@vtc.edu.hk',
-    assessorName: 'Cyrus Wong',
-    students: [
-      { sid: '240021898', name: 'NG Cheuk Nam', classCode: 'IT314115/EL3A', role: 'Leader' },
-      { sid: '240032089', name: 'CHENG Ho Hin', classCode: 'IT314115/EL3A', role: 'Member' },
-      { sid: '240118973', name: 'SUN Ming Ho', classCode: 'IT314115/EL3A', role: 'Member' },
-      { sid: '240016495', name: 'YUEN Ka Ho', classCode: 'IT314115/EL3A', role: 'Member' },
-    ],
-  },
-  {
-    id: 'grp_l03',
-    name: 'L03',
-    cohort: 'IT314115 Year 3 (EL3A)',
-    projectTopic: 'AI Vet',
-    supervisorEmail: 'kcheung@vtc.edu.hk',
-    supervisorName: 'Kitson Cheung',
-    coSupervisorEmails: ['cywong@vtc.edu.hk'],
-    assessorEmail: 'cywong@vtc.edu.hk',
-    assessorName: 'Cyrus Wong',
-    students: [
-      { sid: '240115749', name: 'CHEUNG Hon Chung Klaus', classCode: 'IT314115/EL3A', role: 'Leader' },
-      { sid: '240395638', name: 'KWAN Chung Yeung', classCode: 'IT314115/EL3A', role: 'Member' },
-      { sid: '240133915', name: 'YIP Tik Hei', classCode: 'IT314115/EL3A', role: 'Member' },
-      { sid: '240064849', name: 'Leung Kwun Ho', classCode: 'IT314115/EL3A', role: 'Member' },
-    ],
-  },
-  {
-    id: 'grp_l04',
-    name: 'L04',
-    cohort: 'IT314115 Year 3 (EL3A)',
-    projectTopic: 'Last Minute AI PPT Generator',
-    supervisorEmail: 'kcheung@vtc.edu.hk',
-    supervisorName: 'Kitson Cheung',
-    coSupervisorEmails: ['cywong@vtc.edu.hk'],
-    assessorEmail: 'cywong@vtc.edu.hk',
-    assessorName: 'Cyrus Wong',
-    students: [
-      { sid: '240096780', name: 'LI Yixun', classCode: 'IT314115/EL3A', role: 'Leader' },
-      { sid: '240068431', name: 'LAM Ka Lok', classCode: 'IT314115/EL3A', role: 'Member' },
-      { sid: '240070125', name: 'KONG Tsz Yik', classCode: 'IT314115/EL3A', role: 'Member' },
-      { sid: '240054518', name: 'WAN Ka Yu', classCode: 'IT314115/EL3A', role: 'Member' },
-    ],
-  },
-  {
-    id: 'grp_e01',
-    name: 'E01',
-    cohort: 'IT314115 Year 2 (EL2A — EMSD)',
-    projectTopic: 'Earn & Learn Industry Project (EMSD)',
-    supervisorEmail: 'kcheung@vtc.edu.hk',
-    supervisorName: 'Kitson Cheung',
-    coSupervisorEmails: ['cywong@vtc.edu.hk'],
-    assessorEmail: 'cywong@vtc.edu.hk',
-    assessorName: 'Cyrus Wong',
-    students: [
-      { sid: '250392775', name: 'LI Pak Lim', classCode: 'IT314115/EL2A', role: 'Leader' },
-      { sid: '250599067', name: 'LI Kim Fung', classCode: 'IT314115/EL2A', role: 'Member' },
-      { sid: '250031367', name: 'LEE Ming Him', classCode: 'IT314115/EL2A', role: 'Member' },
-      { sid: '250003922', name: 'TANG Ki Wai', classCode: 'IT314115/EL2A', role: 'Member' },
-    ],
-  },
-  {
-    id: 'grp_e02',
-    name: 'E02',
-    cohort: 'IT314115 Year 2 (EL2A — HKT)',
-    projectTopic: 'Earn & Learn Industry Project (HKT)',
-    supervisorEmail: 'kcheung@vtc.edu.hk',
-    supervisorName: 'Kitson Cheung',
-    coSupervisorEmails: ['cywong@vtc.edu.hk'],
-    assessorEmail: 'cywong@vtc.edu.hk',
-    assessorName: 'Cyrus Wong',
-    students: [
-      { sid: '250323388', name: 'CHAN Sham Jayson', classCode: 'IT314115/EL2A', role: 'Leader' },
-      { sid: '250044707', name: 'CHAN Tak Ching', classCode: 'IT314115/EL2A', role: 'Member' },
-      { sid: '250250576', name: 'CHEN Sing Yu', classCode: 'IT314115/EL2A', role: 'Member' },
-      { sid: '250018554', name: 'LAW Wai', classCode: 'IT314115/EL2A', role: 'Member' },
+      { sid: '990000101', name: 'Demo Student A01-1', classCode: 'IT114115/2A', role: 'Leader' },
+      { sid: '990000102', name: 'Demo Student A01-2', classCode: 'IT114115/2A', role: 'Member' },
+      { sid: '990000103', name: 'Demo Student A01-3', classCode: 'IT114115/2A', role: 'Member' },
+      { sid: '990000104', name: 'Demo Student A01-4', classCode: 'IT114115/2A', role: 'Member' },
     ],
   },
 ];

@@ -103,5 +103,7 @@ coverage/
 *.lcov
 .nyc_output
 
-# Local DB Backups
+# Local DB Backups & Private Roster Seeds
 admin/backups/
+**/*.local.json
+admin/roster*.json

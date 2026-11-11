@@ -317,11 +317,11 @@ describe('projectGroupUtils', () => {
 
   it('normalizes VTC student emails/IDs and resolves semester start Mondays', () => {
     expect(extractVtcStudentId('')).toBe('');
-    expect(extractVtcStudentId('250105348@stu.vtc.edu.hk')).toBe('250105348');
+    expect(extractVtcStudentId('990000101@stu.vtc.edu.hk')).toBe('990000101');
     expect(extractVtcStudentId('alice@gmail.com')).toBe('alice');
 
-    expect(toVtcStudentEmail('250105348')).toBe('250105348@stu.vtc.edu.hk');
-    expect(toVtcStudentEmail('250105348@vtc.edu.hk')).toBe('250105348@stu.vtc.edu.hk');
+    expect(toVtcStudentEmail('990000101')).toBe('990000101@stu.vtc.edu.hk');
+    expect(toVtcStudentEmail('990000101@vtc.edu.hk')).toBe('990000101@stu.vtc.edu.hk');
     expect(toVtcStudentEmail('teacher@vtc.edu.hk')).toBe('teacher@vtc.edu.hk');
     expect(toVtcStudentEmail('', 'Chan Tai Man')).toBe('chantaiman@stu.vtc.edu.hk');
 
@@ -361,13 +361,13 @@ describe('projectGroupUtils', () => {
 
     const csv = [
       'Timestamp,Group ID,Student Name,Student ID,Supervisor,I am doing something this week,Work done,Unfinished,Plan,Description',
-      '9/14/2026 10:00:00,A01,Chan Tai Man,250105348,Cyrus Wong,Yes,Built the Firestore database schema and tested login API routes,No,Build dashboard UI and connect charts,',
-      '9/14/2026 11:00:00,A01,Chan Tai Man,250105348,Cyrus Wong,Yes,Built the Firestore database schema and tested login API routes v2,No,Build dashboard UI and connect charts,',
-      '9/21/2026 10:00:00,A02,Chan Tai Man,20105348,Cyrus Wong,No,,,,Exam week',
+      '9/14/2026 10:00:00,A01,Chan Tai Man,990000101,Cyrus Wong,Yes,Built the Firestore database schema and tested login API routes,No,Build dashboard UI and connect charts,',
+      '9/14/2026 11:00:00,A01,Chan Tai Man,990000101,Cyrus Wong,Yes,Built the Firestore database schema and tested login API routes v2,No,Build dashboard UI and connect charts,',
+      '9/21/2026 10:00:00,A02,Chan Tai Man,99000101,Cyrus Wong,No,,,,Exam week',
     ].join('\n');
 
     const parsed = parseProjectWeeklyLogCsv(csv, {
-      enrolledStudents: [{ uid: 'uid_chan', email: '250105348@stu.vtc.edu.hk', name: 'Chan Tai Man' }],
+      enrolledStudents: [{ uid: 'uid_chan', email: '990000101@stu.vtc.edu.hk', name: 'Chan Tai Man' }],
       existingGroups: [
         {
           id: 'grp_a01',
@@ -375,14 +375,14 @@ describe('projectGroupUtils', () => {
           projectTopic: 'Smart Campus',
           supervisorName: 'Cyrus Wong',
           supervisorEmail: 'cywong@vtc.edu.hk',
-          members: [{ uid: 'uid_chan', email: '250105348@stu.vtc.edu.hk', name: 'Chan Tai Man', role: 'Leader' }],
+          members: [{ uid: 'uid_chan', email: '990000101@stu.vtc.edu.hk', name: 'Chan Tai Man', role: 'Leader' }],
         },
       ],
       semesterStartMonday: '2026-09-07',
     });
 
     expect(parsed.entries).toHaveLength(3);
-    expect(parsed.entries[2].studentId).toBe('250105348'); // healed 8-digit typo
+    expect(parsed.entries[2].studentId).toBe('990000101'); // healed 8-digit typo
     expect(parsed.entries[2].hadIdTypo).toBe(true);
     expect(parsed.entries[2].groupDriftNote).toContain('A01');
 
@@ -390,7 +390,7 @@ describe('projectGroupUtils', () => {
     const bootstrapped = bootstrapProjectGroupsFromWeeklyLogs({
       logData: parsed,
       existingGroups: [],
-      enrolledStudents: [{ uid: 'uid_chan', email: '250105348@stu.vtc.edu.hk' }],
+      enrolledStudents: [{ uid: 'uid_chan', email: '990000101@stu.vtc.edu.hk' }],
       classTeachers: ['cywong@vtc.edu.hk'],
       currentUserEmail: 'cywong@vtc.edu.hk',
       currentUserName: 'Cyrus Wong',
@@ -410,10 +410,10 @@ describe('projectGroupUtils', () => {
           groupName: 'A01',
           weekNumber: 2,
           supervisorName: 'Cyrus Wong',
-          attendanceRecord: [{ email: '250105348@stu.vtc.edu.hk', status: 'present', speakingContribution: 'high' }],
+          attendanceRecord: [{ email: '990000101@stu.vtc.edu.hk', status: 'present', speakingContribution: 'high' }],
           studentContributions: [
             {
-              email: '250105348@stu.vtc.edu.hk',
+              email: '990000101@stu.vtc.edu.hk',
               workCompleted: ['Schema v2'],
               actionItemsNextWeek: ['Charts'],
               logQualityAssessment: 'genuine_verified',

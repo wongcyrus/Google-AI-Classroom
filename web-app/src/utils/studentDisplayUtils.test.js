@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   normalizeStudentEmail,
+  maskStudentId,
+  maskStudentEmail,
   getStudentProfile,
   getStudentDisplayName,
   formatStudentIdentity,
@@ -13,7 +15,7 @@ import {
 } from './studentDisplayUtils';
 
 describe('studentDisplayUtils Utility', () => {
-  describe('normalizeStudentEmail', () => {
+  describe('normalizeStudentEmail, maskStudentId & maskStudentEmail', () => {
     it('trims whitespace and converts to lowercase', () => {
       expect(normalizeStudentEmail('  Alice.Chan@VTC.Edu.HK  ')).toBe('alice.chan@vtc.edu.hk');
       expect(normalizeStudentEmail('BOB@GMAIL.COM')).toBe('bob@gmail.com');
@@ -24,6 +26,16 @@ describe('studentDisplayUtils Utility', () => {
       expect(normalizeStudentEmail(null)).toBe('');
       expect(normalizeStudentEmail(undefined)).toBe('');
       expect(normalizeStudentEmail(12345)).toBe('');
+    });
+
+    it('masks student IDs and emails for privacy protection', () => {
+      expect(maskStudentId('')).toBe('');
+      expect(maskStudentId('1234')).toBe('***4');
+      expect(maskStudentId('990000101')).toBe('***0101');
+      expect(maskStudentEmail('')).toBe('');
+      expect(maskStudentEmail('990000101@stu.vtc.edu.hk')).toBe('***0101@stu.vtc.edu.hk');
+      expect(maskStudentEmail('alice.chan@vtc.edu.hk')).toBe('al***@vtc.edu.hk');
+      expect(maskStudentEmail('ab@vtc.edu.hk')).toBe('a***@vtc.edu.hk');
     });
   });
 

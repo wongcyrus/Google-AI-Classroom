@@ -2369,9 +2369,6 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
           <strong style={{ display: 'block', marginBottom: '4px', color: '#1976d2', fontSize: '1.05em' }}>
             {displayName}
           </strong>
-          {displayName !== email && (
-            <div style={{ fontSize: '0.8em', color: '#666', marginBottom: '6px' }}>{email}</div>
-          )}
           <div style={{ color: isError ? '#d32f2f' : '#2c3e50', whiteSpace: 'pre-wrap', lineHeight: '1.6', background: isError ? '#ffebee' : '#f8f9fa', padding: '10px 14px', borderRadius: '6px' }}>
             {textContent}
           </div>
@@ -3105,7 +3102,6 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
               {sortedNotSharingStudents.length > 0 ? (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', maxHeight: '55vh', overflowY: 'auto', paddingRight: '4px' }}>
                   {sortedNotSharingStudents.map(s => {
-                    const hasDistinctName = s.displayName && s.email && s.displayName !== s.email;
                     const hasMic = Boolean(s.isAudioSharing && !s.audioError);
                     return (
                       <div 
@@ -3126,11 +3122,6 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
                           <div style={{ fontWeight: 600, fontSize: '0.95rem', color: 'var(--color-text-main, #1e293b)' }}>
                             {s.displayName || s.email || (s.id ? `Student (${s.id.slice(0, 8)})` : 'Unknown Student')}
                           </div>
-                          {hasDistinctName && (
-                            <div style={{ fontSize: '0.82rem', color: 'var(--color-text-muted, #64748b)' }}>
-                              {s.email}
-                            </div>
-                          )}
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                           <span

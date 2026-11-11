@@ -165,9 +165,6 @@ const AiJobsTable = ({ aiJobs, onPlayVideo, onInspectResult }) => {
                         </td>
                         <td>
                           <div style={{ fontWeight: 600 }}>{job.displayName || job.studentEmail}</div>
-                          {job.displayName && job.displayName !== job.studentEmail && (
-                            <div style={{ fontSize: '0.78rem', color: '#64748b' }}>{job.studentEmail}</div>
-                          )}
                           {(job.studentClass || job.programme) && (
                             <div style={{ marginTop: '2px' }}>
                               <span style={{ fontSize: '0.7rem', background: '#e2e8f0', color: '#475569', padding: '1px 5px', borderRadius: '3px' }}>

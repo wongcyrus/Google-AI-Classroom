@@ -684,9 +684,6 @@ const PerformanceAnalyticsView = ({
                         <tr key={student.studentUid}>
                           <td>
                             <div style={{ fontWeight: 600, color: '#0f172a' }}>{student.displayName || student.email}</div>
-                            {student.displayName && student.displayName !== student.email && (
-                              <div style={{ fontSize: '0.78rem', color: '#64748b' }}>{student.email}</div>
-                            )}
                             {(student.studentClass || student.programme) && (
                               <div style={{ marginTop: '2px' }}>
                                 <span style={{ fontSize: '0.7rem', background: '#e2e8f0', color: '#475569', padding: '1px 5px', borderRadius: '3px' }}>

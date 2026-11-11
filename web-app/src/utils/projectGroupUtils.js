@@ -458,11 +458,11 @@ export function generateMeetingMarkdownMinutes(meeting = {}) {
     `- **Overall Progress**: \`${(meeting.keyInsights?.overallGroupProgress || 'on_track').toUpperCase()}\``,
     '',
     '## 1. Attendance Record',
-    '| Student | Email | Status | Speaking Level | Evidence |',
-    '| :--- | :--- | :--- | :--- | :--- |',
+    '| Student | Status | Speaking Level | Evidence |',
+    '| :--- | :--- | :--- | :--- |',
     ...(meeting.attendanceRecord || []).map(
       (a) =>
-        `| ${a.name || ''} | ${a.email || ''} | **${(a.status || 'absent').toUpperCase()}** | ${a.speakingContribution || 'none'} | ${a.evidence || ''} |`
+        `| ${a.name || a.email || ''} | **${(a.status || 'absent').toUpperCase()}** | ${a.speakingContribution || 'none'} | ${a.evidence || ''} |`
     ),
     '',
     '## 2. Key Meeting Insights',
@@ -488,7 +488,7 @@ export function generateMeetingMarkdownMinutes(meeting = {}) {
     '',
     '## 3. Work Done, Log Quality Audit & Weekly Feedback Per Student',
     ...(meeting.studentContributions || []).flatMap((sc) => [
-      `### 👤 ${sc.name} (${sc.email})`,
+      `### 👤 ${sc.name || sc.email || 'Student'}`,
       ...(sc.logQualityScore !== undefined && sc.logQualityScore !== null
         ? [
             `- **Log Quality Score**: ${sc.logQualityScore}/10 (${sc.logQualityAssessment || 'evaluated'})`,
@@ -840,8 +840,8 @@ function normalizePersonNameKey(name = '') {
 }
 
 /**
- * Extracts the numeric VTC Student ID (e.g. "250105348") from either a raw ID ("250105348")
- * or a VTC student email ("250105348@stu.vtc.edu.hk").
+ * Extracts the numeric VTC Student ID (e.g. "990000101") from either a raw ID ("990000101")
+ * or a VTC student email ("990000101@stu.vtc.edu.hk").
  */
 export function extractVtcStudentId(studentIdOrEmail = '') {
   const raw = String(studentIdOrEmail || '').trim().toLowerCase();
@@ -853,7 +853,7 @@ export function extractVtcStudentId(studentIdOrEmail = '') {
 
 /**
  * Canonicalizes a VTC Student ID or email into the system-standard `@stu.vtc.edu.hk` email
- * (e.g. "250105348" -> "250105348@stu.vtc.edu.hk").
+ * (e.g. "990000101" -> "990000101@stu.vtc.edu.hk").
  */
 export function toVtcStudentEmail(studentIdOrEmail = '', fallbackSlug = '') {
   const raw = String(studentIdOrEmail || '').trim().toLowerCase();
@@ -875,7 +875,7 @@ export function toVtcStudentEmail(studentIdOrEmail = '', fallbackSlug = '') {
 
 /**
  * Checks whether two numeric Student IDs are within 1 edit operation
- * (1 digit substituted, 1 digit omitted, or 1 extra digit typed, e.g. "20231955" vs "250231955").
+ * (1 digit substituted, 1 digit omitted, or 1 extra digit typed, e.g. "99000202" vs "990000202").
  */
 function isWithinOneDigitTypo(idA = '', idB = '') {
   if (!idA || !idB) return false;
@@ -1140,7 +1140,7 @@ export function parseProjectWeeklyLogCsv(
         return candidates[0][0];
       }
     }
-    // If cleanId is not a known 9-digit ID (e.g. 8-digit typo "20231955" or 1-digit typo), check 1-digit edit distance against authoritative 9-digit VTC IDs
+    // If cleanId is not a known 9-digit ID (e.g. 8-digit typo "99000202" or 1-digit typo), check 1-digit edit distance against authoritative 9-digit VTC IDs
     if (cleanId && !authoritativeNineDigitIds.has(cleanId)) {
       for (const authId of authoritativeNineDigitIds) {
         if (isWithinOneDigitTypo(cleanId, authId)) {

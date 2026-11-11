@@ -1273,11 +1273,9 @@ export default function BingoResultsView({
                                 const email = r.studentEmail || '';
                                 const prof = getStudentProfile(email, studentProfiles);
                                 const displayName = getStudentDisplayName(email, studentProfiles);
-                                const hasDistinctName = displayName && displayName !== email;
                                 return (
                                   <div className="bingo-student-cell">
                                     <span className="bingo-student-email" style={{ fontWeight: 600 }}>{displayName || email || 'Unknown Student'}</span>
-                                    {hasDistinctName && <span style={{ fontSize: '0.78rem', color: '#64748b' }}>{email}</span>}
                                     {(prof.studentClass || prof.programme) && (
                                       <span style={{ fontSize: '0.7rem', background: '#e2e8f0', color: '#475569', padding: '1px 5px', borderRadius: '3px', alignSelf: 'flex-start' }}>
                                         {[prof.studentClass, prof.programme].filter(Boolean).join(' • ')}

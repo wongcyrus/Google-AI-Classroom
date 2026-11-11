@@ -21,6 +21,41 @@ export const normalizeStudentEmail = (email) => {
 };
 
 /**
+ * Masks a Student ID so only the last 4 characters are visible (e.g. "990000101" -> "***0101").
+ * Enforces privacy by preventing full Student ID exposure alongside Student Name and Email.
+ * @param {string|number} studentId
+ * @returns {string}
+ */
+export const maskStudentId = (studentId) => {
+  const raw = String(studentId ?? '').trim();
+  if (!raw) return '';
+  if (raw.length <= 4) {
+    return `***${raw.slice(-1)}`;
+  }
+  return `***${raw.slice(-4)}`;
+};
+
+/**
+ * Masks an email address local-part for privacy-safe secondary display
+ * (e.g. "990000101@stu.vtc.edu.hk" -> "***0101@stu.vtc.edu.hk", "alice.chan@school.edu" -> "al***@school.edu").
+ * @param {string} email
+ * @returns {string}
+ */
+export const maskStudentEmail = (email) => {
+  const clean = normalizeStudentEmail(email);
+  if (!clean || !clean.includes('@')) return clean;
+  const [local, domain] = clean.split('@');
+  if (!local) return clean;
+  if (/^\d{5,}$/.test(local)) {
+    return `***${local.slice(-4)}@${domain}`;
+  }
+  if (local.length <= 2) {
+    return `${local[0]}***@${domain}`;
+  }
+  return `${local.slice(0, 2)}***@${domain}`;
+};
+
+/**
  * Retrieves the normalized student profile from a profileMap or student object.
  * @param {string|object} studentOrEmail 
  * @param {object} profileMap - Map of normalized email -> profile object
@@ -234,6 +269,8 @@ export const formatStudentIdentity = (studentOrEmail, profileMap = {}) => {
     ...profile,
     displayName,
     fullName: profile.studentName,
+    maskedEmail: maskStudentEmail(profile.email),
+    maskedStudentId: maskStudentId(profile.studentId || ''),
     hasCustomProfile,
   };
 };

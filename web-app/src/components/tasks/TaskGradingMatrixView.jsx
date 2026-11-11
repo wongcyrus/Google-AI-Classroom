@@ -702,7 +702,7 @@ const TaskGradingMatrixView = ({
     }
 
     if (sub.videoUrl) {
-      setPreviewVideoTitle(`${sub.displayName} (${sub.email}) - Attempt Video`);
+      setPreviewVideoTitle(`${sub.displayName || sub.email} - Attempt Video`);
       setPreviewVideoUrl(sub.videoUrl);
       return;
     }
@@ -716,7 +716,7 @@ const TaskGradingMatrixView = ({
 
     try {
       setIsLoadingPreview(true);
-      setPreviewVideoTitle(`${sub.displayName} (${sub.email}) - Attempt Video`);
+      setPreviewVideoTitle(`${sub.displayName || sub.email} - Attempt Video`);
       const storage = getStorage();
       const videoRef = ref(storage, sub.videoPath);
       const url = await getDownloadURL(videoRef);
@@ -1203,7 +1203,7 @@ const TaskGradingMatrixView = ({
             <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center bg-gray-50 rounded-t-2xl">
               <div>
                 <h3 className="font-bold text-gray-900 flex items-center gap-2">
-                  <span>🧑‍🎓</span> {activeSelectedSubmission.displayName} ({activeSelectedSubmission.email})
+                  <span>🧑‍🎓</span> {activeSelectedSubmission.displayName || activeSelectedSubmission.email}
                 </h3>
                 <p className="text-xs text-gray-500">
                   Attempt {activeSelectedSubmission.attemptsCount} • Final Score: {activeSelectedSubmission.effectiveScore} /{' '}

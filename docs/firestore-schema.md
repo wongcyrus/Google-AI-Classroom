@@ -927,7 +927,7 @@ Stores information about each class.
                 *   `messageIds`: (array of strings) Message IDs returned by SMTP transport.
         *   **Security Rules**: Enrolled teachers have full read/write access; enrolled students can read meeting records and append their own uploaded screen clips (`screenClips`) during active sessions.
     *   **`classes/{classId}/projectStudentProfiles`**: Stores longitudinal Individual Student Contribution Profiles and incrementally ingested weekly logs (`Week 1` → `Current`) from the class's public Google Sheet (`classes/{classId}.projectLogSheetUrl`), even when 0 weekly meetings have been recorded.
-        *   **Document ID**: `studentEmail` (string, canonical normalized `@stu.vtc.edu.hk` email, e.g. `250105348@stu.vtc.edu.hk`).
+        *   **Document ID**: `studentEmail` (string, canonical normalized `@stu.vtc.edu.hk` email, e.g. `student01@stu.vtc.edu.hk`).
         *   **Fields**:
             *   `key` / `email`: (string) Canonical `@stu.vtc.edu.hk` student email.
             *   `studentId`: (string) 8–9 digit VTC Student ID (automatically healed for 1-digit Google Form typos via `isWithinOneDigitTypo`).

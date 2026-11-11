@@ -86,7 +86,7 @@ Each class stores its own Google Sheet link in Firestore (`classes/{classId}.pro
 ### 1.3 Bootstrap Project Groups & `@stu.vtc.edu.hk` Student Roster
 Right after your first sync:
 1. Click the **`👥 Sync N Groups from Sheet`** button in the Weekly Log bar.
-2. This automatically creates/updates your class's **Project Groups** (`A01`, `A02`, `A11`, etc.), assigns supervisors, converts every 8–9 digit VTC Student ID (`250105348`) into a canonical **`{studentId}@stu.vtc.edu.hk`** email (`250105348@stu.vtc.edu.hk`), and merges those student emails and names into your class roster.
+2. This automatically creates/updates your class's **Project Groups** (`A01`, `A02`, `A11`, etc.), assigns supervisors, converts every 8–9 digit VTC Student ID (`990000101`) into a canonical **`{studentId}@stu.vtc.edu.hk`** email (`990000101@stu.vtc.edu.hk`), and merges those student emails and names into your class roster.
 3. *(Optional)* You can also click **`👥 Manage / Import Groups`** at the top right to manually edit group topics, roles (`Leader`, `Member`), or import a custom CSV/Excel roster.
 
 ---
@@ -438,7 +438,7 @@ Click the sub-tab **`📋 Weekly Logs (Form Responses 2)`** to review your submi
 | Question | How the System Handles It |
 | :--- | :--- |
 | **What happens when a weekly meeting or log is skipped for a public holiday?** | The system calculates `missingWeeksCount` and `submissionRatePct` using **Active Weeks Only** (`union(logWeeks, meetingWeeks)`). If Week 5 is a public holiday with 0 logs and 0 meetings, Week 5 is automatically skipped—students are **never** penalized for missing a holiday week. Moreover, Week 6's log automatically verifies continuity against Week 4's plan! |
-| **What if a student types their Student ID wrong on the Google Form?** | If a student makes a 1-digit typo (e.g., `20231955` instead of `250231955`), [`isWithinOneDigitTypo`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/utils/projectGroupUtils.js#L661-L693) matches their name against the roster/previous submissions, heals the ID to `250231955@stu.vtc.edu.hk` so their profile never splits in two, and flags `✏️ Healed Student ID Typo`. |
+| **What if a student types their Student ID wrong on the Google Form?** | If a student makes a 1-digit typo (e.g., `99000202` instead of `990000202`), [`isWithinOneDigitTypo`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/utils/projectGroupUtils.js#L661-L693) matches their name against the roster/previous submissions, heals the ID to `990000202@stu.vtc.edu.hk` so their profile never splits in two, and flags `✏️ Healed Student ID Typo`. |
 | **Can I ingest all historical logs even if I haven't recorded any meetings yet?** | **Yes!** Clicking **`🔄 Sync & Ingest New Logs`** builds and saves all student contribution profiles (`Week 1` → `Current`) into Firestore immediately, even when `meetings.length === 0`. |
 | **Will Mobile Voice Mode work reliably for a 20+ minute meeting?** | **Yes.** Voice recording uses Opus audio compression (~15–20 MB for 20 minutes), requests an OS **Screen Wake Lock** so your phone doesn't sleep, warns against accidental tab closure, and uses a **540-second (9-minute) `2GiB` Cloud Function** (`analyzeProjectMeeting`) for 2-stage transcription and analysis. |
 | **Why are manual audio/video file uploads disabled?** | To prevent unknown, pre-recorded, or fabricated files from being uploaded by students or teachers, all meeting voice clips, 720p demo videos, and photos must be recorded live inside the studio. |

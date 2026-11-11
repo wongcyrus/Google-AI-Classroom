@@ -108,7 +108,7 @@ describe('IndividualStudentView Component', () => {
     );
 
     expect(screen.getByText('Alice Student')).toBeInTheDocument();
-    expect(screen.getByText('student@example.com')).toBeInTheDocument();
+    expect(screen.queryByText('student@example.com')).toBeNull();
 
     const livePeekBtn = screen.getByText(/Live WebRTC Peek/i);
     expect(livePeekBtn).toBeInTheDocument();

@@ -38,7 +38,7 @@ Before the weekly consultation begins, the supervisor clicks **🔄 Sync Weekly 
 ![Self-Healing Google Sheets Sync & Pre-Meeting Fake-Log AI Auditor](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog08_diagram1_sheets_sync_fake_log_audit.png?v=2)
 
 ### Why Hamming Distance = 1 Student ID Healing Saved Hours of Manual Fixes
-On mobile Google Forms, students frequently mistype a single digit of their 9-digit Student ID (e.g., typing `250105349` instead of `250105348`) or submit from a personal `@gmail.com` address. A strict string equality check drops those logs as orphaned records.
+On mobile Google Forms, students frequently mistype a single digit of their 9-digit Student ID (e.g., typing `990000109` instead of `990000101`) or submit from a personal `@gmail.com` address. A strict string equality check drops those logs as orphaned records.
 
 Our ingestion resolver compares any unmatched 9-digit numeric ID against the enrolled class roster (`projectGroups`). If **exactly one** enrolled student in the class has a 9-digit ID of identical length with **Hamming distance $= 1$** (differing by exactly 1 character position), or if the normalized student name uniquely matches an enrolled group member, the sync engine automatically heals the typo, links the log to the student's group and academic week, and flags the healed record in the UI!
 
@@ -71,7 +71,7 @@ export async function handlePrepareProjectLogQuestions({
             )
             .join('\n')
         : '  * No prior weekly logs submitted.';
-      return `### Student ${idx + 1}: ${l.studentName || l.name || 'Student'} (ID: ${l.studentId || 'N/A'}, Email: ${l.email || 'N/A'})
+      return `### Student ${idx + 1}: ${l.studentName || l.name || 'Student'}
 - Week ${weekNumber} Submitted: ${l.submitted === false ? 'NO LOG SUBMITTED THIS WEEK' : 'Yes'}
 - "I am doing something this week": ${l.isDoingSomething ? 'Yes' : 'No'}
 - "Work done & findings since last recording": "${l.workDone || ''}"
@@ -133,8 +133,8 @@ Respond strictly with valid JSON matching this structure:
 {
   "preMeetingLogAudit": [
     {
-      "studentId": "250105348",
-      "email": "250105348@stu.vtc.edu.hk",
+      "studentId": "990000101",
+      "email": "student01@stu.vtc.edu.hk",
       "name": "Student Name",
       "logQualityStatus": "suspected_ai_fake",
       "logQualityScore": 4,
