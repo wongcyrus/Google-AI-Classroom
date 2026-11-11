@@ -49,16 +49,16 @@ flowchart LR
         C --> D["Click 🤖 AI Prepare Log Questions\n(2–3 Challenge Questions / Student)"]
     end
 
-    subgraph During ["2. During Meeting (Live Capture Only)"]
-        D --> E["Supervisor Starts Voice Recording\non Mobile Phone (Wake Lock ON)"]
-        E --> F["Presenting Student Clicks\n🖥️ Share My PC Screen on PC"]
-        F --> G["Discuss Log, Demo Real Work &\nAsk AI Challenge Questions"]
+    subgraph During ["2. During Meeting (Single-Device Teacher Mobile Studio)"]
+        D --> E["Supervisor Starts Voice Recording\non Mobile Phone (Wake Lock ON + 🗣️ Voice Anchors)"]
+        E --> F["Supervisor Snaps 📸 0.1s Photos &\nRecords 📹 720p Mobile Demo Videos\n(Auto-Slices Voice Part 1 -> Demo -> Part 2)"]
+        F --> G["Discuss Log, Demo Real Work &\nAsk AI Challenge Questions (Zero Student PC Setup)"]
     end
 
-    subgraph After ["3. After Meeting (Grading & Feedback)"]
-        G --> H["Click 🤖 Run 2-Stage AI Analysis\n• Stage 1: Gemini 3.5 Transcribe\n• Stage 2: Gemini 3.8 Flash"]
+    subgraph After ["3. After Meeting (2-Stage AI Grading & Dispatch)"]
+        G --> H["Click 🤖 Run 2-Stage AI Analysis\n• Stage 1: Gemini 3.5 Transcribe (Cumulative Offset Shift)\n• Stage 2: Gemini 4 Argon / 3.8 Flash (Native gs:// Media)"]
         H --> I["Verify Attendance, Log Score (1–10),\nReal Work Score (1–10) & Weekly Feedback"]
-        I --> J["📥 Export Student Profiles (.xlsx)\n& Weekly Matrix (.xlsx)"]
+        I --> J["📧 1-Click Whole-Class SMTP Dispatch\n& 📥 Export Student Profiles (.xlsx)"]
     end
 ```
 
@@ -204,15 +204,15 @@ If a group meets with their **Main Supervisor** on Tuesday and a **Co-Supervisor
 ## Part 4: After the Meeting — 2-Stage AI Analysis, Weekly Feedback & Excel Exports
 
 ### 4.1 Run 2-Stage Gemini Analysis (Diarization + Real Work Verification)
-1. Select the completed meeting in the left sidebar and click **`🤖 Run 2-Stage AI Analysis`** in the top inspector bar.
-2. **How the 2-Stage Pipeline Works**:
-   - **Stage 1 (`gemini-3.5-transcribe-preview`)**: Transcribes all voice clips verbatim (Cantonese / English / Mandarin code-switching) with acoustic speaker diarization (`[MM:SS] Speaker 1..N`).
-   - **Stage 2 (`gemini-3.8-flash`)**: Cross-examines the diarized transcript, 1-tap `voiceAnchors[]`, the student PC screen demo video (`screenClips[]`), and each student's submitted **Weekly Log** to output:
+1. Select the completed meeting in the left sidebar, choose your preferred reasoning model (**`gemini-4-argon`** or **`gemini-3.8-flash`**), and click **`🤖 Run 2-Stage AI Analysis`** in the top inspector bar.
+2. **How the Zero-FFmpeg 2-Stage Multimodal Pipeline Works**:
+   - **Stage 1 (`gemini-3.5-transcribe-preview` with `gemini-3.8-flash` fallback)**: Transcribes each consultation voice clip (`audioClips[]`) and 720p demo video audio track (`screenClips[]`) independently (Cantonese / English / Mandarin code-switching) with acoustic speaker diarization (`[MM:SS] Speaker 1..N`). Instead of running heavy FFmpeg binary concatenation, the backend shifts only the **text transcript timestamps (`[MM:SS]`)** forward by `cumulativeOffsetSec` so all segments form a single chronological timeline (`00:00` $\to$ `20:00+`).
+   - **Stage 2 (`gemini-4-argon` / `gemini-3.8-flash`)**: Cross-examines the unified diarized transcript, 1-tap `voiceAnchors[]`, native multi-part Cloud Storage `gs://` URIs for **still photos (`photos[]`, `image/jpeg`)** and **720p mobile camera demo videos (`screenClips[]`, `video/mp4`)**, and each student's submitted **Weekly Log** to output:
      - **Verified Attendance & Speaking Level** (`present` / `late` / `absent`, `high` / `medium` / `low` / `none`, and first-heard timestamp).
      - **Executive Summary, Key Decisions, Blockers & Overall Group Progress** (`on_track`, `at_risk`, `behind`).
      - **Per-Student Evaluation**:
        - **`logQualityScore (1–10)`**: Quality and authenticity of their written weekly log.
-       - **`realWorkScore (1–10)`**: Actual technical work verified during the live meeting & screen demo.
+       - **`realWorkScore (1–10)`**: Actual technical work verified during the live consultation, 720p mobile camera demo videos, and photo artifacts.
        - **`weeklyFeedback`**: Constructive post-meeting weekly feedback for the student.
 
 ### 4.2 Review & Edit Weekly Feedback, Log Quality Score & Real Work Score
@@ -349,7 +349,7 @@ flowchart TD
         ST1["Stage 1: Speech-to-Text & Diarization\ngemini-3.5-transcribe-preview"]
         FALLBACK{"STT Result Empty\nor Whitespace?"}
         ST1_FB["Multimodal Fallback:\ngemini-3.8-flash Audio Diarization"]
-        ST2["Stage 2: Student Attribution & Evaluation\ngemini-3.8-flash\n• Diarized Audio + Voice Anchors\n• Google Form Weekly Logs + Screen Demos"]
+        ST2["Stage 2: Student Attribution & Multimodal Evaluation\ngemini-4-argon / gemini-3.8-flash\n• Unified Diarized Transcript + Voice Anchors\n• Native gs:// Photos + 720p Mobile Demo Videos + Weekly Logs"]
         CLEAN["Finalize & Cleanup:\n• Write Attendance, Scores & Feedback\n• needsReanalysis: FieldValue.delete()"]
 
         ENQUEUE --> SAN --> ST1 --> FALLBACK

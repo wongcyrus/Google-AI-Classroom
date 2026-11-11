@@ -308,22 +308,24 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocation
 
 ---
 
-### 36:00 – 38:00 | Slide 19: Bingo Active Presence: AI Generation & 2-Strike Verification
+### 36:00 – 38:00 | Slide 19: Bingo Active Presence: 4 Modes, 2 QR Attendance & Cloud Tasks
 *Visual: `slide_bingo_active_presence.png`*
 
 > **Cyrus Wong:**  
-> "In hybrid and remote technical learning, a persistent challenge is students walking Away From Keyboard (AFK) while leaving browser sessions open.
+> "In university and polytechnic lecture halls, institutional attendance is traditionally recorded when a student taps their physical student ID card at the door reader upon entering. A pervasive real-world problem is **'Tap & Run'**—students tap their card for attendance credit and immediately walk out, or leave mid-lecture after the break! Similarly, in online or hybrid labs, students walk Away From Keyboard (AFK) while leaving browser sessions open.
 >
-> We upgraded our **Bingo Active Presence System** with automated AI generation and an **Automated 1-Minute FinOps Cadence (`* * * * *`)**:
-> - **AI Question Bank Generator (`generateQuestionBankAi`):** Instructors don't need to manually write hundreds of questions. Gemini 3.5 Flash-Lite or 3.8 Flash autonomously drafts batches of 5 domain-tailored multiple choice questions with 4 options, correct answer keys, and pedagogical rationales directly from the lesson topic, or teachers can bulk import via standard Aiken format (`ANSWER: X`).
-> - **3 Sourced FinOps Verification Modes:**
->   1. **Predefined Question Bank ($0.00 zero-AI cost):** Instantly sampled from the local class question pool.
->   2. **Teacher Screen Broadcast:** 1 single Gemini multimodal call analyzes the teacher's active broadcast frame, generating attention questions for 50+ students for just ~$0.00015!
->   3. **Student Screen Inspection:** On-demand individual verification analyzing active student IDE windows.
-> - **Pedagogical Evaluation vs 2-Strike State Machine:**
->   - If a student answers incorrectly (`failed_incorrect`), their physical presence is confirmed! **No strike or attendance penalty is applied.**
->   - If they timeout without answering (`missed_timeout`), Strike 1 enqueues an asynchronous retry via **Google Cloud Tasks** (`dispatchBingoRetryTask`) with teacher-configurable grace delay (1–15 minutes).
->   - A consecutive Strike 2 confirms unverified absence, immediately voiding unverified elapsed minutes with Bitmask Code `2` (`attendanceAdjustments`)."
+> We engineered our **Bingo Active Presence System** with **4 Sourced Verification Types (including 2 QR Code Biometric Attendance Modes)** so teachers can verify active comprehension and take attendance **anytime during class**:
+> - **AI Question Bank Studio (`generateQuestionBankAi`):** Instructors select **Gemini 4 Argon (`gemini-4-argon`)**, **Gemini 3.8 Flash**, or **Gemini 3.5 Flash-Lite** to autonomously draft batches of domain-tailored multiple choice questions with 4 options, answer keys, and pedagogical rationales, or bulk import via standard Aiken format (`ANSWER: X`).
+> - **4 Sourced Verification Types:**
+>   1. **Predefined Question Bank ($0.00 zero-AI cost):** Instantly sampled from the local class question pool with Fisher-Yates option shuffling.
+>   2. **Teacher Screen Broadcast (`teacher_screen`):** 1 single Gemini multimodal call analyzes the teacher's active broadcast slide, generating a contextual comprehension question for 50+ students for just ~$0.00015!
+>   3. **Student Screen Inspection (`student_screen`):** On-demand individual verification analyzing active student IDE windows.
+>   4. **2 QR Code Biometric Attendance Modes (`mobile_passkey` & `lecture_passkey_qr`):** Takes attendance anytime during class using either the **Lab PC Mobile Passkey QR** (1-Student = 1-Phone FIDO2 WebAuthn hardware lock) or the **Lecture Hall Projector Rotating HMAC-SHA256 QR** (`LectureQrBingoModal.jsx`, rotating every 15s to defeat WhatsApp photo forwarding).
+> - **Pedagogical Evaluation vs 2-Strike State Machine on Google Cloud Tasks ($0.00 Idle Polling):**
+>   - If a student answers incorrectly (`failed_incorrect`), their physical presence at the desk is 100% confirmed! **No strike or attendance penalty is applied.**
+>   - Instructors can also schedule **Staggered Bingo (`dispatchScheduledBingoTask`)** with random jitter across the lecture window.
+>   - If a student times out without answering (`missed_timeout`), Strike 1 enqueues an asynchronous delayed retry in **Google Cloud Tasks** (`dispatchBingoRetryTask`) with a configurable grace period (default 3 minutes, **$0.00 idle polling cost**).
+>   - Only a consecutive Strike 2 timeout confirms unverified absence, dynamically voiding the unverified elapsed minutes (`attendanceAdjustments`)."
 
 ---
 
@@ -626,7 +628,7 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocation
 >
 > 1. **Streamlined Single-Device Teacher Mobile Supervision Studio:** During weekly lab consultations, direct file uploads are locked to prevent fabricated recordings, and we eliminated desktop screen-capture signaling friction so the teacher's smartphone handles everything with one hand. The supervisor starts continuous voice recording on their mobile phone—protected by the browser Screen Wake Lock API—and taps 1-tap 'Speaking Now' voice anchors to tag speaker attribution in real time. At any moment, the supervisor can tap **📸 Snap Photo** to capture a 1280px JPEG of a whiteboard, IoT circuit, or screen in 0.1 seconds with **zero pause** to the voice recording, or tap **📹 Record Demo Video (720p)** (`1280×720`) which automatically slices the voice track (`Voice Part 1` $\to$ `720p Demo Video` $\to$ `Voice Part 2`). All media is tracked in real time under `storageUsageProjectMeetings` in our FinOps dashboard.
 > 2. **On-Demand Google Sheets Ingestion & Fake-Log AI Audit:** Teachers run on-demand incremental sync against public Google Form spreadsheets with automatic 1-digit student ID typo self-healing. Gemini 3.8 Flash audits each member's log against their prior week's plan, flagging vague or AI-generated entries and preparing 2–3 pointed technical challenge questions for the teacher to grill students during the meeting.
-> 3. **Resilient 2-Stage Multimodal Diarization with Gemini 4 Argon & 3.8 Flash:** Our Cloud Function executes Stage 1 diarization via `gemini-3.5-transcribe-preview` with automatic multimodal `gemini-3.8-flash` fallback on quiet clips. Stage 2 uses teacher-selectable **Gemini 4 Argon (`gemini-4-argon`)** or **Gemini 3.8 Flash (`gemini-3.8-flash`)** to fuse the diarized speech, 720p mobile demo videos, photos, and weekly logs to evaluate attendance, verified completed tasks, a Log Quality Score out of 10, and a Real Work Verified Score out of 10.
+> 3. **Zero-FFmpeg 2-Stage Multimodal Diarization with Gemini 4 Argon & 3.8 Flash:** Instead of burning Cloud Run CPU on heavy FFmpeg binary concatenation of voice and video clips, Stage 1 transcribes and diarizes each voice segment and 720p demo video audio track independently via `gemini-3.5-transcribe-preview` (with automatic `gemini-3.8-flash` fallback on quiet clips) and shifts only the text timestamps (`[MM:SS]`) cumulatively by `cumulativeOffsetSec`. Stage 2 uses teacher-selectable **Gemini 4 Argon (`gemini-4-argon`)** or **Gemini 3.8 Flash (`gemini-3.8-flash`)** and passes the unified transcript alongside native multi-part Cloud Storage `gs://` URIs for still photos (`image/jpeg`) and 720p mobile demo videos (`video/mp4`) to evaluate attendance, verified completed tasks, a Log Quality Score out of 10, and a Real Work Verified Score out of 10.
 > 4. **1-Click Whole-Class Weekly Report Dispatch:** After consultations, supervisors dispatch individualized HTML progress reports across all project groups of the week in a single click using our `batchEmailProjectMeetingReports` Cloud Function, authenticated through Google Cloud Secret Manager over secure Gmail SSL Relay (`smtp.gmail.com:465`). Students immediately review their attendance, scores, and constructive feedback in the Student Portal, and supervisors can export complete longitudinal contribution profiles in Excel."
 
 ---
@@ -747,7 +749,7 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), Vocation
 > - Complete privacy-by-design with zero raw biometrics egress.
 > - 99.8% cost reduction at sub-$0.02 per student.
 > - High-density teacher ergonomics that eliminate cognitive overload.
-> - Enterprise-grade documentation with comprehensive user manuals, Master Documentation-to-Code Index, and 26 system interaction diagrams.
+> - Enterprise-grade documentation with comprehensive user manuals, Master Documentation-to-Code Index, 26 system interaction diagrams, and our **10-Part Google Developer Expert (GDE) Technical Blog Series on DEV.to (`dev.to/cyruswong`) and GitHub (`github.com/wongcyrus/Google-AI-Classroom`)**.
 >
 > The entire project is open-source on GitHub, and our live production environment is accessible right now at `https://it114115-2627.web.app`.
 >

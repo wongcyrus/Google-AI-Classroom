@@ -4,6 +4,26 @@
 **System**: Google AI Classroom  
 **Production URL**: `https://it114115-2627.web.app`
 
+## 0.0.0.0.0.0.0.0.0.0.3.8 Complete 10-Part GDE Technical Blog Series (DEV.to & GitHub), 4-Mode Bingo & 2 QR Anytime Attendance, and Zero-FFmpeg 2-Stage Capstone Supervision
+
+**Date**: November 11, 2026  
+**Status**: Implemented, Published on DEV.to (`https://dev.to/cyruswong`), Verified, and Deployed to `it114115-dev-2026` & `it114115-2627`  
+**Primary Files**:
+- [`docs/blogs/README.md`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/docs/blogs/README.md) & [`docs/blogs/01-serverless-ai-classroom-architecture.md`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/docs/blogs/01-serverless-ai-classroom-architecture.md) through [`docs/blogs/10-green-ai-finops-storage-lifecycle-and-terraform-iac.md`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/docs/blogs/10-green-ai-finops-storage-lifecycle-and-terraform-iac.md)
+- [`functions/ai_flows/projectMeetingFlows.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/projectMeetingFlows.js), [`admin/prompts/audios/Project Group Meeting Analyzer.md`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/admin/prompts/audios/Project%20Group%20Meeting%20Analyzer.md), & [`web-app/src/components/meetings/ProjectMeetingsView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/meetings/ProjectMeetingsView.jsx)
+- [`docs/bingo-and-batch-pipeline-design.md`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/docs/bingo-and-batch-pipeline-design.md), [`docs/project-group-meetings-and-weekly-log-user-guide.md`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/docs/project-group-meetings-and-weekly-log-user-guide.md), [`docs/presentation/google-cloud-slides.marp.md`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/docs/presentation/google-cloud-slides.marp.md), & [`docs/presentation/speaker-notes-and-script.md`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/docs/presentation/speaker-notes-and-script.md)
+
+### Summary of Enhancements:
+1. **Zero-FFmpeg Multimodal Capstone Supervision Pipeline (`projectMeetingFlows.js`, Blog 8)**:
+   - Stage 1 (`gemini-3.5-transcribe-preview` with `gemini-3.8-flash` fallback) transcribes and diarizes each consultation voice clip (`audioClips[]`) and 720p mobile camera demo video audio track (`screenClips[]`) independently, shifting only the **text transcript timestamps (`[MM:SS]`)** forward by `cumulativeOffsetSec` with **zero FFmpeg binary concatenation**.
+   - Stage 2 (`gemini-4-argon` / `gemini-3.8-flash`) receives the unified linear transcript, `voiceAnchors[]`, and native multi-part Cloud Storage `gs://` URIs (`image/jpeg` photos + `video/mp4` 720p demo clips) to evaluate attendance, `logQualityScore (/10)`, and `realWorkScore (/10)`.
+2. **4-Mode Classroom Bingo & 2 QR Anytime Attendance Modes (Blog 9)**:
+   - Documented all **4 Sourced Verification Types** (`question_bank`, `teacher_screen`, `student_screen`, and the **2 QR Code Biometric Attendance Modes**: `mobile_passkey` for lab PCs without webcams & `lecture_passkey_qr` 15s rotating HMAC-SHA256 projector QR in `LectureQrBingoModal.jsx`) to take attendance **anytime during class** and solve the *"Tap Student ID Card & Run"* lecture evasion problem, alongside **Scheduled Staggered Bingo (`dispatchScheduledBingoTask`)** and **Two-Strike Retries (`dispatchBingoRetryTask`)** on Google Cloud Tasks.
+3. **10-Part Google Developer Expert (GDE) Technical Blog Series on DEV.to & GitHub**:
+   - Linked all 10 published DEV.to articles and 30+ architectural diagrams across [`README.md`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/README.md), [`docs/blogs/README.md`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/docs/blogs/README.md), [`docs/blogs/10-green-ai-finops-storage-lifecycle-and-terraform-iac.md`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/docs/blogs/10-green-ai-finops-storage-lifecycle-and-terraform-iac.md), and the presentation slide deck.
+
+---
+
 ## 0.0.0.0.0.0.0.0.0.0.3.7 Universal Gemini 4 (`gemini-4-argon`) Selection Across All Teacher AI Workflows
 
 **Date**: November 6, 2026  

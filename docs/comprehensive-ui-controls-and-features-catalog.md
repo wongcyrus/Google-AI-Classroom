@@ -554,7 +554,12 @@ flowchart TD
 - **Universal Multi-Class Submission:** Resolves and submits answers targeting the originating `classId` rather than defaulting to the currently scheduled active class.
 - **Two-Strike Absenteeism Protocol:** Differentiates between physical presence with an incorrect choice (`failed_incorrect`, no deduction) and unacknowledged timeout (`missed_timeout`, schedules Cloud Task retry and triggers minute-by-minute attendance deductions if consecutive).
 
-### Teacher Bingo Question Bank Studio (`BingoQuestionBankModal.jsx`)
+### Teacher Bingo Question Bank Studio (`BingoQuestionBankModal.jsx`) & 4 Verification Modes (`LectureQrBingoModal.jsx`)
+- **4 Sourced Bingo Verification Types (incl. 2 QR Anytime Attendance Modes):**
+  - `question_bank`: $0.00 local question pool dispatch.
+  - `teacher_screen`: 1-to-many Gemini multimodal inspection of active teacher broadcast slide (~$0.00015/class).
+  - `student_screen`: Individual student IDE/screen inspection.
+  - **2 QR Code Biometric Attendance Modes (`mobile_passkey` & `lecture_passkey_qr`):** Allows teachers to take attendance **anytime during class** (preventing the *"Tap Student ID Card & Run"* lecture evasion problem) via 1-Phone WebAuthn hardware lock on Lab PCs or fullscreen 15s rotating HMAC-SHA256 projector QR in [`LectureQrBingoModal.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/monitor/LectureQrBingoModal.jsx), plus optional **Scheduled Staggered Bingo (`dispatchScheduledBingoTask`)** via Google Cloud Tasks.
 - **Tab 1: Question List:**
   - Search filter input.
   - Question cards with correct answer tags and `Delete` action.
@@ -564,6 +569,7 @@ flowchart TD
   - Correct Answer radio selector.
   - `+ Add Question to Bank` button.
 - **Tab 3: AI Question Generator:**
+  - **Bingo AI Model Selector:** Selectable `gemini-4-argon`, `gemini-3.8-flash`, or `gemini-3.5-flash-lite`.
   - Topic / Subject prompt input.
   - Question Count selector (3 to 10 questions).
   - `✨ Generate Questions with Gemini` button (`generateQuestionBankAi`).

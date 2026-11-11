@@ -3,7 +3,7 @@ marp: true
 theme: default
 paginate: true
 header: "Google Cloud Tech Talk | Google AI Classroom | Cyrus Wong (GDE)"
-footer: "Google Developer Expert (GCP & AI/ML) | HKIIT, VTC Hong Kong | github.com/wongcyrus/Gemini-Multimodal-Classroom-Agent"
+footer: "Google Developer Expert (GCP & AI/ML) | HKIIT, VTC Hong Kong | github.com/wongcyrus/Google-AI-Classroom"
 style: |
   section {
     background-color: #0f172a;
@@ -75,7 +75,7 @@ Senior Lecturer, Hong Kong Institute of Information Technology (HKIIT), VTC Hong
   - **AWS AI Hero** (since 2016; 1st AWS Academy Instructor globally)
   - **Microsoft MVP** in Azure AI
 - **Email:** `cywong@vtc.edu.hk`
-- **GitHub:** `github.com/wongcyrus/Gemini-Multimodal-Classroom-Agent`
+- **GitHub:** `github.com/wongcyrus/Google-AI-Classroom` | **DEV.to:** `dev.to/cyruswong`
 
 ---
 
@@ -372,22 +372,21 @@ const processFrame = async (now, metadata) => {
 
 ---
 
-## Bingo Active Presence: AI Generation & 2-Strike Verification
-### Automated 1-Minute FinOps Cadence, Gemini Question Synthesis & Cloud Tasks Retries
+## Bingo Active Presence: 4 Modes, 2 QR Attendance & Cloud Tasks
+### Defeating "Tap Student ID Card & Run" with Anytime QR Attendance, Gemini 4 Studio & 2-Strike Cloud Tasks
 
 ![bg right:60% 95%](images/slide_bingo_active_presence.png)
 
-- **AI Question Bank Generator (`generateQuestionBankAi`):**
-  - **Gemini 4 Argon / 3.8 Flash / 3.5 Flash-Lite** autonomously drafts batches of domain-tailored multiple choice questions with 4 options, answer keys, and pedagogical rationales.
-  - Teachers bulk import via Aiken format (`ANSWER: X`) or generate on the fly from lecture topics.
-- **3 Sourced FinOps Verification Modes:**
-  - **Question Bank ($0.00 zero-AI):** Instant local dispatch from class question pool.
-  - **Teacher Screen Broadcast:** 1 single Gemini multimodal call on the active screen frame generates attention questions for 50+ students (~$0.00015).
-  - **Student Screen Inspection:** On-demand individual verification analyzing active student windows.
-- **Pedagogical Evaluation vs 2-Strike State Machine:**
+- **AI Question Bank Studio (`generateQuestionBankAi`):**
+  - **Gemini 4 Argon / 3.8 Flash / 3.5 Flash-Lite** drafts domain-tailored MCQs with 4 options, answer keys & rationales, plus Aiken (`ANSWER: X`) bulk import.
+- **4 Sourced Verification Types (incl. 2 QR Anytime Attendance Modes):**
+  - **1. Question Bank ($0.00 zero-AI):** Instant local dispatch from class question pool.
+  - **2. Teacher Screen Broadcast (`teacher_screen`):** 1 Gemini multimodal call on the active slide frame for 50+ students (~$0.00015).
+  - **3. Student Screen Inspection (`student_screen`):** Individual verification analyzing active student IDE windows.
+  - **4. 2 QR Code Biometric Modes (`mobile_passkey` & `lecture_passkey_qr`):** Takes attendance **anytime during class** via 1-Phone WebAuthn lock on Lab PCs or 15s rotating HMAC-SHA256 projector QR (`LectureQrBingoModal.jsx`).
+- **Non-Punitive 2-Strike State Machine on Google Cloud Tasks ($0.00 Idle Polling):**
   - **Active Wrong Answer (`failed_incorrect`):** Confirms physical presence; **no strike or attendance penalty**.
-  - **Strike 1 Timeout:** Cloud Tasks (`dispatchBingoRetryTask`) schedules delayed retry with teacher grace.
-  - **Strike 2 Consecutive Miss:** Confirmed AFK; dynamically voids unverified elapsed minutes (Bitmask Code `2`).
+  - **Staggered Dispatch & Strike 1 Retry:** Google Cloud Tasks (`dispatchScheduledBingoTask` & `dispatchBingoRetryTask`) schedules staggered checks & 3m grace retries; Strike 2 consecutive miss voids unverified elapsed minutes.
 
 ---
 
@@ -678,9 +677,9 @@ const processFrame = async (now, metadata) => {
 - **On-Demand Google Sheets Sync & 4-Tier Authenticity Audit:**
   - Zero-cron incremental delta sync from public Google Sheet (`Form Responses 2`) with 1-digit student ID typo self-healing.
   - Audits written logs (`🟢 Genuine`, `🔴 Vague`, `🟠 Suspected AI/Fake`, `⚪ Inactive`) and auto-generates 2–3 pointed technical AI challenge questions per student before class (`prepareProjectMeetingLogQuestions`).
-- **Resilient 2-Stage Gemini 4 Argon / 3.8 Flash Multimodal Diarization Pipeline (`analyzeProjectMeeting`):**
-  - **Stage 1 (`gemini-3.5-transcribe-preview`):** Diarizes multilingual code-switching dialogue, with automatic multimodal `gemini-3.8-flash` fallback on low-volume clips.
-  - **Stage 2 (`gemini-4-argon` / `gemini-3.8-flash`):** Fuses diarized audio, voice anchors, 720p mobile demo videos, and photos to verify Real Work (`/10`), Log Quality (`/10`), and attendance (`Present`, `Late`, `Absent`).
+- **Zero-FFmpeg 2-Stage Gemini 4 Argon / 3.8 Flash Multimodal Pipeline (`analyzeProjectMeeting`):**
+  - **Stage 1 (`gemini-3.5-transcribe-preview`):** Diarizes multilingual voice & demo video clips independently, shifting only text timestamps (`[MM:SS]`) cumulatively by `cumulativeOffsetSec` (zero FFmpeg stitching), with `gemini-3.8-flash` fallback.
+  - **Stage 2 (`gemini-4-argon` / `gemini-3.8-flash`):** Fuses unified diarized transcript, voice anchors, and native multi-part `gs://` URIs (`image/jpeg` photos + `video/mp4` 720p demo clips) to verify Real Work (`/10`), Log Quality (`/10`), and attendance (`Present`, `Late`, `Absent`).
 - **1-Click Whole-Class Weekly Report Dispatch & Student Portal Visibility:**
   - Dispatches individualized HTML reports to the entire class for Week $W$ with overarching supervisor guidance via `batchEmailProjectMeetingReports` (Gen 2 Cloud Function in `asia-east2`).
   - Powered by Google Cloud Secret Manager (`SMTP_PASSWORD`) over Gmail SSL Relay (`smtp.gmail.com:465`, sender `noreply@vtc.edu.hk`), with student portal reflection (`/student/records?tab=meetings`) and rich `.xlsx` matrix exports.
@@ -807,7 +806,8 @@ const processFrame = async (now, metadata) => {
 ![bg right:55% 95%](images/slide_closing_summary.png)
 
 - **Live Application:** [https://it114115-2627.web.app](https://it114115-2627.web.app)
-- **Open-Source Repository:** [github.com/wongcyrus/Gemini-AI-Classroom-Assistant](https://github.com/wongcyrus/Gemini-AI-Classroom-Assistant)
+- **Open-Source Repository:** [github.com/wongcyrus/Google-AI-Classroom](https://github.com/wongcyrus/Google-AI-Classroom)
+- **10-Part GDE Technical Blog Series:** [dev.to/cyruswong](https://dev.to/cyruswong) & [`docs/blogs/README.md`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/docs/blogs/README.md) (30+ architectural diagrams)
 - **Enterprise Documentation:** Comprehensive User Manuals (Teacher, Student, Admin), Master Documentation-to-Code Index & 19 UI Control Domains Catalog with 26 architectural interaction diagrams.
 - **Presenter:** **Cyrus Wong (黃俊彥)**
   - Google Developer Expert in GCP & AI/ML

@@ -55,17 +55,18 @@ graph TD
             F_analyzeAllImages["analyzeAllImages (onCall)"]
             F_analyzeFaceFallback["analyzeFaceFallback (onCall)"]
             F_analyzeAudio["analyzeAudio (onCall: gemini-3.5-transcribe-preview)"]
-            F_triggerBingoCheck["triggerBingoCheck (onCall: 3 FinOps modes)"]
+            F_triggerBingoCheck["triggerBingoCheck (onCall: 4 Modes + 2 QR Anytime Attendance)"]
             F_submitBingoAnswer["submitBingoAnswer (onCall: 2-Strike presence)"]
             F_cancelActiveBingo["cancelActiveBingo (onCall)"]
             F_dispatchBingoRetryTask["dispatchBingoRetryTask (onTaskDispatched: Cloud Tasks)"]
-            F_dispatchScheduledBingoTask["dispatchScheduledBingoTask (onTaskDispatched)"]
-            F_processBingoJob["processBingoJob (onTaskDispatched)"]
-            F_generateQuestionBankAi["generateQuestionBankAi (onCall: Gemini 3.5 Flash Lite)"]
-            F_processTeacherSpeechSubtitles["processTeacherSpeechSubtitles (onCall: Gemini 3.5 Flash Lite)"]
+            F_dispatchScheduledBingoTask["dispatchScheduledBingoTask (onTaskDispatched: Cloud Tasks)"]
+            F_processBingoJob["processBingoJob (onDocumentCreated: bingoJobs)"]
+            F_generateQuestionBankAi["generateQuestionBankAi (onCall: Gemini 4 Argon / 3.8 Flash / 3.5 Flash Lite)"]
+            F_processTeacherSpeechSubtitles["translateTeacherSpeech (onCall: Gemini 4 Argon / 3.8 Flash / 3.5 Flash Lite)"]
             F_processLectureSubtitles["processLectureSubtitles (onCall: Gemini 4 Argon / 3.8 Flash / 3.5 Flash Lite)"]
             F_extractTaskDemoSteps["extractTaskDemoSteps (onCall: Practical Tasks AI)"]
             F_evaluateTaskSubmission["evaluateTaskSubmission (onCall & Task: AI Auto-Grading)"]
+            F_projectMeetingFlows["analyzeProjectMeeting / prepareProjectMeetingLogQuestions / batchEmailProjectMeetingReports (onCall)"]
             F_passkeyFlows["WebAuthn Passkey Callables (15 functions: pair, register, auth, QR login, bypass, PIN, reset)"]
             F_onAiJobCreated["onAiJobCreated (onWrite aiJobs)"]
             F_processVideoAnalysisJob["processVideoAnalysisJob (onCreate videoAnalysisJobs)"]
@@ -198,7 +199,7 @@ The repository is structured as a modular monorepo composed of three decoupled f
 * **Serverless Lecture Video Concatenation**: High-speed stream-copy FFmpeg remuxing via `mergeLectureRecordings` assembling fragmented lecture recordings into unified master lectures in ~2s, repairing Matroska EBML duration headers and extracting pure Opus audio tracks.
 
 ### 3. Infrastructure & Administration (`terraform/` & `admin/`)
-* **Infrastructure as Code**: Pure Terraform automation provisioning all 15 GCP services, Firestore native databases, storage buckets, and IAM roles with zero manual console interaction.
+* **Infrastructure as Code**: Pure Terraform automation provisioning all 27 GCP services, Firestore native databases, storage buckets, and IAM roles with zero manual console interaction.
 * **Admin Automation**: CLI scripts for bulk user elevation, profile migrations, mock data generation, environment wipes, and live cloud smoke verification.
 
 ---

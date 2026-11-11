@@ -633,15 +633,18 @@ sequenceDiagram
 
 ---
 
-## 9. Interactive "Bingo" Active Presence Verification
+## 9. Interactive "Bingo" Active Presence Verification (4 Modes + 2 QR Anytime Attendance)
 
-The Bingo system distinguishes between genuinely engaged students and unattended computers running loopers or background browser tabs.
+The Bingo system distinguishes between genuinely engaged students and unattended computers running loopers or background browser tabs, and defeats the **"Tap Student ID Card & Run"** lecture evasion problem (where students tap their physical card at the classroom door reader for institutional attendance and immediately leave).
 
-### Choosing a FinOps Cost Mode
-Open **`📚 Bingo Question Bank`** in the controls panel:
-1. **Mode 1: Predefined Question Bank ($0.00 / 0 AI tokens):** Uses questions you have written or imported. Completely free.
-2. **Mode 2: Teacher Screen Broadcast (1 AI Call per Lecture):** Gemini analyzes your instructor screen, automatically drafts a question based on what you are presenting, and sends it to all students. Costs ~$0.00015 for the whole class.
+### Choosing from the 4 Sourced Verification Types (incl. 2 QR Code Attendance Modes)
+Open **`📚 Bingo Question Bank`** or the Bingo mode selector in the controls panel:
+1. **Mode 1: Predefined Question Bank ($0.00 / 0 AI tokens):** Uses questions you have written, imported via Aiken format, or generated ahead of class in the Gemini 4 Question Bank AI Studio. Completely free at runtime.
+2. **Mode 2: Teacher Screen Broadcast (1 AI Call per Lecture):** Gemini analyzes your live instructor broadcast screen, automatically drafts a comprehension question based on what you are presenting, and sends it to all students. Costs ~$0.00015 for the whole class.
 3. **Mode 3: Student Individual Screens:** Gemini reviews each student's current coding screen to verify active task work.
+4. **Mode 4: 2 QR Code Biometric Attendance Modes (`mobile_passkey` & `lecture_passkey_qr`, $0.00 AI Cost):**
+   - **Lab PC Mobile Passkey (`mobile_passkey`):** For computer labs without webcams, students scan the dynamic QR on their monitor with their hardware-locked smartphone (1-Student = 1-Phone FIDO2 WebAuthn Secure Enclave / Titan lock).
+   - **Lecture Hall Projector Rotating HMAC QR (`lecture_passkey_qr` in [`LectureQrBingoModal.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/monitor/LectureQrBingoModal.jsx)):** Projects a fullscreen **15-second rotating HMAC-SHA256 encrypted QR code** onto the auditorium screen so teachers can take attendance **anytime during class** (including mid-lecture or right before dismissal), plus optional **Scheduled Staggered Bingo (`dispatchScheduledBingoTask`)** via Google Cloud Tasks.
 
 ### Launching a Class-Wide Bingo Check & Auto-Bingo
 > 📖 **Architecture & Design Reference**: For a complete deep-dive into how manual on-demand triggers, background scheduler cron tasks, and Cloud Tasks retry queues converge on a single unified challenge engine, see **[🎯 Interactive Bingo & Media Batch Pipeline Architecture](./bingo-and-batch-pipeline-design.md)**.
@@ -659,7 +662,7 @@ Open **`📚 Bingo Question Bank`** in the controls panel:
 ### Question Bank Management Studio
 In the Question Bank Modal:
 - **Manual Question Creator:** Enter a question, options A/B/C/D, specify the correct answer, and save.
-- **AI Generator (`✨ Generate with Gemini`):** Enter a lecture topic (e.g., *Docker Container Networking*) and question count (3–10). Gemini 3.5 Flash Lite generates formatted questions with options and answer keys for one-click import.
+- **AI Generator (`✨ Generate with Gemini`):** Select your preferred model (**`gemini-4-argon`**, **`gemini-3.8-flash`**, or **`gemini-3.5-flash-lite`**), enter a lecture topic (e.g., *Docker Container Networking*) and question count (3–10). Gemini generates formatted questions with options, answer keys, and pedagogical explanations for one-click import.
 - **Bulk Import:** Paste questions formatted in Aiken format (`ANSWER: B`) or raw JSON arrays and click **`Import All`**.
 
 ### The Two-Strike Attendance Deduction Rule
@@ -1138,8 +1141,8 @@ The **Practical Task & Lab Exam System** ([`TasksManagementView.jsx`](file:///ho
 In project-based courses where multiple supervisor and co-supervisor teachers meet weekly with student project groups in parallel and at any period (scheduled labs, consultation hours, or ad-hoc slots), the **Project Group Meeting Management & Student Contribution Profile Module** ([`ProjectMeetingsView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/meetings/ProjectMeetingsView.jsx), [`projectGroupUtils.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/utils/projectGroupUtils.js)):
 1. Ingests each class's **Public Weekly Log Google Sheet** (`Form Responses 2`) **on-demand before class** (with initial full backfill + smart incremental delta sync, even if 0 weekly meetings have been recorded yet).
 2. Audits weekly log quality (`🟢 Genuine`, `🔴 Vague / Useless`, `🟠 Suspected AI / Fake`, `⚪ Inactive ("No")`) and prepares **AI Challenge Questions** to verify real work during the meeting.
-3. Records the live meeting voice on the **teacher's mobile phone** (with 20+ minute Screen Wake Lock protection) alongside the **presenting student's PC screen** (strictly live capture only — manual file uploads are disabled for both teachers and students to prevent unverified file uploads).
-4. Runs a Two-Stage **Gemini 3.5 Transcribe + Gemini 3.8 Flash** pipeline to extract **attendance**, **key insights**, **verified real-work scores**, and **post-meeting weekly feedback**.
+3. Records the live consultation via the **Single-Device Teacher Mobile Supervision Studio** on the supervisor's smartphone (**🎙️ Continuous Mobile Voice** with 20+ minute Screen Wake Lock protection + **📸 `0.1s` Zero-Pause Photo Snaps** + **📹 Auto-Sliced `720p` Mobile Camera Demo Videos**; strictly live capture only — manual file uploads are disabled and zero student PC screen-capture setup is needed).
+4. Runs a Zero-FFmpeg Two-Stage **Gemini 3.5 Transcribe + Gemini 4 Argon (`gemini-4-argon`) / Gemini 3.8 Flash** pipeline (cumulative text timestamp offset shifting in Stage 1 + native multi-part `gs://` media URIs in Stage 2) to extract **attendance**, **key insights**, **verified real-work scores**, and **post-meeting weekly feedback**.
 
 ### 19.1 Importing & Managing Persistent Project Groups
 1. **1-Click Sync from Weekly Log Google Sheet**:
@@ -1183,8 +1186,8 @@ Supervisors and co-supervisors can host meetings at **any period** without enabl
    - **Capture Deliverables Live on Mobile**: Tap **`📸 Snap Photo`** to document whiteboard diagrams, circuits, or error messages with zero audio interruption, or tap **`📹 Record Demo (720p)`** to film student software or hardware demos (auto-slicing voice seamlessly).
    - **1-Tap `"🗣️ Speaking Now"` Voice Anchors**: Tap a student's chip when they begin speaking to log a timestamp anchor (`voiceAnchors[]`) for speaker diarization.
 4. Tap **`⏹️ Stop & Analyze with Gemini`** (or **`💾 Save Part`**), then click **`🤖 Run 2-Stage AI Analysis`**:
-   - **Stage 1 (`gemini-3.5-transcribe-preview`)**: Verbatim multilingual speaker diarization across all audio clips.
-   - **Stage 2 (`gemini-3.8-flash`)**: Synthesizes attendance, key insights, per-student completed work, **Log Quality Score (`1–10`)**, **Real Work Score (`1–10`)**, and **Post-Meeting Weekly Feedback** (`weeklyFeedback`), which can also be edited inline by the supervisor (`✏️ Edit Work / Feedback`).
+   - **Stage 1 (`gemini-3.5-transcribe-preview` with `gemini-3.8-flash` fallback)**: Verbatim multilingual speaker diarization across all voice and demo video clips, shifting text transcript timestamps (`[MM:SS]`) cumulatively by `cumulativeOffsetSec` with zero FFmpeg stitching.
+   - **Stage 2 (`gemini-4-argon` / `gemini-3.8-flash`)**: Synthesizes attendance, key insights, per-student completed work, **Log Quality Score (`1–10`)**, **Real Work Score (`1–10`)**, and **Post-Meeting Weekly Feedback** (`weeklyFeedback`) from the unified transcript, native `gs://` photo/video URIs, and weekly logs, which can also be edited inline by the supervisor (`✏️ Edit Work / Feedback`).
    - **FinOps Costing**: Project meeting media storage is tracked under `storageUsageProjectMeetings` (`👥 Project Meeting Audio, Demos & Photos`) with transparent itemized AI spend in the FinOps report.
 
 ### 19.5 Emailing Meeting Reports to Students & 1-Click Whole-Class Weekly Dispatch

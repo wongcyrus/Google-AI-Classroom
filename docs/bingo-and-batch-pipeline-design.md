@@ -2,24 +2,36 @@
 
 **System**: Google AI Classroom  
 **Status**: Production Architecture & Design Reference  
-**Last Updated**: October 2026  
+**Last Updated**: November 2026  
 
 ---
 
 ## 1. Executive Summary
 
 This document details the architectural rationale, trigger convergence, execution pipelines, and FinOps considerations for:
-1. **Interactive Anti-Decoy Bingo Presence Verification**: Why on-demand teacher dispatch, automated periodic scheduling, and two-strike retry queues converge on a single backend pipeline, why the minimum dispatch interval is strictly 5 minutes, and how the 1-minute serverless cron operates within the free tier.
+1. **Interactive Anti-Decoy Bingo Presence Verification (4 Modes + 2 QR Anytime Attendance Modes)**: Why on-demand teacher dispatch, automated periodic scheduling, staggered Cloud Tasks scheduling (`dispatchScheduledBingoTask`), and two-strike retry queues (`dispatchBingoRetryTask`) converge on a single backend pipeline, how the **4 Sourced Verification Types (including 2 QR Code Biometric Attendance Modes)** solve the *"Tap Student ID Card & Run"* lecture evasion problem by taking attendance anytime during class, why the minimum dispatch interval is strictly 5 minutes, and how the 1-minute serverless cron operates within the free tier.
 2. **Unified Media Processing & AI Batch Pipelines**: The standardized 7-point design pattern shared across teacher lecture video merges, student audio session merges, student screencast compilations, and asynchronous AI rubric evaluations.
 3. **Scheduled Cloud Functions Audit**: Full catalog of all active cron schedules across the system demonstrating zero duplicate schedules.
 
 ---
 
-## 2. Interactive Bingo Architecture: Unified Challenge Engine
+## 2. Interactive Bingo Architecture: Unified Challenge Engine & 4 Verification Modes
+
+### 2.0 Solving the "Tap Student ID Card & Run" Problem with 4 Bingo Types & 2 QR Modes
+
+In university and vocational lecture halls, institutional attendance is traditionally recorded when a student taps their physical student ID card at the door reader upon entering. A common evasion tactic is **"Tap & Run"**—students tap their card for attendance credit and immediately leave, or leave mid-lecture after the first break.
+
+To allow instructors to verify active presence **anytime during class**, Classroom Bingo provides **4 Sourced Verification Types** (including **2 QR Code Biometric Attendance Modes**):
+1. **Mode 1 — Question Bank (`question_bank`, $0.00 Zero-AI Runtime Cost)**: Samples questions from the class question pool (authored manually, imported via Aiken format, or generated ahead of class in the **Gemini 4 Argon (`gemini-4-argon`) / 3.8 Flash / 3.5 Flash-Lite Question Bank AI Studio** via `generateQuestionBankAi`).
+2. **Mode 2 — Teacher Broadcast Screen (`teacher_screen`, ~$0.00015 / Whole Class)**: Executes **1 single Gemini multimodal call** (`resolveBingoQuestion`) on the instructor's live broadcast slide frame and fans out the contextual comprehension question to all 50+ students.
+3. **Mode 3 — Individual Student Screen (`student_screen`, On-Demand Lab Check)**: Inspects each student's active IDE/terminal screen capture to verify hands-on coding progress.
+4. **Mode 4 — 2 QR Code Biometric Attendance Modes (`mobile_passkey` & `lecture_passkey_qr`, $0.00 AI Cost)**:
+   - **QR Mode A — Lab PC Mobile Passkey (`mobile_passkey`)**: For computer labs without webcams, each student scans the dynamic QR on their monitor with their hardware-locked smartphone (1-Student = 1-Phone FIDO2 WebAuthn Secure Enclave / Titan lock).
+   - **QR Mode B — Lecture Hall Projector Rotating HMAC QR (`lecture_passkey_qr` in [`LectureQrBingoModal.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/monitor/LectureQrBingoModal.jsx))**: Projects a fullscreen **15-second rotating HMAC-SHA256 encrypted QR code** onto the auditorium screen anytime during the lecture (plus optional **Staggered Cloud Tasks Scheduling** via `dispatchScheduledBingoTask` with random jitter).
 
 ### 2.1 Single Source of Truth (`generateBingoChallenge`)
 
-A common question is whether clicking **"🎯 Call Bingo"** as a teacher uses a different code path or algorithm compared to the background automated scheduler. 
+A common question is whether clicking **"🎯 Call Bingo"** as a teacher uses a different code path or algorithm compared to the background automated scheduler or staggered Cloud Tasks. 
 
 **They use the exact same backend pipeline.** Regardless of how a Bingo check is triggered, all execution paths converge on [`generateBingoChallenge()`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/bingoFlows.js).
 
@@ -29,36 +41,36 @@ sequenceDiagram
     
     %% Path A: Teacher Manual Click
     rect rgb(240, 248, 255)
-    note over Teacher,CoreEngine: Path A: Teacher Clicks "🎯 Call Bingo" (On-Demand)
-    Teacher->>UI: Clicks "Call Bingo" in ControlsPanel or Individual Student Drawer
-    UI->>HTTPS: Calls httpsCallable("triggerBingoCheck")
+    note over Teacher,CoreEngine: Path A: Teacher Clicks "🎯 Call Bingo" or "📱 QR Attendance" (On-Demand)
+    Teacher->>UI: Clicks "Call Bingo" or "Lecture QR" in ControlsPanel / Individual Student Drawer
+    UI->>HTTPS: Calls httpsCallable("triggerBingoCheck" / "createLectureBingoSession")
     HTTPS->>CoreEngine: Invokes generateBingoChallenge(params)
     end
 
-    %% Path B: Automated Periodic Scheduler
+    %% Path B: Automated Periodic Scheduler & Staggered Cloud Tasks
     rect rgb(255, 250, 240)
-    note over Cron,CoreEngine: Path B: Automated Periodic Cron (Scheduled)
+    note over Cron,CoreEngine: Path B: Automated Periodic Cron & Staggered Cloud Tasks
     Cron->>Cron: handleAutomaticBingo (Every minute checks if class is due)
     Cron->>FS: Creates bingoJobs doc (status: pending)
-    FS->>Worker: Firestore Trigger invokes handleProcessBingoJob
+    FS->>Worker: Firestore Trigger invokes handleProcessBingoJob / dispatchScheduledBingoTask
     Worker->>CoreEngine: Invokes generateBingoChallenge(params)
     end
 
     %% Path C: Strike 2 Cloud Task Retry
     rect rgb(245, 255, 245)
-    note over Tasks,CoreEngine: Path C: Two-Strike AFK Retry Queue
-    Tasks->>Tasks: dispatchBingoRetryTask (3m delay)
+    note over Tasks,CoreEngine: Path C: Two-Strike AFK Retry Queue (Google Cloud Tasks)
+    Tasks->>Tasks: dispatchBingoRetryTask (3m grace delay, $0 idle polling)
     Tasks->>CoreEngine: Invokes generateBingoChallenge(params)
     end
 
     %% Unified Core Pipeline
     rect rgb(255, 255, 255)
     note over CoreEngine,Student: Unified Common Pipeline (Identical for ALL paths)
-    CoreEngine->>CoreEngine: 1. Question Sourcing (Question Bank / Teacher Screen Gemini / Student Screen Gemini)
+    CoreEngine->>CoreEngine: 1. Question Sourcing (Question Bank / Teacher Screen / Student Screen / 2 QR Modes)
     CoreEngine->>CoreEngine: 2. Fisher-Yates Answer & Options Shuffle (shuffleOptionsAndCorrectIndex)
     CoreEngine->>FS: 3. Writes classes/{classId}/bingoRecords/{bingoId}
     CoreEngine->>FS: 4. Updates classes/{classId}/studentProperties/{studentUid}.activeBingo
-    FS-->>Student: 5. Real-time Firestore snapshot triggers BingoModal UI with 45s countdown timer!
+    FS-->>Student: 5. Real-time Firestore snapshot triggers BingoModal / WebAuthn QR with 45s timer!
     end
 ```
 
@@ -66,12 +78,12 @@ sequenceDiagram
 
 ### 2.2 Comparative Trigger Path Matrix
 
-| Pipeline Dimension | 🖱️ Path A: On-Demand (Teacher Button) | ⏱️ Path B: Automated (Background Cron) | 🔄 Path C: Two-Strike Retry (Cloud Tasks) |
+| Pipeline Dimension | 🖱️ Path A: On-Demand (Teacher Button) | ⏱️ Path B: Automated / Staggered (`bingoJobs` & Cloud Tasks) | 🔄 Path C: Two-Strike Retry (Cloud Tasks) |
 | :--- | :--- | :--- | :--- |
-| **Origin Trigger** | Teacher clicks button in [`ControlsPanel.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/monitor/ControlsPanel.jsx) or [`IndividualStudentView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/IndividualStudentView.jsx) | Serverless Cron `handleAutomaticBingo` in [`scheduledTasks.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/scheduled_tasks/scheduledTasks.js) | Cloud Task `dispatchBingoRetryTask` in [`bingoFlows.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/bingoFlows.js) |
-| **Trigger Type** | `teacher_manual_all` or `teacher_manual_single` | `automated_periodic` | `scheduled_strike_retry` |
+| **Origin Trigger** | Teacher clicks button in [`ControlsPanel.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/monitor/ControlsPanel.jsx) or [`IndividualStudentView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/IndividualStudentView.jsx) | Serverless Cron `handleAutomaticBingo` in [`scheduledTasks.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/scheduled_tasks/scheduledTasks.js) & Cloud Task `dispatchScheduledBingoTask` | Cloud Task `dispatchBingoRetryTask` in [`bingoFlows.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/bingoFlows.js) |
+| **Trigger Type** | `teacher_manual_all` or `teacher_manual_single` | `automated_periodic` or `scheduled_staggered` | `scheduled_strike_retry` |
 | **Target Function** | [`generateBingoChallenge()`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/bingoFlows.js) | [`generateBingoChallenge()`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/bingoFlows.js) | [`generateBingoChallenge()`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/bingoFlows.js) |
-| **Question Sourcing** | Active class mode (`question_bank`, `teacher_screen`, or `student_screen`) | Active class mode (`autoBingoMode`) | Inherited from missed round |
+| **Question Sourcing** | Active class mode (`question_bank`, `teacher_screen`, `student_screen`, `mobile_passkey`, or `lecture_passkey_qr`) | Active class mode (`autoBingoMode`) | Inherited from missed round |
 | **Positional Bias Defense** | Fisher-Yates random shuffle (`shuffleOptionsAndCorrectIndex`) | Fisher-Yates random shuffle (`shuffleOptionsAndCorrectIndex`) | Fisher-Yates random shuffle (`shuffleOptionsAndCorrectIndex`) |
 | **Firestore Output** | `classes/{classId}/bingoRecords/{bingoId}` | `classes/{classId}/bingoRecords/{bingoId}` | `classes/{classId}/bingoRecords/{bingoId}` |
 | **Student UI Delivery** | Snapshot listener updates `studentProperties.activeBingo` $\to$ opens `BingoModal.jsx` | Snapshot listener updates `studentProperties.activeBingo` $\to$ opens `BingoModal.jsx` | Snapshot listener updates `studentProperties.activeBingo` $\to$ opens `BingoModal.jsx` |

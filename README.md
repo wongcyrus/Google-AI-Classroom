@@ -6,7 +6,7 @@
 [![Gemini Enterprise Agent Platform](https://img.shields.io/badge/Gemini_Enterprise_Agent_Platform-Gemini_4_&_3_Suite-blue?logo=google)](https://cloud.google.com)
 [![Firebase](https://img.shields.io/badge/Firebase-Functions_Gen_2_|_Firestore_|_Storage-FFA611?logo=firebase&logoColor=white)](https://firebase.google.com)
 [![React 18](https://img.shields.io/badge/React_18-Vite_SPA-61DAFB?logo=react&logoColor=black)](https://react.dev)
-[![Tests](https://img.shields.io/badge/Tests-2070+_Passing_(100%25)-brightgreen)](./docs/testing-strategy-and-coverage.md)
+[![Tests](https://img.shields.io/badge/Tests-2575+_Passing_(100%25)-brightgreen)](./docs/testing-strategy-and-coverage.md)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
 A next-generation, serverless educational platform designed to proactively assist instructors and support students during computer-based tests and interactive lab sessions. Built on **Google Cloud**, **Firebase**, and **Gemini Enterprise Agent Platform**, the system pairs frontier multimodal AI reasoning with client-side edge computing to create a secure, supportive, and cost-effective classroom environment.
@@ -25,12 +25,12 @@ Rather than acting as a punitive monitoring tool, the platform functions as an e
 * 🎬 **Two-Stage Map-Reduce-Map Lab Rubric Synthesis**: Discovers cohort-wide lab milestones and friction points using Gemini 4 Argon / Gemini 3.8 Flash / Gemini 3.5 Flash-Lite Vision, automatically synthesizes structured rubrics with Gemini 4 Argon or Gemini 3.8 Flash, and executes high-precision batch re-analysis.
 * 📋 **Practical Tasks, Post-Class Retroactive Slicing & Rubric-Driven Mark Breakdown**: Supports 4 task modes (`🏠 Homework`, `🏫 In-Class`, `🔄 Flexible`, and `⏪ Post-Class Retroactive Slicing` from class videos), synthesizes rubrics from teacher demo videos, YouTube links, or AI Prompts using selectable **Gemini 4 Argon (`gemini-4-argon`)**, **Gemini 3.8 Flash**, or **Gemini 3.5 Flash-Lite**, deterministically reconciles per-step marks (`scoreAwarded / maxPoints`), observed screen evidence, and student-specific explanations, and provides interactive per-step teacher mark/feedback overrides and Excel gradebook exports.
 * 👥 **Project Group Meeting Management, Student Contribution Profiles & 1-Click Whole-Class Email Dispatch**: Supports parallel multi-supervisor and co-supervisor weekly project consultations at any period, persistent project group rosters with `.xlsx`/`.csv` import/export, **on-demand Public Google Sheet Weekly Log ingestion** (initial full backfill + smart incremental delta sync even with 0 recorded meetings), canonical `@stu.vtc.edu.hk` identity mapping with 1-digit Student ID typo healing, Class Schedule `startDate` week anchoring with skipped-holiday resilience, automated **Fake/AI vs. Vague vs. Genuine Weekly Log Auditing** with **AI Challenge Questions**, streamlined **Single-Device Teacher Mobile Supervision Studio** (continuous voice + zero-pause `0.1s` photo snaps + auto-sliced `720p` mobile video demos with Wake Lock protection and zero student PC screen-capture friction), Two-Stage `gemini-3.5-transcribe-preview` speaker diarization + **`gemini-4-argon` / `gemini-3.8-flash`** meeting analyzer (with multimodal STT fallback and automatic analysis invalidation on transferred clips), Batch AI Mode 1 queuing, and **1-click whole-class weekly report email dispatch** via secure SMTP relay.
-* 🔒 **Zero-Trust Assessment Integrity**: Real-time exam mode with hard Cloud Storage rules (`resource.metadata.isExam`), full-screen enforcement, and 1-click Microsoft Word (`.docx`) incident dossier exports complete with embedded side-by-side screen/webcam evidence.
-* 🎯 **"Bingo" Active Presence Verification**: Interactive challenge engine with 3 FinOps cost modes and a cheat-resistant Two-Strike attendance deduction system scheduled through serverless **Google Cloud Tasks**.
-* 🖥️ **Teacher Screen Broadcast & Anonymous Public Presentation Mode**: High-efficiency instructor screen sharing (`720p` @ `3.0s` default) with pure frame streaming avoiding WebRTC mesh CPU limits. Features an **Anonymous Public Presentation Mode** with a **Standalone Projector QR Code Popup Window** (`openProjectorQrPopup`) allowing conference and seminar speakers to drag the QR code and 4-digit PIN onto a secondary projector screen while continuing broadcast setup and running the session.
-* 🌐 **Multimodal Live Subtitles & Multilingual Captions**: Dual-engine captioning modes (**🟣 Server Model** via Cloud Functions `translateTeacherSpeech` / Gemini 3.5 Flash-Lite & 3.8 Flash, and **⚪ Client Model** via on-device LiteRT Whisper + Gemma 4 E2B with explicit opt-in download and mobile OOM protection), powered by `AudioWorkletNode` background resampling with comprehensive Cantonese colloquialism and code-switching multilingual captioning into 8 languages (including **Traditional Chinese (`zh-Hant`)** and **Simplified Chinese (`zh-CN`)**), subject domain glossaries, and custom prompt library templates.
-* 📹 **Automatic Lecture Recording Reconciler & Cloud Storage Sync**: Built-in cloud reconciliation function that scans and links un-finalized recordings with existing Cloud Storage media upon network reconnection or page refresh.
-* 💰 **AI FinOps & Quota Governance**: Real-time class spend caps, token consumption metrics, and unit cost accounting ($0.02/student) tracked live in the AI Cost Report dashboard across Gemini 4 Argon (`$2.00 / $10.00`), Gemini 3.8 Flash (`$0.75 / $3.75`), and Gemini 3.5 Flash-Lite (`$0.30 / $2.50`).
+* 🔒 **Zero-Trust Assessment Integrity**: Real-time exam mode with hard Cloud Storage rules (`resource.metadata.isExam`), full-screen enforcement (`displaySurface === 'monitor'`), Student Portal confidentiality shielding during exam windows, and 1-click Microsoft Word (`.docx`) & RFC 4180 CSV incident dossier exports complete with embedded side-by-side screen/webcam evidence.
+* 🎯 **Gamified "Bingo" Active Presence Verification (4 Verification Types + 2 QR Anytime Attendance Modes)**: Interactive challenge engine featuring **4 Sourced Verification Types**—**Question Bank ($0.00)** with a **Gemini 4 Argon (`gemini-4-argon`) Question Bank AI Studio** (`generateQuestionBankAi`) & Aiken bulk import, **1-to-Many Teacher Broadcast Screen Multimodal Check**, **Individual Student Screen Inspection**, and **2 QR Code Biometric Attendance Modes** (`mobile_passkey` 1-Phone hardware lock & `lecture_passkey_qr` 15s rotating HMAC-SHA256 projector QR) allowing instructors to take attendance **anytime during class** to defeat the *"Tap Student ID Card & Run"* lecture evasion problem—powered by **Scheduled Staggered Bingo (`dispatchScheduledBingoTask`)** and a **Non-Punitive Two-Strike Attendance State Machine (`dispatchBingoRetryTask`)** on serverless **Google Cloud Tasks** ($0.00 idle polling).
+* 🖥️ **Teacher Screen Broadcast & Anonymous Public Presentation Mode**: High-efficiency instructor screen sharing (`720p`/`1080p`/`1440p` with 32×18 RGB pixel-delta engine) avoiding WebRTC mesh CPU limits. Features an **Anonymous Public Presentation Mode** with a **Standalone Projector QR Code Popup Window** (`openProjectorQrPopup`) allowing conference and seminar speakers to drag the QR code and 4-digit PIN onto a secondary projector screen while continuing broadcast setup and running the session.
+* 🌐 **Multimodal Live Subtitles & Multilingual Captions**: Dual-engine captioning modes (**🟣 Server Model** via Cloud Functions `translateTeacherSpeech` / Gemini 4 Argon, Gemini 3.8 Flash & Gemini 3.5 Flash-Lite, and **⚪ Client Model** via on-device LiteRT Whisper + Gemma 4 E2B with explicit opt-in download and mobile iOS Jetsam OOM protection), powered by `AudioWorkletNode` background resampling with comprehensive Cantonese colloquialism and code-switching multilingual captioning into **9 languages** (`zh-Hant`, `zh-Hans`, `en`, `ja`, `ko`, `es`, `fr`, `de`, `vi`), 8 academic subject domain glossaries, out-of-tab microphone silence/mute watchdogs, and custom prompt library templates.
+* 📹 **Automatic Lecture Recording Reconciler & Cloud Storage Sync**: Built-in cloud reconciliation function with a 5-point FFmpeg pre-deletion safety gate that scans, concatenates, and links un-finalized recordings with existing Cloud Storage media upon network reconnection or page refresh, plus single-pass whole-lecture Gemini 4 Argon / 3.8 Flash `.srt`/`.vtt` subtitles and YouTube chapter packages.
+* 💰 **Green AI FinOps, Live Cloud Billing SKU Sync & Quota Governance**: Real-time class spend caps with atomic budget circuit breakers, 9-category Cloud Storage quota tracking, 4-stage cascading class purge (`onClassDocDeleted`), and live Google Cloud Billing Catalog API (`syncGeminiPricing`) SKU synchronization across **Gemini 4 Argon (`$2.00 / $10.00`)**, **Gemini 3.8 Flash (`$0.75 / $3.75`)**, **Gemini 3.5 Flash-Lite (`$0.30 / $2.50`)**, and **Gemini 3.5 Transcribe (`$0.50 / $2.50`)** (~$0.02/student exam cost).
 
 ---
 
@@ -83,7 +83,7 @@ Every operational workflow, data model, AI pipeline, and security policy is docu
 | **Master Index & Discrepancies** | 🧭 **[Documentation-to-Code Master Index](./docs/documentation-code-index.md)** | Two-way cross-reference linking every markdown paragraph and diagram to source code, with a drift audit registry. |
 | **Release & Architecture Updates** | 📝 **[Recent Changes & Architectural Enhancements](./docs/recent-changes.md)** | Technical summary of recent updates: Individual Student Contribution Profiles, On-Demand Weekly Log Sheet Ingestion, Fake/AI Log Challenge Engine, Holiday & Co-Supervisor Multi-Meeting Resilience, Sub-Second Live Captions, and Project Group Meeting Management. |
 | **User Manuals & UI Catalogs** | 📖 **[Quick-Start & Practical Tasks User Guide](./docs/practical-tasks-and-rubric-grading-user-guide.md)** | **Start Here!** Step-by-step walkthrough for Teachers and Students covering daily classroom workflows, creating & completing Practical Tasks, and Rubric-Driven AI Mark Breakdowns. |
-| | 👥 **[Project Group Meetings & Weekly Log User Guide](./docs/project-group-meetings-and-weekly-log-user-guide.md)** | **Step-by-Step Supervision Guide:** How to set up your Class Schedule & Public Weekly Log Google Sheet, run on-demand incremental log sync, generate AI Challenge Questions for fake/vague logs, record live 20+ min mobile voice + student PC demos (with Co-Supervisor support), and grade Student Contribution Profiles. |
+| | 👥 **[Project Group Meetings & Weekly Log User Guide](./docs/project-group-meetings-and-weekly-log-user-guide.md)** | **Step-by-Step Supervision Guide:** How to set up your Class Schedule & Public Weekly Log Google Sheet, run on-demand incremental log sync, generate AI Challenge Questions for fake/vague logs, record live 20+ min consultations via the Single-Device Teacher Mobile Supervision Studio (continuous voice + 0.1s photo snaps + auto-sliced 720p mobile camera demo videos, with Co-Supervisor support), and grade Student Contribution Profiles. |
 | | 👨‍🏫 **[Instructor & TA User Manual](./docs/user-manual-teacher.md)** | Live grid invigilation, WebRTC peek & talkback, Bingo challenges, rubric studio, and incident dossiers. |
 | | 🧑‍🎓 **[Student User Manual & Guide](./docs/user-manual-student.md)** | Pre-flight onboarding, 3-step readiness wizard, dual-channel capture, HUD indicators, and self-service portal. |
 | | 🚀 **[Student Registration & Passkey Onboarding Guide](./docs/student-registration-guide.md)** | Step-by-step account sign-up, iPhone Safari & Android Chrome passkey pairing, daily QR scan login, and troubleshooting. |
@@ -108,8 +108,8 @@ Every operational workflow, data model, AI pipeline, and security policy is docu
 | **DevOps, Setup & Testing** | 🚀 **[Complete Setup & Customization Guide](./docs/setup-instructions.md)** | Step-by-step institutional deployment, automated 1-click script, and multi-school customization. |
 | | 👥 **[Demo Accounts & Development Sandbox](./docs/demo-accounts-and-sandbox.md)** | Pre-seeded accounts (`IT114115-Demo`), 24/7 class configuration, and sandbox credentials. |
 | | 🏗️ **[Deployment & Infrastructure Guide](./docs/deployment-and-infrastructure.md)** | Dual-environment setup (`it114115-dev-2026` / `it114115-2627`), Terraform specs, and build guardrails. |
-| | 🧪 **[Testing Strategy, Pyramid & Coverage](./docs/testing-strategy-and-coverage.md)** | 846+ tests across 4 tiers: Frontend React suites, Cloud Functions, real-token security rules, and smoke tests. |
-| **Presentations, Tech Talks & GDE Blogs** | ✍️ **[10-Part Google Developer Expert (GDE) Technical Blog Series](./docs/blogs/README.md)** | Complete 10-part technical blog series on Gemini 4 Argon, Gemma 4 E2B, Google Genkit resilience, WebAuthn passkeys, Map-Reduce video grading, and Green AI FinOps ($\ge 3$ architectural diagrams per post). |
+| | 🧪 **[Testing Strategy, Pyramid & Coverage](./docs/testing-strategy-and-coverage.md)** | 2,575+ tests across 4 tiers: Frontend React suites, Cloud Functions, real-token security rules, and smoke tests. |
+| **Presentations, Tech Talks & GDE Blogs** | ✍️ **[10-Part Google Developer Expert (GDE) Technical Blog Series](./docs/blogs/README.md)** | Complete 10-part technical blog series on DEV.to & GitHub covering Gemini 4 Argon, Gemma 4 E2B, Google Genkit resilience, WebAuthn passkeys, Map-Reduce video grading, Mobile Capstone Supervision, 4-Mode Bingo & QR Attendance, and Green AI FinOps ($\ge 3$ architectural diagrams per post). |
 | | 📊 **[Google Cloud Presentation Deck (Marp)](./docs/presentation/google-cloud-slides.marp.md)** | 38-slide presentation deck covering edge AI, Gemini 4 & 3 Genkit resilience, FinOps, and live demo flows. |
 | | 🌐 **[Interactive HTML Presentation](./docs/presentation/google-cloud-slides.html)** | Bespoke interactive web presentation deck with transitions and presenter controls. |
 | | 📄 **[Printable Vector PDF Presentation](./docs/presentation/google-cloud-slides.pdf)** | 16:9 high-resolution vector PDF slide export. |
@@ -118,6 +118,25 @@ Every operational workflow, data model, AI pipeline, and security policy is docu
 | **Subsystem Modules** | 💻 **[`web-app/` Client README](./web-app/README.md)** | Frontend React + Vite SPA structure, scripts, and edge worker bundles. |
 | | 🛠️ **[`admin/` Scripts README](./admin/README.md)** | Administrative automation scripts, role provisioning, and smoke test execution. |
 | | 🌐 **[`terraform/` IaC README](./terraform/README.md)** | Terraform infrastructure definitions, IAM roles, and Google Cloud resource provisioning. |
+
+---
+
+## ✍️ 10-Part Google Developer Expert (GDE) Technical Blog Series (DEV.to & GitHub)
+
+Explore our 10-part engineering deep-dive series featuring **30+ architectural, sequence, and state diagrams** and production code walkthroughs:
+
+| Part | Article Title | Live DEV.to & GitHub Links |
+| :--- | :--- | :--- |
+| **Part 1** | **Architecting a Scale-to-Zero Serverless AI Classroom with Gemini 4, Gemma 4 E2B & Firebase** | [📖 DEV.to](https://dev.to/gde/google-ai-classroom-part-1-solving-the-25-per-exam-problem-architecting-a-sub-002student-fjc) · [💻 GitHub](./docs/blogs/01-serverless-ai-classroom-architecture.md) |
+| **Part 2** | **Zero-Egress Browser Edge AI Investigator — Running Gemma 4 E2B, MediaPipe 3D Face Mesh & LiteRT Whisper in Web Workers** | [📖 DEV.to](https://dev.to/gde/google-ai-classroom-part-2-zero-egress-browser-edge-ai-investigator-running-gemma-4-e2b-2k6a) · [💻 GitHub](./docs/blogs/02-browser-edge-ai-gemma-4-mediapipe-whisper.md) |
+| **Part 3** | **Frontier Multimodal Orchestration — Right-Sizing Gemini 4 Argon (`gemini-4-argon`), Gemini 3.8 Flash & On-Device Gemma 4 E2B with Google Genkit** | [📖 DEV.to](https://dev.to/gde/google-ai-classroom-part-3-multimodal-orchestration-right-sizing-gemini-4-argon-gemini-38-538b) · [💻 GitHub](./docs/blogs/03-gemini-4-argon-genkit-multimodal-resilience.md) |
+| **Part 4** | **Defeating Proxy Attendance & Lab Keyloggers with WebAuthn Passkeys, Rotating HMAC QRs & GCIP Blocking Functions** | [📖 DEV.to](https://dev.to/gde/google-ai-classroom-part-4-defeating-proxy-attendance-lab-keyloggers-with-webauthn-passkeys-2gc0) · [💻 GitHub](./docs/blogs/04-webauthn-passkeys-rotating-hmac-qr-auth.md) |
+| **Part 5** | **Real-Time Multilingual Live Subtitles & Hong Kong Code-Switching with Gemini 4 / 3.8 & On-Device Gemma 4 E2B** | [📖 DEV.to](https://dev.to/gde/google-ai-classroom-part-5-real-time-multilingual-live-subtitles-hong-kong-code-switching-with-11ap) · [💻 GitHub](./docs/blogs/05-realtime-live-subtitles-code-switching-gemini-4-gemma-4.md) |
+| **Part 6** | **Low-Bandwidth Classroom Screen Broadcasting & Single-Pass Whole-Lecture Subtitles with Gemini 4 Argon** | [📖 DEV.to](https://dev.to/gde/google-ai-classroom-part-6-low-bandwidth-classroom-screen-broadcasting-single-pass-whole-lecture-1k0l) · [💻 GitHub](./docs/blogs/06-scalable-screen-broadcast-and-gemini-4-lecture-studio.md) |
+| **Part 7** | **Serverless Map-Reduce-Map Video Intelligence & Rubric-Driven Practical Task Auto-Grading with Gemini 4 Argon** | [📖 DEV.to](https://dev.to/gde/google-ai-classroom-part-7-serverless-map-reduce-map-video-intelligence-rubric-driven-practical-12on) · [💻 GitHub](./docs/blogs/07-serverless-map-reduce-video-and-gemini-4-rubric-grading.md) |
+| **Part 8** | **Multimodal AI Capstone Project Supervision — Streamlined Mobile 720p Demo Studio, 2-Stage Diarization & Fake-Log Auditing with Gemini 4** | [📖 DEV.to](https://dev.to/gde/google-ai-classroom-part-8-ai-project-supervision-streamlined-mobile-720p-demo-2-stage-3h98) · [💻 GitHub](./docs/blogs/08-multimodal-capstone-project-supervision-gemini-4.md) |
+| **Part 9** | **Gamified "Bingo" Active Presence Verification (4 Modes + 2 QR Anytime Attendance) & Zero-Trust Proctored Exam Mode on Google Cloud** | [📖 DEV.to](https://dev.to/gde/google-ai-classroom-part-9-gamified-bingo-active-presence-verification-zero-trust-proctored-52dg) · [💻 GitHub](./docs/blogs/09-gamified-bingo-active-presence-and-zero-trust-exam-mode.md) |
+| **Part 10** | **Green AI FinOps, Self-Cleaning Storage Lifecycles & 1-Command Terraform IaC for Multi-School Deployment** | [📖 DEV.to](https://dev.to/gde/google-ai-classroom-part-10-green-ai-finops-self-cleaning-storage-lifecycles-1-command-1fn) · [💻 GitHub](./docs/blogs/10-green-ai-finops-storage-lifecycle-and-terraform-iac.md) |
 
 ---
 
@@ -132,8 +151,8 @@ Provision all 27 GCP services, Firestore, Storage buckets, GCIP Auth, and Cloud 
 ### 💻 Local Development Setup
 ```bash
 # 1. Clone the repository
-git clone https://github.com/wongcyrus/Gemini-Multimodal-Classroom-Agent.git
-cd Gemini-Multimodal-Classroom-Agent
+git clone https://github.com/wongcyrus/Google-AI-Classroom.git
+cd Google-AI-Classroom
 
 # 2. Configure environment credentials
 cp web-app/.env.example web-app/.env
@@ -156,7 +175,7 @@ The development sandbox ([`it114115-dev-2026.web.app`](https://it114115-dev-2026
 
 ## 🧪 Testing & Quality Assurance
 
-The repository enforces strict continuous integration standards with **>1,580 tests and assertions**, exceeding the **80% line and branch coverage benchmark** (achieving **>82-88% line coverage** across frontend and backend):
+The repository enforces strict continuous integration standards with **>2,575 tests and assertions**, exceeding the **80% line and branch coverage benchmark** (achieving **~90% line coverage** across frontend and backend):
 
 ```bash
 # Run all test suites across the entire repository
@@ -166,10 +185,10 @@ npm test
 npm run test:coverage
 
 # Run specific sub-suites
-npm run test:frontend   # React component & utility unit tests (Vitest: 1,221 tests across 133 suites)
-npm run test:functions  # Cloud Functions AI & media logic tests (Vitest: 245 tests in ai_flows + 6 other codebases)
-npm run test:smoke      # Live end-to-end smoke tests (Node.js + Firebase Admin: 28 assertions)
-npm run test:security   # Real-token security rules verification (42 assertions)
+npm run test:frontend   # React component & utility unit tests (Vitest: 1,757+ tests across 154+ suites)
+npm run test:functions  # Cloud Functions AI & media logic tests (Vitest: 708+ tests in ai_flows + 6 other codebases)
+npm run test:smoke      # Live end-to-end smoke tests (Node.js + Firebase Admin: 35 assertions)
+npm run test:security   # Real-token security rules verification (75 assertions)
 ```
 
 For complete architectural details and coverage reports, see the **[🧪 Testing Strategy & Coverage Guide](./docs/testing-strategy-and-coverage.md)**.
