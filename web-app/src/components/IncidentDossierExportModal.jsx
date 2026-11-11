@@ -381,7 +381,7 @@ export default function IncidentDossierExportModal({
                         checked={selectedStudentUids.includes(s.id)}
                         onChange={() => handleStudentCheckbox(s.id)}
                       />
-                      <span>{s.name || s.email} ({s.email})</span>
+                      <span>{s.name || s.email}</span>
                     </label>
                   ))}
                 </div>

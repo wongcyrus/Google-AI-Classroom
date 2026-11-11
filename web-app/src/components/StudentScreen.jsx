@@ -13,7 +13,7 @@ const StudentScreen = ({ student, isSharing, screenshotData, screenshotUrl, sele
     <div 
       className={`student-screen ${isSharing ? 'sharing' : 'not-sharing'}`} 
       onClick={onClick}
-      title={`Click to inspect ${student.displayName || student.name || student.email}${student.email && student.displayName ? ` (${student.email})` : ''} in detail modal`}
+      title={`Click to inspect ${student.displayName || student.name || student.email} in detail modal`}
     >
       <div className="student-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', minWidth: 0, flex: 1, overflow: 'hidden' }}>

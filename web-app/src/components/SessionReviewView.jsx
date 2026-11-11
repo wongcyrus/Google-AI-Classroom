@@ -318,7 +318,7 @@ const SessionReviewView = ({ classId, startTime, endTime }) => {
               .map(student => (
                 <option key={student.uid} value={student.uid}>
                   {student.displayName && student.displayName !== student.email
-                    ? `${student.displayName} (${student.email})${student.studentClass ? ` - [${student.studentClass}]` : ''}`
+                    ? `${student.displayName}${student.studentClass ? ` - [${student.studentClass}]` : ''}`
                     : `${student.email}${student.studentClass ? ` - [${student.studentClass}]` : ''}`}
                 </option>
             ))}
