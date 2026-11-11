@@ -84,6 +84,46 @@
   flex-wrap: wrap;
 }
 
+.privacy-mode-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.28rem 0.7rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  border-radius: var(--radius-sm, 6px);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.privacy-mode-btn.privacy-active {
+  background: #ecfdf5;
+  color: #065f46;
+  border: 1px solid #10b981;
+  box-shadow: 0 1px 2px rgba(16, 185, 129, 0.15);
+}
+
+.privacy-mode-btn.privacy-active:hover {
+  background: #d1fae5;
+  border-color: #059669;
+}
+
+.privacy-mode-btn.privacy-inactive {
+  background: #f8fafc;
+  color: #475569;
+  border: 1px solid #cbd5e1;
+}
+
+.privacy-mode-btn.privacy-inactive:hover {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+}
+
+.privacy-mode-btn:active {
+  transform: scale(0.98);
+}
+
 .broadcast-launcher-btn,
 .student-preview-launcher-btn {
   display: inline-flex;

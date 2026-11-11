@@ -203,6 +203,7 @@ describe('MonitorView Component Suite', () => {
   };
 
   beforeEach(() => {
+    localStorage.setItem('teacher_privacy_mode', 'false');
     currentExamActive = false;
     currentLectureRecorderState = { ...defaultLectureRecorderState };
     mockBypassDocs = [];
@@ -278,14 +279,8 @@ describe('MonitorView Component Suite', () => {
 
     const privacyBtn = screen.getByRole('button', { name: /Toggle student privacy mask mode/i });
     expect(privacyBtn).toBeInTheDocument();
-    expect(privacyBtn).toHaveTextContent('Privacy: OFF');
-
-    await act(async () => {
-      fireEvent.click(privacyBtn);
-    });
-
+    // Default is MASKED (Privacy: ON)
     expect(privacyBtn).toHaveTextContent('Privacy: ON');
-    expect(localStorage.getItem('teacher_privacy_mode')).toBe('true');
 
     await act(async () => {
       fireEvent.click(privacyBtn);
@@ -293,6 +288,13 @@ describe('MonitorView Component Suite', () => {
 
     expect(privacyBtn).toHaveTextContent('Privacy: OFF');
     expect(localStorage.getItem('teacher_privacy_mode')).toBe('false');
+
+    await act(async () => {
+      fireEvent.click(privacyBtn);
+    });
+
+    expect(privacyBtn).toHaveTextContent('Privacy: ON');
+    expect(localStorage.getItem('teacher_privacy_mode')).toBe('true');
   });
 
   it('handles lesson change and go live button click', () => {

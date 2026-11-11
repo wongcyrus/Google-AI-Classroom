@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import {
   normalizeStudentEmail,
   maskStudentId,
@@ -6,6 +6,9 @@ import {
   maskChineseName,
   maskEnglishWord,
   maskStudentName,
+  isPrivacyModeActive,
+  setPrivacyMode,
+  togglePrivacyMode,
   getStudentProfile,
   getStudentDisplayName,
   formatStudentIdentity,
@@ -117,12 +120,17 @@ describe('studentDisplayUtils Utility', () => {
     });
 
     it('formats student identity with displayName and hasCustomProfile flag', () => {
-      const identity = formatStudentIdentity('chan.tm@vtc.edu.hk', profileMap);
+      const identity = formatStudentIdentity('chan.tm@vtc.edu.hk', profileMap, { privacyMode: false });
       expect(identity.displayName).toBe('David (Chan Tai Man)');
       expect(identity.fullName).toBe('Chan Tai Man');
       expect(identity.hasCustomProfile).toBe(true);
 
-      const emptyIdentity = formatStudentIdentity('empty@school.edu', profileMap);
+      const maskedIdentity = formatStudentIdentity('chan.tm@vtc.edu.hk', profileMap, { privacyMode: true });
+      expect(maskedIdentity.displayName).toBe('D**** (C*** T** M**)');
+      expect(maskedIdentity.fullName).toBe('C*** T** M**');
+      expect(maskedIdentity.isPrivacyMode).toBe(true);
+
+      const emptyIdentity = formatStudentIdentity('empty@school.edu', profileMap, { privacyMode: false });
       expect(emptyIdentity.displayName).toBe('empty@school.edu');
       expect(emptyIdentity.hasCustomProfile).toBe(false);
     });
@@ -161,6 +169,10 @@ describe('studentDisplayUtils Utility', () => {
   });
 
   describe('getStudentDisplayName - Multi-Tier Fallback Hierarchy', () => {
+    beforeEach(() => {
+      localStorage.setItem('teacher_privacy_mode', 'false');
+    });
+
     const sampleProfiles = {
       // 1. Nickname + Student Name
       'david@school.edu': {
@@ -252,6 +264,51 @@ describe('studentDisplayUtils Utility', () => {
       expect(getStudentDisplayName('', {})).toBe('Unknown Student');
       expect(getStudentDisplayName(null, {})).toBe('Unknown Student');
       expect(getStudentDisplayName(undefined, {})).toBe('Unknown Student');
+    });
+  });
+
+  describe('Privacy Mode Enforcement (Default is Masked Across UI)', () => {
+    const sampleProfiles = {
+      'david@school.edu': {
+        studentName: 'Chan Tai Man',
+        nickname: 'David',
+      },
+      'kelly@school.edu': {
+        studentName: 'Wong Ka Yan',
+      },
+    };
+
+    beforeEach(() => {
+      localStorage.clear();
+    });
+
+    it('defaults to masked mode when localStorage has no entry', () => {
+      expect(isPrivacyModeActive()).toBe(true);
+      expect(getStudentDisplayName('260047062@stu.vtc.edu.hk', {})).toBe('Student ***7062');
+      expect(getStudentDisplayName('david@school.edu', sampleProfiles)).toBe('D**** (C*** T** M**)');
+      expect(getStudentDisplayName('kelly@school.edu', sampleProfiles)).toBe('W*** K* Y**');
+    });
+
+    it('toggles to unmasked mode and persists to localStorage', () => {
+      togglePrivacyMode();
+      expect(isPrivacyModeActive()).toBe(false);
+      expect(localStorage.getItem('teacher_privacy_mode')).toBe('false');
+      expect(getStudentDisplayName('david@school.edu', sampleProfiles)).toBe('David (Chan Tai Man)');
+
+      togglePrivacyMode();
+      expect(isPrivacyModeActive()).toBe(true);
+      expect(localStorage.getItem('teacher_privacy_mode')).toBe('true');
+      expect(getStudentDisplayName('david@school.edu', sampleProfiles)).toBe('D**** (C*** T** M**)');
+    });
+
+    it('allows programmatically setting privacy mode', () => {
+      setPrivacyMode(false);
+      expect(isPrivacyModeActive()).toBe(false);
+      expect(getStudentDisplayName('david@school.edu', sampleProfiles)).toBe('David (Chan Tai Man)');
+
+      setPrivacyMode(true);
+      expect(isPrivacyModeActive()).toBe(true);
+      expect(getStudentDisplayName('david@school.edu', sampleProfiles)).toBe('D**** (C*** T** M**)');
     });
   });
 

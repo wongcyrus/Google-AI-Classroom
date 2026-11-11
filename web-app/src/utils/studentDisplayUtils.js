@@ -8,7 +8,82 @@
  * - Single-point-of-truth display name formatting across teacher and student views.
  */
 
+import { useState, useEffect, useCallback } from 'react';
 import { exportToExcel, readExcelFile } from './exportUtils';
+
+/**
+ * Checks whether Masked Privacy Mode is currently active.
+ * Default is TRUE (Masked) unless explicitly set to 'false' in localStorage.
+ * @param {object|boolean} [options={}]
+ * @returns {boolean}
+ */
+export const isPrivacyModeActive = (options = {}) => {
+  if (typeof options === 'boolean') return options;
+  if (options && typeof options.privacyMode === 'boolean') return options.privacyMode;
+
+  if (typeof window !== 'undefined' && window.localStorage) {
+    try {
+      const saved = window.localStorage.getItem('teacher_privacy_mode');
+      return saved !== 'false';
+    } catch {
+      return true;
+    }
+  }
+  return true;
+};
+
+/**
+ * Sets Masked Privacy Mode and broadcasts the change across all UI components.
+ * @param {boolean} enabled
+ */
+export const setPrivacyMode = (enabled) => {
+  const active = Boolean(enabled);
+  if (typeof window !== 'undefined' && window.localStorage) {
+    try {
+      window.localStorage.setItem('teacher_privacy_mode', active ? 'true' : 'false');
+      window.dispatchEvent(new CustomEvent('teacher_privacy_mode_changed', { detail: { privacyMode: active } }));
+    } catch {}
+  }
+};
+
+/**
+ * Toggles Masked Privacy Mode and broadcasts the change.
+ * @returns {boolean}
+ */
+export const togglePrivacyMode = () => {
+  const next = !isPrivacyModeActive();
+  setPrivacyMode(next);
+  return next;
+};
+
+/**
+ * React hook to synchronize Privacy Mode state across all tabs, headers, and views.
+ * @returns {[boolean, () => void]}
+ */
+export const usePrivacyMode = () => {
+  const [privacyMode, setLocalPrivacyMode] = useState(isPrivacyModeActive);
+
+  useEffect(() => {
+    const handleUpdate = (e) => {
+      const next = typeof e?.detail?.privacyMode === 'boolean' ? e.detail.privacyMode : isPrivacyModeActive();
+      setLocalPrivacyMode(next);
+    };
+
+    window.addEventListener('teacher_privacy_mode_changed', handleUpdate);
+    window.addEventListener('storage', handleUpdate);
+    return () => {
+      window.removeEventListener('teacher_privacy_mode_changed', handleUpdate);
+      window.removeEventListener('storage', handleUpdate);
+    };
+  }, []);
+
+  const toggle = useCallback(() => {
+    const next = togglePrivacyMode();
+    setLocalPrivacyMode(next);
+  }, []);
+
+  return [privacyMode, toggle];
+};
 
 /**
  * Normalizes an email address by trimming whitespace and converting to lowercase.
@@ -299,12 +374,7 @@ export const getStudentProfile = (studentOrEmail, profileMap = {}) => {
  * @returns {string}
  */
 export const getStudentDisplayName = (studentOrEmail, profileMap = {}, options = {}) => {
-  let isPrivacy = false;
-  if (typeof options === 'boolean') {
-    isPrivacy = options;
-  } else if (options && typeof options.privacyMode === 'boolean') {
-    isPrivacy = options.privacyMode;
-  }
+  const isPrivacy = isPrivacyModeActive(options);
 
   const profile = getStudentProfile(studentOrEmail, profileMap);
   const { studentName, nickname, email, uid } = profile;
@@ -352,7 +422,7 @@ export const getStudentDisplayName = (studentOrEmail, profileMap = {}, options =
  * @returns {object}
  */
 export const formatStudentIdentity = (studentOrEmail, profileMap = {}, options = {}) => {
-  const isPrivacy = typeof options === 'boolean' ? options : Boolean(options && options.privacyMode);
+  const isPrivacy = isPrivacyModeActive(options);
   const profile = getStudentProfile(studentOrEmail, profileMap);
   const displayName = getStudentDisplayName(studentOrEmail, profileMap, options);
   const hasCustomProfile = Boolean(
@@ -555,7 +625,7 @@ export const parseStudentRosterRows = (rawRows = []) => {
       hasProfile,
     };
 
-    studentRecord.displayName = getStudentDisplayName(studentRecord);
+    studentRecord.displayName = getStudentDisplayName(studentRecord, {}, { privacyMode: false });
 
     students.push(studentRecord);
     emailSet.add(cleanEmail);

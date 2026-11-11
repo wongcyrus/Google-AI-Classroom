@@ -25,7 +25,7 @@ import { DEFAULT_LIVE_SUBTITLE_TRANSLATION_PROMPT } from '../constants/promptReg
 import useTeacherScreenBroadcast from '../hooks/useTeacherScreenBroadcast';
 import useLectureRecorder from '../hooks/useLectureRecorder';
 import LectureRecordingsView from './LectureRecordingsView';
-import { getStudentDisplayName, getStudentProfile, maskStudentEmail } from '../utils/studentDisplayUtils';
+import { getStudentDisplayName, getStudentProfile, maskStudentEmail, usePrivacyMode } from '../utils/studentDisplayUtils';
 import BingoResultsView from './BingoResultsView';
 import LectureQrBingoModal from './monitor/LectureQrBingoModal';
 
@@ -104,24 +104,7 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
   const [isGridHovered, setIsGridHovered] = useState(false);
   const studentsGridRef = useRef(null);
 
-  const [isPrivacyMode, setIsPrivacyMode] = useState(() => {
-    try {
-      const saved = localStorage.getItem('teacher_privacy_mode');
-      return saved === 'true';
-    } catch {
-      return false;
-    }
-  });
-
-  const handleTogglePrivacyMode = useCallback(() => {
-    setIsPrivacyMode(prev => {
-      const next = !prev;
-      try {
-        localStorage.setItem('teacher_privacy_mode', String(next));
-      } catch {}
-      return next;
-    });
-  }, []);
+  const [isPrivacyMode, handleTogglePrivacyMode] = usePrivacyMode();
 
   const handleAutoRollChange = (e) => {
     const val = e.target.value;
@@ -1485,8 +1468,8 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
 
       return {
         id: uid,
-        email: isPrivacyMode ? maskStudentEmail(email) : email,
-        rawEmail: email,
+        email: email,
+        maskedEmail: maskStudentEmail(email),
         name: friendlyName,
         displayName: friendlyName,
         profile: studentProfile,

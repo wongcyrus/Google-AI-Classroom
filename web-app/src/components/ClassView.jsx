@@ -26,6 +26,7 @@ import LectureRecordingsView from './LectureRecordingsView';
 import TasksManagementView from './tasks/TasksManagementView';
 import ProjectMeetingsView from './meetings/ProjectMeetingsView';
 import { openProjectorQrPopup } from './broadcast/PresentationQrModal';
+import { usePrivacyMode } from '../utils/studentDisplayUtils';
 
 import './ClassView.css';
 
@@ -33,6 +34,7 @@ const ClassView = ({ user }) => {
   const { classId } = useParams();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  const [isPrivacyMode, togglePrivacyMode] = usePrivacyMode();
 
   // URL-synced tab state
   const mainTab = searchParams.get('tab') || 'monitor';
@@ -503,6 +505,17 @@ const ClassView = ({ user }) => {
           >
             <span>🧪</span>
             <span>Preview as Student ↗</span>
+          </button>
+
+          <button
+            type="button"
+            className={`privacy-mode-btn ${isPrivacyMode ? 'privacy-active' : 'privacy-inactive'}`}
+            onClick={togglePrivacyMode}
+            title={isPrivacyMode ? 'Masked Privacy Mode is ON (Names & IDs masked across all views). Click to reveal full names.' : 'Privacy Mode is OFF (Full names shown). Click to activate Masked Privacy Mode.'}
+            aria-label="Toggle student privacy mask mode"
+            aria-pressed={isPrivacyMode}
+          >
+            <span>{isPrivacyMode ? '🛡️ Privacy: ON' : '👁️ Privacy: OFF'}</span>
           </button>
 
           {teacherClasses.length > 1 && (

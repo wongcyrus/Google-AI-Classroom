@@ -562,5 +562,29 @@ describe('ClassView Component Full Suite', () => {
     expect(switcher).toBeInTheDocument();
     expect(await screen.findByText(/🟢 \[Live Now\] Cloud Computing/i)).toBeInTheDocument();
   });
+
+  it('renders Privacy Mode toggle in Class Hub header and toggles state across tabs', async () => {
+    localStorage.clear();
+    render(
+      <MemoryRouter initialEntries={['/class/CLASS-101?tab=monitor']}>
+        <Routes>
+          <Route path="/class/:classId" element={<ClassView user={mockUser} />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    const privacyBtn = screen.getByRole('button', { name: /Toggle student privacy mask mode/i });
+    expect(privacyBtn).toBeInTheDocument();
+    // Default is ON (Masked)
+    expect(privacyBtn).toHaveTextContent('Privacy: ON');
+
+    fireEvent.click(privacyBtn);
+    expect(privacyBtn).toHaveTextContent('Privacy: OFF');
+    expect(localStorage.getItem('teacher_privacy_mode')).toBe('false');
+
+    fireEvent.click(privacyBtn);
+    expect(privacyBtn).toHaveTextContent('Privacy: ON');
+    expect(localStorage.getItem('teacher_privacy_mode')).toBe('true');
+  });
 });
 
