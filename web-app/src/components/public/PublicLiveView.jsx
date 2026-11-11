@@ -54,6 +54,7 @@ export default function PublicLiveView() {
   });
   const [subtitleSize, setSubtitleSize] = useState('md'); // 'sm' | 'md' | 'lg'
   const [showBilingual, setShowBilingual] = useState(true);
+  const [isCcEnabled, setIsCcEnabled] = useState(true);
 
   // Viewport & zoom state
   const [zoomLevel, setZoomLevel] = useState(1); // 1 | 1.5 | 2
@@ -408,6 +409,15 @@ export default function PublicLiveView() {
           <div className="stream-overlay-hud">
             <button
               type="button"
+              className={`hud-btn yt-cc-btn ${isCcEnabled ? 'active' : ''}`}
+              onClick={() => setIsCcEnabled((c) => !c)}
+              title={isCcEnabled ? 'Turn off captions (CC)' : 'Turn on captions (CC)'}
+              aria-label="Toggle Closed Captions"
+            >
+              CC
+            </button>
+            <button
+              type="button"
               className="hud-btn"
               onClick={cycleZoom}
               title="Toggle Zoom (1x, 1.5x, 2x)"
@@ -432,31 +442,30 @@ export default function PublicLiveView() {
             </button>
           </div>
         )}
-      </main>
 
-      {/* Real-Time Live Subtitle Card at Bottom */}
-      {(currentTranslation || originalTranscript) && (
-        <footer className="public-subtitles-card">
-          <div className="subtitles-header-row">
-            <span>🗣️ Live Captions &amp; AI Translation ({getLanguageLabel(selectedLang)})</span>
-            {subtitleData?.sourceLang && (
-              <span style={{ fontSize: '0.72rem', color: '#64748b' }}>
-                Speaker: {getLanguageLabel(subtitleData.sourceLang)}
-              </span>
+        {/* YouTube-Style Live Closed Captions Cue Overlay (Overlaps Screen View) */}
+        {isCcEnabled && (currentTranslation || originalTranscript) && (
+          <div
+            className={`public-youtube-cc-overlay font-${subtitleSize}`}
+            aria-live="polite"
+            aria-label="Closed Captions Overlay"
+          >
+            {/* Original Spoken Line (Bilingual Mode) */}
+            {showBilingual && currentTranslation && originalTranscript && (
+              <div className="youtube-cc-cue original">
+                <span className="youtube-cc-text">{originalTranscript}</span>
+              </div>
             )}
+
+            {/* Translated / Main Line (YouTube-style bright yellow highlight) */}
+            <div className="youtube-cc-cue translated">
+              <span className="youtube-cc-text highlight">
+                {currentTranslation || originalTranscript}
+              </span>
+            </div>
           </div>
-
-          <p className={`subtitles-body-text size-${subtitleSize}`}>
-            {currentTranslation || originalTranscript}
-          </p>
-
-          {showBilingual && currentTranslation && originalTranscript && (
-            <p className="subtitles-original-sub">
-              {originalTranscript}
-            </p>
-          )}
-        </footer>
-      )}
+        )}
+      </main>
     </div>
   );
 }

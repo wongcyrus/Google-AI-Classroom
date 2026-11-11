@@ -4,11 +4,13 @@
   display: flex;
   flex-direction: column;
   width: 100%;
-  min-height: 100vh;
+  height: 100vh;
+  height: 100dvh;
+  max-height: 100dvh;
   background-color: #0b0f19;
   color: #f8fafc;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  overflow-x: hidden;
+  overflow: hidden;
   box-sizing: border-box;
 }
 
@@ -17,13 +19,14 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0.75rem 1rem;
+  padding: 0.5rem 0.75rem;
   background: rgba(15, 23, 42, 0.95);
   backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  position: sticky;
-  top: 0;
+  position: relative;
   z-index: 50;
+  flex-shrink: 0;
 }
 
 .public-live-brand {
@@ -92,20 +95,22 @@
 /* Stream Area */
 .public-stream-stage {
   flex: 1;
+  min-height: 0;
+  height: 100%;
+  width: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   position: relative;
   background: #000000;
-  min-height: calc(100vh - 180px);
   overflow: hidden;
 }
 
 .stream-frame-img {
   width: 100%;
   height: 100%;
-  max-height: 82vh;
+  max-height: 100%;
   object-fit: contain;
   display: block;
   user-select: none;
@@ -154,47 +159,101 @@
   background: rgba(255, 255, 255, 0.15);
 }
 
-/* Floating Subtitle Strip at bottom of stream */
-.public-subtitles-card {
-  position: sticky;
-  bottom: 0;
+.hud-btn.yt-cc-btn {
+  font-weight: 800;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 4px;
+  padding: 1px 6px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #cbd5e1;
+}
+
+.hud-btn.yt-cc-btn.active {
+  background: #2563eb;
+  border-color: #60a5fa;
+  color: #ffffff;
+}
+
+/* YouTube-Style Live Closed Captions Cue Overlay (Overlaps Screen View) */
+.public-youtube-cc-overlay {
+  position: absolute;
+  bottom: 24px;
   left: 0;
   right: 0;
-  background: rgba(15, 23, 42, 0.94);
-  backdrop-filter: blur(12px);
-  border-top: 1px solid rgba(255, 255, 255, 0.15);
-  padding: 0.75rem 1rem;
-  z-index: 40;
-}
-
-.subtitles-header-row {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: space-between;
-  margin-bottom: 0.35rem;
-  font-size: 0.74rem;
-  color: #94a3b8;
+  justify-content: flex-end;
+  gap: 5px;
+  padding: 0 16px;
+  pointer-events: none;
+  z-index: 30;
+  text-align: center;
+  transition: bottom 0.2s ease;
 }
 
-.subtitles-body-text {
-  font-size: 1.05rem;
-  font-weight: 600;
-  color: #f8fafc;
+.public-youtube-cc-overlay .youtube-cc-cue {
+  display: inline-block;
+  max-width: 95%;
+  text-align: center;
+}
+
+.public-youtube-cc-overlay .youtube-cc-text {
+  display: inline;
+  padding: 4px 10px;
+  border-radius: 4px;
   line-height: 1.45;
-  margin: 0;
-  min-height: 1.5em;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.95);
+  font-family: inherit;
 }
 
-.subtitles-body-text.size-sm { font-size: 0.9rem; }
-.subtitles-body-text.size-md { font-size: 1.1rem; }
-.subtitles-body-text.size-lg { font-size: 1.35rem; font-weight: 700; }
+.public-youtube-cc-overlay .youtube-cc-cue.original .youtube-cc-text {
+  font-size: 0.84rem;
+  color: #e2e8f0;
+  opacity: 0.92;
+  background-color: rgba(15, 23, 42, 0.85);
+}
 
-.subtitles-original-sub {
-  font-size: 0.78rem;
-  color: #cbd5e1;
-  margin-top: 0.25rem;
-  font-style: italic;
-  opacity: 0.85;
+.public-youtube-cc-overlay .youtube-cc-cue.translated .youtube-cc-text {
+  font-size: 1.08rem;
+  font-weight: 600;
+  color: #ffe600; /* YouTube bright caption yellow */
+  background-color: rgba(8, 8, 8, 0.88);
+}
+
+/* Font Sizing variants */
+.public-youtube-cc-overlay.font-sm .youtube-cc-cue.translated .youtube-cc-text {
+  font-size: 0.90rem;
+}
+.public-youtube-cc-overlay.font-sm .youtube-cc-cue.original .youtube-cc-text {
+  font-size: 0.76rem;
+}
+
+.public-youtube-cc-overlay.font-md .youtube-cc-cue.translated .youtube-cc-text {
+  font-size: 1.08rem;
+}
+.public-youtube-cc-overlay.font-md .youtube-cc-cue.original .youtube-cc-text {
+  font-size: 0.84rem;
+}
+
+.public-youtube-cc-overlay.font-lg .youtube-cc-cue.translated .youtube-cc-text {
+  font-size: 1.30rem;
+}
+.public-youtube-cc-overlay.font-lg .youtube-cc-cue.original .youtube-cc-text {
+  font-size: 0.98rem;
+}
+
+@media (max-width: 640px) {
+  .public-youtube-cc-overlay {
+    bottom: 12px;
+    padding: 0 8px;
+    gap: 4px;
+  }
+  .public-youtube-cc-overlay .youtube-cc-cue {
+    max-width: 98%;
+  }
 }
 
 /* PIN Verification Card */
@@ -203,6 +262,8 @@
   align-items: center;
   justify-content: center;
   flex: 1;
+  min-height: 0;
+  overflow-y: auto;
   padding: 1.5rem;
   background: radial-gradient(circle at 50% 20%, #1e293b, #0b0f19);
 }

@@ -190,6 +190,26 @@ describe('PublicLiveView Component', () => {
 
     await waitFor(() => {
       expect(screen.getByText('大家好，欢迎各位')).toBeInTheDocument();
+      // Verifies YouTube CC overlay container is present and no footer panel exists
+      expect(document.querySelector('.public-youtube-cc-overlay')).toBeInTheDocument();
+      expect(document.querySelector('.public-subtitles-card')).toBeNull();
+    });
+
+    // Test YouTube-style CC toggle button
+    const ccBtn = screen.getByRole('button', { name: /Toggle Closed Captions/i });
+    expect(ccBtn).toBeInTheDocument();
+
+    // Click to hide CC
+    fireEvent.click(ccBtn);
+    await waitFor(() => {
+      expect(document.querySelector('.public-youtube-cc-overlay')).toBeNull();
+    });
+
+    // Click to re-enable CC
+    fireEvent.click(ccBtn);
+    await waitFor(() => {
+      expect(document.querySelector('.public-youtube-cc-overlay')).toBeInTheDocument();
+      expect(screen.getByText('大家好，欢迎各位')).toBeInTheDocument();
     });
   });
 
