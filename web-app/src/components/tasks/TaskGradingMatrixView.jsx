@@ -5,7 +5,7 @@ import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../../firebase-config';
 import StudentBadge from '../common/StudentBadge';
 import { exportTaskGradingToExcel } from '../../utils/exportUtils';
-import { getStudentDisplayName, getStudentProfile } from '../../utils/studentDisplayUtils';
+import { getStudentDisplayName, getStudentProfile, maskStudentEmail, maskStudentName, isPrivacyModeActive } from '../../utils/studentDisplayUtils';
 import { useGoogleDrive } from '../../hooks/useGoogleDrive';
 import DriveBackupProgressModal from '../DriveBackupProgressModal';
 import './tasks.css';
@@ -223,7 +223,7 @@ const TaskGradingMatrixView = ({
         ...sub,
         studentUid: resolvedUid,
         email: resolvedEmail,
-        displayName: displayName || resolvedEmail,
+        displayName: displayName || (isPrivacyModeActive() ? maskStudentEmail(resolvedEmail) : resolvedEmail),
         cohort: profile.studentClass || profile.cohort || 'Default',
         programme: profile.programme || '',
         status: sub.status || 'missing',
@@ -653,11 +653,13 @@ const TaskGradingMatrixView = ({
     }
 
     setShowBackupModal(true);
+    const isPrivacy = isPrivacyModeActive();
+    const safeSubTitle = sub.displayName || (isPrivacy ? maskStudentEmail(sub.email) : sub.email);
     setBackupModalState({
       status: 'uploading',
       completedCount: 0,
       totalCount: 1,
-      currentFileName: sub.email || sub.displayName,
+      currentFileName: safeSubTitle,
       overallPercentage: 0,
       currentPercentage: 0,
       isAborted: false,
@@ -679,7 +681,7 @@ const TaskGradingMatrixView = ({
           ...prev,
           completedCount: status === 'success' ? 1 : 0,
           totalCount: 1,
-          currentFileName: sub.email || sub.displayName,
+          currentFileName: safeSubTitle,
           overallPercentage: percentage,
           currentPercentage: percentage,
           error: error || null,
@@ -696,13 +698,15 @@ const TaskGradingMatrixView = ({
 
   const handlePlayPreview = async (sub, seekToSeconds = null) => {
     setPreviewVideoSeekSeconds(seekToSeconds);
+    const isPrivacy = isPrivacyModeActive();
+    const previewTitle = `${sub.displayName || (isPrivacy ? maskStudentEmail(sub.email) : sub.email)} - Attempt Video`;
     if (sub.driveWebViewLink && !sub.videoUrl && !sub.videoPath) {
       window.open(sub.driveWebViewLink, '_blank', 'noopener,noreferrer');
       return;
     }
 
     if (sub.videoUrl) {
-      setPreviewVideoTitle(`${sub.displayName || sub.email} - Attempt Video`);
+      setPreviewVideoTitle(previewTitle);
       setPreviewVideoUrl(sub.videoUrl);
       return;
     }
@@ -716,7 +720,7 @@ const TaskGradingMatrixView = ({
 
     try {
       setIsLoadingPreview(true);
-      setPreviewVideoTitle(`${sub.displayName || sub.email} - Attempt Video`);
+      setPreviewVideoTitle(previewTitle);
       const storage = getStorage();
       const videoRef = ref(storage, sub.videoPath);
       const url = await getDownloadURL(videoRef);
@@ -1203,7 +1207,7 @@ const TaskGradingMatrixView = ({
             <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center bg-gray-50 rounded-t-2xl">
               <div>
                 <h3 className="font-bold text-gray-900 flex items-center gap-2">
-                  <span>🧑‍🎓</span> {activeSelectedSubmission.displayName || activeSelectedSubmission.email}
+                  <span>🧑‍🎓</span> {activeSelectedSubmission.displayName || (isPrivacyModeActive() ? maskStudentEmail(activeSelectedSubmission.email) : activeSelectedSubmission.email)}
                 </h3>
                 <p className="text-xs text-gray-500">
                   Attempt {activeSelectedSubmission.attemptsCount} • Final Score: {activeSelectedSubmission.effectiveScore} /{' '}

@@ -6,6 +6,7 @@ import { collection, addDoc, serverTimestamp, query, where, orderBy, limit, onSn
 import { ref, getDownloadURL } from 'firebase/storage';
 import useWebRTCPeekTeacher from '../hooks/useWebRTCPeekTeacher';
 import AudioTranscriptModal from './AudioTranscriptModal';
+import { maskStudentEmail, maskStudentName, isPrivacyModeActive } from '../utils/studentDisplayUtils';
 
 const IndividualStudentView = ({ 
   student, 
@@ -17,6 +18,7 @@ const IndividualStudentView = ({
   selectedChannel = 'both',
   problemFilter = 'all',
   captureMode = 'dual',
+  isPrivacyMode,
   onClose 
 }) => {
   const [message, setMessage] = useState('');
@@ -236,6 +238,14 @@ const IndividualStudentView = ({
     return null;
   }
 
+  const isPrivacy = isPrivacyMode !== undefined ? isPrivacyMode : isPrivacyModeActive();
+  const rawIdentifier = student?.displayName || student?.name || student?.email || 'Student';
+  const displayIdentifier = isPrivacy ? maskStudentName(rawIdentifier) : rawIdentifier;
+  const safeEmail = isPrivacy ? maskStudentEmail(student?.email || '') : (student?.email || '');
+  const safeAltIdentifier = isPrivacy
+    ? (student?.displayName || student?.name ? maskStudentName(student.displayName || student.name) : (student?.email ? maskStudentEmail(student.email) : 'Student'))
+    : (student?.displayName || student?.name || student?.email || 'Student');
+
   const screenUrl = screenshotData?.screen?.url || (screenshotUrl && activeTab !== 'webcam' ? screenshotUrl : null);
   const webcamUrl = screenshotData?.webcam?.url;
 
@@ -256,7 +266,7 @@ const IndividualStudentView = ({
         timestamp: serverTimestamp(),
       });
       setMessage('');
-      alert(`Message sent to ${student.email}`);
+      alert(`Message sent to ${safeEmail}`);
     } catch (error) {
       console.error('Error sending message: ', error);
     }
@@ -269,7 +279,7 @@ const IndividualStudentView = ({
         message: text,
         timestamp: serverTimestamp(),
       });
-      alert(`Intervention sent to ${student.email}`);
+      alert(`Intervention sent to ${safeEmail}`);
     } catch (error) {
       console.error('Error sending intervention: ', error);
     }
@@ -306,12 +316,12 @@ const IndividualStudentView = ({
       try {
         const response = await fetch(targetUrl);
         const blob = await response.blob();
-        const file = new File([blob], `${student.email}-screenshot.png`, { type: blob.type });
+        const file = new File([blob], `${isPrivacy ? 'student' : (student.email || 'student')}-screenshot.png`, { type: blob.type });
 
         await navigator.share({
           files: [file],
-          title: `Screenshot of ${student.email}`,
-          text: `Here is a screenshot of ${student.email}.`,
+          title: `Screenshot of ${displayIdentifier}`,
+          text: `Here is a screenshot of ${displayIdentifier}.`,
         });
       } catch (error) {
         console.error('Error sharing:', error);
@@ -344,7 +354,7 @@ const IndividualStudentView = ({
         <div className="individual-student-view-header">
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-              <h2 style={{ margin: 0, color: '#0f172a' }}>{student.displayName || student.name || student.email}</h2>
+              <h2 style={{ margin: 0, color: '#0f172a' }}>{displayIdentifier}</h2>
               {student.studentClass && (
                 <span className="student-class-badge" style={{ fontSize: '0.75rem', fontWeight: 700, padding: '0.15rem 0.55rem', borderRadius: '9999px', backgroundColor: '#ede9fe', color: '#4338ca', border: '1px solid #c4b5fd' }}>
                   {student.studentClass}
@@ -638,7 +648,7 @@ const IndividualStudentView = ({
                   {screenUrl && <button onClick={() => handleShare(screenUrl)} className="btn-mini">Share Screen</button>}
                 </div>
                 {screenUrl ? (
-                  <img src={screenUrl} alt={`Screen from ${student.email}`} />
+                  <img src={screenUrl} alt={`Screen from ${safeAltIdentifier}`} />
                 ) : (
                   <div className="feed-card-empty">No Screen Stream Available</div>
                 )}
@@ -650,7 +660,7 @@ const IndividualStudentView = ({
                   {webcamUrl && <button onClick={() => handleShare(webcamUrl)} className="btn-mini">Share Webcam</button>}
                 </div>
                 {webcamUrl ? (
-                  <img src={webcamUrl} alt={`Webcam from ${student.email}`} />
+                  <img src={webcamUrl} alt={`Webcam from ${safeAltIdentifier}`} />
                 ) : (
                   <div className="feed-card-empty">No Webcam Stream Available</div>
                 )}
@@ -659,7 +669,7 @@ const IndividualStudentView = ({
           ) : activeTab === 'screen' ? (
             <div className="individual-single-feed">
               {screenUrl ? (
-                <img src={screenUrl} alt={`Screen from ${student.email}`} />
+                <img src={screenUrl} alt={`Screen from ${safeAltIdentifier}`} />
               ) : (
                 <p className="no-feed-text">No Screen Stream Available</p>
               )}
@@ -667,7 +677,7 @@ const IndividualStudentView = ({
           ) : (
             <div className="individual-single-feed">
               {webcamUrl ? (
-                <img src={webcamUrl} alt={`Webcam from ${student.email}`} />
+                <img src={webcamUrl} alt={`Webcam from ${safeAltIdentifier}`} />
               ) : (
                 <p className="no-feed-text">No Webcam Stream Available</p>
               )}
@@ -843,7 +853,8 @@ const IndividualStudentView = ({
           isOpen={isTranscriptModalOpen}
           onClose={() => setIsTranscriptModalOpen(false)}
           studentUid={student.id}
-          studentName={student.name || student.email}
+          studentName={displayIdentifier}
+          studentEmail={safeEmail}
           audioUrl={currentAudioUrl}
           snapshotUrl={webcamUrl || screenUrl}
           transcriptSegments={currentAudio?.transcriptSegments || []}

@@ -8,7 +8,7 @@ import usePaginatedQuery from '../hooks/useCollectionQuery';
 import VideoPlayerModal from './VideoPlayerModal';
 import { formatSessionTime } from './VideoTable';
 import { exportToExcel } from '../utils/exportUtils';
-import { getStudentDisplayName, getStudentProfile, maskStudentName } from '../utils/studentDisplayUtils';
+import { getStudentDisplayName, getStudentProfile, maskStudentName, maskStudentEmail, isPrivacyModeActive } from '../utils/studentDisplayUtils';
 
 const SessionReviewView = ({ classId, startTime, endTime }) => {
   console.log('SessionReviewView rendered for class:', classId);
@@ -410,7 +410,14 @@ const SessionReviewView = ({ classId, startTime, endTime }) => {
                             />
                           </td>
                           <td>{job.id}</td>
-                          <td>{job.studentEmail || 'All Students'}</td>
+                          <td>
+                            {(() => {
+                              if (!job.studentEmail) return 'All Students';
+                              const st = students.find(s => s.uid === job.studentUid || s.email === job.studentEmail);
+                              if (st?.displayName) return st.displayName;
+                              return isPrivacyModeActive() ? maskStudentEmail(job.studentEmail) : job.studentEmail;
+                            })()}
+                          </td>
                           <td>{formatSessionTime(job.startTime, job.endTime, job.createdAt)}</td>
                           <td>
                             {job.status === 'failed' ? (

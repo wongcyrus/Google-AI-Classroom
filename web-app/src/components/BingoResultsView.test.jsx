@@ -67,6 +67,7 @@ vi.mock('firebase/firestore', () => ({
 describe('BingoResultsView Component', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.setItem('teacher_privacy_mode', 'false');
   });
 
   const sampleRecords = [
@@ -703,6 +704,20 @@ describe('BingoResultsView Component', () => {
     // Teacher can explicitly switch to 'all'
     fireEvent.change(roundSelect, { target: { value: 'all' } });
     expect(roundSelect.value).toBe('all');
+  });
+
+  it('masks student email and name in passkey reset confirmation when privacy mode is active', () => {
+    localStorage.setItem('teacher_privacy_mode', 'true');
+    render(<BingoResultsView classId="IT114115-Demo" />);
+    triggerSnapshot(sampleRecords);
+
+    const resetButtons = screen.getAllByTestId('btn-reset-passkey-student_1');
+    fireEvent.click(resetButtons[0]);
+
+    // Confirmation dialog should be open with masked info
+    expect(screen.getByText(/Reset Student Passkey/i)).toBeInTheDocument();
+    expect(screen.getByText(/st\*\*\*@stu\.vtc\.edu\.hk/i)).toBeInTheDocument();
+    expect(screen.queryByText('student1@stu.vtc.edu.hk')).toBeNull();
   });
 });
 

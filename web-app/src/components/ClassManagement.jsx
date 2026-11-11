@@ -22,6 +22,9 @@ import {
   parseStudentRosterFile,
   normalizeStudentEmail,
   readTextFileWithEncoding,
+  maskStudentEmail,
+  maskStudentName,
+  usePrivacyMode,
 } from '../utils/studentDisplayUtils';
 import { exportToExcel, readExcelFile } from '../utils/exportUtils';
 import useCloudPricing from '../hooks/useCloudPricing';
@@ -45,6 +48,7 @@ const AVAILABLE_SUBTITLE_LANGUAGES = SUBTITLE_LANGUAGES.filter((l) => l.code !==
 
 const ClassManagement = ({ user, embeddedClassId }) => {
   const { storageRatePerGibMonth } = useCloudPricing();
+  const [isPrivacyMode] = usePrivacyMode();
   const [classId, setClassId] = useState(embeddedClassId || '');
   const [className, setClassName] = useState('');
   const [studentEmails, setStudentEmails] = useState('');
@@ -2759,11 +2763,13 @@ const ClassManagement = ({ user, embeddedClassId }) => {
                                   <td style={{ padding: '0.35rem 0.6rem' }}>
                                     <StudentBadge student={{ email, ...prof }} showCohort={false} size="sm" />
                                   </td>
-                                  <td style={{ padding: '0.35rem 0.6rem', fontFamily: 'monospace' }}>{email}</td>
+                                  <td style={{ padding: '0.35rem 0.6rem', fontFamily: 'monospace' }}>
+                                    {isPrivacyMode ? maskStudentEmail(email) : email}
+                                  </td>
                                   <td style={{ padding: '0.35rem 0.6rem' }}>
                                     {resolvedStudentName ? (
                                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
-                                        <span>{resolvedStudentName}</span>
+                                        <span>{isPrivacyMode ? maskStudentName(resolvedStudentName) : resolvedStudentName}</span>
                                         {prof._fromDirectory && (
                                           <span
                                             title="Auto-filled from institutional student directory (provided by another class)"
@@ -2948,6 +2954,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
                 <EnrolledRosterModal
                   show={showEnlargedRosterModal}
                   onClose={() => setShowEnlargedRosterModal(false)}
+                  isPrivacyMode={isPrivacyMode}
                   className={className}
                   classId={selectedClass || classId || embeddedClassId}
                   emailList={emailList}

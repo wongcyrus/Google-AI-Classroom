@@ -1,6 +1,7 @@
 import React, { useRef } from 'react';
 import { timeStringToSeconds } from '../utils/transcriptMerger';
 import { exportToExcel, exportToText } from '../utils/exportUtils';
+import { maskStudentName, isPrivacyModeActive } from '../utils/studentDisplayUtils';
 import './AudioTranscriptModal.css';
 
 export default function AudioTranscriptModal({
@@ -21,6 +22,9 @@ export default function AudioTranscriptModal({
   const audioPlayerRef = useRef(null);
 
   if (!isOpen) return null;
+
+  const isPrivacy = isPrivacyModeActive();
+  const displayStudentName = isPrivacy ? maskStudentName(studentName || studentUid || 'Student') : (studentName || studentUid || 'Student');
 
   const effectiveSegments = (transcriptSegments && transcriptSegments.length > 0)
     ? transcriptSegments
@@ -100,7 +104,7 @@ export default function AudioTranscriptModal({
             <span className="transcript-header-icon">🎙️</span>
             <div>
               <h3 id="transcript-modal-title">
-                Audio Diarization & Transcript: {studentName || studentUid || 'Student'}
+                Audio Diarization & Transcript: {displayStudentName}
               </h3>
               <p className="transcript-header-subtitle">
                 Powered by Gemini 3.5 Transcribe • Multi-Speaker & Exam Chat Detection

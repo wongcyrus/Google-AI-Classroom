@@ -5,6 +5,9 @@ import {
   generateStudentRosterTemplateExcel,
   readTextFileWithEncoding,
   normalizeStudentEmail,
+  maskStudentEmail,
+  maskStudentName,
+  isPrivacyModeActive,
 } from '../utils/studentDisplayUtils';
 import StudentBadge from './common/StudentBadge';
 import './BatchStudentUploadModal.css';
@@ -22,6 +25,7 @@ const BatchStudentUploadModal = ({
   existingProfiles = {},
   classId = '',
 }) => {
+  const isPrivacy = isPrivacyModeActive();
   const [inputText, setInputText] = useState('');
   const [fileName, setFileName] = useState('');
   const [parsedData, setParsedData] = useState(null);
@@ -271,9 +275,9 @@ const BatchStudentUploadModal = ({
                       <td>
                         <StudentBadge student={student} showCohort={true} size="sm" />
                       </td>
-                      <td><code>{student.email}</code></td>
-                      <td>{student.studentName || student.fullName || <span className="muted-dash">—</span>}</td>
-                      <td>{student.nickname || <span className="muted-dash">—</span>}</td>
+                      <td><code>{isPrivacy ? maskStudentEmail(student.email) : student.email}</code></td>
+                      <td>{(isPrivacy && (student.studentName || student.fullName)) ? maskStudentName(student.studentName || student.fullName) : (student.studentName || student.fullName || <span className="muted-dash">—</span>)}</td>
+                      <td>{(isPrivacy && student.nickname) ? maskStudentName(student.nickname) : (student.nickname || <span className="muted-dash">—</span>)}</td>
                       <td>
                         {student.studentClass ? (
                           <span className="preview-cohort-pill">{student.studentClass}</span>

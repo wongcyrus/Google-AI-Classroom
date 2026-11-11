@@ -70,6 +70,7 @@ describe('IndividualStudentView Component', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.setItem('teacher_privacy_mode', 'false');
     mockHookReturn = {
       isPeeking: false,
       connectionState: 'idle',
@@ -586,6 +587,27 @@ describe('IndividualStudentView Component', () => {
       expect(downloadBtn).toBeInTheDocument();
       expect(downloadBtn).toHaveAttribute('href', 'https://storage.mock/voice_snippet.webm');
     });
+  });
+
+  it('masks student name, alert dialogs, and image alt tags when privacy mode is active', async () => {
+    localStorage.setItem('teacher_privacy_mode', 'true');
+    render(
+      <IndividualStudentView
+        student={mockStudent}
+        screenshotData={mockScreenshotData}
+        classId="CLASS_1"
+        teacherUid="teacher_1"
+        onClose={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText('A**** S******')).toBeInTheDocument();
+    expect(screen.queryByText('Alice Student')).toBeNull();
+    expect(screen.queryByText('student@example.com')).toBeNull();
+
+    const screenImg = screen.getByAltText(/Screen from/i);
+    expect(screenImg.getAttribute('alt')).not.toContain('student@example.com');
+    expect(screenImg.getAttribute('alt')).toContain('A**** S******');
   });
 });
 

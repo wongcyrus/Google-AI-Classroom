@@ -1,7 +1,15 @@
 import React from 'react';
+import { maskStudentEmail, maskStudentName, isPrivacyModeActive } from '../utils/studentDisplayUtils';
 import './StudentScreen.css';
 
-const StudentScreen = ({ student, isSharing, screenshotData, screenshotUrl, selectedChannel = 'both', onClick }) => {
+const StudentScreen = ({ student, isSharing, screenshotData, screenshotUrl, selectedChannel = 'both', isPrivacyMode, onClick }) => {
+  const isPrivacy = isPrivacyMode !== undefined ? isPrivacyMode : isPrivacyModeActive();
+  const rawIdentifier = student?.displayName || student?.name || student?.email || 'Student';
+  const displayIdentifier = isPrivacy ? maskStudentName(rawIdentifier) : rawIdentifier;
+  const safeAltIdentifier = isPrivacy
+    ? (student?.displayName ? maskStudentName(student.displayName) : (student?.email ? maskStudentEmail(student.email) : 'Student'))
+    : (student?.displayName || student?.email || 'Student');
+
   const screenUrl = screenshotData?.screen?.url || (selectedChannel !== 'webcam' ? screenshotUrl : null);
   const webcamUrl = screenshotData?.webcam?.url || (selectedChannel === 'webcam' ? screenshotUrl : null);
 
@@ -13,12 +21,12 @@ const StudentScreen = ({ student, isSharing, screenshotData, screenshotUrl, sele
     <div 
       className={`student-screen ${isSharing ? 'sharing' : 'not-sharing'}`} 
       onClick={onClick}
-      title={`Click to inspect ${student.displayName || student.name || student.email} in detail modal`}
+      title={`Click to inspect ${displayIdentifier} in detail modal`}
     >
       <div className="student-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', minWidth: 0, flex: 1, overflow: 'hidden' }}>
           <h2 style={{ margin: 0, textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
-            {student.displayName || student.name || student.email}
+            {displayIdentifier}
           </h2>
           {student.studentClass && (
             <span
@@ -155,13 +163,13 @@ const StudentScreen = ({ student, isSharing, screenshotData, screenshotUrl, sele
             {showScreen && (
               <div className="feed-viewport">
                 <span className="feed-tag">🖥️ Screen {!isSharing && <span className="offline-badge">Offline</span>}</span>
-                <img src={screenUrl} alt={`Screen from ${student.email}`} loading="eager" decoding="async" fetchPriority="high" />
+                <img src={screenUrl} alt={`Screen from ${safeAltIdentifier}`} loading="eager" decoding="async" fetchPriority="high" />
               </div>
             )}
             {showWebcam && (
               <div className="feed-viewport">
                 <span className="feed-tag">📷 Webcam {!isSharing && <span className="offline-badge">Offline</span>}</span>
-                <img src={webcamUrl} alt={`Webcam from ${student.email}`} loading="eager" decoding="async" fetchPriority="high" />
+                <img src={webcamUrl} alt={`Webcam from ${safeAltIdentifier}`} loading="eager" decoding="async" fetchPriority="high" />
               </div>
             )}
             {!showScreen && !showWebcam && (
@@ -174,7 +182,7 @@ const StudentScreen = ({ student, isSharing, screenshotData, screenshotUrl, sele
           showScreen ? (
             <div className="feed-viewport single">
               <span className="feed-tag">🖥️ Screen {!isSharing && <span className="offline-badge">Offline</span>}</span>
-              <img src={screenUrl} alt={`Screen from ${student.email}`} loading="eager" decoding="async" fetchPriority="high" />
+              <img src={screenUrl} alt={`Screen from ${safeAltIdentifier}`} loading="eager" decoding="async" fetchPriority="high" />
             </div>
           ) : (
             <div className="no-screenshot-placeholder">
@@ -185,7 +193,7 @@ const StudentScreen = ({ student, isSharing, screenshotData, screenshotUrl, sele
           showWebcam ? (
             <div className="feed-viewport single">
               <span className="feed-tag">📷 Webcam {!isSharing && <span className="offline-badge">Offline</span>}</span>
-              <img src={webcamUrl} alt={`Webcam from ${student.email}`} loading="eager" decoding="async" fetchPriority="high" />
+              <img src={webcamUrl} alt={`Webcam from ${safeAltIdentifier}`} loading="eager" decoding="async" fetchPriority="high" />
             </div>
           ) : (
             <div className="no-screenshot-placeholder">

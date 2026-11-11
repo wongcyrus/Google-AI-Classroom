@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import StudentBadge from './common/StudentBadge';
-import { exportStudentRosterExcel } from '../utils/studentDisplayUtils';
+import { exportStudentRosterExcel, maskStudentEmail, maskStudentName, isPrivacyModeActive } from '../utils/studentDisplayUtils';
 import './EnrolledRosterModal.css';
 
 /**
@@ -32,7 +32,9 @@ const EnrolledRosterModal = ({
   onToggleExemption,
   exemptionSuccessMsg = '',
   onClearExemptionSuccess,
+  isPrivacyMode: propPrivacyMode,
 }) => {
+  const isPrivacy = typeof propPrivacyMode === 'boolean' ? propPrivacyMode : isPrivacyModeActive();
   const [searchTerm, setSearchTerm] = useState('');
   const [passkeyFilter, setPasskeyFilter] = useState('all'); // 'all' | 'linked' | 'unlinked'
   const [profileFilter, setProfileFilter] = useState('all'); // 'all' | 'has_profile' | 'missing_profile' | 'directory'
@@ -620,12 +622,14 @@ const EnrolledRosterModal = ({
                         <StudentBadge student={{ email, ...prof }} showCohort={false} size="sm" />
                       </td>
                       <td style={{ fontFamily: 'monospace', fontSize: '0.82rem', color: '#334155' }}>
-                        {email}
+                        {isPrivacy ? maskStudentEmail(email) : email}
                       </td>
                       <td>
                         {resolvedStudentName ? (
                           <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
-                            <span style={{ fontWeight: 500 }}>{resolvedStudentName}</span>
+                            <span style={{ fontWeight: 500 }}>
+                              {isPrivacy ? maskStudentName(resolvedStudentName) : resolvedStudentName}
+                            </span>
                             {prof._fromDirectory && (
                               <span
                                 title="Auto-filled from institutional student directory (provided by another class)"

@@ -3,7 +3,7 @@ import { collection, onSnapshot, doc, getDoc, getDocs } from 'firebase/firestore
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../firebase-config';
 import { exportToExcel } from '../utils/exportUtils';
-import { getStudentDisplayName, getStudentProfile } from '../utils/studentDisplayUtils';
+import { getStudentDisplayName, getStudentProfile, maskStudentEmail, maskStudentName, isPrivacyModeActive } from '../utils/studentDisplayUtils';
 import './BingoResultsView.css';
 
 /**
@@ -1675,7 +1675,7 @@ export default function BingoResultsView({
               🔄 Reset Student Passkey
             </h3>
             <p style={{ margin: '0 0 8px 0', fontSize: '0.9rem', color: '#334155' }}>
-              Unlink physical mobile device for <strong>{resetConfirmStudent.displayName}</strong> ({resetConfirmStudent.email})?
+              Unlink physical mobile device for <strong>{isPrivacyModeActive() ? maskStudentName(resetConfirmStudent.displayName) : resetConfirmStudent.displayName}</strong> ({isPrivacyModeActive() ? maskStudentEmail(resetConfirmStudent.email) : resetConfirmStudent.email})?
             </p>
             <div style={{ backgroundColor: '#fef2f2', border: '1px solid #fee2e2', borderRadius: '8px', padding: '12px', margin: '12px 0', fontSize: '0.82rem', color: '#991b1b', lineHeight: 1.4 }}>
               <strong>⚠️ Phone Replacement Mode:</strong> This will revoke the hardware lock for the student's old phone. The student will be able to scan the pairing QR code on their Lab PC to bind their new phone.

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase-config';
 import { collection, addDoc, doc, onSnapshot, serverTimestamp } from 'firebase/firestore';
+import { getStudentDisplayName, isPrivacyModeActive } from '../utils/studentDisplayUtils';
 
 /**
  * Modal to configure and trigger asynchronous Formal Incident Dossier generation (.docx & .csv)
@@ -381,7 +382,7 @@ export default function IncidentDossierExportModal({
                         checked={selectedStudentUids.includes(s.id)}
                         onChange={() => handleStudentCheckbox(s.id)}
                       />
-                      <span>{s.name || s.email}</span>
+                      <span>{getStudentDisplayName(s, {}, { privacyMode: isPrivacyModeActive() })}</span>
                     </label>
                   ))}
                 </div>

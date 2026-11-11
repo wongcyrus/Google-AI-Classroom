@@ -6,35 +6,44 @@ import StudentScreen from './StudentScreen';
 describe('StudentScreen Component', () => {
   const mockStudent = { name: 'Alice Wong', email: 'alice@school.edu' };
 
-  it('renders student name and "Not Sharing" placeholder when disconnected', () => {
-    render(<StudentScreen student={mockStudent} isSharing={false} screenshotUrl={null} />);
+  it('masks student name and alt attributes by default when privacy mode is active', () => {
+    const url = 'https://storage.googleapis.com/test-bucket/test.jpg';
+    render(<StudentScreen student={mockStudent} isSharing={true} screenshotUrl={url} />);
+    
+    expect(screen.getByText('A**** W***')).toBeInTheDocument();
+    const img = screen.getByRole('img');
+    expect(img.getAttribute('alt')).toBe('Screen from al***@school.edu');
+  });
+
+  it('renders student name and "Not Sharing" placeholder when disconnected (privacy off)', () => {
+    render(<StudentScreen student={mockStudent} isSharing={false} screenshotUrl={null} isPrivacyMode={false} />);
     
     expect(screen.getByText('Alice Wong')).toBeInTheDocument();
     expect(screen.getByText('Not Sharing')).toBeInTheDocument();
   });
 
-  it('renders friendly displayName and studentClass cohort pill when provided', () => {
+  it('renders friendly displayName and studentClass cohort pill when provided (privacy off)', () => {
     const studentWithProfile = {
       name: 'David (Chan Tai Man)',
       displayName: 'David (Chan Tai Man)',
       email: 'chan.tm@stu.vtc.edu.hk',
       studentClass: 'IT114115/1A'
     };
-    render(<StudentScreen student={studentWithProfile} isSharing={false} screenshotUrl={null} />);
+    render(<StudentScreen student={studentWithProfile} isSharing={false} screenshotUrl={null} isPrivacyMode={false} />);
     
     expect(screen.getByText('David (Chan Tai Man)')).toBeInTheDocument();
     expect(screen.getByText('IT114115/1A')).toBeInTheDocument();
   });
 
   it('renders "Connecting..." placeholder when isSharing is true but no image is yet received', () => {
-    render(<StudentScreen student={mockStudent} isSharing={true} screenshotUrl={null} />);
+    render(<StudentScreen student={mockStudent} isSharing={true} screenshotUrl={null} isPrivacyMode={false} />);
     
     expect(screen.getByText('Connecting...')).toBeInTheDocument();
   });
 
-  it('renders screenshot image element when screenshotUrl is provided', () => {
+  it('renders screenshot image element when screenshotUrl is provided (privacy off)', () => {
     const url = 'https://storage.googleapis.com/test-bucket/test.jpg';
-    render(<StudentScreen student={mockStudent} isSharing={true} screenshotUrl={url} />);
+    render(<StudentScreen student={mockStudent} isSharing={true} screenshotUrl={url} isPrivacyMode={false} />);
     
     const img = screen.getByRole('img');
     expect(img).toHaveAttribute('src', url);

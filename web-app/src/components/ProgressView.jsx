@@ -4,7 +4,7 @@ import { doc, getDoc, collection, query, where, orderBy, limit, getDocs } from '
 import './SharedViews.css';
 import usePaginatedQuery from '../hooks/useCollectionQuery';
 import { exportToExcel } from '../utils/exportUtils';
-import { getStudentDisplayName, getStudentProfile } from '../utils/studentDisplayUtils';
+import { getStudentDisplayName, getStudentProfile, maskStudentEmail, maskStudentName, isPrivacyModeActive } from '../utils/studentDisplayUtils';
 
 const ProgressView = ({ classId, startTime, endTime }) => {
   const [selectedStudentUid, setSelectedStudentUid] = useState(null);
@@ -214,13 +214,16 @@ const ProgressView = ({ classId, startTime, endTime }) => {
 
   const renderDetailView = () => {
     const studentEmail = (detailProgress.length > 0 && detailProgress[0].studentEmail) || (students.find(s => s.uid === selectedStudentUid))?.email || selectedStudentUid;
+    const studentObj = students.find(s => s.uid === selectedStudentUid || s.email === studentEmail);
+    const isPrivacy = isPrivacyModeActive();
+    const displayIdentifier = studentObj?.displayName || (isPrivacy ? maskStudentEmail(studentEmail) : studentEmail);
 
     return (
       <div className="view-container">
         <div className="view-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <button onClick={() => setSelectedStudentUid(null)}>Back to Summary</button>
-            <h3 style={{ margin: 0 }}>Progress for {studentEmail}</h3>
+            <h3 style={{ margin: 0 }}>Progress for {displayIdentifier}</h3>
           </div>
           <button
             onClick={() => handleExportDetailExcel(studentEmail)}
@@ -291,8 +294,8 @@ const ProgressView = ({ classId, startTime, endTime }) => {
                   {latestProgress.map((p) => (
                     <tr key={p.id} className="clickable" onClick={() => setSelectedStudentUid(p.studentUid)}>
                       <td>
-                        <div style={{ fontWeight: 600 }}>{p.displayName || p.studentEmail}</div>
-                        {p.displayName && p.displayName !== p.studentEmail && (
+                        <div style={{ fontWeight: 600 }}>{p.displayName || (isPrivacyModeActive() ? maskStudentEmail(p.studentEmail) : p.studentEmail)}</div>
+                        {p.displayName && p.displayName !== p.studentEmail && !isPrivacyModeActive() && (
                           <div style={{ fontSize: '0.8rem', color: '#64748b' }}>{p.studentEmail}</div>
                         )}
                         {(p.studentClass || p.programme) && (
