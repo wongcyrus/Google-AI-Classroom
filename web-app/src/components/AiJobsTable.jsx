@@ -83,6 +83,14 @@ const AiJobsTable = ({ aiJobs, onPlayVideo, onInspectResult }) => {
   };
 
   const renderResult = (job) => {
+    if (job.isPlaceholderProcessing) {
+      return (
+        <span style={{ fontSize: '0.82rem', color: '#0369a1', fontWeight: 500 }}>
+          {job.result || '⏳ Queued / Analyzing video in Cloud Tasks...'}
+        </span>
+      );
+    }
+
     if (job.status === 'failed') {
       const errorText = job.errorDetails || 'Failed';
       return (
@@ -169,12 +177,12 @@ const AiJobsTable = ({ aiJobs, onPlayVideo, onInspectResult }) => {
                           )}
                         </td>
                         <td><span style={{ fontSize: '0.82em', padding: '2px 6px', background: '#e0f2fe', borderRadius: '4px', color: '#0369a1', fontWeight: 600 }}>{job.modelUsed || 'gemini-3.5-flash-lite'}</span></td>
-                        <td><span style={{ fontWeight: 600, color: '#475569' }}>{formatAiCost(job.cost)}</span></td>
+                        <td><span style={{ fontWeight: 600, color: '#475569' }}>{job.isPlaceholderProcessing ? '—' : formatAiCost(job.cost)}</span></td>
                         <td>{getStatusBadge(job.status)}</td>
                         <td>{renderResult(job)}</td>
                         <td style={{ fontSize: '0.85rem', color: '#64748b', whiteSpace: 'nowrap' }}>{job.timestamp?.toDate ? job.timestamp.toDate().toLocaleString() : (job.timestamp || 'N/A')}</td>
                         <td style={{ whiteSpace: 'nowrap' }}>
-                            {onInspectResult && (
+                            {onInspectResult && !job.isPlaceholderProcessing && (
                                 <button
                                     onClick={() => onInspectResult(job)}
                                     title="Inspect complete analysis findings"
@@ -195,7 +203,8 @@ const AiJobsTable = ({ aiJobs, onPlayVideo, onInspectResult }) => {
                             )}
                             <button
                                 onClick={() => handleExportSingleJob(job, 'excel')}
-                                title="Export student findings to Excel"
+                                disabled={Boolean(job.isPlaceholderProcessing)}
+                                title={job.isPlaceholderProcessing ? "Available once analysis completes" : "Export student findings to Excel"}
                                 style={{
                                     padding: '3px 8px',
                                     fontSize: '0.78rem',
@@ -204,7 +213,8 @@ const AiJobsTable = ({ aiJobs, onPlayVideo, onInspectResult }) => {
                                     border: '1px solid #cbd5e1',
                                     background: '#ffffff',
                                     color: '#0f172a',
-                                    cursor: 'pointer',
+                                    cursor: job.isPlaceholderProcessing ? 'not-allowed' : 'pointer',
+                                    opacity: job.isPlaceholderProcessing ? 0.5 : 1,
                                     marginRight: '6px'
                                 }}
                             >
@@ -212,7 +222,8 @@ const AiJobsTable = ({ aiJobs, onPlayVideo, onInspectResult }) => {
                             </button>
                             <button
                                 onClick={() => handleExportSingleJob(job, 'json')}
-                                title="Export student findings to JSON"
+                                disabled={Boolean(job.isPlaceholderProcessing)}
+                                title={job.isPlaceholderProcessing ? "Available once analysis completes" : "Export student findings to JSON"}
                                 style={{
                                     padding: '3px 8px',
                                     fontSize: '0.78rem',
@@ -221,7 +232,8 @@ const AiJobsTable = ({ aiJobs, onPlayVideo, onInspectResult }) => {
                                     border: '1px solid #cbd5e1',
                                     background: '#ffffff',
                                     color: '#0f172a',
-                                    cursor: 'pointer'
+                                    cursor: job.isPlaceholderProcessing ? 'not-allowed' : 'pointer',
+                                    opacity: job.isPlaceholderProcessing ? 0.5 : 1
                                 }}
                             >
                                 JSON

@@ -81,6 +81,7 @@ vi.mock('firebase/firestore', () => ({
   serverTimestamp: vi.fn(() => ({ _methodName: 'serverTimestamp' })),
   addDoc: (...args) => mockAddDoc(...args),
   setDoc: (...args) => mockSetDoc(...args),
+  onSnapshot: vi.fn(() => vi.fn()),
   doc: vi.fn(() => ({ id: 'mockDoc' })),
   getDoc: vi.fn().mockResolvedValue({
     exists: () => true,
@@ -604,6 +605,59 @@ describe('VideoAnalysisJobs Component Full Suite', () => {
     const exportJsonBtn = screen.getByRole('button', { name: /Export Batch \(JSON\)/i });
     fireEvent.click(exportJsonBtn);
     expect(URL.createObjectURL).toHaveBeenCalled();
+  });
+
+  it('accurately counts and displays remaining processing videos when master job is processing', async () => {
+    const firestoreMod = await import('firebase/firestore');
+
+    render(
+      <VideoAnalysisJobs
+        classId="CLASS_101"
+        startTime="2026-08-30T00:00:00Z"
+        endTime="2026-08-30T23:59:59Z"
+        filterField="createdAt"
+      />
+    );
+
+    const jobRow = screen.getByText('job_v1');
+    firestoreMod.getDoc.mockResolvedValueOnce({
+      exists: () => true,
+      id: 'job_v1',
+      data: () => ({
+        id: 'job_v1',
+        status: 'processing',
+        modelUsed: 'gemini-3.8-flash',
+        totalVideos: 4,
+        processedCount: 2,
+        aiJobIds: ['ai_sub_1', 'ai_sub_2'],
+        videos: [
+          { studentEmail: 'student1@school.edu', videoPath: 'videos/student1.mp4' },
+          { studentEmail: 'student2@school.edu', videoPath: 'videos/student2.mp4' },
+          { studentEmail: 'student3@school.edu', videoPath: 'videos/student3.mp4' },
+          { studentEmail: 'student4@school.edu', videoPath: 'videos/student4.mp4' },
+        ],
+      }),
+    });
+
+    await act(async () => {
+      fireEvent.click(jobRow);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('student3@school.edu')).toBeInTheDocument();
+      expect(screen.getByText('student4@school.edu')).toBeInTheDocument();
+    });
+
+    // Verify dropdown shows Processing (2) instead of Processing (0)
+    expect(screen.getByRole('option', { name: 'Processing (2)' })).toBeInTheDocument();
+
+    // Filter to only processing rows
+    const statusSelect = screen.getByDisplayValue(/All Statuses/i);
+    fireEvent.change(statusSelect, { target: { value: 'processing' } });
+
+    expect(screen.getByText('student3@school.edu')).toBeInTheDocument();
+    expect(screen.getByText('student4@school.edu')).toBeInTheDocument();
+    expect(screen.queryByText('student1@school.edu')).not.toBeInTheDocument();
   });
 });
 

@@ -226,43 +226,76 @@ The generated prompt MUST strictly follow this Markdown structure:
 Return ONLY the clean Markdown prompt text. Do not wrap in markdown code fence blocks.
 ```
 
-#### 3. Phase 3 (Second-Map Evaluation Prompt) — Example Output Synthesized by Gemini 4 Argon
-Here is an actual example of the Markdown prompt synthesized by Phase 2 from a 40-student cloud infrastructure lab, which the teacher reviews in the modal and dispatches back to Cloud Tasks (`analyzeSingleVideoTask`) for the **Second Map** pass:
+#### 3. Phase 3 (Second-Map Evaluation Prompt) — Real Production Prompt Synthesized from a 37-Student Linux OS Lab (`itp3901-ab`)
+Here is an actual production Markdown prompt synthesized by Phase 2 (`generateLabTaskPrompt`) from 37 student timelapse videos in **ITP3901 Operating Systems Fundamentals (Lab 6: Linux Process Management & Job Control)**, which the lecturer reviews in the modal and dispatches back to Cloud Tasks (`analyzeSingleVideoTask`) for the **Second Map** pass:
 
 ```markdown
-# Serverless Cloud Run & Terraform Infrastructure Lab Evaluation
+# ITP3901 Operating Systems Fundamentals - Lab 6: Linux Process Management & Job Control
 
-**You are an AI teaching assistant evaluating student screen recording time-lapses for Cloud Infrastructure & Serverless Container Deployment.**
+**You are an AI teaching assistant evaluating student screen recording time-lapses for ITP3901 Operating Systems Fundamentals: Lab 6 (Linux Process Management and Job Control in Fedora VirtualBox/Bash).**
 
 ## Video Timing Rules
-* The video is a fast-forward time-lapse with on-screen timestamps (`YYYY-MM-DD HH:mm:ss`).
+* The video is a fast-forward time-lapse with on-screen timestamps.
 * All duration, attendance, and task timing calculations **MUST** be derived from the in-frame date/time stamps, NOT the video playback length.
 
 ## Coursework Tasks to Evaluate
-1. **Task 1: Environment Setup & Repository Cloning**: Cloning the starter repo in VS Code / Cloud Shell, configuring `.env` variables, and running `npm install`.
-2. **Task 2: Docker Containerization & Local Verification**: Writing the multi-stage `Dockerfile`, building the container image via `docker build` / `gcloud builds submit`, and verifying `localhost:8080/healthz` returns `HTTP 200 OK`.
-3. **Task 3: Terraform Cloud Run & Firestore Provisioning**: Writing `main.tf` (`google_cloud_run_v2_service` and `google_firestore_database`), running `terraform init && terraform plan`, and applying infrastructure via `terraform apply -auto-approve`.
-4. **Task 4: End-to-End Automated Grading Script Verification**: Executing `./run-lab-tests.sh` in the terminal and verifying all 5 integration assertions pass against the live `.run.app` endpoint.
+1. **VM Environment Setup & Root Shell Access**: Downloading the Fedora virtual appliance (`Fedora_for_OSF.zip`) from Moodle or the intranet class repository (`172.30.82.64/65:8080`), extracting the compressed disk image (`.vdi`, `.vbox`), registering and launching the virtual machine in Oracle VM VirtualBox (or pivoting to the web-based Linux shell if local virtualization fails), and authenticating into the root shell prompt (`root@fedora:~#`).
+2. **Process Scripting & Job Control Operations (`process.sh`)**: Authoring the infinite loop testing script `process.sh` using the `vi`/`vim` text editor (`#!/bin/bash`, `echo "process.sh: It is running"`, `while true; do date; sleep 10; done`), setting execution permissions via `chmod 755 process.sh` (or `chmod +x`), executing in the foreground (`./process.sh`), suspending via `Ctrl+Z`, inspecting active jobs using `jobs`, toggling between states using `fg` and `bg %1`, and launching background processes with output suppression (`./process.sh > /dev/null &`).
+3. **Process Hierarchy Inspection & Signal Termination (`ps`, `pstree`, `kill`)**: Examining system process status using `ps`, `ps -ef | more`, `ps -l`, and `pstree`; identifying process attributes including Process IDs (PID), Parent Process IDs (PPID), system root processes (PID 1 `systemd`, PID 2 `kthreadd`), and daemon processes detached from controlling terminals (`TTY = ?`); and terminating processes via job specifications (`kill %1`) or PID-targeted signals (`kill <PID>`, `kill -9 <PID>`).
+4. **Interactive Monitoring & Priority Scheduling (`top`, `nice`, `renice`)**: Launching interactive process monitoring via `top` to record dynamic system health (total/running/sleeping tasks, CPU load, physical RAM, and swap usage); understanding nice value boundaries (-20 highest priority to 19 lowest priority; default 0); executing commands with altered initial priorities using `nice` (e.g., `nice -10 ./process.sh > /dev/null &`); dynamically altering running process priorities using `renice` (e.g., `renice 5 <PID>`); and verifying priority adjustments via `ps -el | grep process.sh` or `top`.
+5. **Worksheet Documentation & Academic Integrity**: Recording observed terminal outputs, commands, and theoretical answers into the assignment worksheet (`Lab 6 - Process Management ans template.txt` / Moodle submission form) covering questions Q1 through Q32+, ensuring recorded values match live runtime metrics rather than uncalibrated answers copied from external generative AI chatbots.
 
 ## Milestones, Scores & Rubrics
-* **Task 1 (15 pts)**: Starter repository cloned and dependencies installed without missing package errors.
-* **Task 2 (25 pts)**: Container image built and local health check (`200 OK`) verified in terminal or browser.
-* **Task 3 (35 pts)**: `terraform apply` completes with `Apply complete! Resources: 4 added, 0 changed, 0 destroyed` and outputs the live Cloud Run URL.
-* **Task 4 (25 pts)**: Automated test script outputs `SCORE: 100/100 (5/5 tests passed)`.
+* **Milestone 1: Virtual Machine Environment Deployment (20 pts)**
+  * **20 pts**: Successfully unpacks, imports, and boots Fedora Linux in Oracle VirtualBox (or accesses the web terminal), establishing an active root command prompt (`root@fedora:~#`).
+  * **10 pts**: Experiences extraction or VM configuration issues, requiring significant troubleshooting or restarting before achieving an operational shell.
+  * **0 pts**: Unable to launch, boot, or access a functional Linux terminal environment.
+* **Milestone 2: Script Construction & Job Control Workflow (25 pts)**
+  * **25 pts**: Correctly writes `process.sh` in `vi` without syntax errors, sets permissions (`chmod 755`), and demonstrates `Ctrl+Z` suspension, `jobs` listing, `fg`/`bg` toggling, and clean execution with `> /dev/null &`.
+  * **15 pts**: Script created with minor syntax typos (e.g., `while ture`, `sleep` typos) or incomplete job control state transitions.
+  * **0 pts**: Fails to create or execute the shell script.
+* **Milestone 3: Process Inspection & Signal Termination (25 pts)**
+  * **25 pts**: Correctly queries process status with `ps -ef` / `ps -l` / `pstree`, accurately identifies PID/PPID/TTY parameters, and successfully terminates target background jobs/PIDs using `kill` or `kill -9`.
+  * **15 pts**: Runs basic `ps` but struggles to differentiate between child sleep PIDs, script PIDs, and grep PIDs, or makes multiple syntax errors with `kill` targets.
+  * **0 pts**: No process inspection or signal termination attempted.
+* **Milestone 4: Resource Monitoring & Priority Management (20 pts)**
+  * **20 pts**: Successfully navigates `top`, extracts accurate system task/memory metrics, executes `nice` and `renice` commands with valid priority offsets, and verifies nice (`NI`) and priority (`PRI`) shifts via `ps -el`.
+  * **10 pts**: Runs `top` or priority tools with partial understanding, inverted nice scales, or unverified priority commands.
+  * **0 pts**: No dynamic monitoring or priority management commands executed.
+* **Milestone 5: Lab Worksheet Completion & Verification (10 pts)**
+  * **10 pts**: All questions in the answer template systematically completed using live terminal data and prepared for Moodle submission.
+  * **5 pts**: Partial template completion, or answers copied from external AI tools without corresponding terminal execution.
+  * **0 pts**: Answer template left blank or unsubmitted.
 
 ## Known Blockers & Technical Obstacles to Watch For
-* **Port Mismatch (`PORT=8080`)**: Container failing Cloud Run startup probe because the Express server listened on port `3000` instead of `process.env.PORT`.
-* **IAM Permission Denied (`403`)**: `terraform apply` failing on Cloud Run IAM binding due to missing `roles/run.admin` or unenabled `run.googleapis.com` API.
-* **Region Mismatch**: Deploying Firestore in `us-central1` while Cloud Run is configured in `asia-east2`.
+* **Archive Extraction & VM Boot Latency**: Long decompression times for `Fedora_for_OSF.zip` (~4.3 GB), insufficient disk space, or VirtualBox display black screens/freezes requiring guest restarts.
+* **Vi/Vim Modal Confusion**: Typing commands while in Normal/Command mode (resulting in Vim errors like `E20: Mark not set`, `E32: No file name`, or `E37`), or typing editor commands directly into the Bash prompt (e.g., `bash: :wq: command not found`).
+* **Execution Path & Permission Errors**: Omitting the relative path `./` when invoking the script (resulting in `bash: process.sh: command not found`), or attempting execution prior to applying `chmod 755` (`bash: ./process.sh: Permission denied`).
+* **Terminal Output Flooding**: Executing `./process.sh &` without stdout redirection, causing continuous `date` and string outputs to clutter the console and disrupt subsequent command inputs.
+* **Job ID vs. PID Misuse**: Omitting the percent symbol `%` when killing or resuming shell jobs (e.g., running `kill 1` instead of `kill %1`, which targets `systemd`), or passing literal template angle brackets (e.g., `bg %<job_num>`).
+* **Renice Target Failures**: Issuing `renice` against an already terminated or non-existent PID, resulting in `failed to get priority for <PID>: No such process`.
+* **VM Sleep/Lockout**: Virtual machine screen locking after periods of inactivity, requiring re-login as `Super User`.
+* **AI Over-Reliance**: Copying generic or static answers from conversational AI tools (e.g., ChatGPT, DeepSeek, Gemini, Doubao) rather than recording dynamic live metrics from `top` and `ps`.
 
 ## Required Tool Actions
-1. **Working Time**: Call `recordActualWorkingTime` with the total estimated active concentration minutes (clamped to lesson duration).
-2. **Task Durations**: For each identified task above (`Task 1`, `Task 2`, `Task 3`, `Task 4`), call `recordTaskDuration` with `studentUid`, `classId`, `taskName`, and estimated `durationMinutes` spent on that task.
-3. **Student Summary**: Call `recordLessonSummary` with a structured bulleted summary of their progress across each task, points earned (out of 100), blockers encountered, and engagement verdict.
-4. **Final Response**: Output the exact same structured summary text provided to `recordLessonSummary`.
+1. **Working Time**: Call 'recordActualWorkingTime' with the total estimated active concentration minutes (clamped to lesson duration).
+2. **Task Durations**: For each identified task above, call 'recordTaskDuration' with studentUid, classId, taskName, and estimated durationMinutes spent on that task.
+3. **Student Summary**: Call 'recordLessonSummary' with a structured bulleted summary of their progress across each task, points earned, blockers encountered, and engagement verdict.
+4. **Final Response**: Output the exact same structured summary text provided to 'recordLessonSummary'.
 ```
 
-When the teacher runs **Phase 3 (the Milestone Evaluation Map)** using that synthesized prompt, each Cloud Tasks worker invokes Genkit tools (`recordActualWorkingTime`, `recordTaskDuration`, and `recordLessonSummary`) that populate [`VideoAnalysisJobs.jsx`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/components/VideoAnalysisJobs.jsx) and [`TaskGradingMatrixView.jsx`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/components/tasks/TaskGradingMatrixView.jsx)—giving the lecturer a color-coded cohort progress matrix showing exactly how many minutes each student spent on Task 1, Task 2, Task 3, and Task 4, and where they got stuck!
+### Distributed Systems Safeguards in `analyzeSingleVideoTask.js` & `VideoAnalysisJobs.jsx`
+
+Running two passes across 37–40 student videos exposed three subtle distributed systems edge cases that we hardened in production:
+
+1. **Video-Path Idempotency on Cloud Tasks Retries (`completedVideoPaths`)**:
+   If a Cloud Tasks worker finishes writing a child `aiJobs` document right as an HTTP layer timeout occurs, Cloud Tasks retries the task (`maxAttempts: 2`), which could otherwise create a second `aiJob` with a new document ID and inflate `processedCount` (e.g. `40` sub-jobs for `37` unique student videos). In [`analyzeSingleVideoTask.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/ai_flows/analyzeSingleVideoTask.js), `recordTaskResult` tracks `completedVideoPaths` inside the Firestore transaction and clamps `processedCount` and `successCount` to `totalVideos`, ensuring each student's video is counted at most once.
+2. **480s Soft Deadline Inside a 540s Cloud Run Worker (`SOFT_TIMEOUT_MS = 480_000`)**:
+   If a large 16+ MB video evaluation hits Cloud Run's hard container timeout externally, the Node process is terminated before `catch (err)` can call `recordTaskResult`, leaving the master job stuck at `36 / 37` (`status: 'processing'`). By setting `timeoutSeconds: 540` on `analyzeSingleVideoTask` and wrapping `analyzeSingleVideoFlow` in a `480_000` ms `Promise.race` soft timeout, any hung inference rejects cleanly inside `try/catch` and records into `failedVideos` so the master job always reaches a terminal state.
+3. **Real-Time `onSnapshot` Progress & Synthesized `Processing (N)` Sub-Job Rows**:
+   Because child `aiJobs` documents are only written after a video finishes, filtering `aiJobs.filter(j => j.status === 'processing')` on the frontend previously always showed `Processing (0)` while tasks were queued in Cloud Tasks. [`VideoAnalysisJobs.jsx`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/components/VideoAnalysisJobs.jsx) now attaches real-time `onSnapshot` listeners to active `videoAnalysisJobs` documents, deduplicates `aiJobs` by normalized `videoPath`, and synthesizes live `status: 'processing'` rows for every remaining student video in `job.videos`—so teachers see `Processing (26)` count down to `0` in real time.
+
+When the teacher runs **Phase 3 (the Milestone Evaluation Map)** using that synthesized prompt, each Cloud Tasks worker invokes Genkit tools (`recordActualWorkingTime`, `recordTaskDuration`, and `recordLessonSummary`) that populate [`VideoAnalysisJobs.jsx`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/components/VideoAnalysisJobs.jsx) and [`TaskGradingMatrixView.jsx`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/components/tasks/TaskGradingMatrixView.jsx)—giving the lecturer a color-coded cohort progress matrix showing exactly how many minutes each student spent on each milestone and where they got stuck!
 
 ---
 

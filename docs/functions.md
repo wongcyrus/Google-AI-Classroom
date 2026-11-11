@@ -294,14 +294,14 @@ This directory contains all the Cloud Functions related to AI-powered analysis, 
         -   `region`: `asia-east2` (Hong Kong).
         -   `rateLimits`: `{ maxConcurrentDispatches: 4, maxDispatchesPerSecond: 2 }` — Smooths token consumption and strictly guarantees compliance with Gemini API RPM/TPM concurrency quotas without 429 rate limit errors.
         -   `retryConfig`: `{ maxAttempts: 2 }` — Retries on transient network failures.
-        -   `memory`: `2GiB`, `timeoutSeconds`: `300`.
+        -   `memory`: `2GiB`, `timeoutSeconds`: `540` (with an internal `480s` `Promise.race` soft deadline so slow evaluations reject inside `try/catch` and record into `failedVideos` rather than being killed externally by Cloud Run).
     -   **Atomic Transaction & State Transition**:
         -   Executes an atomic Firestore transaction (`recordTaskResult`) on `videoAnalysisJobs/{masterJobId}` on task completion.
-        -   Atomically increments `processedCount` and `successCount` (or `failureCount`). Appends `jobId` to `aiJobIds` (or failed video payload to `failedVideos`).
+        -   Enforces idempotency against both `aiJobIds` and `completedVideoPaths` so Cloud Task retries never double-count a student video, and clamps `processedCount` and `successCount` to `totalVideos`.
         -   When `newProcessedCount >= totalVideos`, flips `status` to `'completed'` (if zero failures) or `'partial_failure'` (if any failures) and stamps `finishedAt`.
 -   **`retryVideoAnalysisJob`**:
     -   **Trigger**: `onCall` (`functions/ai_flows/retryVideoAnalysisJob.js`).
-    -   **Description**: A callable function allowing teachers to retry failed videos in a `videoAnalysisJob`. Enqueues failed videos directly into the `analyzeSingleVideoTask` Cloud Tasks queue, updates `totalVideos` to `existingSuccessCount + retryCount`, and returns immediately without client HTTP timeouts.
+    -   **Description**: A callable function allowing teachers to retry failed or timed-out videos in a `videoAnalysisJob`. Resolves failed videos from `jobData.failedVideos`, failed child `aiJobs`, or uncompleted entries in `jobData.videos`, enqueues them into the `analyzeSingleVideoTask` Cloud Tasks queue, updates `totalVideos` to `existingSuccessCount + retryCount`, and returns immediately without client HTTP timeouts.
 -   **`generateLabTaskPrompt`**: A callable function for teachers that synthesizes a tailored lab coursework prompt from a completed `videoAnalysisJobs` execution. Queries all completed child `aiJobs`, extracts student video summaries across the entire cohort, and invokes Gemini 3.8 Flash to discover coursework tasks, cloud platforms, rubrics, milestone checklists, and common student blockers. Outputs a ready-to-run Markdown prompt with strict tool instructions (`recordActualWorkingTime`, `recordTaskDuration`, `recordLessonSummary`).
 -   **`processTeacherSpeechSubtitles` / `translateTeacherSpeech`**:
     -   **Trigger**: `onCall` (`functions/ai_flows/subtitleFlows.js`).

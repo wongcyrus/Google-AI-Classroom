@@ -1225,7 +1225,7 @@ Stores information about video analysis jobs.
 *   **Fields**:
     *   `classId`: (string) The ID of the class.
     *   `requester`: (string) The UID of the user who requested the analysis.
-    *   `videos`: (array) An array of objects, each containing details about a video to be analyzed. This is for jobs on selected videos.
+    *   `videos`: (array) An array of resolved target video objects (`studentUid`, `studentEmail`, `videoPath`, `captureInterval`) persisted for both selected-video jobs and time-range ("Analyze All Videos") jobs.
         *   `studentUid`: (string) The UID of the student.
         *   `studentEmail`: (string) The student's email.
         *   `videoPath`: (string) The path to the video in Cloud Storage.
@@ -1233,9 +1233,10 @@ Stores information about video analysis jobs.
     *   `status`: (string) The status of the job (`pending`, `processing`, `completed`, `partial_failure`, `failed`).
     *   `modelUsed`: (string) Gemini model identifier used for analysis (e.g. `gemini-4-argon`, `gemini-3.8-flash`, `gemini-3.5-flash-lite`).
     *   `totalVideos`: (number) Total number of unique student videos queued for this job execution.
-    *   `processedCount`: (number) Monotonically incremented count of finished video tasks.
-    *   `successCount`: (number) Count of successfully analyzed videos.
+    *   `processedCount`: (number) Monotonically incremented count of finished video tasks (clamped to `totalVideos`).
+    *   `successCount`: (number) Count of successfully analyzed videos (clamped to `totalVideos`).
     *   `failureCount`: (number) Count of videos that encountered fatal errors or quota blocks.
+    *   `completedVideoPaths`: (array) Array of normalized `videoPath` strings already completed for this master job, used by `recordTaskResult` to prevent duplicate counting on Cloud Task retries.
     *   `failedVideos`: (array) An array of objects for videos that failed analysis, preserving student details, storage path, and error string for subsequent retry.
     *   `notes`: (string | null) Diagnostic notes, truncation warnings, or execution context.
     *   `dispatchedAt`: (timestamp) Timestamp when tasks were fanned out to Cloud Tasks queue.

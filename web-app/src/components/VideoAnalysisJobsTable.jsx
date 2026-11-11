@@ -48,7 +48,17 @@ const VideoAnalysisJobsTable = ({ jobs, selectedJob, onSelectJob, onDeleteJob, o
         </thead>
         <tbody>
           {jobs.map(job => {
-            const videoCount = job.videos?.length || job.aiJobIds?.length || 0;
+            const totalVideos = job.totalVideos || job.videos?.length || job.aiJobIds?.length || 0;
+            const processedVideos = Math.min(
+              totalVideos || Infinity,
+              job.processedCount ?? job.aiJobIds?.length ?? 0
+            );
+            const isActiveJob = job.status === 'processing' || job.status === 'running';
+            const videoCountLabel = isActiveJob && totalVideos > 0 && (typeof job.processedCount === 'number' || Array.isArray(job.aiJobIds))
+              ? `${processedVideos} / ${totalVideos} videos`
+              : totalVideos > 0
+                ? `${totalVideos} videos`
+                : '—';
             const promptText = job.prompt || '';
 
             return (
@@ -74,10 +84,19 @@ const VideoAnalysisJobsTable = ({ jobs, selectedJob, onSelectJob, onDeleteJob, o
                 </td>
                 <td style={{ whiteSpace: 'nowrap' }}>
                   <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#334155' }}>
-                    {videoCount > 0 ? `${videoCount} videos` : '—'}
+                    {videoCountLabel}
                   </span>
                 </td>
-                <td>{getStatusBadge(job.status)}</td>
+                <td>
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                    {getStatusBadge(job.status)}
+                    {isActiveJob && totalVideos > 0 && (
+                      <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#0369a1' }}>
+                        ({processedVideos}/{totalVideos})
+                      </span>
+                    )}
+                  </div>
+                </td>
                 <td 
                   onClick={(e) => {
                     if (onViewPrompt) {

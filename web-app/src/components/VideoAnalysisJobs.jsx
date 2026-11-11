@@ -1,5 +1,14 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import * as firestoreModule from 'firebase/firestore';
 import { collection, query, where, getDocs, documentId, doc, writeBatch, getDoc, addDoc, setDoc, serverTimestamp, orderBy } from 'firebase/firestore';
+
+const getOnSnapshot = () => {
+  try {
+    return typeof firestoreModule.onSnapshot === 'function' ? firestoreModule.onSnapshot : null;
+  } catch {
+    return null;
+  }
+};
 import { httpsCallable } from 'firebase/functions';
 import { getStorage, ref, getDownloadURL } from 'firebase/storage';
 import { db, functions } from '../firebase-config';
@@ -19,7 +28,10 @@ const VideoAnalysisJobs = ({ classId, startTime, endTime, filterField, user }) =
   const [selectedAnalysisJob, setSelectedAnalysisJob] = useState(null);
   const [viewingPromptJob, setViewingPromptJob] = useState(null);
   const [aiJobs, setAiJobs] = useState([]);
+  const [fallbackTargetVideos, setFallbackTargetVideos] = useState([]);
+  const [liveJobOverrides, setLiveJobOverrides] = useState({});
   const [studentProfiles, setStudentProfiles] = useState({});
+  const loadedAiJobIdsKeyRef = useRef('');
 
   useEffect(() => {
     if (!classId) return;
@@ -90,18 +102,30 @@ const VideoAnalysisJobs = ({ classId, startTime, endTime, filterField, user }) =
     extraClauses,
   });
 
-  // Reset selection when the main job list changes
+  // Reset selection only when the top-level query criteria change
   useEffect(() => {
     setSelectedAnalysisJob(null);
     setAiJobs([]);
-  }, [videoAnalysisJobs]);
+    setFallbackTargetVideos([]);
+    loadedAiJobIdsKeyRef.current = '';
+  }, [classId, startTime, endTime, filterField]);
 
-  const fetchAiJobs = async (aiJobIds) => {
-    setAiJobsLoading(true);
-    setAiJobs([]);
+  const displayedAnalysisJobs = useMemo(() => {
+    if (!Array.isArray(videoAnalysisJobs)) return [];
+    return videoAnalysisJobs.map(job => (
+      liveJobOverrides[job.id] ? { ...job, ...liveJobOverrides[job.id] } : job
+    ));
+  }, [videoAnalysisJobs, liveJobOverrides]);
+
+  const fetchAiJobs = useCallback(async (aiJobIds, { silent = false } = {}) => {
+    if (!silent) {
+      setAiJobsLoading(true);
+      setAiJobs([]);
+    }
     try {
       if (!aiJobIds || aiJobIds.length === 0) {
         setAiJobs([]);
+        loadedAiJobIdsKeyRef.current = '';
         return;
       }
 
@@ -112,24 +136,182 @@ const VideoAnalysisJobs = ({ classId, startTime, endTime, filterField, user }) =
         const batchIds = aiJobIds.slice(i, i + 30);
         const q = query(aiJobsRef, where(documentId(), 'in', batchIds));
         const querySnapshot = await getDocs(q);
-        querySnapshot.forEach(doc => {
-          const jobData = doc.data();
+        querySnapshot.forEach(docSnap => {
+          const jobData = docSnap.data();
           if (jobData.deleted !== true) {
-            allJobs.push({ id: doc.id, ...jobData });
+            allJobs.push({ id: docSnap.id, ...jobData });
           }
         });
       }
 
-      allJobs.sort((a, b) => b.timestamp.toDate() - a.timestamp.toDate());
-      setAiJobs(allJobs);
+      allJobs.sort((a, b) => {
+        const tA = a.timestamp?.toDate ? a.timestamp.toDate().getTime() : 0;
+        const tB = b.timestamp?.toDate ? b.timestamp.toDate().getTime() : 0;
+        return tB - tA;
+      });
+
+      const seenPaths = new Set();
+      const dedupedJobs = [];
+      for (const job of allJobs) {
+        const rawPath = (job.mediaPaths && job.mediaPaths[0]) || job.videoPath || job.path || '';
+        const normPath = rawPath.replace(/^gs:\/\/[^/]+\//, '').replace(/^\//, '');
+        if (normPath) {
+          if (seenPaths.has(normPath)) continue;
+          seenPaths.add(normPath);
+        }
+        dedupedJobs.push(job);
+      }
+
+      setAiJobs(dedupedJobs);
+      loadedAiJobIdsKeyRef.current = [...aiJobIds].sort().join(',');
 
     } catch (error) {
       console.error("Error fetching AI jobs:", error);
-      alert("Failed to fetch AI jobs for the selected analysis job.");
+      if (!silent) {
+        alert("Failed to fetch AI jobs for the selected analysis job.");
+      }
     } finally {
-      setAiJobsLoading(false);
+      if (!silent) {
+        setAiJobsLoading(false);
+      }
     }
-  };
+  }, []);
+
+  // Real-time subscription for active jobs in Level 1 directory table
+  useEffect(() => {
+    const onSnapshotFn = getOnSnapshot();
+    if (!onSnapshotFn || !Array.isArray(videoAnalysisJobs) || videoAnalysisJobs.length === 0) {
+      return undefined;
+    }
+
+    const activeJobs = videoAnalysisJobs.filter(job => {
+      const currentStatus = liveJobOverrides[job.id]?.status || job.status;
+      return currentStatus === 'processing' || currentStatus === 'pending' || currentStatus === 'running';
+    });
+
+    if (activeJobs.length === 0) return undefined;
+
+    const unsubscribers = activeJobs.map(job => {
+      const jobRef = doc(db, 'videoAnalysisJobs', job.id);
+      return onSnapshotFn(
+        jobRef,
+        (docSnap) => {
+          if (docSnap && typeof docSnap.exists === 'function' && docSnap.exists()) {
+            const freshData = { id: docSnap.id, ...docSnap.data() };
+            setLiveJobOverrides(prev => ({ ...prev, [docSnap.id]: freshData }));
+          }
+        },
+        (err) => {
+          console.warn(`Live listener error for videoAnalysisJob ${job.id}:`, err);
+        }
+      );
+    });
+
+    return () => {
+      unsubscribers.forEach(unsub => {
+        if (typeof unsub === 'function') unsub();
+      });
+    };
+  }, [videoAnalysisJobs, liveJobOverrides]);
+
+  // Real-time subscription for the currently selected job in Level 2 detail view
+  useEffect(() => {
+    const selectedJobId = selectedAnalysisJob?.id;
+    const onSnapshotFn = getOnSnapshot();
+    if (!selectedJobId || !onSnapshotFn) {
+      return undefined;
+    }
+
+    const jobRef = doc(db, 'videoAnalysisJobs', selectedJobId);
+    const unsub = onSnapshotFn(
+      jobRef,
+      (docSnap) => {
+        if (docSnap && typeof docSnap.exists === 'function' && docSnap.exists()) {
+          const freshJob = { id: docSnap.id, ...docSnap.data() };
+          setSelectedAnalysisJob(freshJob);
+          setLiveJobOverrides(prev => ({ ...prev, [docSnap.id]: freshJob }));
+
+          const nextIds = Array.isArray(freshJob.aiJobIds) ? freshJob.aiJobIds : [];
+          const nextKey = [...nextIds].sort().join(',');
+          if (nextIds.length > 0 && nextKey !== loadedAiJobIdsKeyRef.current) {
+            fetchAiJobs(nextIds, { silent: loadedAiJobIdsKeyRef.current !== '' });
+          }
+        }
+      },
+      (err) => {
+        console.warn(`Live listener error for selected job ${selectedJobId}:`, err);
+      }
+    );
+
+    return () => {
+      if (typeof unsub === 'function') unsub();
+    };
+  }, [selectedAnalysisJob?.id, fetchAiJobs]);
+
+  // Load fallback target videos for older "Analyze All Videos" jobs that did not store job.videos
+  useEffect(() => {
+    if (!selectedAnalysisJob) {
+      setFallbackTargetVideos([]);
+      return;
+    }
+    const isJobActive =
+      selectedAnalysisJob.status === 'processing' ||
+      selectedAnalysisJob.status === 'pending' ||
+      selectedAnalysisJob.status === 'running';
+    const hasExplicitVideos = Array.isArray(selectedAnalysisJob.videos) && selectedAnalysisJob.videos.length > 0;
+
+    if (!isJobActive || hasExplicitVideos || !selectedAnalysisJob.classId || !selectedAnalysisJob.startTime || !selectedAnalysisJob.endTime) {
+      setFallbackTargetVideos([]);
+      return;
+    }
+
+    let cancelled = false;
+    const loadFallbackVideos = async () => {
+      try {
+        const effectiveField = selectedAnalysisJob.filterField || filterField || 'startTime';
+        const videoRef = collection(db, 'videoJobs');
+        const vQuery = query(
+          videoRef,
+          where('status', '==', 'completed'),
+          where('classId', '==', selectedAnalysisJob.classId),
+          where(effectiveField, '>=', selectedAnalysisJob.startTime),
+          where(effectiveField, '<=', selectedAnalysisJob.endTime)
+        );
+        const snap = await getDocs(vQuery);
+        if (cancelled || !snap || typeof snap.forEach !== 'function') return;
+        const deduped = new Map();
+        snap.forEach(d => {
+          const v = d.data();
+          const rawPath = v.videoPath || v.path || v.url || '';
+          if (rawPath && !deduped.has(rawPath)) {
+            deduped.set(rawPath, {
+              studentUid: v.studentUid || '',
+              studentEmail: v.studentEmail || '',
+              videoPath: rawPath,
+              path: rawPath,
+            });
+          }
+        });
+        setFallbackTargetVideos(Array.from(deduped.values()));
+      } catch (err) {
+        console.warn('Could not load fallback target videos for processing job:', err);
+      }
+    };
+
+    loadFallbackVideos();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    selectedAnalysisJob?.id,
+    selectedAnalysisJob?.status,
+    selectedAnalysisJob?.videos,
+    selectedAnalysisJob?.classId,
+    selectedAnalysisJob?.startTime,
+    selectedAnalysisJob?.endTime,
+    selectedAnalysisJob?.filterField,
+    filterField,
+  ]);
 
   const handleAnalysisJobSelect = (job) => {
     const isSameJob = selectedAnalysisJob && selectedAnalysisJob.id === job.id;
@@ -267,7 +449,7 @@ const VideoAnalysisJobs = ({ classId, startTime, endTime, filterField, user }) =
       job.id,
       job.model || job.modelUsed || 'gemini-3.5-flash-lite',
       job.status || 'unknown',
-      job.videos?.length || job.aiJobIds?.length || 0,
+      job.totalVideos || job.videos?.length || job.aiJobIds?.length || 0,
       job.createdAt?.toDate ? job.createdAt.toDate().toISOString() : (job.createdAt || 'N/A'),
       job.filterField || 'N/A',
       job.startTime?.toDate ? job.startTime.toDate().toISOString() : (job.startTime || 'N/A'),
@@ -580,6 +762,15 @@ const VideoAnalysisJobs = ({ classId, startTime, endTime, filterField, user }) =
         }
       }
 
+      // De-duplicate targetVideos by videoPath so retries or duplicate records never inflate video count
+      const uniqueVideoMap = new Map();
+      targetVideos.forEach(v => {
+        if (v.videoPath && !uniqueVideoMap.has(v.videoPath)) {
+          uniqueVideoMap.set(v.videoPath, v);
+        }
+      });
+      targetVideos = Array.from(uniqueVideoMap.values());
+
       if (targetVideos.length === 0) {
         alert('No videos found to analyze.');
         setIsLaunchingJob(false);
@@ -593,6 +784,8 @@ const VideoAnalysisJobs = ({ classId, startTime, endTime, filterField, user }) =
         classId: selectedAnalysisJob.classId || '',
         requester: user?.uid || selectedAnalysisJob.requester || '',
         videos: targetVideos.map(v => sanitizeForFirestore(v)),
+        totalVideos: targetVideos.length,
+        processedCount: 0,
         status: 'pending',
         createdAt: serverTimestamp(),
         startTime: selectedAnalysisJob.startTime || null,
@@ -600,7 +793,7 @@ const VideoAnalysisJobs = ({ classId, startTime, endTime, filterField, user }) =
         filterField: effectiveFilterField,
         deleted: false,
         prompt: generatedPromptText,
-        model: selectedModel || 'gemini-2.5-flash',
+        model: selectedModel || 'gemini-3.8-flash',
       };
 
       await setDoc(newJobRef, sanitizeForFirestore(rawJobPayload));
@@ -616,24 +809,132 @@ const VideoAnalysisJobs = ({ classId, startTime, endTime, filterField, user }) =
     }
   };
 
-  const hasFailedSubJobs = useMemo(() => aiJobs.some(j => j.status === 'failed'), [aiJobs]);
+  const allSubJobEntries = useMemo(() => {
+    const entries = [...aiJobs];
+    if (!selectedAnalysisJob) return entries;
+
+    const processedPaths = new Set();
+    entries.forEach(j => {
+      const raw = (j.mediaPaths && j.mediaPaths[0]) || j.videoPath || j.path || '';
+      const cleaned = cleanVideoPath(raw);
+      if (cleaned) processedPaths.add(cleaned);
+    });
+
+    const jobModel = selectedAnalysisJob.modelUsed || selectedAnalysisJob.model || 'gemini-3.8-flash';
+    const jobTimestamp = selectedAnalysisJob.dispatchedAt || selectedAnalysisJob.createdAt || null;
+
+    if (Array.isArray(selectedAnalysisJob.failedVideos)) {
+      selectedAnalysisJob.failedVideos.forEach((fv, idx) => {
+        const fvPath = cleanVideoPath(fv?.videoPath || fv?.path || '');
+        if (fvPath && processedPaths.has(fvPath)) return;
+        if (fvPath) processedPaths.add(fvPath);
+        entries.push({
+          id: `failed-${selectedAnalysisJob.id}-${idx}`,
+          studentUid: fv?.studentUid || '',
+          studentEmail: fv?.studentEmail || 'Student',
+          videoPath: fvPath,
+          path: fvPath,
+          mediaPaths: fvPath ? [fvPath] : [],
+          modelUsed: jobModel,
+          status: 'failed',
+          cost: 0,
+          errorDetails: fv?.error || 'Video analysis task failed',
+          timestamp: selectedAnalysisJob.finishedAt || jobTimestamp,
+        });
+      });
+    }
+
+    const isJobActive =
+      selectedAnalysisJob.status === 'processing' ||
+      selectedAnalysisJob.status === 'pending' ||
+      selectedAnalysisJob.status === 'running';
+
+    if (isJobActive) {
+      const sourceVideos =
+        Array.isArray(selectedAnalysisJob.videos) && selectedAnalysisJob.videos.length > 0
+          ? selectedAnalysisJob.videos
+          : fallbackTargetVideos;
+
+      if (Array.isArray(sourceVideos) && sourceVideos.length > 0) {
+        sourceVideos.forEach((v, idx) => {
+          const vPath = cleanVideoPath(v?.videoPath || v?.path || '');
+          if (vPath && processedPaths.has(vPath)) return;
+          if (vPath) processedPaths.add(vPath);
+          entries.push({
+            id: `processing-${selectedAnalysisJob.id}-${idx}`,
+            studentUid: v?.studentUid || '',
+            studentEmail: v?.studentEmail || v?.studentUid || `Video #${idx + 1}`,
+            videoPath: vPath,
+            path: vPath,
+            mediaPaths: vPath ? [vPath] : [],
+            modelUsed: jobModel,
+            status: 'processing',
+            cost: 0,
+            result: '⏳ Queued / Analyzing video in Cloud Tasks...',
+            timestamp: jobTimestamp,
+            isPlaceholderProcessing: true,
+          });
+        });
+      } else {
+        const totalExpected = Number(selectedAnalysisJob.totalVideos) || 0;
+        const alreadyDone = Math.max(Number(selectedAnalysisJob.processedCount) || 0, entries.length);
+        const remainingCount = Math.max(0, totalExpected - alreadyDone);
+        for (let i = 0; i < remainingCount; i += 1) {
+          entries.push({
+            id: `processing-slot-${selectedAnalysisJob.id}-${i}`,
+            studentUid: '',
+            studentEmail: `Student Video #${alreadyDone + i + 1}`,
+            videoPath: '',
+            path: '',
+            mediaPaths: [],
+            modelUsed: jobModel,
+            status: 'processing',
+            cost: 0,
+            result: '⏳ Queued / Analyzing video in Cloud Tasks...',
+            timestamp: jobTimestamp,
+            isPlaceholderProcessing: true,
+          });
+        }
+      }
+    }
+
+    return entries;
+  }, [aiJobs, selectedAnalysisJob, fallbackTargetVideos]);
+
+  const completedSubJobsCount = useMemo(
+    () => allSubJobEntries.filter(j => j.status === 'completed').length,
+    [allSubJobEntries]
+  );
+  const failedSubJobsCount = useMemo(
+    () => allSubJobEntries.filter(j => j.status === 'failed').length,
+    [allSubJobEntries]
+  );
+  const processingSubJobsCount = useMemo(
+    () => allSubJobEntries.filter(j => j.status === 'processing' || j.status === 'running' || j.status === 'pending').length,
+    [allSubJobEntries]
+  );
+
+  const hasFailedSubJobs = useMemo(() => failedSubJobsCount > 0, [failedSubJobsCount]);
   const failedVideosCount = useMemo(() => {
     if (selectedAnalysisJob?.failedVideos && selectedAnalysisJob.failedVideos.length > 0) {
-      return selectedAnalysisJob.failedVideos.length;
+      return Math.max(selectedAnalysisJob.failedVideos.length, failedSubJobsCount);
     }
-    return aiJobs.filter(j => j.status === 'failed').length;
-  }, [selectedAnalysisJob, aiJobs]);
+    return failedSubJobsCount;
+  }, [selectedAnalysisJob, failedSubJobsCount]);
 
   const filteredAiJobs = useMemo(() => {
-    return aiJobs
+    return allSubJobEntries
       .filter(job => {
         const email = job.studentEmail || '';
-        const prof = getStudentProfile(email, studentProfiles);
         const displayName = getStudentDisplayName(email, studentProfiles);
         const matchesStudent = !studentFilter || 
           email.toLowerCase().includes(studentFilter.toLowerCase()) ||
           displayName.toLowerCase().includes(studentFilter.toLowerCase());
-        const matchesStatus = statusFilter === 'all' || job.status === statusFilter;
+        const matchesStatus =
+          statusFilter === 'all' ||
+          (statusFilter === 'processing'
+            ? (job.status === 'processing' || job.status === 'running' || job.status === 'pending')
+            : job.status === statusFilter);
         return matchesStudent && matchesStatus;
       })
       .map(job => {
@@ -647,7 +948,7 @@ const VideoAnalysisJobs = ({ classId, startTime, endTime, filterField, user }) =
           programme: prof.programme || ''
         };
       });
-  }, [aiJobs, studentFilter, statusFilter, studentProfiles]);
+  }, [allSubJobEntries, studentFilter, statusFilter, studentProfiles]);
 
   return (
     <div className="view-container">
@@ -706,7 +1007,7 @@ const VideoAnalysisJobs = ({ classId, startTime, endTime, filterField, user }) =
                     checked={rerunScope === 'job_videos'}
                     onChange={(e) => setRerunScope(e.target.value)}
                   />
-                  <span>This Job's Videos ({selectedAnalysisJob?.videos?.length || selectedAnalysisJob?.aiJobIds?.length || 0})</span>
+                  <span>This Job's Videos ({selectedAnalysisJob?.totalVideos || selectedAnalysisJob?.videos?.length || aiJobs.length || selectedAnalysisJob?.aiJobIds?.length || 0})</span>
                 </label>
                 <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}>
                   <input
@@ -838,7 +1139,7 @@ const VideoAnalysisJobs = ({ classId, startTime, endTime, filterField, user }) =
           ) : (
             <>
               <VideoAnalysisJobsTable 
-                jobs={videoAnalysisJobs} 
+                jobs={displayedAnalysisJobs} 
                 selectedJob={selectedAnalysisJob} 
                 onSelectJob={navigateToJob} 
                 onDeleteJob={handleDeleteAnalysisJob} 
@@ -940,15 +1241,42 @@ const VideoAnalysisJobs = ({ classId, startTime, endTime, filterField, user }) =
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '14px', fontSize: '0.85rem', color: '#64748b' }}>
                   <span><strong>Model:</strong> {selectedAnalysisJob.modelUsed || selectedAnalysisJob.model || 'gemini-3.5-flash-lite'}</span>
                   <span><strong>Class:</strong> {selectedAnalysisJob.classId}</span>
-                  <span><strong>Created:</strong> {selectedAnalysisJob.createdAt?.toDate().toLocaleString() || 'N/A'}</span>
-                  <span><strong>Videos:</strong> {selectedAnalysisJob.totalVideos || selectedAnalysisJob.videos?.length || selectedAnalysisJob.aiJobIds?.length || aiJobs.length || 0} total</span>
-                  {selectedAnalysisJob.status === 'processing' && typeof selectedAnalysisJob.totalVideos === 'number' && selectedAnalysisJob.totalVideos > 0 && (
-                    <span><strong>Progress:</strong> {selectedAnalysisJob.processedCount || 0} / {selectedAnalysisJob.totalVideos}</span>
+                  <span><strong>Created:</strong> {selectedAnalysisJob.createdAt?.toDate ? selectedAnalysisJob.createdAt.toDate().toLocaleString() : 'N/A'}</span>
+                  <span><strong>Videos:</strong> {selectedAnalysisJob.totalVideos || selectedAnalysisJob.videos?.length || selectedAnalysisJob.aiJobIds?.length || allSubJobEntries.length || 0} total</span>
+                  {(selectedAnalysisJob.status === 'processing' || selectedAnalysisJob.status === 'pending' || selectedAnalysisJob.status === 'running') && (
+                    <span style={{ color: '#0369a1', fontWeight: 600 }}>
+                      <strong>Progress:</strong>{' '}
+                      {Math.min(
+                        selectedAnalysisJob.totalVideos || selectedAnalysisJob.videos?.length || allSubJobEntries.length || 0,
+                        Math.max(selectedAnalysisJob.processedCount || 0, completedSubJobsCount + failedSubJobsCount)
+                      )}{' '}
+                      / {selectedAnalysisJob.totalVideos || selectedAnalysisJob.videos?.length || allSubJobEntries.length || 0}
+                      {processingSubJobsCount > 0 ? ` (${processingSubJobsCount} processing)` : ''}
+                    </span>
                   )}
                   {failedVideosCount > 0 && (
                     <span style={{ color: '#dc2626', fontWeight: 600 }}>({failedVideosCount} failed)</span>
                   )}
                 </div>
+                {(selectedAnalysisJob.status === 'processing' || selectedAnalysisJob.status === 'pending' || selectedAnalysisJob.status === 'running') && (
+                  (() => {
+                    const total = selectedAnalysisJob.totalVideos || selectedAnalysisJob.videos?.length || allSubJobEntries.length || 0;
+                    const done = Math.min(total, Math.max(selectedAnalysisJob.processedCount || 0, completedSubJobsCount + failedSubJobsCount));
+                    const pct = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 5;
+                    return (
+                      <div style={{ marginTop: '10px', maxWidth: '420px' }}>
+                        <div style={{ width: '100%', height: '6px', background: '#e2e8f0', borderRadius: '9999px', overflow: 'hidden' }}>
+                          <div style={{
+                            width: `${pct}%`,
+                            height: '100%',
+                            background: 'linear-gradient(90deg, #0284c7 0%, #4f46e5 100%)',
+                            transition: 'width 0.4s ease'
+                          }} />
+                        </div>
+                      </div>
+                    );
+                  })()
+                )}
               </div>
 
               {/* Action Toolbar */}
@@ -1257,7 +1585,7 @@ const VideoAnalysisJobs = ({ classId, startTime, endTime, filterField, user }) =
               </h3>
               
               {/* Search & Filter Controls */}
-              {aiJobs.length > 0 && (
+              {allSubJobEntries.length > 0 && (
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                   <input
                     type="text"
@@ -1284,10 +1612,10 @@ const VideoAnalysisJobs = ({ classId, startTime, endTime, filterField, user }) =
                       color: '#0f172a'
                     }}
                   >
-                    <option value="all">All Statuses ({aiJobs.length})</option>
-                    <option value="completed">Completed ({aiJobs.filter(j => j.status === 'completed').length})</option>
-                    <option value="failed">Failed ({aiJobs.filter(j => j.status === 'failed').length})</option>
-                    <option value="processing">Processing ({aiJobs.filter(j => j.status === 'processing' || j.status === 'running').length})</option>
+                    <option value="all">All Statuses ({allSubJobEntries.length})</option>
+                    <option value="completed">Completed ({completedSubJobsCount})</option>
+                    <option value="failed">Failed ({failedSubJobsCount})</option>
+                    <option value="processing">Processing ({processingSubJobsCount})</option>
                   </select>
                   <button
                     onClick={() => handleExportAiJobs(filteredAiJobs)}
@@ -1311,10 +1639,10 @@ const VideoAnalysisJobs = ({ classId, startTime, endTime, filterField, user }) =
               )}
             </div>
 
-            {aiJobsLoading ? (
+            {aiJobsLoading && allSubJobEntries.length === 0 ? (
               <p>Loading AI jobs...</p>
             ) : filteredAiJobs.length === 0 ? (
-              <p>{aiJobs.length === 0 ? 'No AI jobs found for this analysis job.' : 'No AI jobs match the filter.'}</p>
+              <p>{allSubJobEntries.length === 0 ? 'No AI jobs found for this analysis job.' : 'No AI jobs match the filter.'}</p>
             ) : (
               <AiJobsTable
                 aiJobs={filteredAiJobs}

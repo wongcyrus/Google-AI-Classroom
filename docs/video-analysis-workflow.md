@@ -4,7 +4,7 @@
 
 ---
 
-This document provides a detailed explanation of the video analysis workflow, which is powered by Google's Gemini Enterprise Agent Platform (formerly Vertex AI). Given that this is the most resource-intensive and expensive feature in the application, several safeguards have been implemented to ensure it runs efficiently and to prevent unnecessary costs from duplicate or runaway jobs.
+This document provides a detailed explanation of the video analysis workflow, which is powered by **Firebase AI Logic**, **Google Genkit**, and the **Gemini API**. Given that this is the most resource-intensive feature in the application, several distributed systems safeguards have been implemented to ensure it runs reliably at cohort scale and to prevent unnecessary costs or count drift from duplicate or timed-out tasks.
 
 ---
 
@@ -33,9 +33,9 @@ This document provides a detailed explanation of the video analysis workflow, wh
 The process begins when a teacher requests an AI analysis on one or more videos. This request creates a master job document that orchestrates individual analysis tasks for each video via a distributed **Google Cloud Tasks Map-Reduce architecture**.
 
 Unlike legacy monolithic functions that executed sequentially inside a single Cloud Function (and inevitably hit the hard **540-second Firestore trigger timeout** when analyzing cohorts larger than 15–20 students), the modern architecture completely decouples cohort size from function runtime:
-1. **Map (Dispatcher)**: `processVideoAnalysisJob` triggers on `videoAnalysisJobs/{jobId}` creation, validates and deduplicates videos, records the master metadata (`totalVideos`, `processedCount: 0`), enqueues individual tasks to Google Cloud Tasks in parallel batches, and finishes in **~2 seconds**.
-2. **Worker (Push Queue)**: Google Cloud Tasks invokes `analyzeSingleVideoTask` serverless worker instances in `asia-east2`, throttled by queue concurrency controls (`maxConcurrentDispatches: 4`, `maxDispatchesPerSecond: 2`) to protect Gemini API rate limits.
-3. **Reduce (Atomic State Machine)**: Each worker executes its analysis independently (with an isolated 300s timeout and 2GiB RAM) and executes an atomic Firestore transaction (`recordTaskResult`) to increment `processedCount` and flip the master status to `completed` or `partial_failure` when the last task resolves.
+1. **Map (Dispatcher)**: `processVideoAnalysisJob` triggers on `videoAnalysisJobs/{jobId}` creation, validates and deduplicates videos by storage path, persists the resolved `videos` array and master metadata (`totalVideos`, `processedCount: 0`, `completedVideoPaths: []`), enqueues individual tasks to Google Cloud Tasks in parallel batches, and finishes in **~2 seconds**.
+2. **Worker (Push Queue)**: Google Cloud Tasks invokes `analyzeSingleVideoTask` serverless worker instances in `asia-east2`, throttled by queue concurrency controls (`maxConcurrentDispatches: 4`, `maxDispatchesPerSecond: 2`) to protect Gemini API rate limits. Each worker runs with a **540s Cloud Run timeout** and an internal **480s soft deadline guard (`SOFT_TIMEOUT_MS = 480_000`)** so any slow video evaluation is caught cleanly inside `try/catch` before Cloud Run's hard container timeout.
+3. **Reduce (Atomic State Machine)**: Each worker executes its analysis independently and runs an atomic Firestore transaction (`recordTaskResult`) that checks both `aiJobIds` and `completedVideoPaths` (preventing retry double-counting), clamps `processedCount` and `successCount` to `totalVideos`, and flips the master status to `completed` or `partial_failure` when all tasks resolve.
 
 ### Data Flow Diagram
 
@@ -50,12 +50,12 @@ sequenceDiagram
     participant TasksQueue as Google Cloud Tasks (analyzeSingleVideoTask)
     participant Worker as analyzeSingleVideoTask Worker
     participant RetryFunction as retryVideoAnalysisJob (callable)
-    participant VertexAI as Gemini Multimodal API
+    participant GeminiAPI as Gemini Multimodal API
 
     User->>Frontend: Clicks "Analyze Videos"
     Frontend->>Firestore: Creates `videoAnalysisJobs/job1`
     Firestore-->>Dispatcher: Triggers on create (~2s execution)
-    Dispatcher->>Dispatcher: De-duplicates video paths & initializes job doc (totalVideos=N, processedCount=0)
+    Dispatcher->>Dispatcher: De-duplicates video paths & initializes job doc (videos, totalVideos=N, processedCount=0, completedVideoPaths=[])
     loop Parallel Enqueue Chunks of 20
         Dispatcher->>TasksQueue: Enqueue task for each video with deterministic taskId
     end
@@ -69,12 +69,12 @@ sequenceDiagram
             Worker->>Worker: Reuses completed aiJob
         else Needs fresh inference
             Worker->>Firestore: Pre-flight AI quota check
-            Worker->>VertexAI: generate() with video & prompt
-            VertexAI-->>Worker: Multimodal analysis text
+            Worker->>GeminiAPI: generate() with video & prompt (480s soft timeout guard)
+            GeminiAPI-->>Worker: Multimodal analysis text
             Worker->>Firestore: Writes child `aiJobs/aiJobId` & deducts quota
         end
         Worker->>Firestore: runTransaction(recordTaskResult)
-        Note over Worker, Firestore: Atomically increments processedCount.<br/>If processedCount == totalVideos:<br/>status = (failures == 0 ? 'completed' : 'partial_failure')
+        Note over Worker, Firestore: Deduplicates by jobId & completedVideoPaths.<br/>Atomically increments processedCount (clamped to totalVideos).<br/>If processedCount >= totalVideos:<br/>status = (failures == 0 ? 'completed' : 'partial_failure')
     end
 
     Note over User, Frontend: If any videos failed (e.g. quota or corrupted video)
@@ -215,65 +215,66 @@ export const analyzeSingleVideoTask = onTaskDispatched(
       maxDispatchesPerSecond: 2
     },
     retryConfig: {
-      maxAttempts: 2,
-      minBackoffSeconds: 10
+      maxAttempts: 2
     },
     memory: '2GiB',
-    timeoutSeconds: 300
+    timeoutSeconds: 540
   },
   async (req) => { ... }
 );
 ```
 
 - **Concurrency Capped at 4**: Avoids Gemini API `429 RESOURCE_EXHAUSTED` rate spikes.
-- **Dedicated Resources**: Each video is processed inside an isolated 2GiB container with its own 300-second timeout.
+- **Dedicated Resources & Soft Timeout Guard (`480s` inside `540s`)**: Each video is processed inside an isolated 2GiB container with a 540-second Cloud Run ceiling and an internal 480-second `Promise.race` soft timeout (`SOFT_TIMEOUT_MS = 480_000`). If a large video exceeds 480 seconds, it rejects cleanly inside the worker's `try/catch` block and records the failure via `recordTaskResult`, preventing Cloud Run from terminating the container externally and leaving the master job stuck in `processing`.
 
 ---
 
 ## 2. Preventing Duplicate Analysis (Idempotency) & Pre-Flight Quota
 
-This is the most critical safeguard against unnecessary cloud spending. Before invoking the generative AI model, each worker performs both idempotency and quota verification:
+This is the most critical safeguard against unnecessary cloud spending and duplicate video counts. Before invoking the generative AI model, each worker performs both idempotency and quota verification:
 
-### Safeguard 4: SHA-256 Idempotency Check & Pre-Flight Quota
+### Safeguard 4: SHA-256 Idempotency Check, Video-Path Deduplication & Pre-Flight Quota
 
 Inside `analyzeSingleVideoTask.js`:
-1. **Idempotency**: Computes a SHA-256 hash of the prompt text. Checks for any completed `aiJobs` matching the same storage path and prompt hash. If found, reuses the existing `aiJobId` at $0.00 cost.
-2. **Quota Check**: Calculates estimated token cost and verifies classroom balance in `classes/{classId}/aiUsage` before invoking Gemini.
-3. **Execution**: Invokes `analyzeSingleVideoFlow` with the video and prompt.
+1. **Prompt + Media SHA-256 Idempotency**: Computes a SHA-256 hash of the interpolated prompt text. Checks for any completed `aiJobs` matching the same storage path (`mediaPaths`) and `promptHash`. If found, reuses the existing `aiJobId` at `$0.00` cost.
+2. **Master-Job Video-Path Deduplication (`completedVideoPaths`)**: If a Cloud Tasks worker succeeded in writing an `aiJob` right as an HTTP timeout occurred and Cloud Tasks dispatches a retry attempt (`maxAttempts: 2`), `recordTaskResult` checks both `existingAiJobIds.includes(jobId)` and `completedVideoPaths.includes(videoKey)`. If the video path was already recorded for this master job, the transaction exits as a no-op—guaranteeing `processedCount`, `successCount`, and `aiJobIds` never exceed `totalVideos`.
+3. **Quota Check**: Calculates estimated token cost and verifies classroom balance in `classes/{classId}` before invoking Gemini.
+4. **Execution with Soft Deadline**: Invokes `analyzeSingleVideoFlow` wrapped in a 480-second soft deadline.
 
 ---
 
-## 3. Atomic State Machine & In-Place Retry
+## 3. Atomic State Machine, Real-Time UI Progress & In-Place Retry
 
 ### Atomic State Machine (`recordTaskResult`)
 As individual workers finish, they execute an atomic Firestore transaction (`recordTaskResult`) against `videoAnalysisJobs/{masterJobId}`:
-- Atomically increments `processedCount` and `successCount` (or `failureCount`).
-- Appends successful job IDs to `aiJobIds`, or failed video objects to `failedVideos`.
-- When `newProcessedCount >= totalVideos`, flips `status` to `completed` (if 0 failures) or `partial_failure` (if any failures) and timestamps `finishedAt`.
+- Verifies the video has not already been recorded in `aiJobIds` or `completedVideoPaths`.
+- Atomically increments `processedCount` and `successCount` (clamped to `totalVideos`) or `failureCount`.
+- Appends successful job IDs to `aiJobIds` and video paths to `completedVideoPaths`, or failed video objects to `failedVideos`.
+- When `newProcessedCount >= totalVideos`, flips `status` to `completed` (if 0 failures), `partial_failure` (if mixed), or `failed` (if all failed), and timestamps `finishedAt`.
 
-### Zero-Timeout In-Place Retry
-When a job encounters partial failures (e.g. invalid video format or quota interruption):
+### Zero-Timeout In-Place Retry (`retryVideoAnalysisJob`)
+When a job encounters partial failures or timed-out tasks:
 1. **Trigger**: Teacher clicks **"Retry Failed Jobs (N)"** in the UI, calling `retryVideoAnalysisJob`.
-2. **Immediate Return**: The callable function reads `failedVideos`, resets the job status to `processing`, enqueues all failed videos to `analyzeSingleVideoTask` in Cloud Tasks, and immediately returns `{ result: 'Successfully enqueued...' }` to the browser client.
-3. **Zero Browser HTTP Timeouts**: The browser does not wait for video analyses to finish; progress updates stream in real time via Firestore snapshot listeners.
+2. **Three-Tier Failure Discovery**:
+   - Reads `jobData.failedVideos`.
+   - Falls back to querying `aiJobs` where `masterJobId == jobId` and `status == 'failed'`.
+   - Falls back to diffing `jobData.videos` against completed `aiJobs` for `masterJobId == jobId` so any task dropped by a hard infrastructure timeout is also recovered and re-queued.
+3. **Immediate Return**: Resets the job status to `processing`, enqueues the missing/failed videos to `analyzeSingleVideoTask` in Cloud Tasks, and immediately returns `{ result: 'Successfully enqueued...' }` to the browser client.
 
 ---
 
-## 4. UI Inspection & Default Word Wrap
+## 4. UI Inspection, Live `onSnapshot` Progress & Default Word Wrap
 
-When teachers inspect individual student video analysis results via `JobResultModal.jsx`:
+When teachers monitor batch jobs in `VideoAnalysisJobs.jsx` (`?tab=video&sub=jobs`) and inspect results via `JobResultModal.jsx`:
 
-1. **Dynamic Header Labeling**:
-   - For structured JSON responses: displays `Analysis Output (JSON):`.
-   - For unstructured text or markdown reports: displays `Analysis Output:` (accurately reflecting text content instead of mislabeling as JSON).
-2. **Default Word Wrap Enabled (`Wrap: ON`)**:
-   - Long continuous AI evaluation narratives, rubric breakdowns, and markdown paragraphs wrap automatically (`whiteSpace: pre-wrap`, `wordBreak: break-word`, `overflowWrap: anywhere`).
-   - Completely eliminates horizontal scrolling across single-line strings.
-3. **Toolbar Controls**:
-   - **`↩ Wrap: ON` / `➡ Wrap: OFF`**: Allows toggling between wrapped reading mode and raw monospace preformatted mode.
-   - Multi-format exports: **`📥 Excel`** (`.xlsx`), **`📥 JSON`**, **`📝 Markdown`**, **`📄 Text Report`**, and **`📋 Copy`** with live feedback.
-4. **Live Job Progress Bar**:
-   - `VideoAnalysisJobs.jsx` displays real-time progress counters (`Progress: {processedCount} / {totalVideos}`) as Cloud Tasks workers complete.
+1. **Accurate Cohort Video Counts (`VideoAnalysisJobsTable.jsx`)**:
+   - The Level 1 directory table resolves `totalVideos = job.totalVideos || job.videos?.length || job.aiJobIds?.length || 0` so jobs always display the true cohort video count (e.g. `37 videos`), and active jobs display live progress (`12 / 37 videos` and `processing (12/37)`).
+2. **Real-Time `onSnapshot` Listeners & Synthesized `Processing (N)` Rows (`VideoAnalysisJobs.jsx`)**:
+   - Both the Level 1 directory table and Level 2 job detail dashboard subscribe via Firestore `onSnapshot` to active `videoAnalysisJobs` documents.
+   - Because child `aiJobs` documents are only created upon task completion, `VideoAnalysisJobs.jsx` combines completed `aiJobs` (deduplicated by `videoPath`), `failedVideos`, and remaining in-flight videos from `job.videos` into a unified `allSubJobEntries` list.
+   - The status filter dropdown (`All Statuses`, `Completed`, `Failed`, `Processing`) accurately reflects remaining queued/running tasks in Cloud Tasks (`Processing (N)`), and selecting `Processing` displays the queued student videos with live status indicators.
+3. **Dynamic Header Labeling & Default Word Wrap (`JobResultModal.jsx`)**:
+   - Displays `Analysis Output (JSON):` for JSON objects or `Analysis Output:` for markdown/text narratives, with **`↩ Wrap: ON`** enabled by default and one-click exports to **Excel (`.xlsx`)**, **JSON**, **Markdown**, and **Text Report**.
 
 ---
 

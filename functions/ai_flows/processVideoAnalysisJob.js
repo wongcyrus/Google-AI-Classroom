@@ -148,14 +148,16 @@ export const processVideoAnalysisJob = onDocumentCreated({ document: 'videoAnaly
     const startTimeIso = getISOString(jobData.startTime);
     const endTimeIso = getISOString(jobData.endTime);
 
-    // Initial state: Set totalVideos and mark job as processing
+    // Initial state: Set totalVideos, persist resolved videos list, and mark job as processing
     await db.collection('videoAnalysisJobs').doc(masterJobId).update({
       status: 'processing',
       modelUsed: modelToUse,
+      videos: videosToAnalyze,
       totalVideos: videosToAnalyze.length,
       processedCount: 0,
       successCount: 0,
       failureCount: 0,
+      completedVideoPaths: [],
       failedVideos: [],
       dispatchedAt: FieldValue.serverTimestamp(),
       ...(jobNotes ? { notes: jobNotes } : {})

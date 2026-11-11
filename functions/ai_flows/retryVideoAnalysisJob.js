@@ -75,6 +75,32 @@ export const retryVideoAnalysisJob = onCall({ region: FUNCTION_REGION, cors: COR
         }
     }
 
+    // Fallback for jobs where tasks timed out before recording into failedVideos
+    if (videosToAnalyze.length === 0 && Array.isArray(jobData.videos) && jobData.videos.length > 0) {
+        const completedSnap = await db.collection('aiJobs').where('masterJobId', '==', jobId).where('status', '==', 'completed').get();
+        const completedPaths = new Set();
+        if (completedSnap && Array.isArray(completedSnap.docs)) {
+            completedSnap.docs.forEach(doc => {
+                const job = doc.data();
+                const url = (job.mediaPaths && job.mediaPaths[0]) || job.videoPath || job.path;
+                if (url) {
+                    const { relativePath } = resolveVideoDetails({ videoPath: url }, bucketName);
+                    if (relativePath) completedPaths.add(relativePath);
+                }
+            });
+        }
+        videosToAnalyze = jobData.videos
+            .map(v => {
+                const { relativePath } = resolveVideoDetails(v, bucketName);
+                return {
+                    ...v,
+                    videoPath: relativePath,
+                    path: relativePath,
+                };
+            })
+            .filter(v => v.videoPath && !completedPaths.has(v.videoPath));
+    }
+
     if (videosToAnalyze.length === 0) {
         throw new HttpsError('failed-precondition', 'Could not find any failed videos to retry for this job.');
     }

@@ -23,9 +23,27 @@ export async function recordTaskResult({ masterJobRef, isSuccess, jobId, video, 
     if (!masterDoc.exists) return;
 
     const data = masterDoc.data() || {};
+    const existingAiJobIds = Array.isArray(data.aiJobIds) ? data.aiJobIds : [];
+    const completedVideoPaths = Array.isArray(data.completedVideoPaths) ? data.completedVideoPaths : [];
+    const videoKey = video?.videoPath || video?.path || '';
+
+    if (
+      isSuccess &&
+      ((jobId && existingAiJobIds.includes(jobId)) ||
+        (videoKey && completedVideoPaths.includes(videoKey)))
+    ) {
+      return;
+    }
+
     const totalVideos = data.totalVideos || 0;
-    const newProcessedCount = (data.processedCount || 0) + 1;
-    const newSuccessCount = (data.successCount || 0) + (isSuccess ? 1 : 0);
+    const newProcessedCount = Math.min(
+      totalVideos > 0 ? totalVideos : Infinity,
+      (data.processedCount || 0) + 1
+    );
+    const newSuccessCount = Math.min(
+      totalVideos > 0 ? totalVideos : Infinity,
+      (data.successCount || 0) + (isSuccess ? 1 : 0)
+    );
     const newFailureCount = (data.failureCount || 0) + (isSuccess ? 0 : 1);
 
     const updatePayload = {
@@ -36,6 +54,9 @@ export async function recordTaskResult({ masterJobRef, isSuccess, jobId, video, 
 
     if (isSuccess && jobId) {
       updatePayload.aiJobIds = FieldValue.arrayUnion(jobId);
+      if (videoKey) {
+        updatePayload.completedVideoPaths = FieldValue.arrayUnion(videoKey);
+      }
     } else {
       updatePayload.failedVideos = FieldValue.arrayUnion({
         studentUid: video?.studentUid || null,
@@ -77,7 +98,7 @@ export const analyzeSingleVideoTask = onTaskDispatched(
       maxDispatchesPerSecond: 2,
     },
     memory: '2GiB',
-    timeoutSeconds: 300,
+    timeoutSeconds: 540,
   },
   async (request) => {
     const {
@@ -198,19 +219,35 @@ export const analyzeSingleVideoTask = onTaskDispatched(
         return;
       }
 
-      // 3. Execute analysis flow
-      const result = await analyzeSingleVideoFlow({
-        videoUrl: gsUri,
-        prompt,
-        classId,
-        studentUid: video.studentUid,
-        studentEmail: video.studentEmail,
-        masterJobId,
-        startTime: startTimeIso,
-        endTime: endTimeIso,
-        model: modelToUse,
-        frameRate: typeof video.captureInterval === 'number' ? video.captureInterval : undefined,
+      // 3. Execute analysis flow with a soft deadline before Cloud Run's 540s hard timeout
+      const SOFT_TIMEOUT_MS = 480_000;
+      let timeoutHandle;
+      const timeoutPromise = new Promise((_, reject) => {
+        timeoutHandle = setTimeout(() => {
+          reject(new Error('Video analysis timed out before completion (exceeded 480s limit).'));
+        }, SOFT_TIMEOUT_MS);
       });
+
+      let result;
+      try {
+        result = await Promise.race([
+          analyzeSingleVideoFlow({
+            videoUrl: gsUri,
+            prompt,
+            classId,
+            studentUid: video.studentUid,
+            studentEmail: video.studentEmail,
+            masterJobId,
+            startTime: startTimeIso,
+            endTime: endTimeIso,
+            model: modelToUse,
+            frameRate: typeof video.captureInterval === 'number' ? video.captureInterval : undefined,
+          }),
+          timeoutPromise,
+        ]);
+      } finally {
+        clearTimeout(timeoutHandle);
+      }
 
       const isSuccess = Boolean(result && result.jobId && (!result.result || !result.result.startsWith('Error:')));
       const errorMsg = (!isSuccess && result?.result) ? result.result : (!result?.jobId ? 'Analysis flow did not return a job ID.' : null);
