@@ -347,7 +347,7 @@ Here is how the 3 on-device edge models and their cloud fallback are configured 
 | **MediaPipe FaceLandmarker (478-pt + Iris)** | `@mediapipe/tasks-vision` (WebGL GPU) | Browser HTTP Cache (`.task` bundle) | Dedicated `faceMonitor.worker.js` + `requestVideoFrameCallback` | **$0.00** |
 | **LiteRT Whisper-Tiny (Multilingual)** | `@litertjs/core` (WebGPU / WASM + Chirp-Z FFT) | `webai-litert-whisper-v1` | Dedicated `litertWhisper.worker.js` | **$0.00** |
 | **LiteRT-LM Gemma 4 E2B (`gemma-4-E2B-it-web.litertlm`)** | `@litert-lm/core` v0.15.0 (WebGPU) | `webai-litert-gemma-v1` | Dedicated `litertGemma.worker.js` | **$0.00** |
-| **Cloud Fallback (`analyzeFaceFallback` / `analyzeAudio`)** | Vertex AI Genkit (`gemini-3.5-flash-lite` / `gemini-4-argon`) | Stateless Cloud Function | Async HTTPS Callable | **Pay-Per-Token (`cost.js`)** |
+| **Cloud Fallback (`analyzeFaceFallback` / `analyzeAudio`)** | Google Genkit (`gemini-3.5-flash-lite` / `gemini-4-argon`) | Stateless Cloud Function | Async HTTPS Callable | **Pay-Per-Token (`cost.js`)** |
 
 ---
 

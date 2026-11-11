@@ -24,7 +24,7 @@ When running an AI-powered computer science or engineering classroom for 40 to 1
 3. **Standard Student Performance Video Grading & Whole-Lecture CC Generation**: Evaluating a 45-minute 1-FPS student lab recording against a practical task rubric or generating bilingual subtitles and YouTube study chapters from a 3-hour Opus lecture audio stream requires balanced multimodal throughput—where **Gemini 3.8 Flash (`gemini-3.8-flash`)** ($0.50 In / $3.00 Out per 1M tokens) shines.
 4. **Complex Rubric Synthesis, Multi-Step Code Evaluation & Capstone Supervision (Frontier Reasoning)**: When a teacher wants to watch an instructor demonstration video and synthesize a partial-credit grading rubric, evaluate complex student coding performance, audit 60 weekly capstone logs against live 720p mobile hardware demos, or meta-optimize a JSON-schema prompt, the workload demands **Gemini 4 Argon (`gemini-4-argon`)** ($2.00 In / $10.00 Out per 1M tokens) with its 1-million-token shared multimodal context window and deep reasoning capabilities.
 
-With the arrival of **Gemini 4 (`gemini-4-argon`)** in Vertex AI alongside **Gemma 4 E2B (`gemma-4-E2B-it-web.litertlm`)** in the browser via LiteRT-LM WebGPU, we engineered our **Google Genkit** orchestration layer in `functions/ai_flows/` so teachers can pick **`gemini-4-argon`** across every single classroom workflow—while automatically enforcing parameter sanitization, exponential backoff with jitter, cross-model failover, and real-time FinOps quota governance.
+With the arrival of **Gemini 4 (`gemini-4-argon`)** on Google Cloud alongside **Gemma 4 E2B (`gemma-4-E2B-it-web.litertlm`)** in the browser via LiteRT-LM WebGPU, we engineered our **Google Genkit & Firebase AI Logic** orchestration layer in `functions/ai_flows/` so teachers can pick **`gemini-4-argon`** across every single classroom workflow—while automatically enforcing parameter sanitization, exponential backoff with jitter, cross-model failover, and real-time FinOps quota governance.
 
 ---
 
@@ -56,7 +56,7 @@ Every AI-powered workflow in the repository exposes **Gemini 4 Argon (`gemini-4-
 
 One of the most important engineering lessons when adopting **Gemini 4 (`gemini-4-argon`)** in production is that frontier reasoning models enforce stricter API parameter contracts than earlier generation models:
 - **Strict Parameter Contract on `gemini-4-*`**: Passing legacy sampling parameters (`temperature`, `topP`, `top_p`, `topK`, `top_k`) inside `config` to `gemini-4-argon` throws an immediate `400 INVALID_ARGUMENT` error because Gemini 4 manages internal reasoning sampling natively.
-- **Transient Overload & Quota Spikes in Live Labs**: When 40 students submit their practical exam videos simultaneously or a teacher triggers `analyzeAllImagesFlow` across 40 screens with up to `maxToolRoundtrips = numScreenshots * 3`, regional Vertex AI endpoints can return `429 RESOURCE_EXHAUSTED`, `503 UNAVAILABLE`, or `ECONNRESET`. The pipeline must never fail a student's submission—it must retry with exponential backoff + random jitter and seamlessly fail over to `gemini-3.5-flash-lite` if the primary model is exhausted.
+- **Transient Overload & Quota Spikes in Live Labs**: When 40 students submit their practical exam videos simultaneously or a teacher triggers `analyzeAllImagesFlow` across 40 screens with up to `maxToolRoundtrips = numScreenshots * 3`, regional Gemini API endpoints can return `429 RESOURCE_EXHAUSTED`, `503 UNAVAILABLE`, or `ECONNRESET`. The pipeline must never fail a student's submission—it must retry with exponential backoff + random jitter and seamlessly fail over to `gemini-3.5-flash-lite` if the primary model is exhausted.
 
 Here is the exact sequence executed by [`generateWithResilience`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/ai_flows/analysisFlows.js) for every Genkit invocation across our backend:
 
@@ -246,7 +246,7 @@ When different teachers across a university department experiment with **`gemini
 
 ### Production Code Listing 4: Multi-SDK Token Normalization & Composite Pipeline Pricing in [`functions/ai_flows/cost.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/ai_flows/cost.js)
 
-In [`functions/ai_flows/cost.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/ai_flows/cost.js), we maintain a warm 12-hour in-memory pricing cache synced from `system_config/pricing` (populated daily by our Cloud Billing Catalog API job `syncGeminiPricing`), normalize token property variations across Genkit, Google GenAI SDK, and Vertex AI (`promptTokenCount` vs. `inputTokens`), and compute exact USD costs down to `$0.000001`:
+In [`functions/ai_flows/cost.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/ai_flows/cost.js), we maintain a warm 12-hour in-memory pricing cache synced from `system_config/pricing` (populated daily by our Cloud Billing Catalog API job `syncGeminiPricing`), normalize token property variations across Genkit, Firebase AI Logic, and the Google GenAI SDK (`promptTokenCount` vs. `inputTokens`), and compute exact USD costs down to `$0.000001`:
 
 ```javascript
 // Default baseline pricing lookup table for Gemini models in USD per 1 million tokens (Input / Output)
@@ -292,21 +292,21 @@ export function calculateCost(usageMetadata, model = DEFAULT_MODEL) {
 }
 ```
 
-Before any Genkit flow invokes Vertex AI, `checkQuota(classId, estimatedCost)` verifies that the class's `aiUsedQuota` has not exceeded its allocated `aiQuota` budget. Once the call completes, `logJob()` writes an immutable audit record to `aiJobs/{jobId}` with the **actual** model used (`actualModel` returned by `generateWithResilience`), and an atomic Firestore trigger (`onAiJobCreated` in `quotaTriggers.js`) increments `classes/{classId}.aiUsedQuota` via `FieldValue.increment(cost)`.
+Before any Genkit flow invokes the Gemini API, `checkQuota(classId, estimatedCost)` verifies that the class's `aiUsedQuota` has not exceeded its allocated `aiQuota` budget. Once the call completes, `logJob()` writes an immutable audit record to `aiJobs/{jobId}` with the **actual** model used (`actualModel` returned by `generateWithResilience`), and an atomic Firestore trigger (`onAiJobCreated` in `quotaTriggers.js`) increments `classes/{classId}.aiUsedQuota` via `FieldValue.increment(cost)`.
 
 ---
 
-## 7.Configured Pricing & Role Matrix Across the 5-Model Constellation
+## 7. Configured Pricing & Role Matrix Across the 5-Model Constellation
 
 Here is how our 5-model architecture is configured in [`functions/ai_flows/cost.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/ai_flows/cost.js) (`MODEL_PRICING`) across classroom workloads:
 
 | Model Identifier | Execution Tier | Configured Rate in `cost.js` (Input / Output per 1M Tokens) | Primary Pedagogical Use Case |
 | :--- | :--- | :--- | :--- |
 | **`gemma-4-E2B-it-web.litertlm`** | Tier 1: Browser WebGPU (`@litert-lm/core`) | **$0.00 / $0.00** | Continuous exam speech-intent proctoring & $0.00 client-mode live lecture subtitles. |
-| **`gemini-3.5-flash-lite`** | Tier 4: Vertex AI Genkit | **$0.30 / $2.50** | Real-time 9-language live subtitles, Bingo screen verification & Cloud face fallback. |
-| **`gemini-3.5-transcribe-preview`** | Tier 4: Vertex AI Genkit | **$0.50 / $2.50** | Stage-1 multi-speaker Cantonese/Mandarin/English capstone consultation diarization. |
-| **`gemini-3.8-flash`** | Tier 4: Vertex AI Genkit | **$0.75 / $3.75** | Default practical task video grading & single-pass whole-lecture CC generation. |
-| **`gemini-4-argon`** | Tier 4: Vertex AI Genkit | **$2.00 / $10.00** | Reference video rubric synthesis, complex multi-step code grading, cohort Map-Reduce discovery & Prompt Studio meta-optimization. |
+| **`gemini-3.5-flash-lite`** | Tier 4: Google Genkit / Firebase AI Logic | **$0.30 / $2.50** | Real-time 9-language live subtitles, Bingo screen verification & Cloud face fallback. |
+| **`gemini-3.5-transcribe-preview`** | Tier 4: Google Genkit / Firebase AI Logic | **$0.50 / $2.50** | Stage-1 multi-speaker Cantonese/Mandarin/English capstone consultation diarization. |
+| **`gemini-3.8-flash`** | Tier 4: Google Genkit / Firebase AI Logic | **$0.75 / $3.75** | Default practical task video grading & single-pass whole-lecture CC generation. |
+| **`gemini-4-argon`** | Tier 4: Google Genkit / Firebase AI Logic | **$2.00 / $10.00** | Reference video rubric synthesis, complex multi-step code grading, cohort Map-Reduce discovery & Prompt Studio meta-optimization. |
 
 ---
 

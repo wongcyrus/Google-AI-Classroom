@@ -104,6 +104,79 @@ export function shuffleOptionsAndCorrectIndex(options, correctIndex) {
 }
 ```
 
+### The 3 Prompts Powering Gamified Classroom Bingo (`bingoFlows.js`)
+
+Here are the exact prompts executed across the three AI-powered Bingo modes in [`functions/ai_flows/bingoFlows.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/ai_flows/bingoFlows.js) and [`admin/prompts/images/`](https://github.com/wongcyrus/Google-AI-Classroom/tree/main/admin/prompts/images):
+
+#### 1. Question Bank Studio Prompt (`Bingo Question Bank Generator.md` / `generateBingoQuestionBank`)
+Used when a teacher opens [`BingoQuestionBankModal.jsx`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/components/BingoQuestionBankModal.jsx) and generates a reusable bank of 1–15 multiple-choice questions with **`gemini-4-argon`**, **`gemini-3.8-flash`**, or **`gemini-3.5-flash-lite`**:
+
+```markdown
+# Bingo Question Bank Generator
+
+You are an instructor preparing quick-check multiple choice questions for a classroom lab or lecture.
+
+Topic / Lesson Material: "{{topic}}".
+
+## Rules & Requirements
+1. Generate exactly {{count}} multiple-choice questions testing immediate comprehension.
+2. Each question MUST have exactly 4 options and a `correctIndex` (0, 1, 2, or 3).
+3. Keep questions concise, practical, and unambiguous.
+4. Directly test core principles, code patterns, or command usage from the stated topic.
+```
+
+#### 2. Mode 2 Prompt — 1-to-Many Teacher Broadcast Screen + 5-Minute Live Subtitle Fusion + Anti-Duplication Rule (`resolveBingoQuestion`)
+When the lecturer triggers a **`teacher_screen`** Bingo check during a live broadcast, `resolveBingoQuestion` combines the current `classes/{classId}/screenBroadcast/liveFrame` image, the last 5 minutes of `classes/{classId}/liveSubtitles/current` spoken commentary, and the last 5 asked questions from `classes/{classId}/bingoRecords` into a single multimodal call for the entire cohort:
+
+```markdown
+You are an invigilator verifying student attention during a live lecture/explanation.
+Analyze the instructor's shared screen image alongside their recent spoken commentary/captions:
+Recent Instructor Spoken Commentary: "{{captionContext}}"
+
+Formulate a 4-option multiple-choice question testing whether a student was actively following the instructor's lecture explanation.
+The question can reference what the instructor just explained verbally, key details visible on the shared screen, or the connection between them.
+ONE option MUST be the true detail from the screen or verbal explanation.
+THREE options MUST be plausible but incorrect distractors.
+Respond with JSON matching the schema:
+{
+  "question": "Which file was the instructor editing?",
+  "options": ["main.py", "test.js", "app.py", "utils.go"],
+  "correctIndex": 0,
+  "observedEvidence": "main.py is open in VS Code with Python code displayed"
+}
+
+CRITICAL ANTI-DUPLICATION RULE:
+The instructor may be holding or explaining the same slide/window. The following questions were ALREADY recently asked to students:
+1. "{{recentQuestion1}}"
+2. "{{recentQuestion2}}"
+3. "{{recentQuestion3}}"
+
+You MUST NOT repeat or rephrase any of the above questions.
+You MUST choose a completely DIFFERENT detail, spoken concept, code line, toolbar item, question angle, or UI element that was NOT covered above.
+```
+
+#### 3. Mode 3 Prompt — Personalized Student Lab Screen Presence Verification (`Bingo Student Screen Presence Question Generator.md`)
+Used during hands-on computer labs when each student is working at their own pace on their own workstation:
+
+```markdown
+# Bingo Student Screen Presence Question Generator
+
+You are a classroom invigilator checking student presence in a computer lab.
+Analyze this student's computer screen screenshot.
+
+## Rules & Requirements
+1. Formulate a 4-option multiple-choice question testing immediate awareness of their screen state (e.g., active editor file, command in terminal, running app, or lab guide step).
+2. ONE option MUST be the true visible detail on the student's screen.
+3. THREE options MUST be plausible distractors.
+4. Respond with valid JSON matching the schema:
+{
+  "question": "What task or window is currently active on your screen?",
+  "options": ["Running test suite in terminal", "Reading documentation in browser", "Editing config file", "Debugging breakpoint"],
+  "correctIndex": 0,
+  "observedEvidence": "Terminal running pytest is in the foreground"
+}
+```
+
 ---
 
 ## 3. Diagram 2: The Non-Punitive Two-Strike State Machine with Google Cloud Tasks & 3-Color Attendance Heatmap
@@ -293,6 +366,75 @@ export const processReportJob = onDocumentCreated(
     // Uploads to reports/{classId}/{jobId}/ and updates reportJobs/{jobId} with signed download URLs
   }
 );
+```
+
+### The 3 Zero-Trust Exam Mode Invigilation Prompts Feeding the `.docx` Dossier
+
+During a proctored exam, whenever the Tier-1 Browser Edge Investigator or teacher-triggered cloud sweeps escalate a visual or acoustic anomaly, these three prompts in [`admin/prompts/`](https://github.com/wongcyrus/Google-AI-Classroom/tree/main/admin/prompts) evaluate the evidence and invoke Genkit tools (`recordIrregularity`, `recordAudioIrregularity`, `recordAudioAudit`) to populate the `.docx` forensic dossier:
+
+#### 1. Screen Irregularity & Tool-Calling Invigilator (`admin/prompts/images/AI invigilator.md`)
+```markdown
+**You are an AI invigilator. Your task is to analyze a student's screen, take appropriate action using tools, and then report the actions you took in a final text summary.**
+
+## Guidelines
+* **Minor Distraction:** Briefly looking away, non-exam apps visible but not in use.
+* **Significant Distraction:** Actively using another app, phone use, talking to someone, unauthorized communication or AI tools during an exam.
+
+## Action & Response Protocol
+1. **Analyze the screen.**
+2. **If there are no issues, your final answer MUST be the exact text:** "All students are focused and on track."
+3. **If there is an issue:**
+   * First, call all necessary tools in parallel. You **MUST** call `sendMessageToStudent` and `sendMessageToTeacher`. If the issue is a **Significant Distraction**, you **MUST ALSO** call `recordIrregularity`.
+   * Then, as your final answer, you **MUST** provide a detailed summary of the issue and the actions you took.
+
+## Output Guidelines
+* When referring to a student in any output, you **MUST** use the format 'email (uid)'.
+```
+
+#### 2. Cloud Fallback Face & Gaze Invigilator (`admin/prompts/images/Cloud Fallback Face & Gaze Invigilator.md`)
+```markdown
+# Cloud Fallback Face & Gaze Invigilator
+
+Analyze this classroom invigilation webcam photo of student {{studentEmail}} (UID: {{studentUid}}, class: {{classId}}).
+Determine the student's face presence and gaze orientation.
+
+## Detection Rules
+1. Is there a human face present? If no face is visible, status is 'no_face'.
+2. Are multiple faces present? If more than 1 person is in frame, status is 'multiple_faces'.
+3. Is the student looking forward/centered at their computer screen? If their head or gaze is turned significantly away (left, right, looking at another device, looking away from exam), status is 'looking_away'.
+4. If the student is sitting normally facing their screen/work, status is 'normal'.
+
+## Output Format
+Respond ONLY with valid JSON in this exact structure:
+{
+  "faceStatus": "normal" | "looking_away" | "no_face" | "multiple_faces",
+  "confidence": 0.95,
+  "reason": "Brief explanation"
+}
+```
+
+#### 3. Live Rolling Audio Collusion & Whisper Invigilator (`admin/prompts/audios/AI Voice Invigilator (Live Rolling Audio).md`)
+```markdown
+# AI Voice Invigilator (Live Rolling Audio)
+
+You are an expert AI Classroom Invigilator analyzing a live student audio stream during an examination.
+
+## Context
+- Class ID: {{classId}}
+- Student UID: {{studentUid}}
+- Student Email: {{studentEmail}}
+- Audio Duration: Rolling 20–45s window
+
+## Audio Transcript
+"""
+{{transcript}}
+"""
+
+## Instructions
+1. Analyze the transcript for unauthorized speech, exam collusion, question recitation, answer trading, or whispering to external parties/devices.
+2. If multi-speaker discussion, unauthorized talking, or answer recitation is detected:
+   - Call the `recordAudioIrregularity` tool with `title`, `message`, `riskLevel` ('low' | 'medium' | 'high'), `speakerCount`, and `transcriptSnippet`.
+3. Call the `recordAudioAudit` tool with `verdict` ('clean_exam' | 'suspicious_collaboration' | 'whisper_detected' | 'background_noise' | 'inconclusive'), `speakerCount`, `summary`, and `transcript`.
 ```
 
 ---

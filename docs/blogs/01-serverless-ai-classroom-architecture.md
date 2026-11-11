@@ -34,7 +34,7 @@ When we engineered **Google AI Classroom** in `asia-east2` (Hong Kong), we unifi
 
 ## 2. Architectural Deep-Dive: The 4-Tier Hybrid Edge-to-Cloud Blueprint
 
-To support both interactive daily teaching and high-integrity proctored examinations without saturating campus Wi-Fi or cloud API quotas, we decoupled high-frequency on-device investigation (**Tier 1 Browser Edge**) from real-time classroom signaling & evidence storage (**Tier 2 Firestore & Cloud Storage**), domain-isolated serverless compute (**Tier 3 Cloud Functions Gen 2 / Cloud Run**), and multimodal AI evaluation (**Tier 4 Vertex AI / Google Genkit**).
+To support both interactive daily teaching and high-integrity proctored examinations without saturating campus Wi-Fi or cloud API quotas, we decoupled high-frequency on-device investigation (**Tier 1 Browser Edge**) from real-time classroom signaling & evidence storage (**Tier 2 Firestore & Cloud Storage**), domain-isolated serverless compute (**Tier 3 Cloud Functions Gen 2 / Cloud Run**), and multimodal AI evaluation (**Tier 4 Firebase AI Logic / Google Genkit**).
 
 ![4-Tier Hybrid Edge-to-Cloud Serverless Classroom Architecture](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog01_diagram1_4tier_architecture.png)
 

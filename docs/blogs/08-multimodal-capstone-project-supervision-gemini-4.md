@@ -101,6 +101,54 @@ ${priorSummary}`;
 }
 ```
 
+Here is the exact **Pre-Meeting Fake-Log Audit & Challenge Question Prompt** executed inside `handlePrepareProjectLogQuestions`:
+
+```markdown
+## Pre-Meeting Weekly Log Audit & Fake-Log Challenge Question Task
+You are helping the project supervisor prepare for **{{groupName}} — Week {{weekNumber}}** supervision meeting (Project Topic: {{projectTopic}}).
+
+In this course, **writing a high-quality weekly log that accurately reflects real engineering work is an explicit grading criterion**.
+However, two common student problems occur in the weekly log sheet:
+1. **Useless / Vague Logs (`vague_useless`)**: 1-to-4 word filler like "done", "finish", "thinking", "do website", "proposal", or copy-pasting previous weeks' logs without concrete technical findings or deliverables.
+2. **Fake / AI-Generated Logs (`suspected_ai_fake`)**: Logs that appear written by ChatGPT/AI to sound impressive (buzzword-heavy corporate prose like "Implemented real-time dashboards, mock AI chatbot, and role-based access control" or sudden massive multi-module claims right after weeks of writing "done" or "No"), without specific file names, bugs encountered, or continuity with last week's plan.
+
+## Students' Week {{weekNumber}} Logs & Prior History
+{{logsFormatted}}
+
+## Instructions
+For EVERY student listed above:
+1. Classify `logQualityStatus` as one of:
+   - `"genuine"`: Specific, honest, technically grounded log that connects logically to prior plans.
+   - `"vague_useless"`: Too brief, generic ("done", "thinking"), or copy-pasted to evaluate real work.
+   - `"suspected_ai_fake"`: Overly polished AI buzzword dump, suspicious sudden leap from prior "done"/"No" logs, or claims too many unverified subsystems at once.
+   - `"inactive"`: Answered "No" to doing work this week or did not submit a log.
+2. Assign `logQualityScore` from `0` to `10` (e.g., 8-10 for genuine detailed logs; 3-5 for suspected AI/fake logs pending verification; 1-4 for vague/useless logs; 0-2 for inactive/missing).
+3. Write a concise `logAuditSummary` (1-2 sentences explaining why the log received this score and what looks genuine, vague, or AI-faked).
+4. Generate 2 to 3 sharp, specific `challengeQuestions` for the supervisor to ask the student live during the meeting:
+   - If `suspected_ai_fake`: Ask live code-walkthrough & debugging challenge questions that a student who faked the log with AI cannot answer without showing real code (e.g., "Open the exact Flask route / database table on screen now and show how X handles Y", "What specific error did you hit when integrating X and how did you fix it?").
+   - If `vague_useless`: Demand immediate screen demonstration of concrete artifacts and measurable next-week deliverables.
+   - If `genuine`: Ask constructive technical design & edge-case verification questions about their reported findings.
+
+Respond strictly with valid JSON matching this structure:
+{
+  "preMeetingLogAudit": [
+    {
+      "studentId": "250105348",
+      "email": "250105348@stu.vtc.edu.hk",
+      "name": "Student Name",
+      "logQualityStatus": "suspected_ai_fake",
+      "logQualityScore": 4,
+      "logAuditSummary": "Sudden leap from 'done' in Weeks 6-7 to claiming full Flask backend, real-time dashboards, mock AI chatbot, and RBAC in one week.",
+      "challengeQuestions": [
+        "Share your screen and open your Flask route file: walk us through how the Doctor/Patient role-based access control check is implemented in code.",
+        "Which database tables back your real-time dashboard and history page, and can you trigger a live state update right now?",
+        "What was the hardest bug you fixed while connecting the frontend to Flask this week?"
+      ]
+    }
+  ]
+}
+```
+
 When a student submits a suspected ChatGPT log claiming they built an entire Flask RBAC backend in one week after writing `"done"` in Weeks 6 and 7, Gemini flags the badge as **`🟠 Suspected AI / Fake (4/10)`** right on the supervisor's smartphone card and prepares 3 targeted verification questions:
 > 1. *"Open your Flask route file right now and walk us through how the Doctor/Patient role-based access control decorator is implemented in code."*
 > 2. *"Which database tables back your real-time dashboard, and can you trigger a live state update on screen right now?"*
@@ -189,6 +237,75 @@ export function isLongClipTranscriptTruncated(transcriptText, durationSeconds = 
 ```
 
 When `isLongClipTranscriptTruncated(clipText, clipDurationSecs)` returns `true`, Stage 1 automatically re-invokes `generateWithResilience` with an explicit full-duration boundary instruction (`"IMPORTANT: This meeting recording is 22:15 long. Do NOT stop early on pauses; transcribe the entire recording from [00:00] through [22:15]."`), ensuring 100% of the consultation dialogue reaches Stage 2!
+
+### The 2-Stage Multimodal Prompts Powering `analyzeProjectMeeting`
+
+Here are the exact prompts executed across Stage 1 and Stage 2 of [`functions/ai_flows/projectMeetingFlows.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/ai_flows/projectMeetingFlows.js) (and [`admin/prompts/audios/Project Group Meeting Analyzer.md`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/admin/prompts/audios/Project%20Group%20Meeting%20Analyzer.md)):
+
+#### 1. Stage 1 Prompt — Multilingual Acoustic Speaker Diarization & Mobile Demo Video Transcription (`gemini-3.5-transcribe-preview`)
+
+```markdown
+# Stage 1A: Voice Consultation Clip Diarization Prompt
+Transcribe this project supervision meeting audio clip ({{clipLabel}}) verbatim in its original spoken language (Cantonese, Mandarin, or English, preserving English technical terms like React, Firestore, Docker, API).
+Identify distinct voices using speaker diarization labels with [MM:SS] timestamps (e.g., [00:05] Speaker 1: ..., [00:42] Speaker 2: ...).
+If a speaker states their name or is addressed by name, include their name next to the speaker label (e.g., [00:42] Speaker 2 (Alice): ...).
+
+# Stage 1B: Long-Clip Truncation Recovery Suffix (Injected if maxTsSecs < dur * 0.45)
+IMPORTANT: This meeting recording is {{clipDurationMmSs}} long. Do NOT stop early on pauses; transcribe the entire recording from [00:00] through [{{clipDurationMmSs}}].
+
+# Stage 1C: 720p Mobile Camera Demo Video Dialogue Prompt
+Transcribe any speech or spoken dialogue during this live project demonstration video clip ({{demoLabel}}) verbatim with speaker diarization and [MM:SS] timestamps. If no speech is present, reply with [Demonstration without speech].
+```
+
+#### 2. Stage 2 Prompt — Multimodal Roster Attribution & Weekly Log vs. Live Demo Cross-Examination (`gemini-4-argon` / `gemini-3.8-flash`)
+
+```markdown
+You are an expert academic project supervisor and technical meeting analyst for higher education Capstone / Final Year Project (FYP) weekly supervision meetings in Hong Kong.
+Speakers in the meeting code-switch naturally between Cantonese, Mandarin, and English technical terminology (e.g., `React`, `Firestore`, `Docker`, `Cloud Run`, `CI/CD`, `API`, `Git`, `PR`).
+
+## Meeting Metadata
+- Class ID: {{classId}}
+- Project Group: {{groupName}}
+- Project Topic: {{projectTopic}}
+- Week Number: Week {{weekNumber}}
+- Supervisor: {{supervisorName}} ({{supervisorEmail}})
+
+## Enrolled Group Student Roster
+{{rosterLines}}
+
+## Deterministic Speaker Anchors (1-Tap Supervisor Voice Tags & Student Demo Clips)
+### 1-Tap Supervisor "Speaking Now" Anchors (100% Ground Truth Speaker Identity at Timestamp):
+{{voiceAnchorLines}}
+
+### Visual Demonstration Clips & Meeting Photo Artifacts:
+#### Meeting Photo Artifacts Captured Live by Supervisor:
+{{meetingPhotoLines}}
+
+#### Demonstration Video Clips (720p Mobile Camera):
+{{screenClipLines}}
+
+## Prior Week's Assigned Action Items (for Continuity Check)
+{{priorWeekContext}}
+
+## Students' Submitted Weekly Log Sheet Entries for Week {{weekNumber}} (for Log Quality Grading & Fake-Log Verification)
+{{weeklyLogsLines}}
+
+## Stage 1 Diarized Audio Transcript (from gemini-3.5-transcribe-preview)
+"""
+{{combinedDiarizedTranscript}}
+"""
+
+## Task Instructions
+Using the Stage 1 Diarized Audio Transcript, the Deterministic Speaker Anchors, and the Students' Submitted Weekly Logs above:
+1. Resolve anonymous speaker labels (Speaker 1, Speaker 2, etc.) to the exact students in the Enrolled Group Student Roster or the Supervisor using opening self-introductions, 1-tap voice anchors, discussed project tasks, and 720p demo clips.
+2. Determine the Attendance Record for every student in the roster ('present', 'late', or 'absent'), their speakingContribution ('high', 'moderate', 'low', 'none'), a concise evidence string with [MM:SS] timestamp, and firstHeardTimestamp ('MM:SS').
+3. Extract Key Meeting Insights (executiveSummary, overallGroupProgress: 'on_track' | 'ahead' | 'at_risk' | 'behind', keyDecisions[], blockersAndRisks[], supervisorFeedback[], and weeklyGroupFeedback).
+4. Cross-verify each student's **Submitted Weekly Log** against what they **actually discussed/demonstrated in the meeting**, including any attached **Meeting Photo Artifacts** (whiteboard diagrams, hardware wiring, terminal code) and **Demonstration Clips**:
+   - Flag **vague/useless logs** (e.g. "done", "thinking") as `"vague_useless"` and **AI-generated/fake logs** that were NOT backed up by real understanding, code, or visual demonstration in the meeting as `"suspected_ai_unverified"` or `"contradicted_in_meeting"`. If verified by their spoken explanation/demo or photo artifacts, mark `"genuine_verified"`.
+   - Grade `logQualityScore` (0 to 10) and `realWorkScore` (0 to 10). Cite specific visual evidence from photos or demo clips when available.
+   - Provide 1-2 `challengeQuestions` and a constructive 2-3 sentence `weeklyFeedback` for the student covering both their real project work and how to improve their weekly log quality.
+5. Output speaker-attributed transcriptSegments[] with startTime ('MM:SS'), endTime ('MM:SS'), speaker (resolved student name or Supervisor), and text.
+```
 
 ---
 
