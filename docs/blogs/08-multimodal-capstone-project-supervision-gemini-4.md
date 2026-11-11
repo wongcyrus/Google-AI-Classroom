@@ -183,13 +183,15 @@ Whenever a voice clip, 720p demo video, or photo is moved from Meeting $A$ to Me
 Once the consultation concludes, the supervisor selects **🧠 Gemini 4 Argon (`gemini-4-argon`)** or **⚡ Gemini 3.8 Flash (`gemini-3.8-flash`)** directly in the meeting toolbar (or triggers **Smart Batch AI Mode 1 Queuing**, which sequentially processes all ready meetings in Week $W$ and skips already-analyzed meetings unless `needsReanalysis === true`).
 
 Why split `analyzeProjectMeeting` into **two distinct AI stages** instead of feeding raw audio, video, photos, and logs into a single prompt?
-- **Stage 1 (`gemini-3.5-transcribe-preview` with `gemini-3.8-flash` Resilience Fallbacks)** is dedicated 100% to **verbatim multilingual acoustic & demo-video dialogue diarization** across every voice clip (`audioClips[]`) and `720p` mobile camera demo video (`screenClips[]`), shifting timestamps cumulatively (`offsetTranscriptTimestamps`) across `Voice Part 1`, `Demo 1`, and `Voice Part 2`.
-- **Stage 2 (`gemini-4-argon` or `gemini-3.8-flash`)** receives **five multimodal evidence streams simultaneously**:
-  1. The **Stage 1 Diarized Audio & Demo Video Transcript**,
-  2. The supervisor's **1-Tap `voiceAnchors[]` Ground Truth Speaker Stamps**,
-  3. The **`720p` Mobile Camera Demo Videos (`screenClips[]`)** attached as native `video/mp4` / `video/webm` multimodal `media` parts (`reasoningMediaParts`),
-  4. The **Snapped Meeting Photos (`photos[]`)** of hardware breadboards, whiteboard ERDs, and laptop code attached as `image/jpeg` `media` parts (`reasoningMediaParts`), and
+- **Stage 1 (`gemini-3.5-transcribe-preview` with `gemini-3.8-flash` Resilience Fallbacks)** is dedicated 100% to **verbatim multilingual acoustic & demo-video dialogue diarization** across every voice clip (`audioClips[]`) and `720p` mobile camera demo video (`screenClips[]`), shifting text timestamps cumulatively (`offsetTranscriptTimestamps`) across `Voice Part 1`, `Demo 1`, and `Voice Part 2` to assemble a single chronological **text transcript** without ever merging or re-encoding the underlying media files.
+- **Stage 2 (`gemini-4-argon` or `gemini-3.8-flash`)** receives **five multimodal evidence streams simultaneously** in a single multi-part Gemini API call (`prompt: [{ text: reasoningPrompt }, ...reasoningMediaParts]`):
+  1. The **Stage 1 Combined Diarized Transcript (Text)**,
+  2. The supervisor's **1-Tap `voiceAnchors[]` Ground Truth Speaker Stamps (Text)**,
+  3. The **individual `720p` Mobile Camera Demo Video segments (`screenClips[]`)** passed as separate `gs://` `video/mp4` / `video/webm` `media` parts in `reasoningMediaParts`,
+  4. The **individual Snapped Meeting Photos (`photos[]`)** of hardware breadboards, whiteboard ERDs, and laptop code passed as separate `gs://` `image/jpeg` `media` parts in `reasoningMediaParts`, and
   5. The **Students' Submitted Weekly Log Sheet Entries (`weeklyLogs[]`)** + **Prior Week's Assigned Action Items (`priorWeekContext`)**.
+
+> **Architectural Clarification — Zero FFmpeg Video Stitching:** The platform **never** merges or re-encodes the voice clips (`audioClips[]`), still photos (`photos[]`), and `720p` video segments (`screenClips[]`) into a single combined video/audio file before analysis. Every voice part, `0.1s` JPEG photo, and `720p` demo clip remains an independent object in Cloud Storage (`gs://...`). Stage 1 transcribes each voice/video segment individually and stitches only their **text transcripts** using cumulative `[MM:SS]` timestamp offsets (`offsetTranscriptTimestamps`), while Stage 2 passes the individual photo and `720p` video `gs://` URIs as a native multi-part `media` array directly to Gemini!
 
 ![Two-Stage Multimodal Diarization & Gemini 4 Argon Cross-Examination (analyzeProjectMeeting)](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog08_diagram3_two_stage_capstone_diarization.png?v=2)
 
