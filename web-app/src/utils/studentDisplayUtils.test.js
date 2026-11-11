@@ -280,6 +280,7 @@ describe('studentDisplayUtils Utility', () => {
 
     beforeEach(() => {
       localStorage.clear();
+      window.confirm = vi.fn().mockReturnValue(true);
     });
 
     it('defaults to masked mode when localStorage has no entry', () => {
@@ -309,6 +310,25 @@ describe('studentDisplayUtils Utility', () => {
       setPrivacyMode(true);
       expect(isPrivacyModeActive()).toBe(true);
       expect(getStudentDisplayName('david@school.edu', sampleProfiles)).toBe('D**** (C*** T** M**)');
+    });
+
+    it('prompts confirmation dialog before changing mode and respects cancellation', () => {
+      window.confirm = vi.fn().mockReturnValue(false); // User clicks Cancel
+      togglePrivacyMode();
+      expect(window.confirm).toHaveBeenCalled();
+      // Should remain in masked mode
+      expect(isPrivacyModeActive()).toBe(true);
+
+      window.confirm = vi.fn().mockReturnValue(true); // User clicks OK
+      togglePrivacyMode();
+      expect(window.confirm).toHaveBeenCalled();
+      // Now toggled to unmasked mode
+      expect(isPrivacyModeActive()).toBe(false);
+
+      // Now toggle back ON with confirmation
+      togglePrivacyMode();
+      expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('Turn Privacy Mode ON'));
+      expect(isPrivacyModeActive()).toBe(true);
     });
   });
 

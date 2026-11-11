@@ -47,18 +47,32 @@ export const setPrivacyMode = (enabled) => {
 };
 
 /**
- * Toggles Masked Privacy Mode and broadcasts the change.
+ * Toggles Masked Privacy Mode with user confirmation alert and broadcasts the change.
+ * @param {boolean} [skipConfirm=false]
  * @returns {boolean}
  */
-export const togglePrivacyMode = () => {
-  const next = !isPrivacyModeActive();
+export const togglePrivacyMode = (skipConfirm = false) => {
+  const current = isPrivacyModeActive();
+  const next = !current;
+
+  if (!skipConfirm && typeof window !== 'undefined' && typeof window.confirm === 'function') {
+    const message = next
+      ? '🛡️ Turn Privacy Mode ON?\n\nThis will mask all student names and student IDs across the classroom UI.'
+      : '⚠️ Turn Privacy Mode OFF?\n\nThis will reveal full student names and IDs on screen. If you are projecting or sharing your screen, sensitive student information will be visible.\n\nAre you sure you want to reveal full student names?';
+
+    const confirmed = window.confirm(message);
+    if (!confirmed) {
+      return current;
+    }
+  }
+
   setPrivacyMode(next);
   return next;
 };
 
 /**
  * React hook to synchronize Privacy Mode state across all tabs, headers, and views.
- * @returns {[boolean, () => void]}
+ * @returns {[boolean, (skipConfirm?: boolean) => void]}
  */
 export const usePrivacyMode = () => {
   const [privacyMode, setLocalPrivacyMode] = useState(isPrivacyModeActive);
@@ -77,8 +91,8 @@ export const usePrivacyMode = () => {
     };
   }, []);
 
-  const toggle = useCallback(() => {
-    const next = togglePrivacyMode();
+  const toggle = useCallback((skipConfirm = false) => {
+    const next = togglePrivacyMode(skipConfirm);
     setLocalPrivacyMode(next);
   }, []);
 
