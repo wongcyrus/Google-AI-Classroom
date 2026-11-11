@@ -31,7 +31,7 @@ In **Part 10 (the finale of our 10-part Google Developer Expert series)**, we wa
 
 In [`scheduledTasks.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/scheduled_tasks/scheduledTasks.js), [`cost.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/ai_flows/cost.js), [`jobLogger.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/functions/ai_flows/jobLogger.js), [`useCloudPricing.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/hooks/useCloudPricing.js), and [`aiCostAggregator.js`](https://github.com/wongcyrus/Google-AI-Classroom/blob/main/web-app/src/utils/aiCostAggregator.js), every AI invocation and storage event is metered in real time against live Google Cloud Billing Catalog SKU rates:
 
-![Real-Time AI FinOps Pipeline, Live Cloud Billing SKU Sync & Atomic Quota Circuit Breaker](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog10_diagram1_finops_sku_sync_circuit_breaker.png)
+![Real-Time AI FinOps Pipeline, Live Cloud Billing SKU Sync & Atomic Quota Circuit Breakers](https://raw.githubusercontent.com/wongcyrus/Google-AI-Classroom/main/docs/blogs/images/blog10_diagram1_finops_sku_sync_circuit_breaker.png?v=2)
 
 ### Production Code 1: Live Google Cloud Billing Catalog SKU Sync (`syncGeminiPricing`) & Multi-Stage Cost Engine (`cost.js`)
 
