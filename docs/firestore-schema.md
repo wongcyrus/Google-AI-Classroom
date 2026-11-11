@@ -335,7 +335,7 @@ erDiagram
         string bingoId PK
         string classId FK
         string studentUid FK "Target student UID or 'all'"
-        string questionSource "question_bank | teacher_screen | student_screen"
+        string questionSource "question_bank | teacher_screen | student_screen | mobile_passkey | lecture_passkey_qr"
         string triggerType "manual | scheduled | retry"
         string question
         array options "4 MC options"
@@ -707,7 +707,7 @@ Stores information about each class.
             *   `bingoId`: (string) Unique challenge identifier.
             *   `classId`: (string) Class ID where the challenge was issued.
             *   `targetStudentUid`: (string) Target student UID, or `'all'` for class-wide broadcast challenges.
-            *   `questionSource`: (string) Challenge generation method (`'question_bank'` for predefined class bank [$0.00 / 0 AI tokens], `'teacher_screen'` for Gemini analysis of teacher's broadcast screen [1 call per cohort], or `'student_screen'` for targeted individual screenshot evaluation).
+            *   `questionSource`: (string) Challenge generation method (`'question_bank'` for predefined class bank [$0.00 / 0 AI tokens], `'teacher_screen'` for Gemini analysis of teacher's broadcast screen [1 call per cohort], `'student_screen'` for targeted individual screenshot evaluation, or `'mobile_passkey'` / `'lecture_passkey_qr'` for anytime WebAuthn biometric QR attendance checks).
             *   `triggerType`: (string) Trigger invocation context (`'manual'`, `'scheduled'`, `'retry'`).
             *   `question`: (string) Prompt text of the multiple-choice presence challenge.
             *   `options`: (array of 4 strings) 4 multiple-choice options.
