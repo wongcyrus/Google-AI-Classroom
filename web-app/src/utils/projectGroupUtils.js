@@ -1012,6 +1012,50 @@ export function formatWeekDateRange(weekNumber = 1, semesterStartMonday = '2026-
 }
 
 /**
+ * Resolves the 1-based project Week Number corresponding to the current real-world calendar date,
+ * clamped between 1 and `totalWeeks`.
+ *
+ * @param {object} classInfo - Class document data with schedule information
+ * @param {string} [semesterStartMonday=''] - Optional pre-resolved YYYY-MM-DD Monday
+ * @param {number} [totalWeeks=0] - Total project weeks (resolves dynamically if omitted)
+ * @param {Date|number|string} [referenceDate=new Date()] - Reference timestamp (defaults to current time)
+ * @returns {number} 1-based week number
+ */
+export function resolveCurrentProjectWeek(
+  classInfo = {},
+  semesterStartMonday = '',
+  totalWeeks = 0,
+  referenceDate = new Date()
+) {
+  const hasSchedule = Boolean(
+    classInfo?.schedule?.startDate ||
+    classInfo?.projectLogSemesterStartMonday ||
+    (Array.isArray(classInfo?.scheduleHistory) && classInfo.scheduleHistory.length > 0)
+  );
+  if (!hasSchedule && !semesterStartMonday) {
+    return null;
+  }
+
+  const startMonday =
+    semesterStartMonday || resolveSemesterStartMondayFromClass(classInfo, '2026-09-07');
+  const base = new Date(`${startMonday}T00:00:00`);
+  if (Number.isNaN(base.getTime())) return null;
+
+  const now = referenceDate instanceof Date ? referenceDate : new Date(referenceDate);
+  if (Number.isNaN(now.getTime())) return null;
+
+  const diffMs = now.getTime() - base.getTime();
+  if (diffMs < 0) return 1;
+
+  const weekNum = Math.floor(diffMs / (7 * 86400000)) + 1;
+  const maxWeeks = Math.max(
+    1,
+    totalWeeks || resolveTotalProjectWeeksFromClass(classInfo, startMonday)
+  );
+  return Math.min(Math.max(1, weekNum), maxWeeks);
+}
+
+/**
  * Parses the public Google Form Weekly Log CSV (`Form Responses 2`) into structured entries,
  * healing 1-digit Student ID typos, resolving Group ID drift, computing academic week numbers
  * from the Class Schedule (`semesterStartMonday` / `classInfo.schedule.startDate`),

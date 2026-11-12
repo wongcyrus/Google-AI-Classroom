@@ -23,6 +23,7 @@ import {
   parseProjectWeeklyLogCsv,
   resolveSemesterStartMondayFromClass,
   resolveTotalProjectWeeksFromClass,
+  resolveCurrentProjectWeek,
   formatWeekDateRange,
   rehydrateWeeklyLogDataFromPersistedProfiles,
   buildStudentContributionProfiles,
@@ -537,19 +538,8 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
         setActiveAudioClipIdx(0);
         setActiveScreenClipIdx(0);
       } else {
-        // If no meeting for this week, see if there is any meeting for this group
-        const groupMeetings = meetings.filter((m) => m.groupId === newGroupId);
-        if (groupMeetings.length > 0) {
-          const sorted = [...groupMeetings].sort(
-            (a, b) => (Number(b.weekNumber) || 0) - (Number(a.weekNumber) || 0)
-          );
-          setSelectedMeetingId(sorted[0].id);
-          setStudioWeekNumber(Number(sorted[0].weekNumber) || 1);
-          setActiveAudioClipIdx(0);
-          setActiveScreenClipIdx(0);
-        } else {
-          setSelectedMeetingId(null);
-        }
+        // Keep studioWeekNumber intact so the supervisor remains on the desired week to record new meetings!
+        setSelectedMeetingId(null);
       }
     },
     [meetings, studioWeekNumber]
@@ -587,7 +577,7 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
     setMobileSidebarExpanded(false);
   }, []);
 
-  // Ensure selectedMeetingId is always synchronized with the active studioGroupId
+  // Ensure selectedMeetingId is always synchronized with the active studioGroupId and studioWeekNumber
   useEffect(() => {
     if (!studioGroupId) return;
     // Prefer meeting matching both current studioGroupId and studioWeekNumber
@@ -602,21 +592,9 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
       }
       return;
     }
-    // If current selectedMeetingId belongs to studioGroupId, keep it
-    if (selectedMeetingId && meetings.some((m) => m.id === selectedMeetingId && m.groupId === studioGroupId)) {
-      return;
-    }
-    // Otherwise pick the latest meeting for this group if any exists
-    const groupMeetings = meetings.filter((m) => m.groupId === studioGroupId);
-    if (groupMeetings.length > 0) {
-      const sorted = [...groupMeetings].sort(
-        (a, b) => (Number(b.weekNumber) || 0) - (Number(a.weekNumber) || 0)
-      );
-      setSelectedMeetingId(sorted[0].id);
-      setStudioWeekNumber(Number(sorted[0].weekNumber) || 1);
-      setActiveAudioClipIdx(0);
-      setActiveScreenClipIdx(0);
-    } else {
+    // If no meeting exists for (studioGroupId, studioWeekNumber), clear selectedMeetingId
+    // so the studio is clean and ready to record a new session for studioWeekNumber (never force week back)
+    if (selectedMeetingId) {
       setSelectedMeetingId(null);
     }
   }, [studioGroupId, studioWeekNumber, meetings, selectedMeetingId]);
@@ -640,6 +618,16 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
     () => resolveTotalProjectWeeksFromClass(classInfo, semesterStartMonday),
     [classInfo, semesterStartMonday]
   );
+
+  const currentCalendarWeek = useMemo(() => {
+    const hasSchedule = Boolean(
+      classInfo?.schedule?.startDate ||
+      classInfo?.projectLogSemesterStartMonday ||
+      (Array.isArray(classInfo?.scheduleHistory) && classInfo.scheduleHistory.length > 0)
+    );
+    if (!hasSchedule) return null;
+    return resolveCurrentProjectWeek(classInfo, semesterStartMonday, totalProjectWeeks);
+  }, [classInfo, semesterStartMonday, totalProjectWeeks]);
 
   // Fetch, Parse & Incrementally Ingest Public Weekly Log Google Sheet (saved per-class in classes/{classId}.projectLogSheetUrl)
   const handleSyncWeeklyLogSheet = useCallback(
@@ -936,12 +924,22 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
     return 'inactive';
   }, [editingStudentContrib, editingMatchingSheetLog]);
 
-  // Auto-select latest week from recorded meetings or log sheet on initial load if studio is idle on Week 1
+  // Auto-select week on initial load:
+  // 1. Prioritize the current calendar week of the ongoing semester (e.g. Week 11) so new recordings naturally default to this week
+  // 2. Fall back to latest recorded week or latest weekly log week if outside active semester bounds
   const hasAutoSetWeekRef = useRef(false);
   useEffect(() => {
-    if (hasAutoSetWeekRef.current || recordingState !== 'idle' || studioWeekNumber !== 1) {
+    if (hasAutoSetWeekRef.current || recordingState !== 'idle') {
       return;
     }
+
+    // Default to the current real-world calendar week of the semester
+    if (currentCalendarWeek && currentCalendarWeek >= 1 && currentCalendarWeek <= totalProjectWeeks) {
+      hasAutoSetWeekRef.current = true;
+      setStudioWeekNumber(currentCalendarWeek);
+      return;
+    }
+
     const weeksWithRecordings = meetings
       .filter((m) => (Array.isArray(m.audioClips) && m.audioClips.length > 0) || Boolean(m.audioStoragePath))
       .map((m) => Number(m.weekNumber))
@@ -958,7 +956,7 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
       hasAutoSetWeekRef.current = true;
       setStudioWeekNumber(weeklyLogData.weeks[weeklyLogData.weeks.length - 1]);
     }
-  }, [meetings, weeklyLogData.weeks, recordingState, studioWeekNumber]);
+  }, [currentCalendarWeek, totalProjectWeeks, meetings, weeklyLogData.weeks, recordingState]);
 
   const studentContributionProfiles = useMemo(
     () =>
@@ -3049,7 +3047,26 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
               <label htmlFor="studio-week-select" title={`Week 1 Monday resolved from Class Schedule: ${semesterStartMonday}`}>
                 📅 Week #:
               </label>
-              <div style={{ display: 'flex', gap: '4px' }}>
+              <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                {currentCalendarWeek && studioWeekNumber !== currentCalendarWeek && (
+                  <button
+                    type="button"
+                    onClick={() => handleSelectWeek(currentCalendarWeek)}
+                    title={`Jump to current calendar week (Week ${currentCalendarWeek})`}
+                    style={{
+                      background: '#eff6ff',
+                      color: '#2563eb',
+                      border: '1px solid #bfdbfe',
+                      fontSize: '0.74rem',
+                      padding: '2px 6px',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      fontWeight: 700,
+                    }}
+                  >
+                    ⭐ Wk {currentCalendarWeek} (Now)
+                  </button>
+                )}
                 <button
                   type="button"
                   className="btn-batch-ai-trigger"
@@ -3090,9 +3107,10 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
             >
               {Array.from({ length: totalProjectWeeks }, (_, i) => i + 1).map((wk) => {
                 const rangeLabel = formatWeekDateRange(wk, semesterStartMonday);
+                const isCurrent = wk === currentCalendarWeek;
                 return (
                   <option key={wk} value={wk}>
-                    Week {wk}{rangeLabel ? ` (${rangeLabel})` : ''}
+                    Week {wk}{rangeLabel ? ` (${rangeLabel})` : ''}{isCurrent ? ' ⭐ Current Week' : ''}
                   </option>
                 );
               })}

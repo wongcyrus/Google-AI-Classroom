@@ -1569,4 +1569,37 @@ Group Beta,New Beta Topic,other@vtc.edu.hk,eva@stu.vtc.edu.hk,Eva Ho,Leader`;
       expect(screen.getByText(/REC 00:00/i)).toBeInTheDocument();
     });
   });
+
+  it('defaults studio week to current calendar week from class schedule and does not lock back to previous week when switching groups', async () => {
+    render(
+      <ProjectMeetingsView
+        classId="it114115-fyp-2627"
+        classInfo={{
+          name: 'Final Year Project',
+          schedule: {
+            startDate: '2026-09-01',
+            endDate: '2027-05-04',
+          },
+          teacherEmails: ['cywong@vtc.edu.hk'],
+          studentEmails: ['alice@stu.vtc.edu.hk', 'bob@stu.vtc.edu.hk'],
+        }}
+        user={{ uid: 't_1', email: 'cywong@vtc.edu.hk', displayName: 'Dr. Wong' }}
+      />
+    );
+
+    const weekSelect = screen.getByLabelText(/📅 Week #:/i);
+    // Today (Nov 12, 2026) is Week 11 based on startDate 2026-09-01 (Monday Aug 31)
+    expect(Number(weekSelect.value)).toBe(11);
+
+    // Switching to a group that has no meeting in Week 11 must NOT lock or snap back to Week 10
+    fireEvent.change(screen.getByLabelText(/📁 Project Group:/i), { target: { value: 'grp_1' } });
+    expect(Number(weekSelect.value)).toBe(11);
+
+    // Teacher can also explicitly switch weeks and it remains on the selected week
+    fireEvent.change(weekSelect, { target: { value: '12' } });
+    expect(Number(weekSelect.value)).toBe(12);
+
+    fireEvent.change(screen.getByLabelText(/📁 Project Group:/i), { target: { value: 'grp_2' } });
+    expect(Number(weekSelect.value)).toBe(12);
+  });
 });
