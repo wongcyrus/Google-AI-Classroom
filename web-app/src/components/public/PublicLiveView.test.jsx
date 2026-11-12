@@ -211,6 +211,17 @@ describe('PublicLiveView Component', () => {
       expect(document.querySelector('.public-youtube-cc-overlay')).toBeInTheDocument();
       expect(screen.getByText('大家好，欢迎各位')).toBeInTheDocument();
     });
+
+    // Click Fullscreen and verify CC overlay remains visible with fullscreen styling & HUD controls
+    const fsBtn = screen.getByRole('button', { name: /Toggle Fullscreen/i });
+    fireEvent.click(fsBtn);
+    await waitFor(() => {
+      expect(document.querySelector('.public-live-container.is-fullscreen')).toBeInTheDocument();
+      expect(document.querySelector('.public-youtube-cc-overlay.is-fullscreen-cc')).toBeInTheDocument();
+      expect(screen.getByText('大家好，欢迎各位')).toBeInTheDocument();
+      expect(screen.getByRole('combobox', { name: /Fullscreen Subtitle Language/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Exit Fullscreen/i })).toBeInTheDocument();
+    });
   });
 
   it('cleans up spectator viewer document on unmount', async () => {

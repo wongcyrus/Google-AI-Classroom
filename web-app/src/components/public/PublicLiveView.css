@@ -12,6 +12,26 @@
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   overflow: hidden;
   box-sizing: border-box;
+  position: relative;
+}
+
+.public-live-container.is-fullscreen,
+.public-live-container:fullscreen,
+.public-live-container:-webkit-full-screen {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
+  max-height: 100dvh;
+  z-index: 9999;
+  background-color: #000000;
+}
+
+.public-live-container.is-fullscreen .public-live-header,
+.public-live-container:fullscreen .public-live-header,
+.public-live-container:-webkit-full-screen .public-live-header {
+  display: none !important;
 }
 
 /* Header Bar */
@@ -94,9 +114,8 @@
 
 /* Stream Area */
 .public-stream-stage {
-  flex: 1;
+  flex: 1 1 0%;
   min-height: 0;
-  height: 100%;
   width: 100%;
   display: flex;
   flex-direction: column;
@@ -131,17 +150,30 @@
 /* Floating Zoom & Orientation HUD */
 .stream-overlay-hud {
   position: absolute;
-  top: 12px;
-  right: 12px;
+  top: max(12px, env(safe-area-inset-top, 12px));
+  right: max(12px, env(safe-area-inset-right, 12px));
   display: flex;
   align-items: center;
   gap: 6px;
-  background: rgba(15, 23, 42, 0.75);
+  background: rgba(15, 23, 42, 0.78);
   backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   padding: 4px 8px;
   border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.15);
-  z-index: 20;
+  z-index: 65;
+}
+
+.hud-lang-select {
+  background: rgba(255, 255, 255, 0.12);
+  color: #f8fafc;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 4px;
+  padding: 1px 4px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  outline: none;
 }
 
 .hud-btn {
@@ -177,7 +209,7 @@
 /* YouTube-Style Live Closed Captions Cue Overlay (Overlaps Screen View) */
 .public-youtube-cc-overlay {
   position: absolute;
-  bottom: 24px;
+  bottom: max(20px, calc(env(safe-area-inset-bottom, 0px) + 14px));
   left: 0;
   right: 0;
   display: flex;
@@ -187,9 +219,20 @@
   gap: 5px;
   padding: 0 16px;
   pointer-events: none;
-  z-index: 30;
+  z-index: 60;
   text-align: center;
   transition: bottom 0.2s ease;
+}
+
+.public-youtube-cc-overlay.is-fullscreen-cc,
+.public-live-container.is-fullscreen .public-youtube-cc-overlay,
+.public-live-container:fullscreen .public-youtube-cc-overlay,
+.public-live-container:-webkit-full-screen .public-youtube-cc-overlay {
+  position: fixed;
+  bottom: max(20px, calc(env(safe-area-inset-bottom, 0px) + 16px));
+  left: 0;
+  right: 0;
+  z-index: 10000;
 }
 
 .public-youtube-cc-overlay .youtube-cc-cue {
@@ -247,7 +290,7 @@
 
 @media (max-width: 640px) {
   .public-youtube-cc-overlay {
-    bottom: 12px;
+    bottom: max(14px, calc(env(safe-area-inset-bottom, 0px) + 10px));
     padding: 0 8px;
     gap: 4px;
   }

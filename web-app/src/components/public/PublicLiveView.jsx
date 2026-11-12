@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { db, auth } from '../../firebase-config';
 import { doc, setDoc, deleteDoc, onSnapshot, serverTimestamp } from 'firebase/firestore';
@@ -59,6 +59,7 @@ export default function PublicLiveView() {
   // Viewport & zoom state
   const [zoomLevel, setZoomLevel] = useState(1); // 1 | 1.5 | 2
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const containerRef = useRef(null);
 
   // 1. PIN verification and viewer registration handler
   const handleVerifyPin = useCallback(async (pinToVerify) => {
@@ -221,16 +222,37 @@ export default function PublicLiveView() {
     } catch {}
   };
 
-  // Fullscreen toggle
+  // Fullscreen toggle (targets containerRef so CC overlay & HUD stay inside the fullscreen layer, with CSS fallback for iOS Safari)
   const toggleFullscreen = () => {
-    if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen().catch(() => {});
+    const target = containerRef.current || document.documentElement;
+    const fsElement = document.fullscreenElement || document.webkitFullscreenElement;
+    if (!fsElement && !isFullscreen) {
+      const req = target?.requestFullscreen || target?.webkitRequestFullscreen;
+      if (typeof req === 'function') {
+        Promise.resolve(req.call(target)).catch(() => {});
+      }
       setIsFullscreen(true);
     } else {
-      document.exitFullscreen().catch(() => {});
+      const exit = document.exitFullscreen || document.webkitExitFullscreen;
+      if (fsElement && typeof exit === 'function') {
+        Promise.resolve(exit.call(document)).catch(() => {});
+      }
       setIsFullscreen(false);
     }
   };
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      const fsElement = document.fullscreenElement || document.webkitFullscreenElement;
+      setIsFullscreen(Boolean(fsElement));
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+    };
+  }, []);
 
   // Zoom toggle: 1x -> 1.5x -> 2x -> 1x
   const cycleZoom = () => {
@@ -344,7 +366,10 @@ export default function PublicLiveView() {
   }
 
   return (
-    <div className="public-live-container">
+    <div
+      ref={containerRef}
+      className={`public-live-container ${isFullscreen ? 'is-fullscreen' : ''}`}
+    >
       {/* Top Header Bar */}
       <header className="public-live-header">
         <div className="public-live-brand">
@@ -404,9 +429,24 @@ export default function PublicLiveView() {
           </div>
         )}
 
-        {/* Floating Zoom & Orientation HUD */}
-        {frameData && (
+        {/* Floating Zoom & Orientation HUD (Always available in active/fullscreen view so CC & Fullscreen controls work in fullscreen) */}
+        {(frameData || isFullscreen || currentTranslation || originalTranscript) && (
           <div className="stream-overlay-hud">
+            {isFullscreen && (
+              <select
+                value={selectedLang}
+                onChange={(e) => handleSelectLanguage(e.target.value)}
+                className="hud-lang-select"
+                title="Choose Subtitle Language"
+                aria-label="Fullscreen Subtitle Language"
+              >
+                {availableLangs.map((code) => (
+                  <option key={code} value={code}>
+                    🌐 {getLanguageLabel(code)}
+                  </option>
+                ))}
+              </select>
+            )}
             <button
               type="button"
               className={`hud-btn yt-cc-btn ${isCcEnabled ? 'active' : ''}`}
@@ -416,14 +456,16 @@ export default function PublicLiveView() {
             >
               CC
             </button>
-            <button
-              type="button"
-              className="hud-btn"
-              onClick={cycleZoom}
-              title="Toggle Zoom (1x, 1.5x, 2x)"
-            >
-              🔍 {zoomLevel}x
-            </button>
+            {frameData && (
+              <button
+                type="button"
+                className="hud-btn"
+                onClick={cycleZoom}
+                title="Toggle Zoom (1x, 1.5x, 2x)"
+              >
+                🔍 {zoomLevel}x
+              </button>
+            )}
             <button
               type="button"
               className="hud-btn"
@@ -440,13 +482,24 @@ export default function PublicLiveView() {
             >
               {showBilingual ? 'Bilingual' : 'Single'}
             </button>
+            {isFullscreen && (
+              <button
+                type="button"
+                className="hud-btn"
+                onClick={toggleFullscreen}
+                title="Exit Fullscreen"
+                aria-label="Exit Fullscreen"
+              >
+                🗗
+              </button>
+            )}
           </div>
         )}
 
         {/* YouTube-Style Live Closed Captions Cue Overlay (Overlaps Screen View) */}
         {isCcEnabled && (currentTranslation || originalTranscript) && (
           <div
-            className={`public-youtube-cc-overlay font-${subtitleSize}`}
+            className={`public-youtube-cc-overlay font-${subtitleSize} ${isFullscreen ? 'is-fullscreen-cc' : ''}`}
             aria-live="polite"
             aria-label="Closed Captions Overlay"
           >
