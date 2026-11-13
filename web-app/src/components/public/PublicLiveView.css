@@ -1,5 +1,17 @@
 /* PublicLiveView.css - Mobile-first spectator screen and subtitles viewer */
 
+.visually-hidden:where(:not(:focus-within, :active)) {
+  position: absolute !important;
+  clip-path: inset(50%) !important;
+  overflow: hidden !important;
+  width: 1px !important;
+  height: 1px !important;
+  margin: -1px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  white-space: nowrap !important;
+}
+
 .public-live-container {
   display: flex;
   flex-direction: column;
@@ -98,8 +110,8 @@
   padding: 0.35rem 0.6rem;
   font-size: 0.78rem;
   font-weight: 600;
+  min-block-size: 28px;
   cursor: pointer;
-  outline: none;
 }
 
 .header-action-btn {
@@ -109,7 +121,14 @@
   border-radius: 6px;
   padding: 0.35rem 0.55rem;
   font-size: 0.85rem;
+  min-block-size: 28px;
+  min-inline-size: 28px;
   cursor: pointer;
+}
+
+:where(.lang-select-btn, .header-action-btn, .hud-lang-select, .hud-btn, .pin-submit-btn):focus-visible {
+  outline: 2px solid #60a5fa;
+  outline-offset: 2px;
 }
 
 /* Stream Area */
@@ -169,11 +188,11 @@
   color: #f8fafc;
   border: 1px solid rgba(255, 255, 255, 0.25);
   border-radius: 4px;
-  padding: 1px 4px;
+  padding: 2px 6px;
   font-size: 0.72rem;
   font-weight: 600;
+  min-block-size: 24px;
   cursor: pointer;
-  outline: none;
 }
 
 .hud-btn {
@@ -182,9 +201,33 @@
   color: #e2e8f0;
   font-size: 0.75rem;
   font-weight: 700;
-  padding: 2px 6px;
+  padding: 4px 8px;
+  min-block-size: 24px;
+  min-inline-size: 24px;
   border-radius: 4px;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+@media (pointer: coarse) {
+  .lang-select-btn,
+  .header-action-btn,
+  .hud-lang-select,
+  .hud-btn {
+    min-block-size: 44px;
+    min-inline-size: 44px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .live-badge,
+  .stream-frame-img,
+  .public-youtube-cc-overlay {
+    animation: none !important;
+    transition: none !important;
+  }
 }
 
 .hud-btn:hover {

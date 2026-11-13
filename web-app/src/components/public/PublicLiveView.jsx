@@ -293,16 +293,16 @@ export default function PublicLiveView() {
       <div className="public-live-container">
         <header className="public-live-header">
           <div className="public-live-brand">
-            <span style={{ fontSize: '1.2rem' }}>🎓</span>
+            <span aria-hidden="true" style={{ fontSize: '1.2rem' }}>🎓</span>
             <span className="public-class-title">{classId}</span>
           </div>
           <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>Public Spectator</span>
         </header>
 
-        <div className="pin-prompt-wrapper">
+        <main className="pin-prompt-wrapper">
           <div className="pin-card">
-            <div className="pin-card-icon">📺</div>
-            <h2 className="pin-card-title">Join Live Presentation</h2>
+            <div className="pin-card-icon" aria-hidden="true">📺</div>
+            <h1 className="pin-card-title">Join Live Presentation</h1>
             <p className="pin-card-desc">
               Please enter the 4-digit presentation PIN displayed on the projection screen.
             </p>
@@ -318,6 +318,7 @@ export default function PublicLiveView() {
                   type="text"
                   maxLength={6}
                   placeholder="PIN"
+                  aria-label="Presentation PIN"
                   value={pinInput}
                   onChange={(e) => setPinInput(e.target.value.replace(/\D/g, ''))}
                   className="pin-digit-input"
@@ -335,9 +336,9 @@ export default function PublicLiveView() {
               </button>
             </form>
 
-            {pinError && <div className="pin-error-box">{pinError}</div>}
+            {pinError && <div className="pin-error-box" role="alert">{pinError}</div>}
           </div>
-        </div>
+        </main>
       </div>
     );
   }
@@ -348,19 +349,19 @@ export default function PublicLiveView() {
       <div className="public-live-container">
         <header className="public-live-header">
           <div className="public-live-brand">
-            <span style={{ fontSize: '1.2rem' }}>🎓</span>
+            <span aria-hidden="true" style={{ fontSize: '1.2rem' }}>🎓</span>
             <span className="public-class-title">{classId}</span>
           </div>
         </header>
-        <div className="public-empty-card" style={{ margin: 'auto' }}>
-          <div className="public-empty-icon">🏁</div>
-          <h2 style={{ color: '#f8fafc', fontSize: '1.3rem', margin: '0 0 0.5rem 0' }}>
+        <main className="public-empty-card" style={{ margin: 'auto' }}>
+          <div className="public-empty-icon" aria-hidden="true">🏁</div>
+          <h1 style={{ color: '#f8fafc', fontSize: '1.3rem', margin: '0 0 0.5rem 0' }}>
             Presentation Ended
-          </h2>
+          </h1>
           <p style={{ margin: 0, fontSize: '0.9rem', color: '#94a3b8' }}>
             The speaker has concluded this live presentation. Thank you for attending!
           </p>
-        </div>
+        </main>
       </div>
     );
   }
@@ -411,6 +412,7 @@ export default function PublicLiveView() {
 
       {/* Screen Frame Stage */}
       <main className="public-stream-stage">
+        <h1 className="visually-hidden">Live Presentation: {classId}</h1>
         {frameData ? (
           <img
             src={frameData}
@@ -453,6 +455,7 @@ export default function PublicLiveView() {
               onClick={() => setIsCcEnabled((c) => !c)}
               title={isCcEnabled ? 'Turn off captions (CC)' : 'Turn on captions (CC)'}
               aria-label="Toggle Closed Captions"
+              aria-pressed={isCcEnabled}
             >
               CC
             </button>
@@ -462,8 +465,9 @@ export default function PublicLiveView() {
                 className="hud-btn"
                 onClick={cycleZoom}
                 title="Toggle Zoom (1x, 1.5x, 2x)"
+                aria-label={`Zoom ${zoomLevel}x, tap to cycle`}
               >
-                🔍 {zoomLevel}x
+                <span aria-hidden="true">🔍</span> {zoomLevel}x
               </button>
             )}
             <button
@@ -471,6 +475,7 @@ export default function PublicLiveView() {
               className="hud-btn"
               onClick={() => setSubtitleSize((s) => (s === 'sm' ? 'md' : s === 'md' ? 'lg' : 'sm'))}
               title="Toggle Subtitle Font Size"
+              aria-label={`Subtitle size ${subtitleSize}, tap to cycle`}
             >
               A{subtitleSize === 'sm' ? '-' : subtitleSize === 'lg' ? '+' : ''}
             </button>
@@ -479,6 +484,8 @@ export default function PublicLiveView() {
               className="hud-btn"
               onClick={() => setShowBilingual((b) => !b)}
               title="Toggle Bilingual / Single Language"
+              aria-label={showBilingual ? 'Bilingual subtitles' : 'Single language subtitles'}
+              aria-pressed={showBilingual}
             >
               {showBilingual ? 'Bilingual' : 'Single'}
             </button>

@@ -330,10 +330,6 @@ body, html, #root {
 .app-container:has(.student-mobile-layout) .app-footer,
 .app-container:has(.public-live-container) .main-header,
 .app-container:has(.public-live-container) .app-footer,
-body:has(.student-mobile-layout) .main-header,
-body:has(.student-mobile-layout) .app-footer,
-body:has(.public-live-container) .main-header,
-body:has(.public-live-container) .app-footer,
 body.in-student-mobile-view .main-header,
 body.in-student-mobile-view .app-footer,
 .app-container.in-public-live-view .main-header,
@@ -343,8 +339,6 @@ body.in-student-mobile-view .app-footer,
 
 .app-container:has(.student-mobile-layout),
 .app-container:has(.public-live-container),
-body:has(.student-mobile-layout) .app-container,
-body:has(.public-live-container) .app-container,
 body.in-student-mobile-view .app-container,
 .app-container.in-public-live-view {
   min-height: 100dvh !important;
@@ -355,8 +349,6 @@ body.in-student-mobile-view .app-container,
 
 .app-container:has(.student-mobile-layout) .main-content,
 .app-container:has(.public-live-container) .main-content,
-body:has(.student-mobile-layout) .main-content,
-body:has(.public-live-container) .main-content,
 body.in-student-mobile-view .main-content,
 .app-container.in-public-live-view .main-content {
   height: 100dvh !important;

@@ -23,6 +23,7 @@ export default function TeacherScreenViewerModal({
   const dragStartRef = useRef({ x: 0, y: 0 });
   const panStartRef = useRef({ x: 0, y: 0 });
   const videoBoxRef = useRef(null);
+  const dialogRef = useRef(null);
 
   const internalSubtitleState = useStudentLiveSubtitles({
     classId: externalSubtitleState ? null : classId,
@@ -156,6 +157,41 @@ export default function TeacherScreenViewerModal({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, zoomScale, viewMode, handleZoomIn, handleZoomOut, resetZoom, onClose]);
 
+  useEffect(() => {
+    const dialogEl = dialogRef.current;
+    if (!dialogEl) return;
+    if (!isOpen || viewMode === 'minimized') {
+      if (typeof dialogEl.close === 'function' && dialogEl.open) {
+        dialogEl.close();
+      } else {
+        dialogEl.removeAttribute('open');
+      }
+      return;
+    }
+
+    const isModalMode = viewMode === 'docked' || viewMode === 'fullscreen';
+    if (isModalMode) {
+      if (typeof dialogEl.showModal === 'function') {
+        if (dialogEl.open && !dialogEl.matches(':modal')) {
+          dialogEl.close();
+        }
+        if (!dialogEl.open) dialogEl.showModal();
+      } else {
+        dialogEl.setAttribute('open', '');
+      }
+    } else {
+      // Non-modal floating PiP mode: keep page interactive
+      if (typeof dialogEl.show === 'function') {
+        if (dialogEl.open && dialogEl.matches(':modal')) {
+          dialogEl.close();
+        }
+        if (!dialogEl.open) dialogEl.show();
+      } else {
+        dialogEl.setAttribute('open', '');
+      }
+    }
+  }, [isOpen, viewMode]);
+
   if (!isOpen) return null;
 
   // Minimized Pill Mode
@@ -178,8 +214,27 @@ export default function TeacherScreenViewerModal({
     );
   }
 
+  const isModalMode = viewMode === 'docked' || viewMode === 'fullscreen';
+
+  const handleDialogCancel = (e) => {
+    e.preventDefault();
+    if (zoomScale > 1) {
+      resetZoom();
+    } else if (viewMode === 'fullscreen') {
+      setViewMode('docked');
+      resetZoom();
+    } else {
+      onClose();
+    }
+  };
+
   return (
-    <div className={`teacher-stream-viewer-wrapper ${viewMode}`}>
+    <dialog
+      ref={dialogRef}
+      className={`teacher-stream-viewer-wrapper ${viewMode}`}
+      aria-labelledby="teacher-screen-modal-title"
+      onCancel={isModalMode ? handleDialogCancel : undefined}
+    >
       {viewMode === 'docked' && <div className="viewer-backdrop" onClick={onClose} />}
 
       <div className={`teacher-stream-container ${viewMode}`}>
@@ -187,7 +242,7 @@ export default function TeacherScreenViewerModal({
         <div className="teacher-stream-header">
           <div className="stream-header-left">
             <span className="live-pulse-dot" />
-            <span className="stream-title">
+            <span id="teacher-screen-modal-title" className="stream-title">
               🖥️ {broadcastInfo?.teacherEmail ? `${broadcastInfo.teacherEmail}'s Screen` : 'Teacher Screen'}
             </span>
             <span className={`stream-conn-status ${connectionState}`}>
@@ -419,6 +474,6 @@ export default function TeacherScreenViewerModal({
           />
         </div>
       </div>
-    </div>
+    </dialog>
   );
 }

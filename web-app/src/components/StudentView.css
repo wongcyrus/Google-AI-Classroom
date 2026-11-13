@@ -1433,25 +1433,34 @@
   max-height: none !important;
   max-width: none !important;
   width: 100vw !important;
+  width: 100dvw !important;
   height: 100vh !important;
+  height: 100dvh !important;
   z-index: 9999 !important;
 }
 
 .fullscreen-exit-prominent-btn {
   position: absolute;
-  top: 14px;
-  right: 16px;
+  top: max(14px, env(safe-area-inset-top, 14px));
+  right: max(16px, env(safe-area-inset-right, 16px));
   z-index: 80;
   background: rgba(220, 38, 38, 0.92);
   color: #ffffff;
   border: 2px solid rgba(255, 255, 255, 0.6);
   border-radius: 8px;
   padding: 8px 16px;
+  min-block-size: 36px;
   font-size: 0.88rem;
   font-weight: 800;
   cursor: pointer;
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
   transition: all 0.15s ease;
+}
+
+.fullscreen-exit-prominent-btn:focus-visible,
+.mini-player-restore-prominent-btn:focus-visible {
+  outline: 2px solid #ffffff;
+  outline-offset: 2px;
 }
 
 .fullscreen-exit-prominent-btn:hover {

@@ -3424,9 +3424,8 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
                   className="fullscreen-exit-prominent-btn"
                   onClick={exitPlayerFullscreen}
                   title="Exit Fullscreen (Esc)"
-                  aria-label="Exit Fullscreen"
                 >
-                  ✕ Exit Fullscreen (Esc)
+                  <span aria-hidden="true">✕</span> Exit Fullscreen (Esc)
                 </button>
               )}
               {!isPlayerFullscreen && effectiveDesktopScreenMode === 'max' && (
@@ -3435,9 +3434,8 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
                   className="fullscreen-exit-prominent-btn"
                   onClick={() => handleSetDesktopScreenMode('standard')}
                   title="Return to Standard Side-by-Side View"
-                  aria-label="Exit Max Mode"
                 >
-                  ✕ Exit Full Width (Standard View)
+                  <span aria-hidden="true">✕</span> Exit Full Width (Standard View)
                 </button>
               )}
               {!isPlayerFullscreen && effectiveDesktopScreenMode === 'smallest' && (
@@ -3446,9 +3444,8 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
                   className="mini-player-restore-prominent-btn"
                   onClick={() => handleSetDesktopScreenMode('standard')}
                   title="Restore to Standard View"
-                  aria-label="Exit Small Screen"
                 >
-                  ⤢ Exit Small Corner (Standard View)
+                  <span aria-hidden="true">⤢</span> Exit Small Corner (Standard View)
                 </button>
               )}
 
