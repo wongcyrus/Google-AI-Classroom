@@ -1310,6 +1310,31 @@ describe('StudentView Component Extended Test Suite', () => {
 
     expect(contentContainer.classList.contains('mode-standard')).toBe(true);
     expect(localStorage.getItem('student_desktop_screen_mode')).toBe('standard');
+
+    // Fullscreen button is available when teacher is sharing screen, and shows prominent Exit Fullscreen button
+    const fsBtn = screen.getByTitle('Fullscreen Teacher Screen');
+    await act(async () => {
+      fireEvent.click(fsBtn);
+    });
+    const exitFsBtns = screen.getAllByRole('button', { name: /Exit Fullscreen/i });
+    expect(exitFsBtns.length).toBeGreaterThanOrEqual(2);
+
+    // Clicking prominent Exit Fullscreen button leaves fullscreen immediately
+    await act(async () => {
+      fireEvent.click(exitFsBtns[0]);
+    });
+    expect(screen.queryByRole('button', { name: /Exit Fullscreen/i })).toBeNull();
+  });
+
+  it('hides fullscreen and screen mode buttons when teacher is not sharing screen so students do not fullscreen their own face/screen', async () => {
+    mockTeacherBroadcastReturn.isBroadcastActive = false;
+    mockTeacherBroadcastReturn.liveFrame = null;
+
+    render(<StudentView user={mockUser} />);
+
+    expect(screen.queryByTitle('Fullscreen Teacher Screen')).toBeNull();
+    expect(screen.queryByTitle('Max / Theater Mode (Full Width)')).toBeNull();
+    expect(screen.queryByTitle('Smallest / Mini-Player Mode (Compact Corner)')).toBeNull();
   });
 
   it('renders YouTube-style closed captions overlay, supports toggling CC and changing language/settings', async () => {
@@ -1739,7 +1764,7 @@ describe('StudentView Component Extended Test Suite', () => {
     });
 
     expect(mockWhisperReturn.transcribeAudioChunk).toHaveBeenCalled();
-    expect(mockEvaluateSpeech).toHaveBeenCalledWith('Hello classroom');
+    expect(mockEvaluateSpeech).toHaveBeenCalledWith('Hello classroom', expect.any(Object));
     expect(mockSetDoc).toHaveBeenCalledWith(
       expect.objectContaining({ path: 'classes/class1/status/student123' }),
       expect.objectContaining({ liveTranscript: 'Hello classroom' }),
@@ -1766,7 +1791,7 @@ describe('StudentView Component Extended Test Suite', () => {
       await lastWhisperOptions.onTranscript('Testing student speech');
     });
 
-    expect(mockEvaluateSpeech).toHaveBeenCalledWith('Testing student speech');
+    expect(mockEvaluateSpeech).toHaveBeenCalledWith('Testing student speech', expect.any(Object));
   });
 
   it('rejects window/tab screen sharing when requireFullScreenOnly is true and logs irregularity', async () => {

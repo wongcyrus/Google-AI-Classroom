@@ -1424,11 +1424,67 @@
   border: 1px solid #1e293b;
 }
 
-.desktop-yt-player-box.fullscreen-mode {
-  border-radius: 0;
-  max-height: none;
-  width: 100vw;
-  height: 100vh;
+.desktop-yt-player-box.fullscreen-mode,
+.student-view-content.mode-smallest .desktop-yt-player-box.fullscreen-mode,
+.student-view-content.mode-max .desktop-yt-player-box.fullscreen-mode {
+  position: fixed !important;
+  inset: 0 !important;
+  border-radius: 0 !important;
+  max-height: none !important;
+  max-width: none !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  z-index: 9999 !important;
+}
+
+.fullscreen-exit-prominent-btn {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  z-index: 80;
+  background: rgba(220, 38, 38, 0.92);
+  color: #ffffff;
+  border: 2px solid rgba(255, 255, 255, 0.6);
+  border-radius: 8px;
+  padding: 8px 16px;
+  font-size: 0.88rem;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+  transition: all 0.15s ease;
+}
+
+.fullscreen-exit-prominent-btn:hover {
+  background: #b91c1c;
+  transform: scale(1.03);
+}
+
+.mini-player-restore-prominent-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 80;
+  background: rgba(79, 70, 229, 0.95);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
+}
+
+.mini-player-restore-prominent-btn:hover {
+  background: #4338ca;
+}
+
+.yt-control-btn.yt-fullscreen-btn.is-active-fullscreen {
+  background: rgba(220, 38, 38, 0.9);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  padding: 4px 12px;
+  font-weight: 700;
 }
 
 /* Teacher Live Stream Inside Player */

@@ -143,6 +143,9 @@ export default function TeacherScreenViewerModal({
       } else if (e.key === 'Escape') {
         if (zoomScale > 1) {
           resetZoom();
+        } else if (viewMode === 'fullscreen' || viewMode === 'floating') {
+          setViewMode('docked');
+          resetZoom();
         } else {
           onClose();
         }
@@ -151,7 +154,7 @@ export default function TeacherScreenViewerModal({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, zoomScale, handleZoomIn, handleZoomOut, resetZoom, onClose]);
+  }, [isOpen, zoomScale, viewMode, handleZoomIn, handleZoomOut, resetZoom, onClose]);
 
   if (!isOpen) return null;
 
@@ -303,12 +306,12 @@ export default function TeacherScreenViewerModal({
               <button
                 className={`mode-btn ${viewMode === 'fullscreen' ? 'active' : ''}`}
                 onClick={() => {
-                  setViewMode('fullscreen');
+                  setViewMode(viewMode === 'fullscreen' ? 'docked' : 'fullscreen');
                   resetZoom();
                 }}
-                title="Fullscreen Presentation"
+                title={viewMode === 'fullscreen' ? 'Exit Fullscreen (Esc)' : 'Fullscreen Presentation'}
               >
-                ⛶ Max
+                {viewMode === 'fullscreen' ? '✕ Exit Fullscreen' : '⛶ Max'}
               </button>
               <button
                 className="mode-btn"
@@ -343,6 +346,32 @@ export default function TeacherScreenViewerModal({
           onTouchEnd={handleTouchEnd}
           onDoubleClick={handleDoubleClick}
         >
+          {viewMode === 'fullscreen' && (
+            <button
+              type="button"
+              className="teacher-modal-exit-fs-btn"
+              onClick={() => {
+                setViewMode('docked');
+                resetZoom();
+              }}
+              title="Exit Fullscreen (Esc)"
+            >
+              ✕ Exit Fullscreen (Esc)
+            </button>
+          )}
+          {viewMode === 'floating' && (
+            <button
+              type="button"
+              className="teacher-modal-restore-std-btn"
+              onClick={() => {
+                setViewMode('docked');
+                resetZoom();
+              }}
+              title="Restore to Standard View"
+            >
+              ⤢ Standard View
+            </button>
+          )}
           {liveFrame ? (
             <img
               src={liveFrame}

@@ -76,24 +76,42 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
   const playerContainerRef = useRef(null);
   const [isPlayerFullscreen, setIsPlayerFullscreen] = useState(false);
 
+  const exitPlayerFullscreen = useCallback(() => {
+    if (typeof document !== 'undefined' && (document.fullscreenElement || document.webkitFullscreenElement)) {
+      const exitFn = document.exitFullscreen || document.webkitExitFullscreen;
+      exitFn?.call(document)?.catch?.(() => {});
+    }
+    setIsPlayerFullscreen(false);
+  }, []);
+
   const togglePlayerFullscreen = useCallback(() => {
-    if (!document.fullscreenElement) {
+    if (!document.fullscreenElement && !isPlayerFullscreen) {
       playerContainerRef.current?.requestFullscreen?.().catch(() => {});
       setIsPlayerFullscreen(true);
     } else {
-      document.exitFullscreen?.().catch(() => {});
-      setIsPlayerFullscreen(false);
+      exitPlayerFullscreen();
     }
-  }, []);
+  }, [isPlayerFullscreen, exitPlayerFullscreen]);
 
-  // Sync fullscreenchange events
+  // Sync fullscreenchange events and Escape key to exit fullscreen easily
   useEffect(() => {
     const handleFullscreenChange = () => {
-      setIsPlayerFullscreen(!!document.fullscreenElement);
+      setIsPlayerFullscreen(Boolean(document.fullscreenElement || document.webkitFullscreenElement));
+    };
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape' && isPlayerFullscreen) {
+        exitPlayerFullscreen();
+      }
     };
     document.addEventListener('fullscreenchange', handleFullscreenChange);
-    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
-  }, []);
+    document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+      document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isPlayerFullscreen, exitPlayerFullscreen]);
 
   // Schedule-driven class state with enrolled classes fallback
   const { userClasses, currentActiveClassId, activeClassIds } = useStudentClassSchedule(user);
@@ -1110,6 +1128,9 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
     classId: activeClass,
   });
 
+  // Screen layout modes (Max / Smallest / Fullscreen) only apply when Teacher is sharing their screen to students
+  const effectiveDesktopScreenMode = isTeacherBroadcastActive ? desktopScreenMode : 'standard';
+
   // Automatically open teacher broadcast viewer for student when teacher starts sharing
   useEffect(() => {
     if (isTeacherBroadcastActive && activeClass) {
@@ -1119,8 +1140,10 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
     } else if (!isTeacherBroadcastActive) {
       setStickyBroadcastClassId(null);
       setIsViewingTeacherScreen(false);
+      // Never stay in fullscreen when teacher stops sharing screen
+      exitPlayerFullscreen();
     }
-  }, [isTeacherBroadcastActive, activeClass, joinTeacherBroadcast]);
+  }, [isTeacherBroadcastActive, activeClass, joinTeacherBroadcast, exitPlayerFullscreen]);
 
   // MediaPipe Face & Gaze AI Monitor
   const {
@@ -2873,10 +2896,10 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
         </div>
       )}
 
-      <div className={`student-view-content mode-${desktopScreenMode}`}>
+      <div className={`student-view-content mode-${effectiveDesktopScreenMode}`}>
         <div className="student-view-main">
           {/* Smallest / Mini-Player Mode Workspace Callout */}
-          {desktopScreenMode === 'smallest' && (
+          {effectiveDesktopScreenMode === 'smallest' && (
             <div className="mini-player-active-callout">
               <div className="callout-text">
                 📺 <strong>Mini-Player Active:</strong> Video player is compact in the corner. You have full room for notes, IDE, and course materials.
@@ -3391,9 +3414,44 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
             )}
             
             <div
-              className={`preview-stage desktop-yt-player-box mode-${desktopScreenMode} ${isPlayerFullscreen ? 'fullscreen-mode' : ''}`}
+              className={`preview-stage desktop-yt-player-box mode-${effectiveDesktopScreenMode} ${isPlayerFullscreen ? 'fullscreen-mode' : ''}`}
               ref={playerContainerRef}
             >
+              {/* Prominent Top-Right Exit Control when in Fullscreen, Max, or Small Corner Mode */}
+              {isPlayerFullscreen && (
+                <button
+                  type="button"
+                  className="fullscreen-exit-prominent-btn"
+                  onClick={exitPlayerFullscreen}
+                  title="Exit Fullscreen (Esc)"
+                  aria-label="Exit Fullscreen"
+                >
+                  ✕ Exit Fullscreen (Esc)
+                </button>
+              )}
+              {!isPlayerFullscreen && effectiveDesktopScreenMode === 'max' && (
+                <button
+                  type="button"
+                  className="fullscreen-exit-prominent-btn"
+                  onClick={() => handleSetDesktopScreenMode('standard')}
+                  title="Return to Standard Side-by-Side View"
+                  aria-label="Exit Max Mode"
+                >
+                  ✕ Exit Full Width (Standard View)
+                </button>
+              )}
+              {!isPlayerFullscreen && effectiveDesktopScreenMode === 'smallest' && (
+                <button
+                  type="button"
+                  className="mini-player-restore-prominent-btn"
+                  onClick={() => handleSetDesktopScreenMode('standard')}
+                  title="Restore to Standard View"
+                  aria-label="Exit Small Screen"
+                >
+                  ⤢ Exit Small Corner (Standard View)
+                </button>
+              )}
+
               {/* Teacher Live Stream Frame Overlay (if teacher broadcast active) */}
               {isTeacherBroadcastActive && teacherLiveFrame && (
                 <div className="teacher-live-stream-container">
@@ -3425,10 +3483,10 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
                 </div>
               )}
 
-              {/* Screen Stream Element */}
+              {/* Screen Stream Element (Hidden in Fullscreen so student only sees Teacher's screen in Fullscreen) */}
               <div
                 className={`stream-feed-wrapper ${
-                  !isScreenSharing
+                  !isScreenSharing || isPlayerFullscreen
                     ? 'hidden-stream'
                     : isWebcamSharing && primaryStream === 'webcam'
                     ? 'pip-stream'
@@ -3469,10 +3527,10 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
                 />
               </div>
 
-              {/* Webcam Stream Element */}
+              {/* Webcam Stream Element (Hidden in Fullscreen so student never fullscreens their own face) */}
               <div
                 className={`stream-feed-wrapper ${
-                  !isWebcamSharing
+                  !isWebcamSharing || isPlayerFullscreen
                     ? 'hidden-stream'
                     : isScreenSharing && primaryStream === 'screen'
                     ? 'pip-stream'
@@ -3564,8 +3622,8 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
                 )}
               </div>
 
-              {/* Stage Top Right Action Controls */}
-              {isSharing && (
+              {/* Stage Top Right Action Controls (Only shown for student's own proctor feeds when not in teacher fullscreen) */}
+              {isSharing && !isPlayerFullscreen && !(isTeacherBroadcastActive && teacherLiveFrame) && (
                 <div className="stage-actions-overlay">
                   {isScreenSharing && isWebcamSharing && (
                     <button
@@ -3660,33 +3718,35 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
                 </div>
 
                 <div className="yt-bar-right">
-                  {/* Screen Mode Switches: Max vs Smallest vs Standard */}
-                  <div className="yt-screen-mode-group" role="group" aria-label="Screen Mode">
-                    <button
-                      type="button"
-                      className={`yt-mode-btn ${desktopScreenMode === 'max' ? 'active' : ''}`}
-                      onClick={() => handleSetDesktopScreenMode('max')}
-                      title="Max / Theater Mode (Full Width)"
-                    >
-                      🗖 Max
-                    </button>
-                    <button
-                      type="button"
-                      className={`yt-mode-btn ${desktopScreenMode === 'smallest' ? 'active' : ''}`}
-                      onClick={() => handleSetDesktopScreenMode('smallest')}
-                      title="Smallest / Mini-Player Mode (Compact Corner)"
-                    >
-                      🗗 Smallest
-                    </button>
-                    <button
-                      type="button"
-                      className={`yt-mode-btn ${desktopScreenMode === 'standard' ? 'active' : ''}`}
-                      onClick={() => handleSetDesktopScreenMode('standard')}
-                      title="Standard Mode (Side-by-Side)"
-                    >
-                      🔲 Standard
-                    </button>
-                  </div>
+                  {/* Screen Mode Switches: Max vs Smallest vs Standard — ONLY shown when teacher is sharing screen */}
+                  {isTeacherBroadcastActive && (
+                    <div className="yt-screen-mode-group" role="group" aria-label="Screen Mode">
+                      <button
+                        type="button"
+                        className={`yt-mode-btn ${effectiveDesktopScreenMode === 'max' ? 'active' : ''}`}
+                        onClick={() => handleSetDesktopScreenMode('max')}
+                        title="Max / Theater Mode (Full Width)"
+                      >
+                        🗖 Max
+                      </button>
+                      <button
+                        type="button"
+                        className={`yt-mode-btn ${effectiveDesktopScreenMode === 'smallest' ? 'active' : ''}`}
+                        onClick={() => handleSetDesktopScreenMode('smallest')}
+                        title="Smallest / Mini-Player Mode (Compact Corner)"
+                      >
+                        🗗 Smallest
+                      </button>
+                      <button
+                        type="button"
+                        className={`yt-mode-btn ${effectiveDesktopScreenMode === 'standard' ? 'active' : ''}`}
+                        onClick={() => handleSetDesktopScreenMode('standard')}
+                        title="Standard Mode (Side-by-Side)"
+                      >
+                        🔲 Standard
+                      </button>
+                    </div>
+                  )}
 
                   {/* Settings Gear & Popover */}
                   <div className="yt-settings-wrapper">
@@ -3740,15 +3800,17 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
                     )}
                   </div>
 
-                  {/* Fullscreen Button */}
-                  <button
-                    type="button"
-                    className="yt-control-btn yt-fullscreen-btn"
-                    onClick={togglePlayerFullscreen}
-                    title={isPlayerFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen'}
-                  >
-                    {isPlayerFullscreen ? '⤦' : '⛶'}
-                  </button>
+                  {/* Fullscreen Button — ONLY shown when teacher is sharing screen (or to exit fullscreen) */}
+                  {(isTeacherBroadcastActive || isPlayerFullscreen) && (
+                    <button
+                      type="button"
+                      className={`yt-control-btn yt-fullscreen-btn ${isPlayerFullscreen ? 'is-active-fullscreen' : ''}`}
+                      onClick={togglePlayerFullscreen}
+                      title={isPlayerFullscreen ? 'Exit Fullscreen (Esc)' : 'Fullscreen Teacher Screen'}
+                    >
+                      {isPlayerFullscreen ? '✕ Exit Fullscreen' : '⛶ Fullscreen'}
+                    </button>
+                  )}
                 </div>
               </div>
             </div>

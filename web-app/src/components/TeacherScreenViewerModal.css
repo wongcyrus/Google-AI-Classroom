@@ -336,6 +336,46 @@
   cursor: grab;
 }
 
+.teacher-modal-exit-fs-btn {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  z-index: 600;
+  background: rgba(220, 38, 38, 0.92);
+  color: #ffffff;
+  border: 2px solid rgba(255, 255, 255, 0.6);
+  border-radius: 8px;
+  padding: 8px 16px;
+  font-size: 0.86rem;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
+}
+
+.teacher-modal-exit-fs-btn:hover {
+  background: #b91c1c;
+}
+
+.teacher-modal-restore-std-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 600;
+  background: rgba(59, 130, 246, 0.95);
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-size: 0.76rem;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
+}
+
+.teacher-modal-restore-std-btn:hover {
+  background: #2563eb;
+}
+
 /* Subtle guidance hint overlay when student zooms in */
 .zoom-hint-banner {
   position: absolute;
