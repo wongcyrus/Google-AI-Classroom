@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import NativeDialog from '../NativeDialog';
 import QRCode from 'qrcode';
 import { httpsCallable } from 'firebase/functions';
 import { doc, onSnapshot } from 'firebase/firestore';
@@ -154,7 +155,13 @@ export default function LectureQrBingoModal({
   const attendancePercentage = Math.min(100, Math.round((verifiedCount / targetTotal) * 100));
 
   return (
-    <div className="lecture-qr-overlay" role="dialog" aria-modal="true" aria-labelledby="lecture-qr-title">
+    <NativeDialog
+      isOpen={true}
+      onClose={onClose}
+      closeOnBackdropClick={false}
+      className="lecture-qr-overlay"
+      ariaLabelledBy="lecture-qr-title"
+    >
       <div className="lecture-qr-modal">
         {/* Header */}
         <div className="lecture-qr-header">
@@ -348,6 +355,6 @@ export default function LectureQrBingoModal({
           </div>
         </div>
       </div>
-    </div>
+    </NativeDialog>
   );
 }

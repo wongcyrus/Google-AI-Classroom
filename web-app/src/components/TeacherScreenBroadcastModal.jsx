@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import NativeDialog from './NativeDialog';
 import { acquireInputDeviceStream } from '../utils/mediaDeviceCapture';
 import { useTranslationPrompts } from '../hooks/useTranslationPrompts';
 import { DEFAULT_LIVE_SUBTITLE_TRANSLATION_PROMPT } from '../constants/promptRegistry';
@@ -595,7 +596,12 @@ export default function TeacherScreenBroadcastModal({
   // =============================================================
   if (!isBroadcasting) {
     return (
-      <div className="broadcast-modal-overlay" onClick={onClose}>
+      <NativeDialog
+        isOpen={isOpen}
+        onClose={onClose}
+        className="broadcast-modal-overlay"
+        ariaLabel="Broadcast Screen and Voice Setup"
+      >
         <div className="broadcast-modal-container broadcast-setup-container" onClick={(e) => e.stopPropagation()}>
           {/* Header */}
           <div className="broadcast-modal-header">
@@ -1508,7 +1514,7 @@ export default function TeacherScreenBroadcastModal({
           className={className}
           pin={sessionPin}
         />
-      </div>
+      </NativeDialog>
     );
   }
 
@@ -1516,7 +1522,12 @@ export default function TeacherScreenBroadcastModal({
   // Mode 2: Active Broadcast Management Dashboard (isBroadcasting)
   // =============================================================
   return (
-    <div className="broadcast-modal-overlay" onClick={onClose}>
+    <NativeDialog
+      isOpen={isOpen}
+      onClose={onClose}
+      className="broadcast-modal-overlay"
+      ariaLabel="Live Class Screen Broadcast"
+    >
       <div className="broadcast-modal-container" onClick={(e) => e.stopPropagation()}>
         <div className="broadcast-modal-header">
           <div className="broadcast-modal-title">
@@ -2166,6 +2177,6 @@ export default function TeacherScreenBroadcastModal({
         className={className}
         pin={sessionPin}
       />
-    </div>
+    </NativeDialog>
   );
 }

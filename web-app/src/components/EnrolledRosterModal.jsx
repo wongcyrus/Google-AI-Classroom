@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import NativeDialog from './NativeDialog';
 import StudentBadge from './common/StudentBadge';
 import { exportStudentRosterExcel, maskStudentEmail, maskStudentName, isPrivacyModeActive } from '../utils/studentDisplayUtils';
 import './EnrolledRosterModal.css';
@@ -274,8 +275,13 @@ const EnrolledRosterModal = ({
   if (!show) return null;
 
   return (
-    <div className="roster-modal-backdrop" onClick={onClose} data-testid="enrolled-roster-modal">
-      <div className="roster-modal-container" onClick={e => e.stopPropagation()}>
+    <NativeDialog
+      isOpen={show}
+      onClose={onClose}
+      className="roster-modal-backdrop"
+      ariaLabel="Enrolled Roster Details"
+    >
+      <div className="roster-modal-container" data-testid="enrolled-roster-modal" onClick={e => e.stopPropagation()}>
         {/* Modal Header */}
         <div className="roster-modal-header">
           <div>
@@ -856,7 +862,7 @@ const EnrolledRosterModal = ({
           </button>
         </div>
       </div>
-    </div>
+    </NativeDialog>
   );
 };
 

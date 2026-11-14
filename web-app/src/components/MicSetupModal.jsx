@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import NativeDialog from './NativeDialog';
 import { useAudioSetup } from '../hooks/useAudioSetup';
 import './MicSetupModal.css';
 
@@ -81,7 +82,14 @@ export default function MicSetupModal({
   };
 
   return (
-    <div className="mic-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="mic-modal-title">
+    <NativeDialog
+      isOpen={isOpen}
+      onClose={onClose}
+      closeOnBackdropClick={!isRequired}
+      closeOnEscape={!isRequired}
+      className="mic-modal-overlay"
+      ariaLabelledBy="mic-modal-title"
+    >
       <div className="mic-modal-card">
         <div className="mic-modal-header">
           <div className="mic-header-title">
@@ -239,6 +247,6 @@ export default function MicSetupModal({
           </button>
         </div>
       </div>
-    </div>
+    </NativeDialog>
   );
 }

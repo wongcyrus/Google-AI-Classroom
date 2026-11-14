@@ -1,4 +1,5 @@
 import React, { useRef } from 'react';
+import NativeDialog from './NativeDialog';
 import { timeStringToSeconds } from '../utils/transcriptMerger';
 import { exportToExcel, exportToText } from '../utils/exportUtils';
 import { maskStudentName, isPrivacyModeActive } from '../utils/studentDisplayUtils';
@@ -96,7 +97,12 @@ export default function AudioTranscriptModal({
   };
 
   return (
-    <div className="transcript-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="transcript-modal-title">
+    <NativeDialog
+      isOpen={true}
+      onClose={onClose}
+      className="transcript-modal-overlay"
+      ariaLabelledBy="transcript-modal-title"
+    >
       <div className="transcript-modal-card">
         {/* Header */}
         <div className="transcript-modal-header">
@@ -242,6 +248,6 @@ export default function AudioTranscriptModal({
           </button>
         </div>
       </div>
-    </div>
+    </NativeDialog>
   );
 }

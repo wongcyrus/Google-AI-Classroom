@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import NativeDialog from '../NativeDialog';
 import { doc, setDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { db, storage } from '../../firebase-config';
@@ -290,7 +291,14 @@ const StudentTaskWorkspaceModal = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-70 backdrop-blur-md p-4 overflow-y-auto">
+    <NativeDialog
+      isOpen={isOpen}
+      onClose={onClose}
+      closeOnBackdropClick={false}
+      closeOnEscape={false}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-70 backdrop-blur-md p-4 overflow-y-auto"
+      ariaLabel="Practical Task Challenge"
+    >
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[94vh] flex flex-col border border-gray-200 overflow-hidden">
         {/* PREFLIGHT STATE */}
         {sessionState === 'preflight' && (
@@ -593,7 +601,7 @@ const StudentTaskWorkspaceModal = ({
           </div>
         )}
       </div>
-    </div>
+    </NativeDialog>
   );
 };
 

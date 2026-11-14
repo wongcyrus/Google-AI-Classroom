@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
+import NativeDialog from '../NativeDialog';
 import {
   parseProjectGroupsText,
   parseProjectGroupsFile,
@@ -316,7 +317,13 @@ export default function ProjectGroupEditorModal({
   };
 
   return (
-    <div className="project-group-modal-backdrop" role="dialog" aria-modal="true" aria-label="Manage and Import Project Groups">
+    <NativeDialog
+      isOpen={true}
+      onClose={onClose}
+      closeOnBackdropClick={false}
+      className="project-group-modal-backdrop"
+      ariaLabel="Manage and Import Project Groups"
+    >
       <div className="project-group-modal-content">
         <div className="project-group-modal-header">
           <div>
@@ -694,6 +701,6 @@ export default function ProjectGroupEditorModal({
           </button>
         </div>
       </div>
-    </div>
+    </NativeDialog>
   );
 }

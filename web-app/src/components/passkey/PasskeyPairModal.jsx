@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import NativeDialog from '../NativeDialog';
 import QRCode from 'qrcode';
 import { httpsCallable } from 'firebase/functions';
 import { doc, onSnapshot } from 'firebase/firestore';
@@ -218,7 +219,12 @@ const PasskeyPairModal = ({ show, onClose, user, classId }) => {
   if (!show) return null;
 
   return (
-    <div className="passkey-pair-modal-overlay" onClick={onClose}>
+    <NativeDialog
+      isOpen={true}
+      onClose={onClose}
+      className="passkey-pair-modal-overlay"
+      ariaLabel="Pair Passkey Device"
+    >
       <div className="passkey-pair-modal-content" onClick={(e) => e.stopPropagation()}>
         <button
           type="button"
@@ -420,7 +426,7 @@ const PasskeyPairModal = ({ show, onClose, user, classId }) => {
           </div>
         )}
       </div>
-    </div>
+    </NativeDialog>
   );
 };
 

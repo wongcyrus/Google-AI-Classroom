@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import NativeDialog from './NativeDialog';
 import { db, functions, storage } from '../firebase-config';
 import { collection, query, where, orderBy, getDocs, limit } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
@@ -262,21 +263,10 @@ const VideoPlayerModal = ({ show, onClose, videoUrl, loading, video, classId: pr
   const estimatedActiveMinutes = durationSec ? Math.max(1, Math.round((durationSec * captureInterval) / 60)) : null;
 
   return (
-    <div
-      style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        width: '100%',
-        height: '100%',
-        backgroundColor: 'rgba(0,0,0,0.75)',
-        backdropFilter: 'blur(4px)',
-        display: 'flex',
-        justifyContent: 'center',
-        alignItems: 'center',
-        zIndex: 1050,
-      }}
-      onClick={onClose}
+    <NativeDialog
+      isOpen={true}
+      onClose={onClose}
+      ariaLabel="Student Screen Recording Player"
     >
       <div
         style={{
@@ -483,7 +473,7 @@ const VideoPlayerModal = ({ show, onClose, videoUrl, loading, video, classId: pr
           )}
         </div>
       </div>
-    </div>
+    </NativeDialog>
   );
 };
 

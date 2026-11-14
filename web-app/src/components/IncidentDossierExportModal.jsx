@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import NativeDialog from './NativeDialog';
 import { db } from '../firebase-config';
 import { collection, addDoc, doc, onSnapshot, serverTimestamp } from 'firebase/firestore';
 import { getStudentDisplayName, isPrivacyModeActive } from '../utils/studentDisplayUtils';
@@ -145,20 +146,12 @@ export default function IncidentDossierExportModal({
   };
 
   return (
-    <div
-      style={{
-        position: 'fixed',
-        inset: 0,
-        backgroundColor: 'rgba(0, 0, 0, 0.75)',
-        backdropFilter: 'blur(5px)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 9999,
-        padding: '1rem',
-      }}
-      role="dialog"
-      aria-modal="true"
+    <NativeDialog
+      isOpen={true}
+      onClose={onClose}
+      closeOnBackdropClick={!isSubmitting}
+      closeOnEscape={!isSubmitting}
+      ariaLabel="Export Incident Dossier"
     >
       <div
         style={{
@@ -577,6 +570,6 @@ export default function IncidentDossierExportModal({
           </div>
         )}
       </div>
-    </div>
+    </NativeDialog>
   );
 }

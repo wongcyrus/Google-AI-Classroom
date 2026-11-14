@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import NativeDialog from '../NativeDialog';
 import { httpsCallable } from 'firebase/functions';
 import { ref, uploadBytesResumable } from 'firebase/storage';
 import { functions, storage, auth } from '../../firebase-config';
@@ -486,7 +487,13 @@ const TaskEditorModal = ({
   if (!isOpen) return null;
 
   return (
-    <div className="task-modal-backdrop fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60 backdrop-blur-sm p-4 overflow-y-auto">
+    <NativeDialog
+      isOpen={true}
+      onClose={onClose}
+      closeOnBackdropClick={false}
+      className="task-modal-backdrop fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60 backdrop-blur-sm p-4 overflow-y-auto"
+      ariaLabel="Task Editor"
+    >
       <div className="task-modal-dialog bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[92vh] flex flex-col border border-gray-200">
         {/* Header */}
         <div className="task-modal-header px-6 py-4 border-b border-gray-200 flex justify-between items-center bg-gray-50 rounded-t-xl flex-shrink-0">
@@ -1541,7 +1548,7 @@ const TaskEditorModal = ({
           </div>
         </form>
       </div>
-    </div>
+    </NativeDialog>
   );
 };
 

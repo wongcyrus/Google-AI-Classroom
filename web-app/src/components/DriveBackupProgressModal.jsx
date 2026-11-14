@@ -1,4 +1,5 @@
 import React from 'react';
+import NativeDialog from './NativeDialog';
 
 /**
  * DriveBackupProgressModal
@@ -22,19 +23,13 @@ export default function DriveBackupProgressModal({
   const overallPercent = totalVideos > 0 ? Math.round((completedCount / totalVideos) * 100) : 0;
 
   return (
-    <div
+    <NativeDialog
+      isOpen={show}
+      onClose={onClose}
+      closeOnBackdropClick={false}
+      closeOnEscape={false}
       className="modal-overlay"
-      style={{
-        position: 'fixed',
-        inset: 0,
-        backgroundColor: 'rgba(15, 23, 42, 0.65)',
-        backdropFilter: 'blur(4px)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 9999,
-        padding: '16px',
-      }}
+      ariaLabel="Google Drive Backup Progress"
     >
       <div
         className="modal-content"
@@ -278,6 +273,6 @@ export default function DriveBackupProgressModal({
           )}
         </div>
       </div>
-    </div>
+    </NativeDialog>
   );
 }

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import NativeDialog from '../NativeDialog';
 import QRCode from 'qrcode';
 import { httpsCallable } from 'firebase/functions';
 import { signOut } from 'firebase/auth';
@@ -435,7 +436,12 @@ const PasskeyEnforcementGate = ({ user, classId: propClassId, role, children }) 
 
       {/* Teacher Bypass Modal */}
       {showBypassModal && (
-        <div className="passkey-pair-modal-overlay" onClick={() => setShowBypassModal(false)}>
+        <NativeDialog
+          isOpen={true}
+          onClose={() => setShowBypassModal(false)}
+          className="passkey-pair-modal-overlay"
+          ariaLabel="Teacher Manual Bypass"
+        >
           <div className="passkey-pair-modal-content" onClick={(e) => e.stopPropagation()}>
             <button
               type="button"
@@ -592,7 +598,7 @@ const PasskeyEnforcementGate = ({ user, classId: propClassId, role, children }) 
               </div>
             )}
           </div>
-        </div>
+        </NativeDialog>
       )}
     </div>
   );

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import NativeDialog from './NativeDialog';
 import { updatePassword, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
 import { auth } from '../firebase-config';
 import './ChangePasswordModal.css';
@@ -82,7 +83,14 @@ const ChangePasswordModal = ({ show, onClose }) => {
   };
 
   return (
-    <div className="pwd-modal-overlay" onClick={handleClose}>
+    <NativeDialog
+      isOpen={true}
+      onClose={handleClose}
+      closeOnBackdropClick={!loading}
+      closeOnEscape={!loading}
+      className="pwd-modal-overlay"
+      ariaLabel="Change Password"
+    >
       <div className="pwd-modal-container" onClick={(e) => e.stopPropagation()}>
         <div className="pwd-modal-header">
           <div className="pwd-modal-title">
@@ -157,7 +165,7 @@ const ChangePasswordModal = ({ show, onClose }) => {
           </div>
         </form>
       </div>
-    </div>
+    </NativeDialog>
   );
 };
 

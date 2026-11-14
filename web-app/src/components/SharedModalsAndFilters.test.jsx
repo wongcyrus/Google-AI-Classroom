@@ -46,7 +46,7 @@ describe('Shared UI Components & Views', () => {
       expect(screen.getByText('Modal Details')).toBeInTheDocument();
 
       // Click close button
-      const closeBtn = screen.getByRole('button', { name: '✕' });
+      const closeBtn = screen.getAllByRole('button', { name: 'Close' })[0];
       fireEvent.click(closeBtn);
       expect(onClose).toHaveBeenCalled();
     });

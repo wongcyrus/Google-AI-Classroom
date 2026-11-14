@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import NativeDialog from './NativeDialog';
 import {
   parseStudentRosterCsv,
   parseStudentRosterFile,
@@ -148,7 +149,12 @@ const BatchStudentUploadModal = ({
   } : null;
 
   return (
-    <div className="batch-roster-modal-backdrop" onClick={onClose}>
+    <NativeDialog
+      isOpen={true}
+      onClose={onClose}
+      className="batch-roster-modal-backdrop"
+      ariaLabel="Batch Upload Student Roster"
+    >
       <div className="batch-roster-modal-card" onClick={(e) => e.stopPropagation()}>
         {/* Modal Header */}
         <div className="batch-roster-header">
@@ -311,7 +317,7 @@ const BatchStudentUploadModal = ({
           </button>
         </div>
       </div>
-    </div>
+    </NativeDialog>
   );
 };
 

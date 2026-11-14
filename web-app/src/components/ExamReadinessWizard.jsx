@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import NativeDialog from './NativeDialog';
 import { db } from '../firebase-config';
 import { doc, setDoc } from 'firebase/firestore';
 import { acquireInputDeviceStream } from '../utils/mediaDeviceCapture';
@@ -814,20 +815,11 @@ export default function ExamReadinessWizard({
   if (!isOpen) return null;
 
   return (
-    <div
-      style={{
-        position: 'fixed',
-        inset: 0,
-        backgroundColor: 'rgba(0, 0, 0, 0.75)',
-        backdropFilter: 'blur(6px)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 9999,
-        padding: '1rem',
-      }}
-      role="dialog"
-      aria-modal="true"
+    <NativeDialog
+      isOpen={true}
+      onClose={onClose}
+      closeOnBackdropClick={false}
+      ariaLabel="Exam Readiness Wizard"
     >
       <div
         style={{
@@ -1455,6 +1447,6 @@ export default function ExamReadinessWizard({
           </div>
         )}
       </div>
-    </div>
+    </NativeDialog>
   );
 }

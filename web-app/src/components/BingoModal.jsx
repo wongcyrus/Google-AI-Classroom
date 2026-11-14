@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
+import NativeDialog from './NativeDialog';
 import { isMobileDevice } from '../utils/browserDetection';
 import { playBingoChime, triggerBingoNotification } from '../utils/systemNotification';
 import QRCode from 'qrcode';
@@ -328,15 +329,17 @@ export default function BingoModal({
   const optionLabels = ['A', 'B', 'C', 'D'];
 
   const modalElement = (
-    <div
+    <NativeDialog
+      isOpen={true}
+      onClose={onClose}
+      closeOnBackdropClick={false}
+      closeOnEscape={Boolean(onClose && submissionResult)}
       className={`bingo-modal-overlay ${isMobileViewport ? 'is-mobile' : ''} ${isLandscape ? 'is-landscape' : ''}`}
-      data-testid="bingo-modal-overlay"
+      ariaLabelledBy="bingo-title"
     >
       <div
         className={`bingo-modal-container ${isMobileViewport ? 'is-mobile' : ''} ${isLandscape ? 'is-landscape' : ''} ${submissionResult ? 'has-result' : ''}`}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="bingo-title"
+        data-testid="bingo-modal-overlay"
       >
         {/* Header */}
         <div className="bingo-header">
@@ -591,7 +594,7 @@ export default function BingoModal({
         user={{ uid: activeBingo?.studentUid }}
         classId={activeBingo?.classId}
       />
-    </div>
+    </NativeDialog>
   );
 
   // If the browser is in native Fullscreen mode, portal into document.fullscreenElement

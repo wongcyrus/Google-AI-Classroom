@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
+import NativeDialog from '../NativeDialog';
 import { decodeQrFromElement, decodeQrFromImageFile } from '../../utils/qrCodeDecoder';
 
 /**
@@ -217,21 +218,17 @@ export default function CameraQrScannerModal({
   if (!isOpen) return null;
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label={title}
+    <NativeDialog
+      isOpen={isOpen}
+      onClose={onClose}
+      closeOnBackdropClick={false}
+      ariaLabel={title}
       style={{
-        position: 'fixed',
-        inset: 0,
-        zIndex: 9999,
         background: 'rgba(15, 23, 42, 0.96)',
-        display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'space-between',
         padding: '1.25rem 1rem env(safe-area-inset-bottom, 1.25rem) 1rem',
-        boxSizing: 'border-box',
         color: '#f8fafc',
       }}
     >
@@ -471,6 +468,6 @@ export default function CameraQrScannerModal({
           100% { top: 85%; opacity: 0; }
         }
       `}</style>
-    </div>
+    </NativeDialog>
   );
 }

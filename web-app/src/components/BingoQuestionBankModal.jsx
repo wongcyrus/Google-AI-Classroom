@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import NativeDialog from './NativeDialog';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '../firebase-config';
 import './BingoQuestionBankModal.css';
@@ -211,8 +212,14 @@ ANSWER: B`;
   };
 
   return (
-    <div className="bank-modal-overlay" data-testid="bank-modal-overlay">
-      <div className="bank-modal-container" role="dialog" aria-modal="true">
+    <NativeDialog
+      isOpen={true}
+      onClose={onClose}
+      closeOnBackdropClick={false}
+      className="bank-modal-overlay"
+      ariaLabel="Bingo Question Bank"
+    >
+      <div className="bank-modal-container" data-testid="bank-modal-overlay">
         {/* Header */}
         <div className="bank-modal-header">
           <div>
@@ -471,6 +478,6 @@ ANSWER: B`;
           )}
         </div>
       </div>
-    </div>
+    </NativeDialog>
   );
 }

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import NativeDialog from '../NativeDialog';
 import { acquireInputDeviceStream } from '../../utils/mediaDeviceCapture';
 import { useTranslationPrompts } from '../../hooks/useTranslationPrompts';
 import { DEFAULT_LIVE_SUBTITLE_TRANSLATION_PROMPT } from '../../constants/promptRegistry';
@@ -262,13 +263,15 @@ export default function TeacherSubtitleControlModal({
   if (!isOpen) return null;
 
   return (
-    <div className="teacher-subtitle-modal-backdrop" onClick={onClose}>
+    <NativeDialog
+      isOpen={isOpen}
+      onClose={onClose}
+      className="teacher-subtitle-modal-backdrop"
+      ariaLabelledBy="subtitle-modal-title"
+    >
       <div
         className="teacher-subtitle-modal"
         onClick={(e) => e.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="subtitle-modal-title"
       >
         <div className="teacher-subtitle-modal-header">
           <div className="title-group">
@@ -694,6 +697,6 @@ export default function TeacherSubtitleControlModal({
           </button>
         </div>
       </div>
-    </div>
+    </NativeDialog>
   );
 }

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import NativeDialog from './NativeDialog';
 import { collection, onSnapshot, doc, getDoc, getDocs } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../firebase-config';
@@ -1641,26 +1642,16 @@ export default function BingoResultsView({
 
       {/* Confirmation Modal for Passkey Reset (Phone Replacement) */}
       {resetConfirmStudent && (
-        <div
+        <NativeDialog
+          isOpen={true}
+          onClose={() => setResetConfirmStudent(null)}
+          closeOnBackdropClick={false}
           className="modal-overlay"
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: 'rgba(15, 23, 42, 0.65)',
-            backdropFilter: 'blur(4px)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 1000,
-            padding: '16px',
-          }}
-          data-testid="modal-reset-passkey-confirm"
+          ariaLabel="Confirm Passkey Reset"
         >
           <div
             className="modal-card"
+            data-testid="modal-reset-passkey-confirm"
             style={{
               background: '#ffffff',
               borderRadius: '12px',
@@ -1709,7 +1700,7 @@ export default function BingoResultsView({
               </button>
             </div>
           </div>
-        </div>
+        </NativeDialog>
       )}
     </div>
   );

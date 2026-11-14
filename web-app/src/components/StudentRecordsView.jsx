@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import NativeDialog from './NativeDialog';
 import { db, storage, functions } from '../firebase-config';
 import { collection, query, where, getDocs, doc, getDoc, onSnapshot, setDoc, addDoc, serverTimestamp } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
@@ -3577,12 +3578,11 @@ const StudentRecordsView = ({ user }) => {
 
       {/* Teacher Lecture Video Player Modal */}
       {activeTeacherLecture && (
-        <div
+        <NativeDialog
+          isOpen={true}
+          onClose={() => setActiveTeacherLecture(null)}
           className="teacher-lecture-modal-overlay"
-          onClick={() => setActiveTeacherLecture(null)}
-          role="dialog"
-          aria-modal="true"
-          aria-label={activeTeacherLecture.title || 'Teacher Lecture Recording'}
+          ariaLabel={activeTeacherLecture.title || 'Teacher Lecture Recording'}
         >
           <div
             className="teacher-lecture-modal-card"
@@ -3801,7 +3801,7 @@ const StudentRecordsView = ({ user }) => {
               )}
             </div>
           </div>
-        </div>
+        </NativeDialog>
       )}
     </div>
   );

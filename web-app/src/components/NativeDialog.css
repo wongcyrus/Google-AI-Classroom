@@ -1,0 +1,37 @@
+dialog.native-dialog {
+  border: none;
+  padding: 0;
+  margin: 0;
+  max-width: none;
+  max-height: none;
+  background: transparent;
+  color: inherit;
+}
+
+dialog.native-dialog[open] {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  width: 100dvw;
+  height: 100vh;
+  height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: max(1rem, env(safe-area-inset-top, 1rem))
+    max(1rem, env(safe-area-inset-right, 1rem))
+    max(1rem, env(safe-area-inset-bottom, 1rem))
+    max(1rem, env(safe-area-inset-left, 1rem));
+  box-sizing: border-box;
+}
+
+dialog.native-dialog:modal {
+  overscroll-behavior: contain;
+}
+
+dialog.native-dialog::backdrop {
+  background-color: rgba(15, 23, 42, 0.65);
+  backdrop-filter: blur(4px);
+  overflow: hidden;
+  overscroll-behavior: contain;
+}
