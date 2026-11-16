@@ -9,7 +9,7 @@ import PasskeyPairModal from './components/passkey/PasskeyPairModal';
 import UnsupportedBrowserNotice from './components/UnsupportedBrowserNotice';
 import { isGoogleChrome, getBrowserName, isMobileDevice, isHandheldPhone } from './utils/browserDetection';
 import { deriveRoleFromEmail } from './utils/domainConfig';
-import { getAccountDisplayLabel } from './utils/studentDisplayUtils';
+import { getAccountDisplayLabel, setPrivacyMode } from './utils/studentDisplayUtils';
 import './App.css';
 import hkiitLogo from './assets/HKIIT_logo_RGB_horizontal.jpg';
 
@@ -108,7 +108,10 @@ const App = () => {
     return () => unsubscribe();
   }, []);
 
-  const handleLogout = () => signOut(auth);
+  const handleLogout = () => {
+    setPrivacyMode(true);
+    return signOut(auth);
+  };
 
   if (loading) {
     return (

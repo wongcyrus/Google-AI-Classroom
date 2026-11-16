@@ -49,6 +49,7 @@ describe('EnrolledRosterModal Component', () => {
   };
 
   beforeEach(() => {
+    localStorage.setItem('teacher_privacy_mode', 'false');
     vi.useFakeTimers();
     Object.assign(navigator, {
       clipboard: {

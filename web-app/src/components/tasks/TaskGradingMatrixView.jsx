@@ -5,7 +5,7 @@ import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../../firebase-config';
 import StudentBadge from '../common/StudentBadge';
 import { exportTaskGradingToExcel } from '../../utils/exportUtils';
-import { getStudentDisplayName, getStudentProfile, maskStudentEmail, maskStudentName, isPrivacyModeActive } from '../../utils/studentDisplayUtils';
+import { getStudentDisplayName, getStudentProfile, maskStudentEmail, maskStudentName, formatSafeStudentLabel, isPrivacyModeActive } from '../../utils/studentDisplayUtils';
 import { useGoogleDrive } from '../../hooks/useGoogleDrive';
 import DriveBackupProgressModal from '../DriveBackupProgressModal';
 import './tasks.css';
@@ -699,7 +699,7 @@ const TaskGradingMatrixView = ({
   const handlePlayPreview = async (sub, seekToSeconds = null) => {
     setPreviewVideoSeekSeconds(seekToSeconds);
     const isPrivacy = isPrivacyModeActive();
-    const previewTitle = `${sub.displayName || (isPrivacy ? maskStudentEmail(sub.email) : sub.email)} - Attempt Video`;
+    const previewTitle = `${formatSafeStudentLabel(sub.displayName, sub.email, { privacyMode: isPrivacy })} - Attempt Video`;
     if (sub.driveWebViewLink && !sub.videoUrl && !sub.videoPath) {
       window.open(sub.driveWebViewLink, '_blank', 'noopener,noreferrer');
       return;
@@ -1207,7 +1207,7 @@ const TaskGradingMatrixView = ({
             <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center bg-gray-50 rounded-t-2xl">
               <div>
                 <h3 className="font-bold text-gray-900 flex items-center gap-2">
-                  <span>🧑‍🎓</span> {activeSelectedSubmission.displayName || (isPrivacyModeActive() ? maskStudentEmail(activeSelectedSubmission.email) : activeSelectedSubmission.email)}
+                  <span>🧑‍🎓</span> {formatSafeStudentLabel(activeSelectedSubmission.displayName, activeSelectedSubmission.email)}
                 </h3>
                 <p className="text-xs text-gray-500">
                   Attempt {activeSelectedSubmission.attemptsCount} • Final Score: {activeSelectedSubmission.effectiveScore} /{' '}

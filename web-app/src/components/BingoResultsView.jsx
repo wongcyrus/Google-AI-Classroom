@@ -1524,9 +1524,6 @@ export default function BingoResultsView({
                         <div className="podium-student-name" title={pod.displayName}>
                           {pod.displayName}
                         </div>
-                        <div className="podium-student-email">
-                          {pod.studentEmail}
-                        </div>
                         <div className="podium-stats">
                           <span className="podium-speed">⚡ {pod.responseTimeSec}s</span>
                           <span className="podium-points">+{pod.computedPoints || 100} pts</span>
@@ -1573,9 +1570,6 @@ export default function BingoResultsView({
                             <span className="bingo-student-email" style={{ fontWeight: 600 }}>
                               {st.displayName}
                             </span>
-                            {st.displayName !== st.studentEmail && (
-                              <span style={{ fontSize: '0.78rem', color: '#64748b' }}>{st.studentEmail}</span>
-                            )}
                           </div>
                         </td>
                         <td>

@@ -118,6 +118,7 @@ vi.mock('../hooks/useGoogleDrive', () => ({
 describe('VideoLibrary Full Component Suite', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.setItem('teacher_privacy_mode', 'false');
     mockGdriveConnected = true;
     mockGdriveConnecting = false;
     mockBaseFolderName = 'Classroom Archives';
@@ -319,7 +320,7 @@ describe('VideoLibrary Full Component Suite', () => {
     const selectPromptBtn = screen.getByRole('button', { name: /Select Video Prompt/i });
     fireEvent.click(selectPromptBtn);
 
-    const closeBtn = screen.getByRole('button', { name: 'Close' });
+    const closeBtn = screen.getAllByRole('button', { name: 'Close' })[0];
     fireEvent.click(closeBtn);
     expect(screen.queryByPlaceholderText(/Select a prompt or enter text here/i)).not.toBeInTheDocument();
   });

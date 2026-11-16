@@ -25,7 +25,7 @@ import { DEFAULT_LIVE_SUBTITLE_TRANSLATION_PROMPT } from '../constants/promptReg
 import useTeacherScreenBroadcast from '../hooks/useTeacherScreenBroadcast';
 import useLectureRecorder from '../hooks/useLectureRecorder';
 import LectureRecordingsView from './LectureRecordingsView';
-import { getStudentDisplayName, getStudentProfile, maskStudentEmail, usePrivacyMode } from '../utils/studentDisplayUtils';
+import { getStudentDisplayName, getStudentProfile, maskStudentEmail, formatSafeStudentLabel, usePrivacyMode } from '../utils/studentDisplayUtils';
 import BingoResultsView from './BingoResultsView';
 import LectureQrBingoModal from './monitor/LectureQrBingoModal';
 
@@ -2576,7 +2576,7 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
                   }}>
                     <div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                        <strong style={{ color: '#38bdf8', fontSize: '0.9rem' }}>{req.studentEmail}</strong>
+                        <strong style={{ color: '#38bdf8', fontSize: '0.9rem' }}>{isPrivacyMode ? maskStudentEmail(req.studentEmail) : req.studentEmail}</strong>
                         <span style={{ color: '#94a3b8', fontSize: '0.82rem' }}>({req.deskNumber || 'Lab PC'})</span>
                         <span style={{
                           background: isUrgent ? 'rgba(239, 68, 68, 0.25)' : 'rgba(245, 158, 11, 0.2)',
@@ -3123,7 +3123,7 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
                       >
                         <div>
                           <div style={{ fontWeight: 600, fontSize: '0.95rem', color: 'var(--color-text-main, #1e293b)' }}>
-                            {s.displayName || s.email || (s.id ? `Student (${s.id.slice(0, 8)})` : 'Unknown Student')}
+                            {(s.displayName || s.email) ? formatSafeStudentLabel(s.displayName, s.email, { privacyMode: isPrivacyMode }) : (s.id ? `Student (${s.id.slice(0, 8)})` : 'Unknown Student')}
                           </div>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>

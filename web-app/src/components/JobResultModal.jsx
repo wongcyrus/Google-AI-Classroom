@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import Modal from './Modal';
 import { formatAiCost } from '../utils/formatters';
 import { exportToJson, exportToText, exportToExcel } from '../utils/exportUtils';
+import { formatSafeStudentLabel } from '../utils/studentDisplayUtils';
 
 const JobResultModal = ({ show, onClose, job }) => {
   const [copied, setCopied] = useState(false);
@@ -70,11 +71,13 @@ const JobResultModal = ({ show, onClose, job }) => {
     exportToText(typeof rawResult === 'string' ? rawResult : jsonString, filename);
   };
 
+  const safeStudentLabel = formatSafeStudentLabel(job.displayName, job.studentEmail);
+
   return (
     <Modal
       show={show}
       onClose={onClose}
-      title={`Analysis Result: ${job.displayName || job.studentEmail || 'Student'}`}
+      title={`Analysis Result: ${safeStudentLabel}`}
     >
       <div style={{ display: 'flex', flexDirection: 'column', height: '100%', gap: '14px' }}>
         {/* Metadata Header */}
@@ -90,7 +93,7 @@ const JobResultModal = ({ show, onClose, job }) => {
         }}>
           <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
             <span>
-              <strong>Student:</strong> {job.displayName ? `${job.displayName} (${job.studentEmail})` : job.studentEmail}
+              <strong>Student:</strong> {safeStudentLabel}
               {(job.studentClass || job.programme) && (
                 <span style={{ marginLeft: '6px', fontSize: '0.74rem', background: '#e2e8f0', color: '#475569', padding: '1px 5px', borderRadius: '3px' }}>
                   {[job.studentClass, job.programme].filter(Boolean).join(' • ')}

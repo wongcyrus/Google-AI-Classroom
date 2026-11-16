@@ -6,6 +6,7 @@ import { DEFAULT_LIVE_SUBTITLE_TRANSLATION_PROMPT } from '../constants/promptReg
 import { auth } from '../firebase-config';
 import PresentationQrModal, { openProjectorQrPopup } from './broadcast/PresentationQrModal';
 import { isDemoClass } from '../utils/classRankingUtils';
+import { formatSafeStudentLabel } from '../utils/studentDisplayUtils';
 import './TeacherScreenBroadcastModal.css';
 
 const RESOLUTION_OPTIONS = [
@@ -1992,7 +1993,7 @@ export default function TeacherScreenBroadcastModal({
                 <div className="viewers-scroll-area">
                   {viewers.slice(0, 50).map((v) => (
                     <div key={v.studentUid} className="viewer-item">
-                      <span className="viewer-email">{v.studentEmail}</span>
+                      <span className="viewer-email">{formatSafeStudentLabel(v.displayName, v.studentEmail)}</span>
                       <span className="viewer-status-badge connected">
                         🟢 Watching
                       </span>

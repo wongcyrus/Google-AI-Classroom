@@ -184,6 +184,31 @@ export const getAccountDisplayLabel = (user, role = '') => {
 };
 
 /**
+ * Privacy-safe formatter for a pre-resolved student name/displayName with email fallback.
+ * Always masks when Privacy Mode is active (even if rawName is already populated on the document)
+ * and never combines full name + raw email in pair.
+ *
+ * @param {string} [rawName]
+ * @param {string} [rawEmail]
+ * @param {object} [options]
+ * @returns {string}
+ */
+export const formatSafeStudentLabel = (rawName = '', rawEmail = '', options = {}) => {
+  const isPrivacy = isPrivacyModeActive(options);
+  const name = typeof rawName === 'string' ? rawName.trim() : '';
+  const email = typeof rawEmail === 'string' ? rawEmail.trim() : '';
+
+  if (name && !name.includes('@')) {
+    return isPrivacy ? maskStudentName(name) : name;
+  }
+  const targetEmail = email || (name.includes('@') ? name : '');
+  if (targetEmail) {
+    return isPrivacy ? maskStudentEmail(targetEmail) : targetEmail;
+  }
+  return 'Student';
+};
+
+/**
  * Masks a Chinese name per standard HK/institutional privacy conventions:
  * 2 characters: "羅晉" -> "羅*"
  * 3 characters: "陳正洋" -> "陳*洋"

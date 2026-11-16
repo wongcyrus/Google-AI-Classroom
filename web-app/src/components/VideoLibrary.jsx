@@ -11,7 +11,7 @@ import usePaginatedQuery from '../hooks/useCollectionQuery';
 import VideoTable from './VideoTable';
 import VideoPlayerModal from './VideoPlayerModal';
 import { exportToExcel } from '../utils/exportUtils';
-import { getStudentDisplayName, getStudentProfile } from '../utils/studentDisplayUtils';
+import { getStudentDisplayName, getStudentProfile, formatSafeStudentLabel } from '../utils/studentDisplayUtils';
 import { useGoogleDrive } from '../hooks/useGoogleDrive';
 import DriveBackupProgressModal from './DriveBackupProgressModal';
 
@@ -899,7 +899,7 @@ const VideoLibrary = ({ user, classId, startTime, endTime, filterField }) => {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
             <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '6px', padding: '10px 14px', fontSize: '0.85rem', color: '#991b1b' }}>
               <div><strong>Job ID:</strong> <code>{errorModalJob.id}</code></div>
-              <div><strong>Student:</strong> {errorModalJob.studentEmail || errorModalJob.studentUid || 'Unknown'}</div>
+              <div><strong>Student:</strong> {errorModalJob.studentEmail ? formatSafeStudentLabel(errorModalJob.displayName, errorModalJob.studentEmail) : (errorModalJob.studentUid || 'Unknown')}</div>
               <div><strong>Session:</strong> {errorModalJob.startTime?.toDate ? errorModalJob.startTime.toDate().toLocaleString() : (errorModalJob.startTime || 'N/A')}</div>
             </div>
 

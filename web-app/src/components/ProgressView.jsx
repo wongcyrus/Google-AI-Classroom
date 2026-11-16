@@ -4,7 +4,7 @@ import { doc, getDoc, collection, query, where, orderBy, limit, getDocs } from '
 import './SharedViews.css';
 import usePaginatedQuery from '../hooks/useCollectionQuery';
 import { exportToExcel } from '../utils/exportUtils';
-import { getStudentDisplayName, getStudentProfile, maskStudentEmail, maskStudentName, isPrivacyModeActive } from '../utils/studentDisplayUtils';
+import { getStudentDisplayName, getStudentProfile, formatSafeStudentLabel } from '../utils/studentDisplayUtils';
 
 const ProgressView = ({ classId, startTime, endTime }) => {
   const [selectedStudentUid, setSelectedStudentUid] = useState(null);
@@ -215,8 +215,7 @@ const ProgressView = ({ classId, startTime, endTime }) => {
   const renderDetailView = () => {
     const studentEmail = (detailProgress.length > 0 && detailProgress[0].studentEmail) || (students.find(s => s.uid === selectedStudentUid))?.email || selectedStudentUid;
     const studentObj = students.find(s => s.uid === selectedStudentUid || s.email === studentEmail);
-    const isPrivacy = isPrivacyModeActive();
-    const displayIdentifier = studentObj?.displayName || (isPrivacy ? maskStudentEmail(studentEmail) : studentEmail);
+    const displayIdentifier = formatSafeStudentLabel(studentObj?.displayName, studentEmail);
 
     return (
       <div className="view-container">
@@ -294,10 +293,7 @@ const ProgressView = ({ classId, startTime, endTime }) => {
                   {latestProgress.map((p) => (
                     <tr key={p.id} className="clickable" onClick={() => setSelectedStudentUid(p.studentUid)}>
                       <td>
-                        <div style={{ fontWeight: 600 }}>{p.displayName || (isPrivacyModeActive() ? maskStudentEmail(p.studentEmail) : p.studentEmail)}</div>
-                        {p.displayName && p.displayName !== p.studentEmail && !isPrivacyModeActive() && (
-                          <div style={{ fontSize: '0.8rem', color: '#64748b' }}>{p.studentEmail}</div>
-                        )}
+                        <div style={{ fontWeight: 600 }}>{formatSafeStudentLabel(p.displayName, p.studentEmail)}</div>
                         {(p.studentClass || p.programme) && (
                           <div style={{ marginTop: '2px' }}>
                             <span style={{ fontSize: '0.72rem', background: '#e2e8f0', color: '#475569', padding: '1px 5px', borderRadius: '3px' }}>

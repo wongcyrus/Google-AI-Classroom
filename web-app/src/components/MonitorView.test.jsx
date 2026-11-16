@@ -681,7 +681,7 @@ describe('MonitorView Component Suite', () => {
     expect(screen.getByTestId('mock-bingo-results-modal')).toBeInTheDocument();
 
     // Close modal
-    const closeBtn = screen.getByRole('button', { name: 'Close' });
+    const closeBtn = screen.getAllByRole('button', { name: 'Close' })[0];
     await act(async () => {
       fireEvent.click(closeBtn);
     });

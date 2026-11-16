@@ -1,6 +1,6 @@
 import React from 'react';
 import { render, screen, fireEvent, within } from '@testing-library/react';
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import AiCostReportView from './AiCostReportView';
 import * as csvExporter from '../utils/aiCostCsvExporter';
 
@@ -54,6 +54,10 @@ vi.mock('firebase/firestore', () => ({
 }));
 
 describe('AiCostReportView Component', () => {
+  beforeEach(() => {
+    localStorage.setItem('teacher_privacy_mode', 'false');
+  });
+
   const mockJobs = [
     {
       id: 'job_1',

@@ -8,7 +8,7 @@ import {
   computeClientLectureQrToken,
   LECTURE_QR_ROTATION_INTERVAL_MS,
 } from '../../utils/lectureQrCrypto';
-import { getStudentDisplayName } from '../../utils/studentDisplayUtils';
+import { getAccountDisplayLabel } from '../../utils/studentDisplayUtils';
 import './LectureQrBingoModal.css';
 
 export default function LectureQrBingoModal({
@@ -311,7 +311,7 @@ export default function LectureQrBingoModal({
                           <span className={`lecture-qr-feed-rank ${rankClass}`}>
                             {rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : rank}
                           </span>
-                          <span>{resp.studentEmail ? resp.studentEmail.split('@')[0] : (resp.studentUid || 'Student')}</span>
+                          <span>{resp.studentEmail ? getAccountDisplayLabel({ email: resp.studentEmail }, 'student') : (resp.studentUid || 'Student')}</span>
                         </div>
                         <div className="lecture-qr-feed-speed">
                           ⚡ {resp.responseTimeSec || 2.0}s

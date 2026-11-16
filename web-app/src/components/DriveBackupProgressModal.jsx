@@ -1,5 +1,6 @@
 import React from 'react';
 import NativeDialog from './NativeDialog';
+import { formatSafeStudentLabel } from '../utils/studentDisplayUtils';
 
 /**
  * DriveBackupProgressModal
@@ -110,9 +111,9 @@ export default function DriveBackupProgressModal({
                       overflow: 'hidden',
                       textOverflow: 'ellipsis',
                     }}
-                    title={currentVideo.studentEmail}
+                    title={currentVideo.studentEmail ? formatSafeStudentLabel(currentVideo.displayName, currentVideo.studentEmail) : undefined}
                   >
-                    Uploading: {currentVideo.studentEmail || 'Student Video'}
+                    Uploading: {currentVideo.studentEmail ? formatSafeStudentLabel(currentVideo.displayName, currentVideo.studentEmail) : 'Student Video'}
                   </span>
                 </div>
                 <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#166534' }}>
@@ -186,7 +187,7 @@ export default function DriveBackupProgressModal({
                           maxWidth: '320px',
                         }}
                       >
-                        {item.studentEmail || item.id}
+                        {item.studentEmail ? formatSafeStudentLabel(item.displayName, item.studentEmail) : item.id}
                       </span>
                     </div>
 

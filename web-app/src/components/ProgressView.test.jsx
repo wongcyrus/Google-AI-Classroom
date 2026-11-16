@@ -38,6 +38,7 @@ vi.mock('../hooks/useCollectionQuery', () => ({
 describe('ProgressView Component', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.setItem('teacher_privacy_mode', 'false');
   });
 
   it('renders summary view with student list and latest progress', async () => {

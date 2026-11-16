@@ -7,6 +7,7 @@ import QRCode from 'qrcode';
 import { httpsCallable } from 'firebase/functions';
 import { functions } from '../firebase-config';
 import PasskeyPairModal from './passkey/PasskeyPairModal';
+import { getAccountDisplayLabel } from '../utils/studentDisplayUtils';
 import './BingoModal.css';
 
 export { playBingoChime };
@@ -447,7 +448,7 @@ export default function BingoModal({
                       <span className="leaderboard-rank-badge">
                         {idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `#${idx + 1}`}
                       </span>
-                      <span className="leaderboard-name">{item.studentEmail?.split('@')[0] || `Student ${idx + 1}`}</span>
+                      <span className="leaderboard-name">{item.studentEmail ? getAccountDisplayLabel({ email: item.studentEmail }, 'student') : `Student ${idx + 1}`}</span>
                       <span className="leaderboard-speed">{item.responseTimeSec !== null && item.responseTimeSec !== undefined ? `${item.responseTimeSec}s` : '—'}</span>
                     </div>
                   ))}

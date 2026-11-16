@@ -5,6 +5,7 @@ import { formatAiCost, formatBytes, formatStorageCost } from '../utils/formatter
 import { aggregateAiCost } from '../utils/aiCostAggregator';
 import { generateAiCostCsv, downloadCsvFile, exportAiCostToExcel } from '../utils/aiCostCsvExporter';
 import useCloudPricing from '../hooks/useCloudPricing';
+import { formatSafeStudentLabel } from '../utils/studentDisplayUtils';
 import './AiCostReportView.css';
 
 export const JOB_TYPE_LABELS = {
@@ -311,7 +312,7 @@ const AiCostReportView = ({
             <option value="all">All Students</option>
             {students.map((s) => (
               <option key={s.uid || s.id} value={s.uid || s.id}>
-                {s.email || s.name || s.uid}
+                {formatSafeStudentLabel(s.name, s.email) || s.uid}
               </option>
             ))}
           </select>
@@ -583,7 +584,7 @@ const AiCostReportView = ({
                 <tbody>
                   {summary.byStudent.map((st) => (
                     <tr key={st.studentUid}>
-                      <td><strong>{st.studentEmail}</strong></td>
+                      <td><strong>{formatSafeStudentLabel(st.displayName, st.studentEmail)}</strong></td>
                       <td>{st.jobCount}</td>
                       <td>{st.inputTokens.toLocaleString()}</td>
                       <td>{st.outputTokens.toLocaleString()}</td>

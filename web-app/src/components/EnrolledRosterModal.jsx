@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import NativeDialog from './NativeDialog';
 import StudentBadge from './common/StudentBadge';
-import { exportStudentRosterExcel, maskStudentEmail, maskStudentName, isPrivacyModeActive } from '../utils/studentDisplayUtils';
+import { exportStudentRosterExcel, maskStudentEmail, maskStudentName, usePrivacyMode } from '../utils/studentDisplayUtils';
 import './EnrolledRosterModal.css';
 
 /**
@@ -35,7 +35,8 @@ const EnrolledRosterModal = ({
   onClearExemptionSuccess,
   isPrivacyMode: propPrivacyMode,
 }) => {
-  const isPrivacy = typeof propPrivacyMode === 'boolean' ? propPrivacyMode : isPrivacyModeActive();
+  const [hookPrivacyMode] = usePrivacyMode();
+  const isPrivacy = typeof propPrivacyMode === 'boolean' ? propPrivacyMode : hookPrivacyMode;
   const [searchTerm, setSearchTerm] = useState('');
   const [passkeyFilter, setPasskeyFilter] = useState('all'); // 'all' | 'linked' | 'unlinked'
   const [profileFilter, setProfileFilter] = useState('all'); // 'all' | 'has_profile' | 'missing_profile' | 'directory'

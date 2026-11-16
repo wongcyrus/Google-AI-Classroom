@@ -8,6 +8,7 @@ import { functions, db, auth } from '../../firebase-config';
 import { isHandheldPhone } from '../../utils/browserDetection';
 import { isTeacherEmail, isStudentEmail } from '../../utils/domainConfig';
 import { useStudentClassSchedule } from '../../hooks/useStudentClassSchedule';
+import { getAccountDisplayLabel } from '../../utils/studentDisplayUtils';
 import './passkey.css';
 
 /**
@@ -429,7 +430,7 @@ const PasskeyEnforcementGate = ({ user, classId: propClassId, role, children }) 
               }
             }}
           >
-            🚪 Sign Out / Switch Account ({user?.email})
+            🚪 Sign Out / Switch Account ({getAccountDisplayLabel(user, role)})
           </button>
         </div>
       </div>

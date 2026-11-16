@@ -2,7 +2,7 @@
 import React from 'react';
 import { formatAiCost } from '../utils/formatters';
 import { exportToExcel, exportToJson } from '../utils/exportUtils';
-import { maskStudentEmail, isPrivacyModeActive } from '../utils/studentDisplayUtils';
+import { formatSafeStudentLabel } from '../utils/studentDisplayUtils';
 
 const AiJobsTable = ({ aiJobs, onPlayVideo, onInspectResult }) => {
   const handleExportSingleJob = (job, format) => {
@@ -166,7 +166,7 @@ const AiJobsTable = ({ aiJobs, onPlayVideo, onInspectResult }) => {
                         </td>
                         <td>
                           <div style={{ fontWeight: 600 }}>
-                            {job.displayName || (isPrivacyModeActive() ? maskStudentEmail(job.studentEmail) : job.studentEmail)}
+                            {formatSafeStudentLabel(job.displayName, job.studentEmail)}
                           </div>
                           {(job.studentClass || job.programme) && (
                             <div style={{ marginTop: '2px' }}>
