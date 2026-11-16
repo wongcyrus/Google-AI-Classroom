@@ -203,6 +203,7 @@ describe('App & MainHeader Components', () => {
     const mockStudent = {
       uid: 'student_1',
       email: 'student@school.edu',
+      displayName: 'Alice Chan',
       emailVerified: true,
       getIdTokenResult: vi.fn().mockResolvedValue({ claims: { role: 'student' } }),
     };
@@ -216,7 +217,8 @@ describe('App & MainHeader Components', () => {
 
     expect(await screen.findByTestId('student-view')).toBeInTheDocument();
     expect(screen.queryByText('student@school.edu')).not.toBeInTheDocument();
-    expect(screen.getByText('st***')).toBeInTheDocument();
+    expect(screen.queryByText('Alice Chan')).not.toBeInTheDocument();
+    expect(screen.getByText('A**** C***')).toBeInTheDocument();
     expect(screen.getByText('student')).toBeInTheDocument();
     expect(screen.getByText(/Live Session/i)).toBeInTheDocument();
     expect(screen.getByText(/My Records/i)).toBeInTheDocument();

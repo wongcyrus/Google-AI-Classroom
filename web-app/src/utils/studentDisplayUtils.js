@@ -147,9 +147,9 @@ export const maskStudentEmail = (email) => {
 };
 
 /**
- * Formats a privacy-safe post-login account label without exposing raw email PII.
+ * Formats a privacy-safe post-login account label without exposing raw email PII or full names.
  * Priority:
- * 1. Trimmed user.displayName (when present and not an email address)
+ * 1. Masked user.displayName via maskStudentName (e.g. "Alice Chan" -> "A**** C***", "陳正洋" -> "陳*洋")
  * 2. Masked local-part identifier without @domain (e.g. "ID ***0101" or "st***")
  * 3. Role-based fallback ("Teacher Account" / "Student Account" / "Signed-in User")
  *
@@ -160,7 +160,8 @@ export const maskStudentEmail = (email) => {
 export const getAccountDisplayLabel = (user, role = '') => {
   const displayName = typeof user?.displayName === 'string' ? user.displayName.trim() : '';
   if (displayName && !displayName.includes('@')) {
-    return displayName;
+    const masked = maskStudentName(displayName);
+    if (masked) return masked;
   }
 
   const email = normalizeStudentEmail(user?.email || (displayName.includes('@') ? displayName : ''));
