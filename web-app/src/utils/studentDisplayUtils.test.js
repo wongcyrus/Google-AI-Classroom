@@ -67,6 +67,8 @@ describe('studentDisplayUtils Utility', () => {
       expect(maskStudentName('羅晉')).toBe('羅*');
       expect(maskStudentName('陳正洋 (CHAN,Ching Yeung)')).toBe('陳*洋 (C***,C**** Y****)');
       expect(maskStudentName('David (Chan Tai Man)')).toBe('D**** (C*** T** M**)');
+      expect(maskStudentName('Kwok Lai Ka Yan (李嘉欣))')).toBe('K*** L** K* Y** (李*欣))');
+      expect(maskStudentName('David（陳大文）')).toBe('D****（陳*文）');
       expect(maskStudentName('260047062@stu.vtc.edu.hk')).toBe('Student ***7062');
       expect(maskStudentName('Student ***7062')).toBe('Student ***7062');
       expect(maskStudentName('')).toBe('');

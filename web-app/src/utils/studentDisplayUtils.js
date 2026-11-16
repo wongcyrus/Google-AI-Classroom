@@ -274,12 +274,14 @@ export const maskStudentName = (name) => {
     return maskChineseName(trimmed);
   }
 
-  // Mixed or English
+  // Mixed or English (split on whitespace, commas, and ASCII/full-width brackets so CJK runs are always masked)
   return trimmed
-    .split(/([\s,]+)/)
+    .split(/([\s,()（）[\]]+)/)
     .map((token) => {
-      if (/^[\s,]+$/.test(token)) return token;
-      if (/^[\u4e00-\u9fa5]+$/.test(token)) return maskChineseName(token);
+      if (!token || /^[\s,()（）[\]]+$/.test(token)) return token;
+      if (/[\u4e00-\u9fa5]/.test(token)) {
+        return token.replace(/[\u4e00-\u9fa5]+/g, (cjk) => maskChineseName(cjk));
+      }
       return maskEnglishWord(token);
     })
     .join('');
