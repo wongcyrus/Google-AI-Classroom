@@ -87,7 +87,10 @@ export default function ScreenSharePrecheckModal({
                 Close personal chats, email, or sensitive tabs — your{' '}
                 <strong>entire screen</strong> will be visible to your instructor.
               </li>
-              <li>Mute notifications or enable Do Not Disturb to prevent popups.</li>
+              <li>
+                Exit personal messaging apps (WhatsApp, Discord, etc.) before sharing, while keeping
+                classroom notifications enabled for Bingo and instructor alerts.
+              </li>
               {isAudioEnabled && (
                 <li>
                   🎙️ <strong>Microphone is enabled</strong> and will be captured with your session.
