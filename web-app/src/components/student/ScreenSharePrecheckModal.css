@@ -1,17 +1,15 @@
-.screen-share-precheck-dialog {
-  max-width: 540px;
-  width: min(94vw, 540px);
-  padding: 0;
-  border-radius: 16px;
-  border: 1px solid #e2e8f0;
-  box-shadow: 0 24px 48px rgba(15, 23, 42, 0.25);
-  background: #ffffff;
-  color: #0f172a;
-}
-
 .precheck-modal-card {
   display: flex;
   flex-direction: column;
+  max-width: 540px;
+  width: min(94vw, 540px);
+  max-height: min(90dvh, 760px);
+  overflow-y: auto;
+  border-radius: 16px;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 24px 48px rgba(15, 23, 42, 0.28);
+  background: #ffffff;
+  color: #0f172a;
 }
 
 .precheck-modal-header {
