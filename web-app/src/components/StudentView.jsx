@@ -20,6 +20,7 @@ import LiveSubtitleOverlay from './subtitles/LiveSubtitleOverlay';
 import { useStudentLiveSubtitles } from '../hooks/useStudentLiveSubtitles';
 import MicSetupModal from './MicSetupModal';
 import ExamReadinessWizard from './ExamReadinessWizard';
+import ScreenSharePrecheckModal from './student/ScreenSharePrecheckModal';
 import BingoModal from './BingoModal';
 import {
   showSystemNotification as sendOsNotification,
@@ -221,6 +222,7 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
   const [directMessages, setDirectMessages] = useState([]);
   const [classMessages, setClassMessages] = useState([]);
   const [isReadinessWizardOpen, setIsReadinessWizardOpen] = useState(false);
+  const [isScreenSharePrecheckOpen, setIsScreenSharePrecheckOpen] = useState(false);
   const [wizardInitialStep, setWizardInitialStep] = useState(1);
   const [isExamReadyLocal, setIsExamReadyLocal] = useState(false);
   const [isViewingTeacherScreen, setIsViewingTeacherScreen] = useState(false);
@@ -2993,7 +2995,7 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
                   </button>
                   <button
                     type="button"
-                    onClick={() => startScreen()}
+                    onClick={() => setIsScreenSharePrecheckOpen(true)}
                     className="btn-quick-start-screen"
                     title={
                       isAudioUserEnabled
@@ -4157,6 +4159,17 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
           } catch (screenErr) {
             console.warn('[StudentView] Screen share start error:', screenErr);
           }
+        }}
+      />
+
+      <ScreenSharePrecheckModal
+        isOpen={isScreenSharePrecheckOpen}
+        requireFullScreenOnly={requireFullScreenOnly}
+        isAudioEnabled={Boolean(enableAudioCapture && isAudioUserEnabled)}
+        onCancel={() => setIsScreenSharePrecheckOpen(false)}
+        onConfirm={() => {
+          setIsScreenSharePrecheckOpen(false);
+          startScreen();
         }}
       />
 

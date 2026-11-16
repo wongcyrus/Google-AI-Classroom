@@ -460,6 +460,22 @@ describe('StudentView Component Extended Test Suite', () => {
     fireEvent.click(closeBtn);
   });
 
+  it('shows clear pre-share alert modal before calling getDisplayMedia and respects Cancel', async () => {
+    navigator.mediaDevices.getDisplayMedia = vi.fn();
+    render(<StudentView user={mockUser} />);
+
+    const quickStartBtn = screen.getByRole('button', { name: /Quick Start \(Screen/i });
+    fireEvent.click(quickStartBtn);
+
+    expect(screen.getByText(/Before You Share Your Screen/i)).toBeInTheDocument();
+    expect(screen.getByText(/Entire Screen Required/i)).toBeInTheDocument();
+    expect(navigator.mediaDevices.getDisplayMedia).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByText(/Before You Share Your Screen/i)).not.toBeInTheDocument();
+    expect(navigator.mediaDevices.getDisplayMedia).not.toHaveBeenCalled();
+  });
+
   it('handles quick start screen sharing from setup hero card', async () => {
     const mockScreenTrack = { stop: vi.fn(), getSettings: () => ({ displaySurface: 'monitor' }), addEventListener: vi.fn() };
     const mockScreenStream = {
@@ -473,6 +489,9 @@ describe('StudentView Component Extended Test Suite', () => {
     const quickStartBtn = screen.getByRole('button', { name: /Quick Start \(Screen/i });
     await act(async () => {
       fireEvent.click(quickStartBtn);
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('confirm-screen-share-precheck'));
     });
 
     await waitFor(() => {
@@ -499,7 +518,9 @@ describe('StudentView Component Extended Test Suite', () => {
 
     const quickStartBtn = screen.getByRole('button', { name: /Quick Start \(Screen/i });
     fireEvent.click(quickStartBtn);
-    fireEvent.click(quickStartBtn);
+    const confirmBtn = screen.getByTestId('confirm-screen-share-precheck');
+    fireEvent.click(confirmBtn);
+    fireEvent.click(confirmBtn);
 
     expect(navigator.mediaDevices.getDisplayMedia).toHaveBeenCalledOnce();
     await act(async () => {
@@ -684,6 +705,9 @@ describe('StudentView Component Extended Test Suite', () => {
     await act(async () => {
       fireEvent.click(quickStartBtn);
     });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('confirm-screen-share-precheck'));
+    });
 
     expect(mockWindowTrack.stop).toHaveBeenCalled();
     expect(window.alert).toHaveBeenCalledWith(expect.stringContaining('Entire Screen Required'));
@@ -765,6 +789,9 @@ describe('StudentView Component Extended Test Suite', () => {
     const quickStartBtn = screen.getByRole('button', { name: /Quick Start \(Screen/i });
     await act(async () => {
       fireEvent.click(quickStartBtn);
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('confirm-screen-share-precheck'));
     });
 
     await waitFor(() => {
@@ -853,6 +880,9 @@ describe('StudentView Component Extended Test Suite', () => {
     await act(async () => {
       fireEvent.click(quickStartBtn);
     });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('confirm-screen-share-precheck'));
+    });
 
     const camSelect = screen.getByLabelText(/Select Webcam/i);
     expect(camSelect).toBeInTheDocument();
@@ -886,6 +916,9 @@ describe('StudentView Component Extended Test Suite', () => {
     await act(async () => {
       fireEvent.click(quickStartBtn);
     });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('confirm-screen-share-precheck'));
+    });
 
     expect(window.alert).toHaveBeenCalledWith(
       expect.stringContaining('Could not start screen sharing. Please grant permission.')
@@ -901,6 +934,9 @@ describe('StudentView Component Extended Test Suite', () => {
     const quickStartBtn = screen.getByRole('button', { name: /Quick Start \(Screen/i });
     await act(async () => {
       fireEvent.click(quickStartBtn);
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('confirm-screen-share-precheck'));
     });
 
     expect(window.alert).toHaveBeenCalledWith(
@@ -1203,6 +1239,9 @@ describe('StudentView Component Extended Test Suite', () => {
     const quickStartBtn = screen.getByRole('button', { name: /Quick Start \(Screen/i });
     await act(async () => {
       fireEvent.click(quickStartBtn);
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('confirm-screen-share-precheck'));
     });
 
     // Active session switcher should exist
@@ -1815,6 +1854,9 @@ describe('StudentView Component Extended Test Suite', () => {
     await act(async () => {
       fireEvent.click(shareBtn);
     });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('confirm-screen-share-precheck'));
+    });
 
     expect(alertSpy).toHaveBeenCalledWith(expect.stringContaining('Entire Screen Required'));
     alertSpy.mockRestore();
@@ -1829,6 +1871,9 @@ describe('StudentView Component Extended Test Suite', () => {
     const shareBtn = screen.getByRole('button', { name: /Quick Start \(Screen/i });
     await act(async () => {
       fireEvent.click(shareBtn);
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('confirm-screen-share-precheck'));
     });
 
     expect(alertSpy).toHaveBeenCalledWith(expect.stringContaining('Could not start screen sharing'));
@@ -1901,6 +1946,9 @@ describe('StudentView Component Extended Test Suite', () => {
     await act(async () => {
       fireEvent.click(shareBtn);
     });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('confirm-screen-share-precheck'));
+    });
 
     // YouTube mode buttons exist in active mode
     const theaterBtns = screen.queryAllByTitle(/Theater Mode/i);
@@ -1936,6 +1984,9 @@ describe('StudentView Component Extended Test Suite', () => {
     await act(async () => {
       fireEvent.click(quickStartBtn);
     });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('confirm-screen-share-precheck'));
+    });
 
     await waitFor(() => {
       expect(screen.getByText(/Streaming Active \(Screen \+ Mic\)/i)).toBeInTheDocument();
@@ -1964,6 +2015,9 @@ describe('StudentView Component Extended Test Suite', () => {
     const quickStartBtn = screen.getByRole('button', { name: /Quick Start \(Screen \+ Mic\)/i });
     await act(async () => {
       fireEvent.click(quickStartBtn);
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('confirm-screen-share-precheck'));
     });
 
     await waitFor(() => {
@@ -2001,6 +2055,9 @@ describe('StudentView Component Extended Test Suite', () => {
     const quickStartBtn = screen.getByRole('button', { name: /Quick Start \(Screen/i });
     await act(async () => {
       fireEvent.click(quickStartBtn);
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('confirm-screen-share-precheck'));
     });
 
     await waitFor(() => {
