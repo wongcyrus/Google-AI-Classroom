@@ -215,7 +215,8 @@ describe('App & MainHeader Components', () => {
     render(<App />);
 
     expect(await screen.findByTestId('student-view')).toBeInTheDocument();
-    expect(screen.getByText('student@school.edu')).toBeInTheDocument();
+    expect(screen.queryByText('student@school.edu')).not.toBeInTheDocument();
+    expect(screen.getByText('st***')).toBeInTheDocument();
     expect(screen.getByText('student')).toBeInTheDocument();
     expect(screen.getByText(/Live Session/i)).toBeInTheDocument();
     expect(screen.getByText(/My Records/i)).toBeInTheDocument();

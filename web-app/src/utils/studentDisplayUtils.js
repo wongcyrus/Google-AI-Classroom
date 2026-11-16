@@ -147,6 +147,42 @@ export const maskStudentEmail = (email) => {
 };
 
 /**
+ * Formats a privacy-safe post-login account label without exposing raw email PII.
+ * Priority:
+ * 1. Trimmed user.displayName (when present and not an email address)
+ * 2. Masked local-part identifier without @domain (e.g. "ID ***0101" or "st***")
+ * 3. Role-based fallback ("Teacher Account" / "Student Account" / "Signed-in User")
+ *
+ * @param {{ displayName?: string, email?: string } | null | undefined} user
+ * @param {string} [role]
+ * @returns {string}
+ */
+export const getAccountDisplayLabel = (user, role = '') => {
+  const displayName = typeof user?.displayName === 'string' ? user.displayName.trim() : '';
+  if (displayName && !displayName.includes('@')) {
+    return displayName;
+  }
+
+  const email = normalizeStudentEmail(user?.email || (displayName.includes('@') ? displayName : ''));
+  if (email && email.includes('@')) {
+    const [local] = email.split('@');
+    if (local) {
+      if (/^\d{5,}$/.test(local)) {
+        return `ID ***${local.slice(-4)}`;
+      }
+      if (local.length <= 2) {
+        return `${local[0]}***`;
+      }
+      return `${local.slice(0, 2)}***`;
+    }
+  }
+
+  if (role === 'teacher') return 'Teacher Account';
+  if (role === 'student') return 'Student Account';
+  return 'Signed-in User';
+};
+
+/**
  * Masks a Chinese name per standard HK/institutional privacy conventions:
  * 2 characters: "羅晉" -> "羅*"
  * 3 characters: "陳正洋" -> "陳*洋"

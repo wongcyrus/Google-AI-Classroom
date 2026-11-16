@@ -9,6 +9,7 @@ import useTeacherScreenBroadcastStudent from '../../hooks/useTeacherScreenBroadc
 import { useStudentLiveSubtitles } from '../../hooks/useStudentLiveSubtitles';
 import BingoModal from '../BingoModal';
 import PasskeyPairModal from '../passkey/PasskeyPairModal';
+import { getAccountDisplayLabel } from '../../utils/studentDisplayUtils';
 import './StudentMobileView.css';
 
 export default function StudentMobileView({
@@ -567,7 +568,7 @@ export default function StudentMobileView({
             ) : (
               <h1 className="mobile-class-title">{activeClassName}</h1>
             )}
-            <span className="mobile-user-email">{user?.email}</span>
+            <span className="mobile-user-email">{getAccountDisplayLabel(user, 'student')}</span>
           </div>
         </div>
 

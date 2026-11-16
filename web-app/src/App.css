@@ -118,6 +118,10 @@ body, html, #root {
   cursor: pointer;
   transition: all 0.15s ease;
   user-select: none;
+  background: transparent;
+  border: none;
+  font: inherit;
+  color: inherit;
 }
 
 .user-profile-trigger:hover {

@@ -9,6 +9,7 @@ import PasskeyPairModal from './components/passkey/PasskeyPairModal';
 import UnsupportedBrowserNotice from './components/UnsupportedBrowserNotice';
 import { isGoogleChrome, getBrowserName, isMobileDevice, isHandheldPhone } from './utils/browserDetection';
 import { deriveRoleFromEmail } from './utils/domainConfig';
+import { getAccountDisplayLabel } from './utils/studentDisplayUtils';
 import './App.css';
 import hkiitLogo from './assets/HKIIT_logo_RGB_horizontal.jpg';
 
@@ -380,24 +381,25 @@ const MainHeader = ({ onLogout, user, role }) => {
         )}
 
         <div className="header-right" ref={menuRef}>
-          <div 
+          <button
+            type="button"
             className="user-profile-trigger"
             onClick={() => setShowProfileMenu(!showProfileMenu)}
-            role="button"
-            tabIndex={0}
+            aria-expanded={showProfileMenu}
+            aria-haspopup="menu"
             title="Account Menu"
           >
             <div className="user-badge">
-              <span className="user-email-text">{user.email}</span>
+              <span className="user-email-text">{getAccountDisplayLabel(user, role)}</span>
               <span className="user-role-pill">{role}</span>
             </div>
-            <span className={`dropdown-arrow ${showProfileMenu ? 'open' : ''}`}>▾</span>
-          </div>
+            <span className={`dropdown-arrow ${showProfileMenu ? 'open' : ''}`} aria-hidden="true">▾</span>
+          </button>
 
           {showProfileMenu && (
-            <div className="user-profile-menu">
+            <div className="user-profile-menu" role="menu">
               <div className="profile-menu-header">
-                <span className="profile-menu-email">{user.email}</span>
+                <span className="profile-menu-email">{getAccountDisplayLabel(user, role)}</span>
                 <span className="profile-menu-role">{role === 'teacher' ? '👨‍🏫 Teacher' : '🧑‍🎓 Student'}</span>
               </div>
               <div className="profile-menu-divider" />

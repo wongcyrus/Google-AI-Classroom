@@ -131,11 +131,12 @@ describe('StudentMobileView Component', () => {
     };
   });
 
-  it('renders header with class name, student email, and desktop switch button', () => {
+  it('renders header with class name, privacy-safe account label (without raw email), and desktop switch button', () => {
     render(<StudentMobileView user={mockUser} onSwitchToDesktop={mockSwitchDesktop} />);
 
     expect(screen.getByText('Cloud Computing 101')).toBeInTheDocument();
-    expect(screen.getByText('student1@vtc.edu.hk')).toBeInTheDocument();
+    expect(screen.queryByText('student1@vtc.edu.hk')).not.toBeInTheDocument();
+    expect(screen.getByText('st***')).toBeInTheDocument();
 
     const switchBtn = screen.getByRole('button', { name: /switch to desktop/i });
     expect(switchBtn).toBeInTheDocument();
