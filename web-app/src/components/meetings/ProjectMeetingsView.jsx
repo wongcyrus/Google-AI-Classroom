@@ -366,6 +366,126 @@ export function computeWeekGroupAiStats(meetings, weekNumber, groups = []) {
   };
 }
 
+/**
+ * Separates a meeting's AI pipeline status from its student progress health badge
+ * so `At Risk` never hides whether AI analysis actually succeeded.
+ */
+export function getMeetingPipelineAndHealth(m, isAnalyzingOverride = false) {
+  if (!m) {
+    return {
+      pipelineKey: 'empty',
+      pipelineLabel: '⚪ Empty',
+      healthKey: null,
+      healthLabel: null,
+      hasValidAudio: false,
+      isAnalyzed: false,
+      isEmptyOrFailed: true,
+    };
+  }
+  const hasValidAudio = hasMeetingValidAudio(m);
+  const isAnalyzed = Boolean(m.analyzedAt || m.aiModelUsed || m.rawDiarizedTranscript);
+  const isFailed = m.status === 'analysis_failed';
+  const isRecording = m.status === 'recording' && !hasValidAudio;
+
+  let pipelineKey = 'empty';
+  let pipelineLabel = '⚪ Empty';
+  if (isAnalyzingOverride || m.status === 'analyzing') {
+    pipelineKey = 'analyzing';
+    pipelineLabel = '⏳ Analyzing...';
+  } else if (isRecording) {
+    pipelineKey = 'recording';
+    pipelineLabel = '🔴 Live / Empty';
+  } else if (isFailed) {
+    pipelineKey = 'failed';
+    pipelineLabel = '❌ Failed';
+  } else if (isAnalyzed) {
+    pipelineKey = 'analyzed';
+    pipelineLabel = '✨ Analyzed';
+  } else if (hasValidAudio) {
+    pipelineKey = 'recorded';
+    pipelineLabel = '🎙️ Pending AI';
+  }
+
+  let healthKey = null;
+  let healthLabel = null;
+  if (isAnalyzed) {
+    const progress = m.keyInsights?.overallGroupProgress;
+    if (progress === 'at_risk' || progress === 'behind') {
+      healthKey = 'at_risk';
+      healthLabel = '⚠️ At Risk';
+    }
+  }
+
+  return {
+    pipelineKey,
+    pipelineLabel,
+    healthKey,
+    healthLabel,
+    hasValidAudio,
+    isAnalyzed,
+    isEmptyOrFailed: !hasValidAudio && !isAnalyzed,
+  };
+}
+
+/**
+ * Aggregates raw meeting documents for a single project group by weekNumber,
+ * picking one Primary Session per week and grouping duplicate/failed/0s takes
+ * under `extraTakes` so `wk(s)` reflects distinct supervision weeks rather than raw doc count.
+ */
+export function aggregateGroupWeekSessions(items = []) {
+  const byWeek = new Map();
+  (items || []).forEach((m) => {
+    const wk = Number(m.weekNumber) || 1;
+    if (!byWeek.has(wk)) byWeek.set(wk, []);
+    byWeek.get(wk).push(m);
+  });
+
+  const scoreMeetingPriority = (m) => {
+    const info = getMeetingPipelineAndHealth(m);
+    const dur = getMeetingValidAudioDuration(m);
+    const clips = getMeetingValidClipCount(m);
+    let tier = 0;
+    if (info.isAnalyzed && info.hasValidAudio) tier = 4;
+    else if (info.hasValidAudio) tier = 3;
+    else if (info.isAnalyzed) tier = 2;
+    else if (m.status !== 'analysis_failed' && m.status !== 'recording') tier = 1;
+    return tier * 1e7 + dur * 100 + clips;
+  };
+
+  const weekSlots = [...byWeek.entries()]
+    .sort((a, b) => b[0] - a[0])
+    .map(([weekNumber, docs]) => {
+      const sorted = [...docs].sort((a, b) => scoreMeetingPriority(b) - scoreMeetingPriority(a));
+      const primary = sorted[0];
+      const extraTakes = sorted.slice(1);
+      const validTakesCount = sorted.filter((d) => hasMeetingValidAudio(d)).length;
+      const emptyOrFailedTakesCount = extraTakes.filter((d) => {
+        const st = getMeetingPipelineAndHealth(d);
+        return st.isEmptyOrFailed || st.pipelineKey === 'failed';
+      }).length;
+      return {
+        weekNumber,
+        primary,
+        extraTakes,
+        validTakesCount,
+        emptyOrFailedTakesCount,
+        hasAnyValidOrAnalyzed: sorted.some((d) => {
+          const st = getMeetingPipelineAndHealth(d);
+          return st.hasValidAudio || st.isAnalyzed;
+        }),
+      };
+    });
+
+  const activeWeeksCount = weekSlots.filter((w) => w.hasAnyValidOrAnalyzed).length;
+  const distinctWeeksCount = activeWeeksCount > 0 ? activeWeeksCount : weekSlots.length;
+
+  return {
+    weekSlots,
+    distinctWeeksCount,
+    latestSlot: weekSlots[0] || null,
+  };
+}
+
 export default function ProjectMeetingsView({ classId, classInfo, user, isPrivacyMode: propPrivacyMode }) {
   const [hookPrivacyMode] = usePrivacyMode();
   const isPrivacyMode = propPrivacyMode !== undefined ? propPrivacyMode : hookPrivacyMode;
@@ -402,6 +522,9 @@ export default function ProjectMeetingsView({ classId, classInfo, user, isPrivac
   const [showGroupPickerModal, setShowGroupPickerModal] = useState(false);
   const [groupPickerSearch, setGroupPickerSearch] = useState('');
   const [groupPickerStream, setGroupPickerStream] = useState('all'); // 'all' | 'mine' | 'unrecorded' | <prefix>
+  const [sidebarScope, setSidebarScope] = useState('by_group'); // 'by_group' | 'this_week'
+  const [expandedSidebarGroupIds, setExpandedSidebarGroupIds] = useState({});
+  const [expandedExtraTakesKeys, setExpandedExtraTakesKeys] = useState({});
 
   // Unified Recording Studio & Master Selection state (Single Source of Truth)
   const [studioGroupId, setStudioGroupId] = useState('');
@@ -3032,7 +3155,7 @@ export default function ProjectMeetingsView({ classId, classInfo, user, isPrivac
     }
   };
 
-  // Group meetings by Project Group for the collapsible sidebar tree
+  // Group meetings by Project Group and aggregate by distinct weekNumber for the sidebar
   const meetingsGroupedByProjectGroup = useMemo(() => {
     const map = new Map();
     visibleGroups.forEach((g) => {
@@ -3050,8 +3173,15 @@ export default function ProjectMeetingsView({ classId, classInfo, user, isPrivac
       map.get(gId).items.push(m);
     });
 
-    // Place the currently selected studioGroupId folder at the very top
-    const list = [...map.values()];
+    // Aggregate raw documents into distinct week slots & place active studioGroupId at top
+    const list = [...map.values()].map((entry) => {
+      const agg = aggregateGroupWeekSessions(entry.items);
+      return {
+        ...entry,
+        ...agg,
+      };
+    });
+
     list.sort((a, b) => {
       if (a.group.id === studioGroupId) return -1;
       if (b.group.id === studioGroupId) return 1;
@@ -3060,6 +3190,25 @@ export default function ProjectMeetingsView({ classId, classInfo, user, isPrivac
 
     return list;
   }, [visibleGroups, filteredMeetings, studioGroupId]);
+
+  const thisWeekSidebarRows = useMemo(() => {
+    const wk = Number(studioWeekNumber) || 1;
+    return meetingsGroupedByProjectGroup
+      .map(({ group, weekSlots }) => {
+        const slot = weekSlots.find((s) => Number(s.weekNumber) === wk) || null;
+        return {
+          group,
+          slot,
+          primary: slot?.primary || null,
+          extraTakes: slot?.extraTakes || [],
+        };
+      })
+      .sort((a, b) => {
+        if (a.group.id === studioGroupId) return -1;
+        if (b.group.id === studioGroupId) return 1;
+        return (a.group.name || '').localeCompare(b.group.name || '', undefined, { numeric: true });
+      });
+  }, [meetingsGroupedByProjectGroup, studioWeekNumber, studioGroupId]);
 
   const activeAudioClip = useMemo(() => {
     if (!selectedMeeting) return null;
@@ -4392,25 +4541,48 @@ export default function ProjectMeetingsView({ classId, classInfo, user, isPrivac
         </div>
       ) : (
         <div className="project-meetings-workspace-grid">
-            {/* Left Panel: Hierarchical Grouped Recordings Sidebar (By Project Group -> By Weekly Meeting) */}
+            {/* Left Panel: Redesigned Week-Aggregated Sessions Sidebar */}
             <div className={`meetings-grouped-sidebar ${mobileSidebarExpanded ? 'mobile-expanded' : 'mobile-collapsed'}`}>
-              <div
-                className="sidebar-group-filter-row"
-                onClick={() => {
-                  if (typeof window !== 'undefined' && window.innerWidth <= 960) {
-                    setMobileSidebarExpanded((prev) => !prev);
-                  }
-                }}
-                role="button"
-                tabIndex={0}
-                aria-label="Toggle meeting sessions list"
-              >
-                <span className="sidebar-title-badge" style={{ fontSize: '0.84rem', fontWeight: 700, color: '#334155', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  📂 Meeting Sessions ({filteredMeetings.length})
-                  <span className="mobile-sidebar-toggle-indicator" style={{ fontSize: '0.74rem', color: '#64748b' }}>
-                    {mobileSidebarExpanded ? '▲' : '▼'}
+              <div className="sidebar-header-bar">
+                <div
+                  className="sidebar-group-filter-row"
+                  onClick={() => {
+                    if (typeof window !== 'undefined' && window.innerWidth <= 960) {
+                      setMobileSidebarExpanded((prev) => !prev);
+                    }
+                  }}
+                  role="button"
+                  tabIndex={0}
+                  aria-label="Toggle meeting sessions list"
+                >
+                  <span className="sidebar-title-badge">
+                    📂 Meeting Sessions
+                    <span className="mobile-sidebar-toggle-indicator">
+                      {mobileSidebarExpanded ? '▲' : '▼'}
+                    </span>
                   </span>
-                </span>
+                </div>
+
+                <div className="sidebar-scope-toggle" role="tablist" aria-label="Sidebar view mode">
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={sidebarScope === 'by_group'}
+                    className={`sidebar-scope-btn ${sidebarScope === 'by_group' ? 'active' : ''}`}
+                    onClick={() => setSidebarScope('by_group')}
+                  >
+                    By Group
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={sidebarScope === 'this_week'}
+                    className={`sidebar-scope-btn ${sidebarScope === 'this_week' ? 'active' : ''}`}
+                    onClick={() => setSidebarScope('this_week')}
+                  >
+                    Wk {studioWeekNumber}
+                  </button>
+                </div>
               </div>
 
             {loading ? (
@@ -4426,130 +4598,263 @@ export default function ProjectMeetingsView({ classId, classInfo, user, isPrivac
                   👥 Create / Import Project Groups
                 </button>
               </div>
-            ) : (
-              <div className="grouped-folders-list">
-                {meetingsGroupedByProjectGroup.map(({ group: grp, items }) => {
-                  return (
-                    <div key={grp.id} className="project-group-folder">
+            ) : sidebarScope === 'this_week' ? (
+              <div className="sidebar-this-week-list">
+                <div className="sidebar-week-summary-bar">
+                  <span>Week {studioWeekNumber} Overview</span>
+                  <span>
+                    ✨ {weekAiStats.analyzedGroupsCount} · 🎙️ {weekAiStats.pendingGroupsCount} · ⚪ {Math.max(0, thisWeekSidebarRows.length - weekAiStats.recordedGroupsCount)}
+                  </span>
+                </div>
+                {thisWeekSidebarRows.map(({ group: grp, primary, extraTakes }) => {
+                  const isActiveGroup = grp.id === studioGroupId;
+                  if (!primary) {
+                    return (
                       <div
-                        className={`project-group-folder-header ${grp.id === studioGroupId ? 'active-group-header' : ''}`}
+                        key={grp.id}
+                        className={`week-overview-row empty ${isActiveGroup ? 'active' : ''}`}
+                        onClick={() => handleSelectGroup(grp.id)}
                       >
-                        <div>
-                          <span style={{ fontWeight: 700, fontSize: '0.88rem', color: '#1e293b' }}>
-                            📂 {grp.name}
+                        <div className="week-overview-row-main">
+                          <span className="week-overview-group-name">{grp.name}</span>
+                          <span className="sidebar-pipeline-badge empty">⚪ Not recorded</span>
+                        </div>
+                      </div>
+                    );
+                  }
+                  const isThisMeetingAnalyzing =
+                    primary.status === 'analyzing' ||
+                    (isAnalyzing && selectedMeetingId === primary.id) ||
+                    (batchAnalysisProgress && batchAnalysisProgress.meetingId === primary.id);
+                  const st = getMeetingPipelineAndHealth(primary, isThisMeetingAnalyzing);
+                  const clipCount = getMeetingValidClipCount(primary);
+                  const dur = getMeetingValidAudioDuration(primary);
+                  const presentCount = (primary.attendanceRecord || []).filter(
+                    (a) => a.status === 'present' || a.status === 'late'
+                  ).length;
+                  const totalRoster = (primary.attendanceRecord || []).length;
+
+                  return (
+                    <div
+                      key={grp.id}
+                      className={`week-overview-row ${primary.id === selectedMeetingId || isActiveGroup ? 'active' : ''} ${isThisMeetingAnalyzing ? 'analyzing-active' : ''}`}
+                      onClick={() => handleSelectMeeting(primary)}
+                    >
+                      <div className="week-overview-row-main">
+                        <span className="week-overview-group-name">{grp.name}</span>
+                        <div className="sidebar-badges-cluster">
+                          <span className={`sidebar-pipeline-badge ${st.pipelineKey}`}>
+                            {st.pipelineLabel}
                           </span>
-                          {grp.supervisorEmail && (
-                            <span style={{ display: 'block', fontSize: '0.72rem', color: '#64748b' }}>
-                              👨‍🏫 {grp.supervisorEmail}
-                            </span>
+                          {st.healthLabel && (
+                            <span className="sidebar-health-badge at-risk">{st.healthLabel}</span>
                           )}
                         </div>
-                        <span className="folder-count-badge">{items.length} wk(s)</span>
                       </div>
-
-                      <div className="project-group-folder-items">
-                        {items.length === 0 ? (
-                          <div className="empty-folder-note">
-                            No recordings yet — select <strong>{grp.name}</strong> above to record.
-                          </div>
-                        ) : (
-                          items.map((m) => {
-                            const isSelected = m.id === selectedMeetingId;
-                            const isThisMeetingAnalyzing =
-                              m.status === 'analyzing' ||
-                              (isAnalyzing && selectedMeetingId === m.id) ||
-                              (batchAnalysisProgress && batchAnalysisProgress.meetingId === m.id);
-                            const voiceClipCount = (m.audioClips || []).length || (m.audioStoragePath ? 1 : 0);
-                            const screenClipCount = (m.screenClips || []).length;
-                            const presentCount = (m.attendanceRecord || []).filter(
-                              (a) => a.status === 'present' || a.status === 'late'
-                            ).length;
-                            const totalRoster = (m.attendanceRecord || []).length;
-
-                            return (
-                              <div
-                                key={m.id}
-                                className={`meeting-session-card ${isSelected ? 'active' : ''} ${isThisMeetingAnalyzing ? 'analyzing-active' : ''}`}
-                                onClick={() => handleSelectMeeting(m)}
-                              >
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '6px' }}>
-                                  <strong style={{ fontSize: '0.86rem', color: '#0f172a' }}>
-                                    Week {m.weekNumber || 1}: {m.title || 'Meeting'}
-                                  </strong>
-                                  <span
-                                    className={`meeting-status-dot ${isThisMeetingAnalyzing ? 'analyzing' : m.status || 'ready'}`}
-                                    style={
-                                      isThisMeetingAnalyzing
-                                        ? { background: '#fef3c7', color: '#b45309', border: '1px solid #fde68a', fontWeight: 700 }
-                                        : m.status === 'analysis_failed'
-                                        ? { background: '#fee2e2', color: '#b91c1c', border: '1px solid #fecaca', fontWeight: 600 }
-                                        : undefined
-                                    }
-                                  >
-                                    {isThisMeetingAnalyzing
-                                      ? '⏳ AI Analyzing...'
-                                      : m.status === 'recording'
-                                      ? '🔴 REC'
-                                      : m.status === 'analysis_failed'
-                                      ? '❌ Failed'
-                                      : m.keyInsights?.overallGroupProgress === 'at_risk' ||
-                                        m.keyInsights?.overallGroupProgress === 'behind'
-                                      ? '⚠️ At Risk'
-                                      : m.analyzedAt || m.aiModelUsed || m.rawDiarizedTranscript
-                                      ? '✨ Analyzed'
-                                      : '🎙️ Recorded'}
-                                  </span>
-                                </div>
-
-                                <div className="meeting-card-badges">
-                                  {(m.supervisorName || m.supervisorEmail) && (
-                                    <span title={m.supervisorEmail || ''}>
-                                      👨‍🏫 {m.supervisorName || m.supervisorEmail.split('@')[0]}
-                                    </span>
-                                  )}
-                                  <span>🎙️ {voiceClipCount} Voice Clip{voiceClipCount === 1 ? '' : 's'}</span>
-                                  {screenClipCount > 0 && (
-                                    <span>💻 {screenClipCount} PC Screen{screenClipCount === 1 ? '' : 's'}</span>
-                                  )}
-                                  <span>⏱️ {formatDuration(m.durationSeconds || 0)}</span>
-                                  {totalRoster > 0 && (
-                                    <span>
-                                      👥 {presentCount}/{totalRoster} Present
-                                    </span>
-                                  )}
-                                </div>
-
-                                <div style={{ marginTop: '8px', display: 'flex', justifyContent: 'flex-end', gap: '6px' }}>
-                                  <button
-                                    type="button"
-                                    className="btn-card-email-report"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleOpenEmailModal(m);
-                                    }}
-                                    style={{
-                                      padding: '4px 10px',
-                                      borderRadius: '5px',
-                                      border: '1px solid #bfdbfe',
-                                      background: m.emailDispatch?.sentAt ? '#f0fdf4' : '#eff6ff',
-                                      color: m.emailDispatch?.sentAt ? '#15803d' : '#1d4ed8',
-                                      fontSize: '0.76rem',
-                                      fontWeight: 600,
-                                      cursor: 'pointer',
-                                      display: 'inline-flex',
-                                      alignItems: 'center',
-                                      gap: '4px',
-                                    }}
-                                    title="Email meeting report to students"
-                                  >
-                                    📧 {m.emailDispatch?.sentAt ? 'Report Sent ✓' : 'Email Report'}
-                                  </button>
-                                </div>
-                              </div>
-                            );
-                          })
+                      <div className="week-overview-row-meta">
+                        <span>🎙️ {clipCount}</span>
+                        <span>⏱️ {formatDuration(dur)}</span>
+                        {totalRoster > 0 && <span>👥 {presentCount}/{totalRoster}</span>}
+                        {extraTakes.length > 0 && (
+                          <span className="extra-takes-count-hint">+{extraTakes.length} takes</span>
                         )}
                       </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="grouped-folders-list">
+                {meetingsGroupedByProjectGroup.map(({ group: grp, weekSlots, distinctWeeksCount, latestSlot }) => {
+                  const isActiveGroup = grp.id === studioGroupId || selectedMeeting?.groupId === grp.id;
+                  const defaultExpanded = isActiveGroup || meetingsGroupedByProjectGroup.length <= 4;
+                  const isExpanded =
+                    expandedSidebarGroupIds[grp.id] !== undefined
+                      ? Boolean(expandedSidebarGroupIds[grp.id])
+                      : defaultExpanded;
+                  const latestStatus = latestSlot?.primary
+                    ? getMeetingPipelineAndHealth(latestSlot.primary)
+                    : null;
+
+                  return (
+                    <div key={grp.id} className={`project-group-folder ${isActiveGroup ? 'is-active-group' : ''}`}>
+                      <button
+                        type="button"
+                        className={`project-group-folder-header ${isActiveGroup ? 'active-group-header' : ''}`}
+                        onClick={() => {
+                          setExpandedSidebarGroupIds((prev) => ({
+                            ...prev,
+                            [grp.id]: !isExpanded,
+                          }));
+                        }}
+                        aria-expanded={isExpanded}
+                      >
+                        <div className="folder-header-left">
+                          <span className="folder-chevron">{isExpanded ? '▼' : '▶'}</span>
+                          <div>
+                            <span className="folder-group-title">
+                              📂 {grp.name}
+                            </span>
+                            {isExpanded && grp.supervisorEmail && (
+                              <span className="folder-supervisor-sub">
+                                👨‍🏫 {grp.supervisorEmail}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="folder-header-right">
+                          {!isExpanded && latestSlot && latestStatus && (
+                            <span className={`sidebar-pipeline-badge compact ${latestStatus.pipelineKey}`}>
+                              Wk {latestSlot.weekNumber} {latestStatus.pipelineLabel.split(' ')[0]}
+                              {latestStatus.healthLabel ? ' ⚠️' : ''}
+                            </span>
+                          )}
+                          <span className="folder-count-badge">
+                            {distinctWeeksCount} wk{distinctWeeksCount === 1 ? '' : 's'}
+                          </span>
+                        </div>
+                      </button>
+
+                      {isExpanded && (
+                        <div className="project-group-folder-items">
+                          {weekSlots.length === 0 ? (
+                            <div className="empty-folder-note">
+                              No recordings yet — select <strong>{grp.name}</strong> above to record.
+                            </div>
+                          ) : (
+                            weekSlots.map((slot) => {
+                              const m = slot.primary;
+                              const isSelected = m.id === selectedMeetingId;
+                              const isThisMeetingAnalyzing =
+                                m.status === 'analyzing' ||
+                                (isAnalyzing && selectedMeetingId === m.id) ||
+                                (batchAnalysisProgress && batchAnalysisProgress.meetingId === m.id);
+                              const st = getMeetingPipelineAndHealth(m, isThisMeetingAnalyzing);
+                              const voiceClipCount = getMeetingValidClipCount(m);
+                              const validDuration = getMeetingValidAudioDuration(m);
+                              const screenClipCount = (m.screenClips || []).length;
+                              const presentCount = (m.attendanceRecord || []).filter(
+                                (a) => a.status === 'present' || a.status === 'late'
+                              ).length;
+                              const totalRoster = (m.attendanceRecord || []).length;
+                              const customTitle =
+                                m.title &&
+                                !/^week\s+\d+\s+supervision\s+meeting$/i.test(m.title.trim()) &&
+                                !/^supervision\s+meeting$/i.test(m.title.trim())
+                                  ? m.title.trim()
+                                  : '';
+                              const showDifferentSupervisor =
+                                m.supervisorEmail &&
+                                grp.supervisorEmail &&
+                                normalizeStudentEmail(m.supervisorEmail) !== normalizeStudentEmail(grp.supervisorEmail);
+                              const extraKey = `${grp.id}_wk${slot.weekNumber}`;
+                              const isExtraExpanded = Boolean(expandedExtraTakesKeys[extraKey]);
+
+                              return (
+                                <div key={`${grp.id}-wk-${slot.weekNumber}`} className="week-slot-wrapper">
+                                  <div
+                                    className={`meeting-session-card ${isSelected ? 'active' : ''} ${isThisMeetingAnalyzing ? 'analyzing-active' : ''}`}
+                                    onClick={() => handleSelectMeeting(m)}
+                                  >
+                                    <div className="session-card-top-row">
+                                      <strong className="session-card-week-title">
+                                        Week {slot.weekNumber}{customTitle ? `: ${customTitle}` : ''}
+                                      </strong>
+                                      <div className="sidebar-badges-cluster">
+                                        <span className={`sidebar-pipeline-badge ${st.pipelineKey}`}>
+                                          {st.pipelineLabel}
+                                        </span>
+                                        {st.healthLabel && (
+                                          <span className="sidebar-health-badge at-risk">
+                                            {st.healthLabel}
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+
+                                    <div className="meeting-card-badges">
+                                      <span>🎙️ {voiceClipCount} Clip{voiceClipCount === 1 ? '' : 's'}</span>
+                                      {screenClipCount > 0 && (
+                                        <span>💻 {screenClipCount}</span>
+                                      )}
+                                      <span>⏱️ {formatDuration(validDuration)}</span>
+                                      {totalRoster > 0 && (
+                                        <span>👥 {presentCount}/{totalRoster}</span>
+                                      )}
+                                      {showDifferentSupervisor && (
+                                        <span title={m.supervisorEmail}>
+                                          👨‍🏫 {m.supervisorName || m.supervisorEmail.split('@')[0]}
+                                        </span>
+                                      )}
+                                    </div>
+
+                                    {(st.hasValidAudio || st.isAnalyzed || slot.extraTakes.length > 0) && (
+                                      <div className="session-card-footer-row">
+                                        {slot.extraTakes.length > 0 ? (
+                                          <button
+                                            type="button"
+                                            className="btn-toggle-extra-takes"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setExpandedExtraTakesKeys((prev) => ({
+                                                ...prev,
+                                                [extraKey]: !prev[extraKey],
+                                              }));
+                                            }}
+                                          >
+                                            {isExtraExpanded ? '▾' : '▸'} +{slot.extraTakes.length} other take{slot.extraTakes.length > 1 ? 's' : ''}
+                                          </button>
+                                        ) : (
+                                          <span />
+                                        )}
+
+                                        {(st.hasValidAudio || st.isAnalyzed) && (
+                                          <button
+                                            type="button"
+                                            className={`btn-card-email-report ${m.emailDispatch?.sentAt ? 'sent' : ''}`}
+                                            aria-label="📧 Email Report"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              handleOpenEmailModal(m);
+                                            }}
+                                            title="Email meeting report to students"
+                                          >
+                                            📧 {m.emailDispatch?.sentAt ? 'Sent ✓' : 'Email Report'}
+                                          </button>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  {isExtraExpanded && slot.extraTakes.length > 0 && (
+                                    <div className="extra-takes-drawer">
+                                      {slot.extraTakes.map((extra, idx) => {
+                                        const extraSt = getMeetingPipelineAndHealth(extra);
+                                        const extraDur = getMeetingValidAudioDuration(extra);
+                                        const extraClips = getMeetingValidClipCount(extra);
+                                        return (
+                                          <button
+                                            key={extra.id}
+                                            type="button"
+                                            className={`extra-take-row ${extra.id === selectedMeetingId ? 'active' : ''}`}
+                                            onClick={() => handleSelectMeeting(extra)}
+                                          >
+                                            <span>Take #{idx + 2}</span>
+                                            <span className={`sidebar-pipeline-badge compact ${extraSt.pipelineKey}`}>
+                                              {extraSt.pipelineLabel}
+                                            </span>
+                                            <span>{extraClips}c · {formatDuration(extraDur)}</span>
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })
+                          )}
+                        </div>
+                      )}
                     </div>
                   );
                 })}

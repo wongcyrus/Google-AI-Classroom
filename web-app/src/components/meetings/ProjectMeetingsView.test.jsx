@@ -116,6 +116,8 @@ import ProjectMeetingsView, {
   getMeetingValidAudioDuration,
   getMeetingValidClipCount,
   computeWeekGroupAiStats,
+  getMeetingPipelineAndHealth,
+  aggregateGroupWeekSessions,
 } from './ProjectMeetingsView';
 import ProjectGroupEditorModal from './ProjectGroupEditorModal';
 
@@ -134,6 +136,7 @@ describe('projectGroupUtils & ProjectMeetingsView & ProjectGroupEditorModal', ()
 
   beforeEach(() => {
     vi.clearAllMocks();
+    window.localStorage?.clear?.();
     localStorage.setItem('teacher_privacy_mode', 'false');
     mockPcCaptureState = 'recording_screen';
     mockProfilesSnapshotDocs = [];
@@ -1921,19 +1924,20 @@ Group Beta,New Beta Topic,other@vtc.edu.hk,eva@stu.vtc.edu.hk,Eva Ho,Leader`;
 
     // Open Quick Group Picker modal via the inline grid trigger
     fireEvent.click(screen.getByRole('button', { name: /⊞ Quick Grid \(3\)/i }));
-    expect(screen.getByRole('dialog', { name: /Select Project Group/i })).toBeInTheDocument();
+    const pickerDialog = screen.getByRole('dialog', { name: /Select Project Group/i });
+    expect(pickerDialog).toBeInTheDocument();
 
     // Stream tabs (Stream A, Stream E) should be dynamically extracted
-    expect(screen.getByRole('button', { name: /Stream A \(2\)/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Stream E \(1\)/i })).toBeInTheDocument();
+    expect(within(pickerDialog).getByRole('button', { name: /Stream A \(2\)/i })).toBeInTheDocument();
+    expect(within(pickerDialog).getByRole('button', { name: /Stream E \(1\)/i })).toBeInTheDocument();
 
-    // Filter by Stream E and verify A04 is filtered out, then switch back to All
-    fireEvent.click(screen.getByRole('button', { name: /Stream E \(1\)/i }));
-    expect(screen.queryByRole('button', { name: /A04/i })).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: /All \(3\)/i }));
+    // Filter by Stream E and verify A04 is filtered out inside the modal, then switch back to All
+    fireEvent.click(within(pickerDialog).getByRole('button', { name: /Stream E \(1\)/i }));
+    expect(within(pickerDialog).queryByRole('button', { name: /A04/i })).toBeNull();
+    fireEvent.click(within(pickerDialog).getByRole('button', { name: /All \(3\)/i }));
 
     // Select A04 from the grid
-    fireEvent.click(screen.getByRole('button', { name: /A04/i }));
+    fireEvent.click(within(pickerDialog).getByRole('button', { name: /A04/i }));
     expect(screen.queryByRole('dialog', { name: /Select Project Group/i })).toBeNull();
 
     // Record button now explicitly states A04!
@@ -1955,5 +1959,84 @@ Group Beta,New Beta Topic,other@vtc.edu.hk,eva@stu.vtc.edu.hk,Eva Ho,Leader`;
     // Restores A04 instead of resetting to A01!
     expect(screen.getByRole('button', { name: /Start Meeting Recording — A04/i })).toBeInTheDocument();
     window.localStorage.clear();
+  });
+
+  it('aggregates duplicate/failed/empty takes per week in the redesigned sidebar, separates Analyzed from At Risk, and supports Week Overview mode', () => {
+    // Unit-check getMeetingPipelineAndHealth separation
+    const analyzedAtRisk = getMeetingPipelineAndHealth({
+      analyzedAt: '2026-11-18T00:00:00Z',
+      audioClips: [{ clipId: 'c1', durationSeconds: 1712, storagePath: 'a.webm' }],
+      keyInsights: { overallGroupProgress: 'at_risk' },
+    });
+    expect(analyzedAtRisk.pipelineKey).toBe('analyzed');
+    expect(analyzedAtRisk.pipelineLabel).toBe('✨ Analyzed');
+    expect(analyzedAtRisk.healthLabel).toBe('⚠️ At Risk');
+
+    // Unit-check aggregateGroupWeekSessions on A04 (5 Week 11 docs + 1 Week 10 doc => 2 distinct weeks)
+    const a04Docs = [
+      { id: 'w11_rec', groupId: 'grp_a04', weekNumber: 11, status: 'recording', audioClips: [] },
+      { id: 'w11_fail1', groupId: 'grp_a04', weekNumber: 11, status: 'analysis_failed', audioClips: [] },
+      { id: 'w11_fail2', groupId: 'grp_a04', weekNumber: 11, status: 'analysis_failed', audioClips: [] },
+      {
+        id: 'w11_main',
+        groupId: 'grp_a04',
+        weekNumber: 11,
+        analyzedAt: '2026-11-18T01:00:00Z',
+        audioClips: [{ clipId: 'c1', durationSeconds: 1712, storagePath: 'main.webm' }],
+        keyInsights: { overallGroupProgress: 'at_risk' },
+      },
+      {
+        id: 'w11_short',
+        groupId: 'grp_a04',
+        weekNumber: 11,
+        analyzedAt: '2026-11-18T01:00:00Z',
+        audioClips: [{ clipId: 'c2', durationSeconds: 3, storagePath: 'short.webm' }],
+      },
+      {
+        id: 'w10_main',
+        groupId: 'grp_a04',
+        weekNumber: 10,
+        analyzedAt: '2026-11-11T01:00:00Z',
+        audioClips: [{ clipId: 'c3', durationSeconds: 309, storagePath: 'w10.webm' }],
+        keyInsights: { overallGroupProgress: 'at_risk' },
+      },
+    ];
+    const agg = aggregateGroupWeekSessions(a04Docs);
+    expect(agg.distinctWeeksCount).toBe(2);
+    expect(agg.weekSlots).toHaveLength(2);
+    expect(agg.weekSlots[0].primary.id).toBe('w11_main');
+    expect(agg.weekSlots[0].extraTakes).toHaveLength(4);
+
+    // Render component with A04 (expanded) and A07 (no recordings, collapsed)
+    mockGroupsSnapshotDocs = [
+      { id: 'grp_a04', data: () => ({ id: 'grp_a04', name: 'A04', supervisorEmail: 'kcheung@vtc.edu.hk' }) },
+      { id: 'grp_a07', data: () => ({ id: 'grp_a07', name: 'A07', supervisorEmail: 'hli852@vtc.edu.hk' }) },
+    ];
+    mockMeetingsSnapshotDocs = a04Docs.map((d) => ({ id: d.id, data: () => d }));
+
+    render(
+      <ProjectMeetingsView
+        classId="it114115-sidebar-test"
+        classInfo={{ name: 'FYP', teacherEmails: ['kcheung@vtc.edu.hk'] }}
+        user={{ uid: 't_1', email: 'kcheung@vtc.edu.hk', displayName: 'Kitson' }}
+      />
+    );
+
+    // A04 header should say '2 wks', NOT '6 wk(s)'
+    expect(screen.getByText('2 wks')).toBeInTheDocument();
+    // Both '✨ Analyzed' and '⚠️ At Risk' should be visible independently
+    expect(screen.getAllByText('✨ Analyzed').length).toBeGreaterThanOrEqual(2);
+    expect(screen.getAllByText('⚠️ At Risk').length).toBeGreaterThanOrEqual(2);
+
+    // The 4 duplicate/failed/0s Week 11 takes are collapsed under '+4 other takes'
+    const extraToggle = screen.getByRole('button', { name: /\+4 other takes/i });
+    expect(extraToggle).toBeInTheDocument();
+    fireEvent.click(extraToggle);
+    expect(screen.getByText('Take #2')).toBeInTheDocument();
+
+    // Switch to 'Wk 11' overview tab and verify week summary bar renders
+    fireEvent.click(screen.getByRole('tab', { name: /Wk 11/i }));
+    expect(screen.getByText(/Week 11 Overview/i)).toBeInTheDocument();
+    expect(screen.getByText(/⚪ Not recorded/i)).toBeInTheDocument();
   });
 });
