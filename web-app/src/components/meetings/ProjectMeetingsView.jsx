@@ -7144,6 +7144,9 @@ export default function ProjectMeetingsView({ classId, classInfo, user, isPrivac
         <div
           className="modal-overlay"
           style={{ zIndex: 9998 }}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Snap Meeting Photo"
           onClick={() => !isUploadingPhoto && setIsPhotoModalOpen(false)}
         >
           <div
@@ -7299,6 +7302,9 @@ export default function ProjectMeetingsView({ classId, classInfo, user, isPrivac
         <div
           className="modal-overlay"
           style={{ zIndex: 9998 }}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Mobile Demo Video Recorder"
           onClick={() => videoRecordingState !== 'uploading' && handleCloseVideoRecorder()}
         >
           <div
