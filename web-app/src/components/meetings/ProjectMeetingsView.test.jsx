@@ -1068,8 +1068,9 @@ Group Beta,New Beta Topic,other@vtc.edu.hk,eva@stu.vtc.edu.hk,Eva Ho,Leader`;
     // Switch Studio week to Week 3 (which has mtg_1_wk3 in our mocks)
     fireEvent.change(screen.getByLabelText(/📅 Week #:/i), { target: { value: '3' } });
 
-    // Click "📧 Email Whole Class (Week 3)" button
-    const batchEmailBtn = screen.getByRole('button', { name: /📧 Email Whole Class \(Week 3\)/i });
+    // Switch to Weekly Matrix & Export tab and click "📧 Email Whole Class Reports (Week 3)"
+    fireEvent.click(screen.getByRole('button', { name: /📊 Weekly Matrix & Export/i }));
+    const batchEmailBtn = screen.getByRole('button', { name: /📧 Email Whole Class Reports \(Week 3\)/i });
     expect(batchEmailBtn).toBeInTheDocument();
     fireEvent.click(batchEmailBtn);
 

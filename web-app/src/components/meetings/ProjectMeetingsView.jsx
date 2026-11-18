@@ -3756,28 +3756,6 @@ export default function ProjectMeetingsView({ classId, classInfo, user, isPrivac
                     )}
                   </button>
                 )}
-                <button
-                  type="button"
-                  className="btn-studio-email-whole-class"
-                  onClick={() => handleOpenWeekBatchEmailModal(studioWeekNumber)}
-                  style={{
-                    padding: '8px 14px',
-                    borderRadius: '8px',
-                    background: '#15803d',
-                    border: '1.5px solid #166534',
-                    color: '#ffffff',
-                    fontSize: '0.88rem',
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    boxShadow: '0 2px 4px rgba(21, 128, 61, 0.25)',
-                  }}
-                  title={`Email supervision reports to all project groups in Week ${studioWeekNumber}`}
-                >
-                  📧 Email Whole Class (Week {studioWeekNumber})
-                </button>
               </div>
             ) : recordingState === 'uploading' ? (
               <div className="uploading-pill">
