@@ -401,7 +401,7 @@ This directory contains Cloud Functions that are triggered by authentication eve
         -   **User Creation**: If a user for an added email does not exist, it creates a new Firebase Auth user and assigns the appropriate role.
         -   **Association**: It links/unlinks the class to/from the user's profile (`studentProfiles` or `teacherProfiles`).
         -   **Denormalization**: It adds/removes the user's UID and email from the `students` or `teachers` map within the class document for efficient lookups.
-        -   **Central Institutional Directory Synchronization**: If the class document contains updated `studentProfiles`, syncs them directly into `/studentDirectory/{studentEmail}` with `{ email, studentName, nickname, programme, studentClass, lastUpdatedByClass, updatedAt }`.
+        -   **Central Institutional Directory Synchronization**: Diffs `after.studentProfiles` against `before.studentProfiles` and syncs only added or modified student profile entries into `/studentDirectory/{studentEmail}` (in 450-op batch chunks) with `{ email, studentName, nickname, programme, studentClass, lastUpdatedByClass, updatedAt }`, avoiding redundant writes on unrelated `classes/{classId}` updates.
         -   **Cross-Class Student Profile Backfill**: When students are newly enrolled into the class without profile metadata, queries `/studentDirectory` for matching entries and automatically backfills their profile data into `classes/{classId}/studentProperties/{uid}` and the class document's own `studentProfiles` map.
 
 ### Data Models
@@ -583,11 +583,11 @@ This directory contains Cloud Functions that are triggered by events in Cloud St
 
 -   **`updateStorageUsageOnUpload`**:
     -   **Trigger**: `onObjectFinalized` (file upload).
-    -   **Description**: This function is crucial for enforcing storage quotas. When a new file is uploaded to a tracked folder (`screenshots/`, `videos/`, or `zips/`), it increments the storage usage for the corresponding class. It then checks if the class's total usage exceeds its allocated `storageQuota`. If the quota is exceeded, the newly uploaded file is automatically deleted to prevent further usage, and the usage counter is reverted. This ensures that classes stay within their storage limits.
+    -   **Description**: This function is crucial for enforcing storage quotas. When a new file is uploaded to a tracked folder (`screenshots/`, `videos/`, or `zips/`), it increments the storage usage exclusively in `classes/{classId}/metadata/storage` (without mutating the parent `classes/{classId}` document, avoiding trigger amplification and client listener fan-out). It then checks if the class's total usage exceeds its allocated `storageQuota`. If the quota is exceeded, the newly uploaded file is automatically deleted to prevent further usage, and the usage counter is reverted. This ensures that classes stay within their storage limits.
 
 -   **`updateStorageUsageOnDelete`**:
     -   **Trigger**: `onObjectDeleted` (file deletion).
-    -   **Description**: This function keeps the storage usage metrics accurate. When a file is deleted from a tracked folder, it decrements the total storage usage for the corresponding class, ensuring the reported usage reflects the actual state of the storage bucket.
+    -   **Description**: This function keeps the storage usage metrics accurate. When a file is deleted from a tracked folder, it decrements the storage usage counters in `classes/{classId}/metadata/storage` (with negative-drift clamping), ensuring the reported usage reflects the actual state of the storage bucket without triggering `classes/{classId}` document listeners.
 
 #### Callable Functions
 

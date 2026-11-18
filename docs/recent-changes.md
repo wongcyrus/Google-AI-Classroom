@@ -4,6 +4,25 @@
 **System**: Google AI Classroom  
 **Production URL**: `https://it114115-2627.web.app`
 
+## 0.0.0.0.0.0.0.0.0.0.3.9 Firestore Write-Amplification & Listener Fan-Out FinOps Fix
+
+**Date**: November 18, 2026  
+**Status**: Implemented, Verified with Passing Unit Tests (`auth_triggers` 26/26, `storage_triggers` 61/61), Committed (`487dc21`), and Deployed to `it114115-dev-2026` & `it114115-2627`  
+**Primary Files**:
+- [`functions/storage_triggers/storageQuota.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/storage_triggers/storageQuota.js)
+- [`functions/auth_triggers/userManagement.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/auth_triggers/userManagement.js) & [`functions/auth_triggers/classTriggers.test.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/auth_triggers/classTriggers.test.js)
+
+### Root Cause & Fix Summary:
+1. **Removed Redundant Per-File `classes/{classId}.storageUsage` Mirroring (`storageQuota.js`)**:
+   - Previously, `updateStorageUsageOnUpload` and `updateStorageUsageOnDelete` incremented `storageUsage` both in `classes/{classId}/metadata/storage` and on the parent `classes/{classId}` document on every screenshot/video/audio upload or deletion (~1.3M events/30d).
+   - Because `TeacherView.jsx`, `MonitorView.jsx`, and `DataManagementView.jsx` already read `classes/{classId}/metadata/storage`, writing `storageUsage` onto `classes/{classId}` caused ~1.1M unnecessary `onClassUpdate` & `onClassRetentionUpdated` invocations and pushed tens of millions of `LOOKUP` snapshot reads to connected student/teacher `classes/{classId}` listeners.
+   - Removed the per-file `classRef.set({ storageUsage: ... })` writes from `updateStorageUsageOnUpload` and `updateStorageUsageOnDelete` (manual `recalculateStorageUsage` remains available for reconciliation).
+2. **Diff-Guarded `studentDirectory` Sync in `onClassUpdate` (`userManagement.js`)**:
+   - Previously, `onClassUpdate` unconditionally looped over every entry in `afterData.studentProfiles` and batch-wrote `/studentDirectory/{email}` on *any* write to `classes/{classId}`, causing ~85M+ `UPDATE` writes/30d plus lock-contention timeouts and OOMs.
+   - Added field-level comparison against `beforeData.studentProfiles` so only newly added or modified student profile entries are written to `studentDirectory` (chunked at 450 ops per batch).
+
+---
+
 ## 0.0.0.0.0.0.0.0.0.0.3.8 Complete 10-Part GDE Technical Blog Series (DEV.to & GitHub), 4-Mode Bingo & 2 QR Anytime Attendance, and Zero-FFmpeg 2-Stage Capstone Supervision
 
 **Date**: November 11, 2026  

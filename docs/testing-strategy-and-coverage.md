@@ -143,7 +143,7 @@ flowchart TD
   * `functions/media_processing/onLectureVideoFinalized.test.js`: 9 tests validating Matroska EBML seek index healing (`hasCuesIndex`).
   * `functions/scheduled_tasks/scheduledTasks.test.js`: 36 tests verifying `handleAutomaticCapture` (5-min lookahead window), `handlePostLessonMediaConsolidation`, `handleAutomaticBingo` scheduler triggers, exam session overlap detection, and Google Cloud Billing catalog SKU pricing rate mapping.
   * `functions/storage_triggers/storageQuota.test.js` & `screenshotManagement.test.js`: 61 tests verifying `updateStorageUsageOnUpload` and `updateStorageUsageOnDelete` triggers, storage directory categorization (`screenshots/`, `videos/`, `zips/`, `audio/`), and quota limit overflow evaluations.
-  * `functions/auth_triggers/authTriggers.test.js`: 8 tests validating initial user creation, role assignment based on email domain regex, and default profile attributes.
+  * `functions/auth_triggers/authTriggers.test.js`, `classTriggers.test.js`, & `userManagement.test.js`: Validates initial user creation, role assignment based on email domain regex, diff-guarded `studentDirectory` syncing in `onClassUpdate`, and default profile attributes.
   * `functions/attendance/attendance.test.js`: Direct testing of `parseDateTime` (null safety, Date passthrough, millisecond timestamps, ISO offsets, and timezone parsing) and the `getAttendanceData` Callable Cloud Function (argument verification, not-found error handling, duration calculation, screenshot chunk querying, attendance adjustment voiding code `2`, and Firestore persistence).
 
 ### 3. Live System Smoke & Cascade Suite (`admin/scripts/smoke_test.mjs`)
