@@ -1898,4 +1898,62 @@ Group Beta,New Beta Topic,other@vtc.edu.hk,eva@stu.vtc.edu.hk,Eva Ho,Leader`;
     fireEvent.click(screen.getByRole('button', { name: /📊 Weekly Matrix & Export/i }));
     expect(screen.getAllByText('A**** C***').length).toBeGreaterThan(0);
   });
+
+  it('persists selected group in localStorage across reloads and supports 4-column Quick Group Picker with stream filtering and explicit group name on the record button', () => {
+    window.localStorage.clear();
+    mockGroupsSnapshotDocs = [
+      { id: 'grp_a01', data: () => ({ id: 'grp_a01', name: 'A01', projectTopic: 'Alpha Bot', members: [{ uid: 's1', name: 'S1' }] }) },
+      { id: 'grp_a04', data: () => ({ id: 'grp_a04', name: 'A04', projectTopic: 'Smart IoT', members: [{ uid: 's2', name: 'S2' }] }) },
+      { id: 'grp_e01', data: () => ({ id: 'grp_e01', name: 'E01', projectTopic: 'Edge AI', members: [{ uid: 's3', name: 'S3' }] }) },
+    ];
+    mockMeetingsSnapshotDocs = [];
+
+    const { unmount } = render(
+      <ProjectMeetingsView
+        classId="it114115-mobile-test"
+        classInfo={{ name: 'FYP', teacherEmails: ['cywong@vtc.edu.hk'] }}
+        user={{ uid: 't_1', email: 'cywong@vtc.edu.hk', displayName: 'Dr. Wong' }}
+      />
+    );
+
+    // Initially defaults to first group A01, reflected explicitly on the record button
+    expect(screen.getByRole('button', { name: /Start Meeting Recording — A01/i })).toBeInTheDocument();
+
+    // Open Quick Group Picker modal via the inline grid trigger
+    fireEvent.click(screen.getByRole('button', { name: /⊞ Quick Grid \(3\)/i }));
+    expect(screen.getByRole('dialog', { name: /Select Project Group/i })).toBeInTheDocument();
+
+    // Stream tabs (Stream A, Stream E) should be dynamically extracted
+    expect(screen.getByRole('button', { name: /Stream A \(2\)/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Stream E \(1\)/i })).toBeInTheDocument();
+
+    // Filter by Stream E and verify A04 is filtered out, then switch back to All
+    fireEvent.click(screen.getByRole('button', { name: /Stream E \(1\)/i }));
+    expect(screen.queryByRole('button', { name: /A04/i })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /All \(3\)/i }));
+
+    // Select A04 from the grid
+    fireEvent.click(screen.getByRole('button', { name: /A04/i }));
+    expect(screen.queryByRole('dialog', { name: /Select Project Group/i })).toBeNull();
+
+    // Record button now explicitly states A04!
+    expect(screen.getByRole('button', { name: /Start Meeting Recording — A04/i })).toBeInTheDocument();
+
+    // Verify localStorage persisted grp_a04
+    expect(window.localStorage.getItem('agy_studio_group_it114115-mobile-test_cywong@vtc.edu.hk')).toBe('grp_a04');
+
+    // Unmount and remount (simulating mobile Safari tab reload after screen unlock)
+    unmount();
+    render(
+      <ProjectMeetingsView
+        classId="it114115-mobile-test"
+        classInfo={{ name: 'FYP', teacherEmails: ['cywong@vtc.edu.hk'] }}
+        user={{ uid: 't_1', email: 'cywong@vtc.edu.hk', displayName: 'Dr. Wong' }}
+      />
+    );
+
+    // Restores A04 instead of resetting to A01!
+    expect(screen.getByRole('button', { name: /Start Meeting Recording — A04/i })).toBeInTheDocument();
+    window.localStorage.clear();
+  });
 });

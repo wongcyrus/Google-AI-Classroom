@@ -399,6 +399,9 @@ export default function ProjectMeetingsView({ classId, classInfo, user, isPrivac
   const [selectedMeetingId, setSelectedMeetingId] = useState(null);
   const [mobileSidebarExpanded, setMobileSidebarExpanded] = useState(false);
   const [showGroupEditorModal, setShowGroupEditorModal] = useState(false);
+  const [showGroupPickerModal, setShowGroupPickerModal] = useState(false);
+  const [groupPickerSearch, setGroupPickerSearch] = useState('');
+  const [groupPickerStream, setGroupPickerStream] = useState('all'); // 'all' | 'mine' | 'unrecorded' | <prefix>
 
   // Unified Recording Studio & Master Selection state (Single Source of Truth)
   const [studioGroupId, setStudioGroupId] = useState('');
@@ -679,11 +682,30 @@ export default function ProjectMeetingsView({ classId, classInfo, user, isPrivac
     return groups;
   }, [groups, meetings, supervisorFilter, currentUserEmail]);
 
+  const groupStorageKey = useMemo(
+    () => (classId ? `agy_studio_group_${classId}_${currentUserEmail || 'anon'}` : ''),
+    [classId, currentUserEmail]
+  );
+
   useEffect(() => {
-    if (visibleGroups.length > 0 && (!studioGroupId || !visibleGroups.some((g) => g.id === studioGroupId))) {
+    if (visibleGroups.length === 0) return;
+    if (studioGroupId && visibleGroups.some((g) => g.id === studioGroupId)) {
+      return;
+    }
+    let savedGroupId = '';
+    try {
+      if (groupStorageKey && typeof window !== 'undefined' && window.localStorage) {
+        savedGroupId = window.localStorage.getItem(groupStorageKey) || '';
+      }
+    } catch {
+      // Ignore storage errors
+    }
+    if (savedGroupId && visibleGroups.some((g) => g.id === savedGroupId)) {
+      setStudioGroupId(savedGroupId);
+    } else {
       setStudioGroupId(visibleGroups[0].id);
     }
-  }, [visibleGroups, studioGroupId]);
+  }, [visibleGroups, studioGroupId, groupStorageKey]);
 
   const activeStudioGroup = useMemo(
     () => groups.find((g) => g.id === studioGroupId) || null,
@@ -722,11 +744,89 @@ export default function ProjectMeetingsView({ classId, classInfo, user, isPrivac
     return computeWeekGroupAiStats(meetings, studioWeekNumber, groups);
   }, [meetings, studioWeekNumber, groups]);
 
+  // Quick Group Picker data with per-group recording status & stream prefix clustering for ~20+ groups on mobile
+  const groupPickerData = useMemo(() => {
+    const weekNum = Number(studioWeekNumber);
+    const analyzedIds = new Set((weekAiStats.analyzedGroups || []).map((g) => g.groupId));
+    const pendingIds = new Set((weekAiStats.pendingGroups || []).map((g) => g.groupId));
+
+    const enriched = groups.map((g) => {
+      const nameStr = String(g.name || g.id || '').trim();
+      const prefixMatch = nameStr.replace(/^group\s+/i, '').match(/^([A-Za-z]+)\d+/);
+      const streamPrefix = prefixMatch ? prefixMatch[1].toUpperCase() : '';
+      const isMine = Boolean(
+        currentUserEmail &&
+        (normalizeStudentEmail(g.supervisorEmail) === currentUserEmail ||
+          (Array.isArray(g.coSupervisorEmails) &&
+            g.coSupervisorEmails.some((em) => normalizeStudentEmail(em) === currentUserEmail)))
+      );
+      const weekMeetings = meetings.filter(
+        (m) => m.groupId === g.id && Number(m.weekNumber) === weekNum && hasMeetingValidAudio(m)
+      );
+      const isAnalyzed = analyzedIds.has(g.id);
+      const isRecorded = isAnalyzed || pendingIds.has(g.id) || weekMeetings.length > 0;
+      return {
+        ...g,
+        shortCode: nameStr.replace(/^group\s+/i, ''),
+        streamPrefix,
+        isMine,
+        isAnalyzed,
+        isRecorded,
+        weekSessionsCount: weekMeetings.length,
+      };
+    });
+
+    const streamCounts = {};
+    enriched.forEach((g) => {
+      if (g.streamPrefix) {
+        streamCounts[g.streamPrefix] = (streamCounts[g.streamPrefix] || 0) + 1;
+      }
+    });
+    const streamPrefixes = Object.keys(streamCounts).sort();
+    const myCount = enriched.filter((g) => g.isMine).length;
+    const unrecordedCount = enriched.filter((g) => !g.isRecorded).length;
+
+    const searchLower = groupPickerSearch.trim().toLowerCase();
+    const filtered = enriched.filter((g) => {
+      if (groupPickerStream === 'mine' && !g.isMine) return false;
+      if (groupPickerStream === 'unrecorded' && g.isRecorded) return false;
+      if (
+        groupPickerStream !== 'all' &&
+        groupPickerStream !== 'mine' &&
+        groupPickerStream !== 'unrecorded' &&
+        g.streamPrefix !== groupPickerStream
+      ) {
+        return false;
+      }
+      if (searchLower) {
+        const hay = `${g.name || ''} ${g.projectTopic || ''} ${g.supervisorName || ''} ${(g.members || []).map((m) => m.name || m.email).join(' ')}`.toLowerCase();
+        if (!hay.includes(searchLower)) return false;
+      }
+      return true;
+    });
+
+    return {
+      all: enriched,
+      filtered,
+      streamPrefixes,
+      streamCounts,
+      myCount,
+      unrecordedCount,
+    };
+  }, [groups, meetings, studioWeekNumber, weekAiStats, currentUserEmail, groupPickerSearch, groupPickerStream]);
+
   // Unified Group & Week selection handlers
   const handleSelectGroup = useCallback(
     (newGroupId) => {
       setStudioGroupId(newGroupId);
       setPresenterStudentUid('');
+      try {
+        if (groupStorageKey && typeof window !== 'undefined' && window.localStorage) {
+          window.localStorage.setItem(groupStorageKey, newGroupId);
+        }
+      } catch {
+        // Ignore storage errors
+      }
       // Find matching meeting for (newGroupId, studioWeekNumber)
       const exactMatch = meetings.find(
         (m) => m.groupId === newGroupId && Number(m.weekNumber) === Number(studioWeekNumber)
@@ -740,7 +840,7 @@ export default function ProjectMeetingsView({ classId, classInfo, user, isPrivac
         setSelectedMeetingId(null);
       }
     },
-    [meetings, studioWeekNumber]
+    [meetings, studioWeekNumber, groupStorageKey]
   );
 
   const handleSelectWeek = useCallback(
@@ -3217,9 +3317,43 @@ export default function ProjectMeetingsView({ classId, classInfo, user, isPrivac
 
       {/* Mobile-Responsive Dual-Device Recording Studio Card */}
       <div className="project-meeting-recorder-studio">
+        {/* High-Contrast Active Target Banner (Prominent on Mobile, prevents accidental recording to Group #1) */}
+        <button
+          type="button"
+          className="mobile-active-group-banner"
+          onClick={() => setShowGroupPickerModal(true)}
+          disabled={recordingState !== 'idle'}
+          title="Tap to switch Project Group using the quick grid picker"
+        >
+          <div className="mobile-active-group-info">
+            <span className="mobile-active-group-eyebrow">🎯 TARGET GROUP (TAP TO SWITCH)</span>
+            <strong className="mobile-active-group-name">
+              📂 {activeStudioGroup?.name || 'Select Group'} — Week {studioWeekNumber}
+            </strong>
+            <span className="mobile-active-group-meta">
+              {activeStudioGroup?.members?.length || 0} students
+              {existingTargetMeeting
+                ? ` • 🎙️ ${(existingTargetMeeting.audioClips || []).length} clip(s) recorded`
+                : ' • 🟡 Not recorded yet'}
+            </span>
+          </div>
+          <span className="mobile-active-group-switch-pill">🔄 Switch ({groups.length})</span>
+        </button>
+
         <div className="studio-controls-row">
           <div className="studio-field">
-            <label htmlFor="studio-group-select">📁 Project Group:</label>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <label htmlFor="studio-group-select">📁 Project Group:</label>
+              <button
+                type="button"
+                className="btn-open-group-picker-inline"
+                onClick={() => setShowGroupPickerModal(true)}
+                disabled={recordingState !== 'idle'}
+                title="Open 4-column Quick Group Grid Picker"
+              >
+                ⊞ Quick Grid ({groups.length})
+              </button>
+            </div>
             <select
               id="studio-group-select"
               aria-label="📁 Project Group:"
@@ -3376,7 +3510,9 @@ export default function ProjectMeetingsView({ classId, classInfo, user, isPrivac
                   onClick={handleStartRecording}
                   disabled={!studioGroupId}
                 >
-                  🔴 {existingTargetMeeting ? 'Record Next Clip in Meeting' : 'Start Meeting Recording'}
+                  🔴 {existingTargetMeeting
+                    ? `Record Next Clip in Meeting — ${activeStudioGroup?.name || 'Group'} (Wk ${studioWeekNumber})`
+                    : `Start Meeting Recording — ${activeStudioGroup?.name || 'Group'} (Wk ${studioWeekNumber})`}
                 </button>
                 <button
                   type="button"
@@ -7046,6 +7182,138 @@ export default function ProjectMeetingsView({ classId, classInfo, user, isPrivac
                   Cancel
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Mobile-First Quick Group Picker Modal / Bottom Sheet */}
+      {showGroupPickerModal && (
+        <div
+          className="group-picker-modal-overlay"
+          onClick={() => setShowGroupPickerModal(false)}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Select Project Group"
+        >
+          <div
+            className="group-picker-modal-sheet"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="group-picker-modal-header">
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1.05rem', color: '#0f172a' }}>
+                  📁 Select Project Group (Week {studioWeekNumber})
+                </h3>
+                <span style={{ fontSize: '0.76rem', color: '#64748b' }}>
+                  Tap any group card below to set it as your active recording target.
+                </span>
+              </div>
+              <button
+                type="button"
+                className="btn-close-group-picker"
+                onClick={() => setShowGroupPickerModal(false)}
+                aria-label="Close group picker"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Search Input */}
+            <div style={{ padding: '0 16px 8px' }}>
+              <input
+                type="text"
+                className="group-picker-search-input"
+                placeholder="🔍 Search group code, project topic, or student..."
+                value={groupPickerSearch}
+                onChange={(e) => setGroupPickerSearch(e.target.value)}
+                autoFocus
+              />
+            </div>
+
+            {/* Filter Chips: All | Mine | Stream Prefixes (A, E, L...) | Unrecorded */}
+            <div className="group-picker-filter-chips">
+              <button
+                type="button"
+                className={`group-picker-chip ${groupPickerStream === 'all' ? 'active' : ''}`}
+                onClick={() => setGroupPickerStream('all')}
+              >
+                All ({groupPickerData.all.length})
+              </button>
+              {groupPickerData.myCount > 0 && (
+                <button
+                  type="button"
+                  className={`group-picker-chip ${groupPickerStream === 'mine' ? 'active' : ''}`}
+                  onClick={() => setGroupPickerStream('mine')}
+                >
+                  👨‍🏫 Mine ({groupPickerData.myCount})
+                </button>
+              )}
+              {groupPickerData.streamPrefixes.length > 1 &&
+                groupPickerData.streamPrefixes.map((prefix) => (
+                  <button
+                    key={prefix}
+                    type="button"
+                    className={`group-picker-chip ${groupPickerStream === prefix ? 'active' : ''}`}
+                    onClick={() => setGroupPickerStream(prefix)}
+                  >
+                    Stream {prefix} ({groupPickerData.streamCounts[prefix]})
+                  </button>
+                ))}
+              <button
+                type="button"
+                className={`group-picker-chip ${groupPickerStream === 'unrecorded' ? 'active' : ''}`}
+                onClick={() => setGroupPickerStream('unrecorded')}
+              >
+                🟡 Unrecorded ({groupPickerData.unrecordedCount})
+              </button>
+            </div>
+
+            {/* 4-Column Compact Touch Grid */}
+            <div className="group-picker-grid-container">
+              {groupPickerData.filtered.length === 0 ? (
+                <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '24px', color: '#64748b', fontSize: '0.88rem' }}>
+                  No groups match your filter.
+                </div>
+              ) : (
+                groupPickerData.filtered.map((g) => {
+                  const isActive = g.id === studioGroupId;
+                  return (
+                    <button
+                      key={g.id}
+                      type="button"
+                      className={`group-picker-grid-item ${isActive ? 'active' : ''} ${g.isAnalyzed ? 'analyzed' : g.isRecorded ? 'recorded' : 'unrecorded'}`}
+                      onClick={() => {
+                        handleSelectGroup(g.id);
+                        setShowGroupPickerModal(false);
+                        setGroupPickerSearch('');
+                      }}
+                    >
+                      <div className="group-picker-item-top">
+                        <strong className="group-picker-item-code">
+                          {isActive ? `✓ ${g.shortCode}` : g.shortCode}
+                        </strong>
+                        <span
+                          className="group-picker-item-status"
+                          title={g.isAnalyzed ? 'Analyzed' : g.isRecorded ? 'Recorded (Pending AI)' : 'Not recorded yet'}
+                        >
+                          {g.isAnalyzed ? '✨' : g.isRecorded ? '🎙️' : '🟡'}
+                        </span>
+                      </div>
+                      <span className="group-picker-item-meta">
+                        {g.members?.length || 0} stu
+                      </span>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+
+            <div className="group-picker-legend">
+              <span>✨ Analyzed</span>
+              <span>🎙️ Recorded</span>
+              <span>🟡 Pending</span>
+              <span>✓ Active Target</span>
             </div>
           </div>
         </div>

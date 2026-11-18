@@ -1978,3 +1978,301 @@
     max-height: 100vh !important;
   }
 }
+
+/* ============================================================================
+   Mobile-First Active Target Group Banner & 4-Column Quick Group Picker Sheet
+   ============================================================================ */
+
+.mobile-active-group-banner {
+  display: none;
+  width: 100%;
+  background: linear-gradient(135deg, #1e3a8a 0%, #1d4ed8 100%);
+  color: #ffffff;
+  border: 2px solid #3b82f6;
+  border-radius: 10px;
+  padding: 12px 14px;
+  text-align: left;
+  cursor: pointer;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  box-shadow: 0 4px 12px rgba(30, 58, 138, 0.22);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.mobile-active-group-banner:active:not(:disabled) {
+  transform: scale(0.99);
+}
+
+.mobile-active-group-banner:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.mobile-active-group-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.mobile-active-group-eyebrow {
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: #bfdbfe;
+  text-transform: uppercase;
+}
+
+.mobile-active-group-name {
+  font-size: 1.08rem;
+  font-weight: 800;
+  color: #ffffff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mobile-active-group-meta {
+  font-size: 0.74rem;
+  color: #dbeafe;
+}
+
+.mobile-active-group-switch-pill {
+  background: #ffffff;
+  color: #1e40af;
+  font-size: 0.78rem;
+  font-weight: 800;
+  padding: 7px 12px;
+  border-radius: 999px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.12);
+}
+
+.btn-open-group-picker-inline {
+  background: #eff6ff;
+  color: #1d4ed8;
+  border: 1px solid #bfdbfe;
+  border-radius: 4px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+
+.btn-open-group-picker-inline:hover:not(:disabled) {
+  background: #dbeafe;
+}
+
+@media (max-width: 768px) {
+  .mobile-active-group-banner {
+    display: flex;
+  }
+
+  .btn-start-meeting-rec {
+    width: 100%;
+    justify-content: center;
+    padding: 13px 16px;
+    font-size: 0.96rem;
+  }
+}
+
+/* Quick Group Picker Modal / Bottom Sheet */
+.group-picker-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.6);
+  backdrop-filter: blur(3px);
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.group-picker-modal-sheet {
+  background: #ffffff;
+  width: 100%;
+  max-width: 580px;
+  max-height: 85vh;
+  border-radius: 14px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 20px 45px rgba(15, 23, 42, 0.3);
+  animation: videoDrawerSlideUp 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.group-picker-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 14px 16px 10px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.btn-close-group-picker {
+  background: #f1f5f9;
+  border: none;
+  color: #475569;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  font-size: 1rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.group-picker-search-input {
+  width: 100%;
+  padding: 9px 12px;
+  border: 1.5px solid #cbd5e1;
+  border-radius: 8px;
+  font-size: 0.88rem;
+  background: #f8fafc;
+  color: #0f172a;
+  box-sizing: border-box;
+}
+
+.group-picker-search-input:focus {
+  outline: none;
+  border-color: #3b82f6;
+  background: #ffffff;
+}
+
+.group-picker-filter-chips {
+  display: flex;
+  gap: 6px;
+  padding: 4px 16px 10px;
+  overflow-x: auto;
+  flex-shrink: 0;
+  -webkit-overflow-scrolling: touch;
+}
+
+.group-picker-chip {
+  background: #f1f5f9;
+  color: #334155;
+  border: 1px solid #e2e8f0;
+  border-radius: 999px;
+  padding: 5px 11px;
+  font-size: 0.76rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.group-picker-chip.active {
+  background: #1d4ed8;
+  color: #ffffff;
+  border-color: #1d4ed8;
+}
+
+.group-picker-grid-container {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  padding: 8px 16px 14px;
+  overflow-y: auto;
+}
+
+.group-picker-grid-item {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: flex-start;
+  min-height: 54px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1.5px solid #e2e8f0;
+  background: #f8fafc;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.12s, background 0.12s, transform 0.1s;
+}
+
+.group-picker-grid-item:hover {
+  border-color: #93c5fd;
+  background: #eff6ff;
+}
+
+.group-picker-grid-item.analyzed {
+  background: #f0fdf4;
+  border-color: #bbf7d0;
+}
+
+.group-picker-grid-item.recorded {
+  background: #fffbeb;
+  border-color: #fde68a;
+}
+
+.group-picker-grid-item.active {
+  background: #1d4ed8;
+  border-color: #1e40af;
+  color: #ffffff;
+  box-shadow: 0 3px 10px rgba(29, 78, 216, 0.3);
+}
+
+.group-picker-item-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  gap: 4px;
+}
+
+.group-picker-item-code {
+  font-size: 0.88rem;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.group-picker-grid-item.active .group-picker-item-code {
+  color: #ffffff;
+}
+
+.group-picker-item-status {
+  font-size: 0.78rem;
+}
+
+.group-picker-item-meta {
+  font-size: 0.68rem;
+  color: #64748b;
+  margin-top: 2px;
+}
+
+.group-picker-grid-item.active .group-picker-item-meta {
+  color: #dbeafe;
+}
+
+.group-picker-legend {
+  display: flex;
+  justify-content: center;
+  gap: 14px;
+  padding: 8px 16px;
+  background: #f8fafc;
+  border-top: 1px solid #e2e8f0;
+  font-size: 0.72rem;
+  color: #475569;
+  font-weight: 600;
+}
+
+@media (max-width: 640px) {
+  .group-picker-modal-overlay {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .group-picker-modal-sheet {
+    max-width: 100%;
+    max-height: 82vh;
+    border-radius: 16px 16px 0 0;
+  }
+
+  .group-picker-grid-container {
+    grid-template-columns: repeat(4, 1fr);
+    gap: 7px;
+  }
+}
