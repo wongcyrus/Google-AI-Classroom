@@ -167,7 +167,8 @@ export function isMeetingPendingAnalysis(m) {
     m.rawDiarizedTranscript?.includes('No intelligible speech detected') ||
     m.keyInsights?.executiveSummary?.includes('No intelligible speech was recorded')
   );
-  return isUnanalyzed || needsReanalysis || hadNoSpeechError;
+  const isFailed = m.status === 'analysis_failed';
+  return isUnanalyzed || needsReanalysis || hadNoSpeechError || isFailed;
 }
 
 export default function ProjectMeetingsView({ classId, classInfo, user }) {
@@ -4147,6 +4148,8 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
                                     style={
                                       isThisMeetingAnalyzing
                                         ? { background: '#fef3c7', color: '#b45309', border: '1px solid #fde68a', fontWeight: 700 }
+                                        : m.status === 'analysis_failed'
+                                        ? { background: '#fee2e2', color: '#b91c1c', border: '1px solid #fecaca', fontWeight: 600 }
                                         : undefined
                                     }
                                   >
@@ -4154,6 +4157,8 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
                                       ? '⏳ AI Analyzing...'
                                       : m.status === 'recording'
                                       ? '🔴 REC'
+                                      : m.status === 'analysis_failed'
+                                      ? '❌ Failed'
                                       : m.keyInsights?.overallGroupProgress === 'at_risk' ||
                                         m.keyInsights?.overallGroupProgress === 'behind'
                                       ? '⚠️ At Risk'
@@ -4253,7 +4258,9 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
                     <div style={{ fontSize: '0.8rem', color: '#64748b', marginTop: '4px', display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
                       <span>📅 {selectedMeeting.meetingDate ? new Date(selectedMeeting.meetingDate).toLocaleString() : 'Recent'}</span>
                       <span>👨‍🏫 Supervisor: <strong>{selectedMeeting.supervisorEmail}</strong></span>
-                      {selectedMeeting.analyzedAt ? (
+                      {selectedMeeting.status === 'analysis_failed' ? (
+                        <span style={{ color: '#dc2626', fontWeight: 600 }}>❌ AI Analysis Failed</span>
+                      ) : selectedMeeting.analyzedAt ? (
                         <span>✨ Analyzed: <strong>{new Date(selectedMeeting.analyzedAt.toDate?.() || selectedMeeting.analyzedAt).toLocaleTimeString()}</strong></span>
                       ) : selectedMeeting.rawDiarizedTranscript ? (
                         <span>✨ Analyzed</span>
@@ -4267,6 +4274,20 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
                         <span>💰 AI Cost: <strong>{formatAiCost(selectedMeeting.aiCost)}</strong></span>
                       )}
                     </div>
+
+                    {selectedMeeting.status === 'analysis_failed' && (
+                      <div style={{ width: '100%', background: '#fef2f2', border: '1.5px solid #fecaca', borderRadius: '8px', padding: '10px 14px', display: 'flex', alignItems: 'center', gap: '12px', marginTop: '10px' }}>
+                        <span style={{ fontSize: '1.2rem' }}>⚠️</span>
+                        <div>
+                          <strong style={{ color: '#991b1b', fontSize: '0.88rem', display: 'block' }}>
+                            AI Analysis Encountered an Error
+                          </strong>
+                          <span style={{ color: '#b91c1c', fontSize: '0.8rem' }}>
+                            {selectedMeeting.analysisError || 'The previous analysis run failed. Click "Retry Gemini Analysis" below to run it again.'}
+                          </span>
+                        </div>
+                      </div>
+                    )}
 
                     {(isAnalyzing || selectedMeeting.status === 'analyzing') && (
                       <div style={{ width: '100%', background: '#fef3c7', border: '1.5px solid #fde68a', borderRadius: '8px', padding: '10px 14px', display: 'flex', alignItems: 'center', gap: '12px', marginTop: '10px' }}>
@@ -4303,6 +4324,8 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
                     >
                       {isAnalyzing || selectedMeeting.status === 'analyzing'
                         ? '⏳ Analyzing Diarization & Insights...'
+                        : selectedMeeting.status === 'analysis_failed'
+                        ? '🔄 Retry Gemini Analysis'
                         : selectedMeeting.analyzedAt || selectedMeeting.aiModelUsed || selectedMeeting.rawDiarizedTranscript
                         ? '✨ Re-Run Gemini Analysis'
                         : '✨ Run Gemini Analysis'}
@@ -4701,7 +4724,11 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
                       onClick={() => handleRunGeminiAnalysis(selectedMeeting.id)}
                       disabled={isAnalyzing || selectedMeeting.status === 'analyzing'}
                     >
-                      {isAnalyzing || selectedMeeting.status === 'analyzing' ? '⏳ Analyzing...' : '✨ Run Gemini Analysis Now'}
+                      {isAnalyzing || selectedMeeting.status === 'analyzing'
+                        ? '⏳ Analyzing...'
+                        : selectedMeeting.status === 'analysis_failed'
+                        ? '🔄 Retry Gemini Analysis Now'
+                        : '✨ Run Gemini Analysis Now'}
                     </button>
                   </div>
                 )}

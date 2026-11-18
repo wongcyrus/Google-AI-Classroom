@@ -8,6 +8,7 @@ import {
   FUNCTION_REGION,
   AI_TRANSCRIBE_MODEL,
   DEFAULT_LECTURE_AI_MODEL,
+  DEFAULT_SAFETY_SETTINGS,
 } from './config.js';
 import { generateWithResilience } from './analysisFlows.js';
 import { calculateCost } from './cost.js';

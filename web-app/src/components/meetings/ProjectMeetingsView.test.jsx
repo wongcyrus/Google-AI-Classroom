@@ -1571,35 +1571,89 @@ Group Beta,New Beta Topic,other@vtc.edu.hk,eva@stu.vtc.edu.hk,Eva Ho,Leader`;
   });
 
   it('defaults studio week to current calendar week from class schedule and does not lock back to previous week when switching groups', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-11-12T10:00:00Z'));
+    try {
+      render(
+        <ProjectMeetingsView
+          classId="it114115-fyp-2627"
+          classInfo={{
+            name: 'Final Year Project',
+            schedule: {
+              startDate: '2026-09-01',
+              endDate: '2027-05-04',
+            },
+            teacherEmails: ['cywong@vtc.edu.hk'],
+            studentEmails: ['alice@stu.vtc.edu.hk', 'bob@stu.vtc.edu.hk'],
+          }}
+          user={{ uid: 't_1', email: 'cywong@vtc.edu.hk', displayName: 'Dr. Wong' }}
+        />
+      );
+
+      const weekSelect = screen.getByLabelText(/📅 Week #:/i);
+      // Fixed date (Nov 12, 2026) is Week 11 based on startDate 2026-09-01 (Monday Aug 31)
+      expect(Number(weekSelect.value)).toBe(11);
+
+      // Switching to a group that has no meeting in Week 11 must NOT lock or snap back to Week 10
+      fireEvent.change(screen.getByLabelText(/📁 Project Group:/i), { target: { value: 'grp_1' } });
+      expect(Number(weekSelect.value)).toBe(11);
+
+      // Teacher can also explicitly switch weeks and it remains on the selected week
+      fireEvent.change(weekSelect, { target: { value: '12' } });
+      expect(Number(weekSelect.value)).toBe(12);
+
+      fireEvent.change(screen.getByLabelText(/📁 Project Group:/i), { target: { value: 'grp_2' } });
+      expect(Number(weekSelect.value)).toBe(12);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('renders analysis_failed status badge, error banner, and retry button for failed AI meeting analysis', () => {
+    mockMeetingsSnapshotDocs = [
+      {
+        id: 'mtg_failed_1',
+        data: () => ({
+          id: 'mtg_failed_1',
+          groupId: 'grp_1',
+          groupName: 'Group A11',
+          weekNumber: 3,
+          title: 'Week 3 Supervision Meeting',
+          status: 'analysis_failed',
+          analysisError: 'FAILED_PRECONDITION: Generation blocked.',
+          audioClips: [{ clipId: 'c1', label: 'Part 1', durationSeconds: 120, storagePath: 'test.webm' }],
+          supervisorEmail: 'cywong@vtc.edu.hk',
+        }),
+      },
+    ];
+
     render(
       <ProjectMeetingsView
         classId="it114115-fyp-2627"
         classInfo={{
           name: 'Final Year Project',
-          schedule: {
-            startDate: '2026-09-01',
-            endDate: '2027-05-04',
-          },
+          schedule: { startDate: '2026-09-01', endDate: '2027-05-04' },
           teacherEmails: ['cywong@vtc.edu.hk'],
-          studentEmails: ['alice@stu.vtc.edu.hk', 'bob@stu.vtc.edu.hk'],
         }}
         user={{ uid: 't_1', email: 'cywong@vtc.edu.hk', displayName: 'Dr. Wong' }}
       />
     );
 
-    const weekSelect = screen.getByLabelText(/📅 Week #:/i);
-    // Today (Nov 12, 2026) is Week 11 based on startDate 2026-09-01 (Monday Aug 31)
-    expect(Number(weekSelect.value)).toBe(11);
+    // Select Week 3
+    fireEvent.change(screen.getByLabelText(/📅 Week #:/i), { target: { value: '3' } });
 
-    // Switching to a group that has no meeting in Week 11 must NOT lock or snap back to Week 10
-    fireEvent.change(screen.getByLabelText(/📁 Project Group:/i), { target: { value: 'grp_1' } });
-    expect(Number(weekSelect.value)).toBe(11);
+    // Verify session badge displays '❌ Failed'
+    const failedBadge = screen.getByText(/❌ Failed/i);
+    expect(failedBadge).toBeInTheDocument();
 
-    // Teacher can also explicitly switch weeks and it remains on the selected week
-    fireEvent.change(weekSelect, { target: { value: '12' } });
-    expect(Number(weekSelect.value)).toBe(12);
+    // Click meeting card to open inspector panel
+    fireEvent.click(failedBadge);
 
-    fireEvent.change(screen.getByLabelText(/📁 Project Group:/i), { target: { value: 'grp_2' } });
-    expect(Number(weekSelect.value)).toBe(12);
+    // Verify Error Banner displays the specific error details
+    expect(screen.getByText(/AI Analysis Encountered an Error/i)).toBeInTheDocument();
+    expect(screen.getByText(/FAILED_PRECONDITION: Generation blocked/i)).toBeInTheDocument();
+
+    // Verify action button shows '🔄 Retry Gemini Analysis'
+    expect(screen.getAllByRole('button', { name: /🔄 Retry Gemini Analysis/i }).length).toBeGreaterThanOrEqual(1);
   });
 });

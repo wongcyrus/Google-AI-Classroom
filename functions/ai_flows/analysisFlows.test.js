@@ -183,7 +183,7 @@ describe('generateWithResilience and Flow Tools', () => {
       expect(generateSpy).toHaveBeenCalledWith(
         expect.objectContaining({
           prompt: 'complex reasoning task',
-          config: { maxOutputTokens: 32768 },
+          config: expect.objectContaining({ maxOutputTokens: 32768 }),
         })
       );
 

@@ -2,7 +2,7 @@ import './firebase.js';
 import { getFirestore } from 'firebase-admin/firestore';
 import { ai, vertexAI } from './ai.js';
 import { z } from 'genkit';
-import { AI_TEMPERATURE, AI_TOP_P, AI_MODEL, AI_TRANSCRIBE_MODEL } from './config.js';
+import { AI_TEMPERATURE, AI_TOP_P, AI_MODEL, AI_TRANSCRIBE_MODEL, DEFAULT_SAFETY_SETTINGS } from './config.js';
 import { sendMessageToStudent, recordIrregularity, recordVideoIrregularity, recordStudentProgress, sendMessageToTeacher, recordScreenshotAnalysis, recordActualWorkingTime, recordTaskDuration, recordLessonFeedback, recordLessonSummary, recordAudioIrregularity, recordAudioAudit } from './aiTools.js';
 import { checkQuota } from './quotaManagement.js';
 import { estimateCost, calculateCost } from './cost.js';
@@ -45,9 +45,17 @@ export async function generateWithResilience(
     const maxAttempts = 3;
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
-        let effectiveGenerateConfig = generateConfig;
-        if (typeof modelName === 'string' && modelName.startsWith('gemini-4') && generateConfig?.config && typeof generateConfig.config === 'object') {
-          const { temperature: _t, topP: _p, top_p: _tp, topK: _k, top_k: _tk, ...restConfig } = generateConfig.config;
+        const baseConfig = generateConfig?.config && typeof generateConfig.config === 'object' ? generateConfig.config : {};
+        const configWithSafety = {
+          safetySettings: baseConfig.safetySettings || DEFAULT_SAFETY_SETTINGS,
+          ...baseConfig,
+        };
+        let effectiveGenerateConfig = {
+          ...generateConfig,
+          config: configWithSafety,
+        };
+        if (typeof modelName === 'string' && modelName.startsWith('gemini-4')) {
+          const { temperature: _t, topP: _p, top_p: _tp, topK: _k, top_k: _tk, ...restConfig } = configWithSafety;
           effectiveGenerateConfig = {
             ...generateConfig,
             config: restConfig,
