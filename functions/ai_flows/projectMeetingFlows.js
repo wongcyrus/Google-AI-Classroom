@@ -649,9 +649,19 @@ export async function handleAnalyzeProjectMeeting({
         console.warn(`[analyzeProjectMeeting] Could not get metadata for ${cleanStoragePath}:`, metaErr?.message || metaErr);
       }
 
+      // Fallback to explicit clip.fileSize if storage metadata is unavailable
+      const rawClipSize = clip.fileSize ?? clip.fileSizeBytes ?? clip.size;
+      const explicitClipSize = rawClipSize !== undefined && rawClipSize !== null ? Number(rawClipSize) : NaN;
+      if (fileSize < 0 && !isNaN(explicitClipSize)) {
+        fileSize = explicitClipSize;
+      }
+
       const clipDurationSecs = Number(clip.durationSeconds) || 0;
-      if (fileSize >= 0 && fileSize <= 256) {
-        console.warn(`[analyzeProjectMeeting] Skipping empty/corrupted audio clip ${clip.clipId || i} (${cleanStoragePath}, size: ${fileSize} bytes)`);
+      if (
+        (fileSize >= 0 && fileSize <= 256) ||
+        (clipDurationSecs <= 2 && (fileSize <= 256 || explicitClipSize === 0 || isNaN(explicitClipSize)))
+      ) {
+        console.warn(`[analyzeProjectMeeting] Skipping empty/corrupted audio clip ${clip.clipId || i} (${cleanStoragePath}, size: ${fileSize} bytes, dur: ${clipDurationSecs}s)`);
         continue;
       }
 

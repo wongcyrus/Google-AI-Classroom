@@ -536,6 +536,48 @@ describe('projectMeetingFlows', () => {
     ).rejects.toThrow(/Vertex quota exceeded/);
   });
 
+  it('skips 0-byte or corrupted audio clips and returns empty_audio without calling Gemini', async () => {
+    mockDocGet.mockImplementation(async (path) => {
+      if (path === 'classes/c1') {
+        return {
+          exists: true,
+          data: () => ({ teacherEmails: ['t1@vtc.edu.hk'] }),
+        };
+      }
+      if (path === 'classes/c1/projectMeetings/m_empty_clip') {
+        return {
+          exists: true,
+          data: () => ({
+            groupId: 'grp_a04',
+            weekNumber: 11,
+            audioClips: [
+              { clipId: 'c1', storagePath: 'voice_empty.webm', durationSeconds: 1, fileSize: 0 },
+            ],
+          }),
+        };
+      }
+      return { exists: false };
+    });
+
+    const res = await handleAnalyzeProjectMeeting({
+      classId: 'c1',
+      meetingId: 'm_empty_clip',
+      auth: { uid: 't1', token: { email: 't1@vtc.edu.hk', role: 'teacher' } },
+    });
+
+    expect(res.success).toBe(false);
+    expect(res.reason).toBe('empty_audio');
+    expect(mockDocUpdate).toHaveBeenCalledWith(
+      'classes/c1/projectMeetings/m_empty_clip',
+      expect.objectContaining({
+        status: 'analysis_failed',
+        analysisError: expect.stringContaining('Audio recording is empty (0 bytes)'),
+      })
+    );
+    // Crucial: Vertex AI / Gemini was never called with corrupted data!
+    expect(mockGenerateWithResilience).not.toHaveBeenCalled();
+  });
+
   it('enforces authentication and teacher/supervisor authorization in analyzeProjectMeeting callable', async () => {
     await expect(analyzeProjectMeeting.run({ auth: null, data: {} })).rejects.toThrow(/Authentication is required/);
 

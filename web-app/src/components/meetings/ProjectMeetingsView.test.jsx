@@ -108,7 +108,15 @@ import {
   mergeIncrementalStudentProfiles,
   bootstrapProjectGroupsFromWeeklyLogs,
 } from '../../utils/projectGroupUtils';
-import ProjectMeetingsView, { isMeetingPendingAnalysis, compressPhotoBlob } from './ProjectMeetingsView';
+import ProjectMeetingsView, {
+  isMeetingPendingAnalysis,
+  compressPhotoBlob,
+  isAudioClipValid,
+  hasMeetingValidAudio,
+  getMeetingValidAudioDuration,
+  getMeetingValidClipCount,
+  computeWeekGroupAiStats,
+} from './ProjectMeetingsView';
 import ProjectGroupEditorModal from './ProjectGroupEditorModal';
 
 const SAMPLE_FORM_RESPONSES_2_CSV = `Timestamp,Group ID,Student Name,Student ID,Supervisor,I am doing something this week,Work done & findings since last recording,State which part of the last plan not yet finished (leave it blank if you finished all the work of the last plan,Plan of work before the next recording,Description
@@ -1180,6 +1188,156 @@ Group Beta,New Beta Topic,other@vtc.edu.hk,eva@stu.vtc.edu.hk,Eva Ho,Leader`;
         },
       })
     ).toBe(true);
+  });
+
+  it('correctly validates audio clips and filters out 0-byte or corrupted recording stubs', () => {
+    // 0-byte clip
+    expect(isAudioClipValid({ clipId: 'c_empty', fileSize: 0, durationSeconds: 1, storagePath: 'voice.webm' })).toBe(false);
+    // <= 2s stub with tiny size <= 256 bytes
+    expect(isAudioClipValid({ clipId: 'c_stub', fileSize: 120, durationSeconds: 2, storagePath: 'voice.webm' })).toBe(false);
+    // <= 2s stub without size specified
+    expect(isAudioClipValid({ clipId: 'c_stub2', durationSeconds: 1, storagePath: 'voice.webm' })).toBe(false);
+    // Valid clip with duration
+    expect(isAudioClipValid({ clipId: 'c_valid', durationSeconds: 300, storagePath: 'voice.webm' })).toBe(true);
+    // Valid clip with fileSize
+    expect(isAudioClipValid({ clipId: 'c_valid2', fileSize: 35193, durationSeconds: 3, storagePath: 'voice.webm' })).toBe(true);
+    // Legacy clip without duration/size
+    expect(isAudioClipValid({ clipId: 'c_legacy', storagePath: 'voice.webm' })).toBe(true);
+
+    // Meeting with multiple clips where one is 0-byte and others are valid (e.g. Group A04 Week 11)
+    const multiPartMeeting = {
+      id: 'mtg_a04',
+      audioClips: [
+        { clipId: 'c1', durationSeconds: 2, fileSize: 0, storagePath: 'c1.webm' },
+        { clipId: 'c2', durationSeconds: 705, fileSize: 8629749, storagePath: 'c2.webm' },
+        { clipId: 'c3', durationSeconds: 1005, fileSize: 12085739, storagePath: 'c3.webm' },
+      ],
+    };
+    expect(hasMeetingValidAudio(multiPartMeeting)).toBe(true);
+    expect(getMeetingValidAudioDuration(multiPartMeeting)).toBe(1710);
+    expect(getMeetingValidClipCount(multiPartMeeting)).toBe(2);
+
+    // Meeting with ONLY 0-byte failed clips
+    const emptyFailedMeeting = {
+      id: 'mtg_a04_failed',
+      status: 'analysis_failed',
+      audioClips: [
+        { clipId: 'c1', durationSeconds: 1, fileSize: 0, storagePath: 'c1.webm' },
+      ],
+    };
+    expect(hasMeetingValidAudio(emptyFailedMeeting)).toBe(false);
+    // Critical: empty failed meeting must NOT be considered pending AI analysis!
+    expect(isMeetingPendingAnalysis(emptyFailedMeeting)).toBe(false);
+  });
+
+  it('aggregates week meetings by Project Group, correctly handling multi-part recordings, multi-session documents, and empty stubs without duplicate group chips', () => {
+    const testGroups = [
+      { id: 'grp_a01', name: 'A01' },
+      { id: 'grp_a04', name: 'A04' },
+      { id: 'grp_a02', name: 'A02' },
+    ];
+
+    const testMeetings = [
+      // A01: 1 meeting, 2 clips, analyzed
+      {
+        id: 'm_a01_1',
+        groupId: 'grp_a01',
+        groupName: 'A01',
+        weekNumber: 11,
+        status: 'ready',
+        analyzedAt: '2026-11-12T03:50:00Z',
+        rawDiarizedTranscript: '[00:05] Speaker 1: Done',
+        audioClips: [
+          { clipId: 'c1', durationSeconds: 1029, storagePath: 'a01_1.webm' },
+          { clipId: 'c2', durationSeconds: 1328, storagePath: 'a01_2.webm' },
+        ],
+      },
+      // A04: 4 sessions in Week 11 (2 analyzed, 2 empty 0-byte failed stubs)
+      {
+        id: 'm_a04_main_analyzed',
+        groupId: 'grp_a04',
+        groupName: 'A04',
+        weekNumber: 11,
+        status: 'ready',
+        analyzedAt: '2026-11-12T04:00:00Z',
+        rawDiarizedTranscript: '[00:02] Speaker 1: 3 parts analysis',
+        audioClips: [
+          { clipId: 'c1', durationSeconds: 2, fileSize: 0, storagePath: 'a04_1.webm' },
+          { clipId: 'c2', durationSeconds: 705, fileSize: 8629749, storagePath: 'a04_2.webm' },
+          { clipId: 'c3', durationSeconds: 1005, fileSize: 12085739, storagePath: 'a04_3.webm' },
+        ],
+      },
+      {
+        id: 'm_a04_short_analyzed',
+        groupId: 'grp_a04',
+        groupName: 'A04',
+        weekNumber: 11,
+        status: 'ready',
+        analyzedAt: '2026-11-12T02:13:00Z',
+        rawDiarizedTranscript: '[00:01] Hello',
+        audioClips: [
+          { clipId: 'c1', durationSeconds: 3, fileSize: 35193, storagePath: 'a04_s.webm' },
+        ],
+      },
+      {
+        id: 'm_a04_empty_failed_1',
+        groupId: 'grp_a04',
+        groupName: 'A04',
+        weekNumber: 11,
+        status: 'analysis_failed',
+        audioClips: [
+          { clipId: 'c1', durationSeconds: 1, fileSize: 0, storagePath: 'a04_f1.webm' },
+        ],
+      },
+      {
+        id: 'm_a04_empty_failed_2',
+        groupId: 'grp_a04',
+        groupName: 'A04',
+        weekNumber: 11,
+        status: 'analysis_failed',
+        audioClips: [
+          { clipId: 'c1', durationSeconds: 1, fileSize: 0, storagePath: 'a04_f2.webm' },
+        ],
+      },
+      // A02: 1 meeting, 1 clip, pending analysis
+      {
+        id: 'm_a02_pending',
+        groupId: 'grp_a02',
+        groupName: 'A02',
+        weekNumber: 11,
+        status: 'ready',
+        audioClips: [
+          { clipId: 'c1', durationSeconds: 236, storagePath: 'a02.webm' },
+        ],
+      },
+    ];
+
+    const stats = computeWeekGroupAiStats(testMeetings, 11, testGroups);
+
+    // 1. Group level counts
+    expect(stats.recordedGroupsCount).toBe(3); // A01, A04, A02
+    expect(stats.analyzedGroupsCount).toBe(2); // A01 and A04
+    expect(stats.pendingGroupsCount).toBe(1); // Only A02 is pending!
+    expect(stats.emptySessionsCount).toBe(2); // The 2 0-byte stubs of A04
+
+    // 2. Already Analyzed Groups must contain A04 ONCE (no duplicate tags)
+    expect(stats.analyzedGroups.length).toBe(2);
+    const a04Analyzed = stats.analyzedGroups.find((g) => g.groupId === 'grp_a04');
+    expect(a04Analyzed).toBeDefined();
+    expect(a04Analyzed.groupName).toBe('A04');
+    expect(a04Analyzed.validMeetingsCount).toBe(2);
+    expect(a04Analyzed.emptySessionsCount).toBe(2);
+    expect(a04Analyzed.isFullyAnalyzed).toBe(true);
+
+    // 3. Pending Groups must NOT contain A04
+    expect(stats.pendingGroups.length).toBe(1);
+    expect(stats.pendingGroups[0].groupName).toBe('A02');
+    expect(stats.pendingGroups.some((g) => g.groupId === 'grp_a04')).toBe(false);
+
+    // 4. Valid and Pending session targets for batch runners
+    expect(stats.validSessions.length).toBe(4); // m_a01_1, m_a04_main_analyzed, m_a04_short_analyzed, m_a02_pending
+    expect(stats.pendingSessions.length).toBe(1); // Only m_a02_pending (0-byte stubs excluded!)
+    expect(stats.pendingSessions[0].id).toBe('m_a02_pending');
   });
 
   it('supports moving entire meeting to another group, deleting screen clip, and toggling attendance override', async () => {

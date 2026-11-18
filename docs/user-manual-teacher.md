@@ -1227,7 +1227,21 @@ If a supervision audio recording was accidentally recorded under the wrong proje
 4. **Backend STT Multimodal Fallback**:
    - If `gemini-3.5-transcribe-preview` returns an empty transcript on short, low-volume, or accented clips, the backend automatically triggers a fallback to multimodal `gemini-3.8-flash` to ensure voices are captured accurately.
 
-### 19.6 Zero-Egress PII & Masked Privacy Mode in Project Meetings
+### 19.7 Batch Gemini Analysis: Group-Centric Aggregation & Empty Recording Exclusion
+When supervising many project groups in parallel, teachers can analyze an entire academic week in 1 click using **`⚡ Batch AI`** in Project Supervision Studio:
+1. **Group-Centric Aggregation**:
+   - Rather than displaying duplicate chips for raw meeting documents, the modal aggregates all session documents at the **Project Group level**.
+   - Groups with multiple recording sessions or multi-part audio (e.g., `Group A04` with Part 1, Part 2, and Part 3) appear **exactly once** under **✨ Already Analyzed Groups** with part count and duration (e.g., `A04 (3 parts · 28m32s)`).
+2. **Automatic 0-Byte / Corrupted Recording Exclusion**:
+   - Accidental recordings (sessions with 0 bytes or $\le 2$ seconds duration) are automatically detected and excluded from the analysis queue.
+   - The modal presents an informational note: `ℹ️ N empty session stub(s) (0 bytes or ≤ 2s) excluded to prevent AI errors.`
+   - In **Mode 1 ("Run Missing Only")**, empty test recordings are never fed to Gemini, preventing Vertex AI decoding crashes (`INVALID_ARGUMENT: [400 Bad Request] The provided file is malformed or corrupted and could not be decoded`).
+   - If a group already has a complete analyzed meeting session, extra empty stubs will never cause the group to appear under "Pending".
+3. **Batch Mode 1 vs Mode 2**:
+   - **⚡ Mode 1: Run Missing Only**: Analyzes only groups in the selected week that have valid audio recordings awaiting AI analysis. If all groups with recordings are already analyzed, the button is cleanly disabled (`✅ All N Groups in Week W Already Analyzed`).
+   - **🔄 Mode 2: Re-Run All**: Re-analyzes all valid recorded groups from scratch (skipping 0-byte stubs). Ideal when student weekly logs have been updated or when switching to deep reasoning (`gemini-4-argon`).
+
+### 19.8 Zero-Egress PII & Masked Privacy Mode in Project Meetings
 When teaching, presenting, or reviewing supervision meetings on a projector or in front of student audiences, instructors can toggle **Masked Privacy Mode** (`🛡️ Privacy: ON`) in the top navigation bar of Class Hub:
 1. **Roster & Attendance Protection**: Student real names (e.g., `CHAN,Ching Yeung` $\to$ `C***,C**** Y****`, `陳正洋` $\to$ `陳*洋`) and student institutional emails (`260047062@stu.vtc.edu.hk` $\to$ `***7062@stu.vtc.edu.hk`) are automatically masked across:
    - The Cross-Week Meeting Matrix overview table and student tooltips.

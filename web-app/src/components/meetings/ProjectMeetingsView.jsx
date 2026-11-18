@@ -158,16 +158,72 @@ function getSupportedVideoMimeType() {
 }
 
 /**
+ * Checks if an individual audio clip has valid content (not an empty 0-byte or 0-duration test stub).
+ */
+export function isAudioClipValid(clip) {
+  if (!clip) return false;
+  const dur = Number(clip.durationSeconds);
+  const rawSize = clip.fileSize ?? clip.fileSizeBytes ?? clip.size;
+  const size = rawSize !== undefined && rawSize !== null ? Number(rawSize) : undefined;
+
+  // Definitively empty if size is explicitly 0
+  if (size === 0) return false;
+  // Definitively empty if short stub (<= 2s) with tiny size (<= 256 bytes)
+  if (!isNaN(dur) && dur <= 2 && size !== undefined && !isNaN(size) && size <= 256) return false;
+  // If duration is <= 2s and size is not specified (e.g. 1s failed test stub)
+  if (!isNaN(dur) && dur <= 2 && size === undefined) return false;
+
+  return Boolean(clip.storagePath || clip.downloadUrl);
+}
+
+/**
+ * Checks if a meeting document has any valid audio recording.
+ */
+export function hasMeetingValidAudio(m) {
+  if (!m) return false;
+  const clips = Array.isArray(m.audioClips) ? m.audioClips : [];
+  if (clips.length > 0) {
+    return clips.some((c) => isAudioClipValid(c));
+  }
+  return Boolean(m.audioStoragePath);
+}
+
+/**
+ * Total valid duration across all valid clips in a meeting (in seconds).
+ */
+export function getMeetingValidAudioDuration(m) {
+  if (!m) return 0;
+  const clips = Array.isArray(m.audioClips) ? m.audioClips : [];
+  if (clips.length > 0) {
+    return clips
+      .filter((c) => isAudioClipValid(c))
+      .reduce((sum, c) => sum + (Number(c.durationSeconds) || 0), 0);
+  }
+  return Number(m.durationSeconds) || 0;
+}
+
+/**
+ * Count of valid audio parts in a meeting.
+ */
+export function getMeetingValidClipCount(m) {
+  if (!m) return 0;
+  const clips = Array.isArray(m.audioClips) ? m.audioClips : [];
+  if (clips.length > 0) {
+    const validCount = clips.filter((c) => isAudioClipValid(c)).length;
+    return validCount;
+  }
+  return m.audioStoragePath ? 1 : 0;
+}
+
+/**
  * Determines if a project meeting has audio recordings that require AI analysis or re-analysis:
- * - Completely unanalyzed meetings with audio
+ * - Completely unanalyzed meetings with valid audio
  * - Meetings explicitly flagged with `needsReanalysis: true` (e.g. after moving/deleting clips)
- * - Meetings where previous analysis failed or produced "No intelligible speech detected" while audio clips exist
+ * - Meetings where previous analysis failed or produced "No intelligible speech detected" while valid audio clips exist
  */
 export function isMeetingPendingAnalysis(m) {
   if (!m) return false;
-  const hasAudio =
-    (Array.isArray(m.audioClips) && m.audioClips.length > 0) || Boolean(m.audioStoragePath);
-  if (!hasAudio) return false;
+  if (!hasMeetingValidAudio(m)) return false;
   const isUnanalyzed = !m.analyzedAt && !m.aiModelUsed && !m.rawDiarizedTranscript;
   const needsReanalysis = m.needsReanalysis === true;
   const hadNoSpeechError = Boolean(
@@ -176,6 +232,138 @@ export function isMeetingPendingAnalysis(m) {
   );
   const isFailed = m.status === 'analysis_failed';
   return isUnanalyzed || needsReanalysis || hadNoSpeechError || isFailed;
+}
+
+/**
+ * Aggregates supervision meetings by Project Group for a given week.
+ * Resolves multi-session and multi-part recording situations (e.g. Group A04 having
+ * 3 parts analyzed plus 2 empty 0-byte test stubs), preventing duplicate group names
+ * and erroneous re-analysis of empty recordings.
+ */
+export function computeWeekGroupAiStats(meetings, weekNumber, groups = []) {
+  const weekNum = Number(weekNumber);
+  const weekMeetings = (meetings || []).filter((m) => Number(m.weekNumber) === weekNum);
+
+  // Group meetings by groupId (or fallback to groupName)
+  const groupMap = new Map();
+
+  // Populate from all known groups if available
+  (groups || []).forEach((g) => {
+    if (g && g.id) {
+      groupMap.set(g.id, {
+        groupId: g.id,
+        groupName: g.name || g.groupName || g.id,
+        supervisorEmail: g.supervisorEmail || '',
+        meetings: [],
+      });
+    }
+  });
+
+  // Assign meetings to their groups
+  weekMeetings.forEach((m) => {
+    const gId = m.groupId || m.groupName || 'unassigned';
+    if (!groupMap.has(gId)) {
+      groupMap.set(gId, {
+        groupId: gId,
+        groupName: m.groupName || gId,
+        supervisorEmail: m.supervisorEmail || '',
+        meetings: [],
+      });
+    }
+    groupMap.get(gId).meetings.push(m);
+  });
+
+  const analyzedGroups = [];
+  const pendingGroups = [];
+  const emptyOnlyGroups = [];
+  const validSessions = [];
+  const pendingSessions = [];
+  let totalEmptySessionsCount = 0;
+
+  groupMap.forEach((entry) => {
+    const allM = entry.meetings;
+    if (allM.length === 0) return; // Group had no meetings in this week
+
+    // Separate valid meetings from empty/corrupted sessions
+    const validM = allM.filter((m) => hasMeetingValidAudio(m));
+    const emptyM = allM.filter((m) => !hasMeetingValidAudio(m));
+    totalEmptySessionsCount += emptyM.length;
+
+    if (validM.length === 0) {
+      if (emptyM.length > 0) {
+        emptyOnlyGroups.push({
+          ...entry,
+          emptySessionsCount: emptyM.length,
+        });
+      }
+      return;
+    }
+
+    // Add to overall valid sessions list
+    validSessions.push(...validM);
+
+    // Check analysis status among valid meetings
+    const analyzedM = validM.filter((m) => !isMeetingPendingAnalysis(m));
+    const pendingM = validM.filter((m) => isMeetingPendingAnalysis(m));
+
+    pendingSessions.push(...pendingM);
+
+    // Calculate aggregated duration and clip counts
+    const totalDurationSeconds = validM.reduce((sum, m) => sum + getMeetingValidAudioDuration(m), 0);
+    const totalValidClips = validM.reduce((sum, m) => sum + (Array.isArray(m.audioClips) ? m.audioClips.length : 1), 0);
+
+    const groupSummary = {
+      ...entry,
+      validMeetingsCount: validM.length,
+      emptySessionsCount: emptyM.length,
+      analyzedMeetingsCount: analyzedM.length,
+      pendingMeetingsCount: pendingM.length,
+      totalDurationSeconds,
+      totalValidClips,
+      primaryMeeting: analyzedM.length > 0
+        ? [...analyzedM].sort((a, b) => getMeetingValidAudioDuration(b) - getMeetingValidAudioDuration(a))[0]
+        : [...validM].sort((a, b) => getMeetingValidAudioDuration(b) - getMeetingValidAudioDuration(a))[0],
+      isPartiallyAnalyzed: analyzedM.length > 0 && pendingM.length > 0,
+      isFullyAnalyzed: validM.length > 0 && pendingM.length === 0,
+      isPending: analyzedM.length === 0 && pendingM.length > 0,
+    };
+
+    if (groupSummary.isFullyAnalyzed) {
+      analyzedGroups.push(groupSummary);
+    } else {
+      pendingGroups.push(groupSummary);
+    }
+  });
+
+  // Sort groups alphabetically by name
+  analyzedGroups.sort((a, b) => (a.groupName || '').localeCompare(b.groupName || ''));
+  pendingGroups.sort((a, b) => (a.groupName || '').localeCompare(b.groupName || ''));
+  emptyOnlyGroups.sort((a, b) => (a.groupName || '').localeCompare(b.groupName || ''));
+
+  return {
+    weekNumber: weekNum,
+    totalMeetings: weekMeetings.length,
+    recordedGroupsCount: analyzedGroups.length + pendingGroups.length,
+    analyzedGroupsCount: analyzedGroups.length,
+    pendingGroupsCount: pendingGroups.length,
+    emptyOnlyGroupsCount: emptyOnlyGroups.length,
+    validSessionsCount: validSessions.length,
+    pendingSessionsCount: pendingSessions.length,
+    emptySessionsCount: totalEmptySessionsCount,
+    analyzedGroups,
+    pendingGroups,
+    emptyOnlyGroups,
+    validSessions,
+    pendingSessions,
+
+    // Backward-compatible aliases:
+    withAudioCount: analyzedGroups.length + pendingGroups.length,
+    missingCount: pendingGroups.length,
+    analyzedCount: analyzedGroups.length,
+    missingMeetings: pendingSessions,
+    analyzedMeetings: validSessions.filter((m) => !isMeetingPendingAnalysis(m)),
+    allAudioMeetings: validSessions,
+  };
 }
 
 export default function ProjectMeetingsView({ classId, classInfo, user, isPrivacyMode: propPrivacyMode }) {
@@ -529,25 +717,10 @@ export default function ProjectMeetingsView({ classId, classInfo, user, isPrivac
     });
   }, [meetings, visibleGroups, groups.length, supervisorFilter]);
 
-  // Statistics for Batch AI Analysis on the currently selected week
+  // Statistics for Batch AI Analysis on the currently selected week (aggregated by Project Group)
   const weekAiStats = useMemo(() => {
-    const weekNum = Number(studioWeekNumber);
-    const weekMeetings = meetings.filter((m) => Number(m.weekNumber) === weekNum);
-    const withAudio = weekMeetings.filter(
-      (m) => (Array.isArray(m.audioClips) && m.audioClips.length > 0) || Boolean(m.audioStoragePath)
-    );
-    const missing = withAudio.filter((m) => isMeetingPendingAnalysis(m));
-    const analyzed = withAudio.filter((m) => !isMeetingPendingAnalysis(m));
-    return {
-      totalMeetings: weekMeetings.length,
-      withAudioCount: withAudio.length,
-      missingCount: missing.length,
-      analyzedCount: analyzed.length,
-      missingMeetings: missing,
-      analyzedMeetings: analyzed,
-      allAudioMeetings: withAudio,
-    };
-  }, [meetings, studioWeekNumber]);
+    return computeWeekGroupAiStats(meetings, studioWeekNumber, groups);
+  }, [meetings, studioWeekNumber, groups]);
 
   // Unified Group & Week selection handlers
   const handleSelectGroup = useCallback(
@@ -881,29 +1054,29 @@ export default function ProjectMeetingsView({ classId, classInfo, user, isPrivac
     });
   }, [rawLogCsvText, persistedProfiles, enrolledStudents, groups, classInfo, semesterStartMonday]);
 
-  // Available weeks breakdown for the Batch AI modal
+  // Available weeks breakdown for the Batch AI modal (aggregated by Project Group)
   const batchModalWeekOptions = useMemo(() => {
     const recordedWeeks = meetings.map((m) => Number(m.weekNumber) || 0);
     const logWeeks = (weeklyLogData?.weeks || []).map((w) => Number(w) || 0);
     const maxWeek = Math.max(totalProjectWeeks || 14, ...recordedWeeks, ...logWeeks, 14);
     const options = [];
     for (let wk = 1; wk <= maxWeek; wk++) {
-      const wkMeetings = meetings.filter((m) => Number(m.weekNumber) === wk);
-      const withAudio = wkMeetings.filter(
-        (m) => (Array.isArray(m.audioClips) && m.audioClips.length > 0) || Boolean(m.audioStoragePath)
-      );
-      const missing = withAudio.filter((m) => isMeetingPendingAnalysis(m));
-      const analyzed = withAudio.length - missing.length;
+      const stats = computeWeekGroupAiStats(meetings, wk, groups);
       options.push({
         week: wk,
-        totalWithAudio: withAudio.length,
-        missingCount: missing.length,
-        analyzedCount: analyzed,
+        recordedGroupsCount: stats.recordedGroupsCount,
+        pendingGroupsCount: stats.pendingGroupsCount,
+        analyzedGroupsCount: stats.analyzedGroupsCount,
+        validSessionsCount: stats.validSessionsCount,
+        emptySessionsCount: stats.emptySessionsCount,
+        totalWithAudio: stats.validSessionsCount,
+        missingCount: stats.pendingGroupsCount,
+        analyzedCount: stats.analyzedGroupsCount,
         rangeLabel: formatWeekDateRange(wk, semesterStartMonday),
       });
     }
     return options;
-  }, [totalProjectWeeks, meetings, weeklyLogData?.weeks, semesterStartMonday]);
+  }, [totalProjectWeeks, meetings, groups, weeklyLogData?.weeks, semesterStartMonday]);
 
   // Currently selected student contribution being edited in Modal
   const editingStudentContrib = useMemo(() => {
@@ -2079,23 +2252,16 @@ export default function ProjectMeetingsView({ classId, classInfo, user, isPrivac
   // Batch Analyze All Groups in Selected Week (Mode 1: Missing Only | Mode 2: Re-Run All)
   const handleBatchAnalyzeWeek = async (mode = 'missing_only') => {
     const weekNum = Number(studioWeekNumber);
-    const weekMeetingsWithAudio = meetings.filter((m) => {
-      const isWeek = Number(m.weekNumber) === weekNum;
-      const hasAudio =
-        (Array.isArray(m.audioClips) && m.audioClips.length > 0) || Boolean(m.audioStoragePath);
-      return isWeek && hasAudio;
-    });
-
     const targets =
       mode === 'missing_only'
-        ? weekMeetingsWithAudio.filter((m) => isMeetingPendingAnalysis(m))
-        : weekMeetingsWithAudio;
+        ? (weekAiStats.pendingSessions || [])
+        : (weekAiStats.validSessions || []);
 
     if (targets.length === 0) {
       showToastMessage(
         mode === 'missing_only'
           ? `All recorded groups in Week ${weekNum} have already been analyzed!`
-          : `No recordings found in Week ${weekNum}.`
+          : `No valid recordings found in Week ${weekNum}.`
       );
       return;
     }
@@ -4737,31 +4903,41 @@ export default function ProjectMeetingsView({ classId, classInfo, user, isPrivac
                 </div>
 
                 {/* Notice banner if meeting has audio clips but has not yet been processed by Gemini or needs re-analysis */}
-                {isMeetingPendingAnalysis(selectedMeeting) && (
-                  <div style={{ padding: '10px 14px', background: selectedMeeting.needsReanalysis ? '#fff7ed' : '#fefce8', border: `1px solid ${selectedMeeting.needsReanalysis ? '#fdba74' : '#fef08a'}`, borderRadius: '8px', color: selectedMeeting.needsReanalysis ? '#9a3412' : '#854d0e', fontSize: '0.84rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', marginBottom: '14px' }}>
-                    <span>
-                      {selectedMeeting.needsReanalysis ? (
-                        <>⚠️ <strong>Audio Recordings Modified (Re-analysis Recommended):</strong> Audio clips were moved or modified on this session. Click <strong>&quot;Run Gemini Analysis&quot;</strong> to re-analyze the current audio.</>
-                      ) : selectedMeeting.rawDiarizedTranscript?.includes('No intelligible speech detected') || selectedMeeting.keyInsights?.executiveSummary?.includes('No intelligible speech was recorded') ? (
-                        <>⚠️ <strong>Previous Analysis Found No Speech:</strong> Audio clips are attached to this meeting. Click <strong>&quot;Run Gemini Analysis&quot;</strong> to re-transcribe and diarize.</>
-                      ) : (
-                        <>🎙️ <strong>Audio Recorded (Pending AI Analysis):</strong> Gemini has not processed this meeting yet. Click <strong>&quot;Run Gemini Analysis&quot;</strong> to diarize speakers, verify weekly logs, and attribute attendance.</>
-                      )}
-                    </span>
-                    <button
-                      type="button"
-                      className="btn-run-gemini-meeting"
-                      style={{ padding: '6px 12px', fontSize: '0.8rem' }}
-                      onClick={() => handleRunGeminiAnalysis(selectedMeeting.id)}
-                      disabled={isAnalyzing || selectedMeeting.status === 'analyzing'}
-                    >
-                      {isAnalyzing || selectedMeeting.status === 'analyzing'
-                        ? '⏳ Analyzing...'
-                        : selectedMeeting.status === 'analysis_failed'
-                        ? '🔄 Retry Gemini Analysis Now'
-                        : '✨ Run Gemini Analysis Now'}
-                    </button>
-                  </div>
+                {hasMeetingValidAudio(selectedMeeting) ? (
+                  isMeetingPendingAnalysis(selectedMeeting) && (
+                    <div style={{ padding: '10px 14px', background: selectedMeeting.needsReanalysis ? '#fff7ed' : '#fefce8', border: `1px solid ${selectedMeeting.needsReanalysis ? '#fdba74' : '#fef08a'}`, borderRadius: '8px', color: selectedMeeting.needsReanalysis ? '#9a3412' : '#854d0e', fontSize: '0.84rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', marginBottom: '14px' }}>
+                      <span>
+                        {selectedMeeting.needsReanalysis ? (
+                          <>⚠️ <strong>Audio Recordings Modified (Re-analysis Recommended):</strong> Audio clips were moved or modified on this session. Click <strong>&quot;Run Gemini Analysis&quot;</strong> to re-analyze the current audio.</>
+                        ) : selectedMeeting.rawDiarizedTranscript?.includes('No intelligible speech detected') || selectedMeeting.keyInsights?.executiveSummary?.includes('No intelligible speech was recorded') ? (
+                          <>⚠️ <strong>Previous Analysis Found No Speech:</strong> Audio clips are attached to this meeting. Click <strong>&quot;Run Gemini Analysis&quot;</strong> to re-transcribe and diarize.</>
+                        ) : (
+                          <>🎙️ <strong>Audio Recorded (Pending AI Analysis):</strong> Gemini has not processed this meeting yet. Click <strong>&quot;Run Gemini Analysis&quot;</strong> to diarize speakers, verify weekly logs, and attribute attendance.</>
+                        )}
+                      </span>
+                      <button
+                        type="button"
+                        className="btn-run-gemini-meeting"
+                        style={{ padding: '6px 12px', fontSize: '0.8rem' }}
+                        onClick={() => handleRunGeminiAnalysis(selectedMeeting.id)}
+                        disabled={isAnalyzing || selectedMeeting.status === 'analyzing'}
+                      >
+                        {isAnalyzing || selectedMeeting.status === 'analyzing'
+                          ? '⏳ Analyzing...'
+                          : selectedMeeting.status === 'analysis_failed'
+                          ? '🔄 Retry Gemini Analysis Now'
+                          : '✨ Run Gemini Analysis Now'}
+                      </button>
+                    </div>
+                  )
+                ) : (
+                  ((Array.isArray(selectedMeeting?.audioClips) && selectedMeeting.audioClips.length > 0) || selectedMeeting?.audioStoragePath) && (
+                    <div style={{ padding: '10px 14px', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', color: '#991b1b', fontSize: '0.84rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', marginBottom: '14px' }}>
+                      <span>
+                        ⚠️ <strong>Empty / Incomplete Recording (0s / 0 bytes):</strong> No valid audio was recorded in this session. Please record a new audio clip or delete this empty session.
+                      </span>
+                    </div>
+                  )
                 )}
 
                 {/* Section 1: Attendance Record Strip with 1-Click Teacher Override */}
@@ -5358,7 +5534,7 @@ export default function ProjectMeetingsView({ classId, classInfo, user, isPrivac
                   >
                     {batchModalWeekOptions.map((opt) => (
                       <option key={opt.week} value={opt.week}>
-                        Week {opt.week}{opt.rangeLabel ? ` (${opt.rangeLabel})` : ''} — {opt.totalWithAudio > 0 ? `🎙️ ${opt.totalWithAudio} recorded (${opt.missingCount} pending, ${opt.analyzedCount} analyzed)` : 'No recordings'}
+                        Week {opt.week}{opt.rangeLabel ? ` (${opt.rangeLabel})` : ''} — {opt.recordedGroupsCount > 0 ? `🎙️ ${opt.recordedGroupsCount} group${opt.recordedGroupsCount === 1 ? '' : 's'} (${opt.pendingGroupsCount > 0 ? `${opt.pendingGroupsCount} pending, ` : ''}${opt.analyzedGroupsCount} analyzed)` : 'No recordings'}
                       </option>
                     ))}
                   </select>
@@ -5367,43 +5543,101 @@ export default function ProjectMeetingsView({ classId, classInfo, user, isPrivac
                 {/* Status Breakdown Box */}
                 <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '12px 16px', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', textAlign: 'center' }}>
                   <div>
-                    <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a' }}>{weekAiStats.withAudioCount}</div>
-                    <div style={{ fontSize: '0.75rem', color: '#64748b' }}>🎙️ Total with Audio</div>
+                    <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#0f172a' }}>{weekAiStats.recordedGroupsCount}</div>
+                    <div style={{ fontSize: '0.75rem', color: '#64748b' }}>🎙️ Groups Recorded</div>
+                    <div style={{ fontSize: '0.68rem', color: '#94a3b8' }}>({weekAiStats.validSessionsCount} session{weekAiStats.validSessionsCount === 1 ? '' : 's'})</div>
                   </div>
                   <div>
-                    <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#d97706' }}>{weekAiStats.missingCount}</div>
+                    <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#d97706' }}>{weekAiStats.pendingGroupsCount}</div>
                     <div style={{ fontSize: '0.75rem', color: '#64748b' }}>🟡 Missing / Pending</div>
+                    <div style={{ fontSize: '0.68rem', color: '#94a3b8' }}>({weekAiStats.pendingSessionsCount} session{weekAiStats.pendingSessionsCount === 1 ? '' : 's'})</div>
                   </div>
                   <div>
-                    <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#16a34a' }}>{weekAiStats.analyzedCount}</div>
-                    <div style={{ fontSize: '0.75rem', color: '#64748b' }}>✨ Already Analyzed</div>
+                    <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#16a34a' }}>{weekAiStats.analyzedGroupsCount}</div>
+                    <div style={{ fontSize: '0.75rem', color: '#64748b' }}>✨ Fully Analyzed</div>
+                    <div style={{ fontSize: '0.68rem', color: '#16a34a', fontWeight: 600 }}>{weekAiStats.pendingGroupsCount === 0 && weekAiStats.recordedGroupsCount > 0 ? 'All Complete!' : ''}</div>
                   </div>
                 </div>
 
+                {/* Empty / 0-byte sessions notice if any */}
+                {weekAiStats.emptySessionsCount > 0 && (
+                  <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '7px 12px', fontSize: '0.76rem', color: '#64748b', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span>ℹ️</span>
+                    <span>
+                      <strong>{weekAiStats.emptySessionsCount} empty session stub{weekAiStats.emptySessionsCount === 1 ? '' : 's'}</strong> (0 bytes or ≤ 2s) excluded to prevent AI errors.
+                    </span>
+                  </div>
+                )}
+
                 {/* Group Details in Selected Week */}
-                {weekAiStats.missingMeetings?.length > 0 && (
+                {weekAiStats.pendingGroups?.length > 0 && (
                   <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: '8px', padding: '10px 12px', fontSize: '0.82rem' }}>
-                    <strong style={{ color: '#92400e', display: 'block', marginBottom: '4px' }}>
-                      🟡 Groups Pending AI Analysis in Week {studioWeekNumber} ({weekAiStats.missingMeetings.length}):
+                    <strong style={{ color: '#92400e', display: 'block', marginBottom: '6px' }}>
+                      🟡 Groups Pending AI Analysis in Week {studioWeekNumber} ({weekAiStats.pendingGroups.length}):
                     </strong>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                      {weekAiStats.missingMeetings.map((m) => (
-                        <span key={m.id} style={{ background: '#fef3c7', color: '#78350f', padding: '2px 8px', borderRadius: '4px', fontWeight: 600, fontSize: '0.78rem' }}>
-                          {m.groupName || m.groupId || 'Group'}
+                      {weekAiStats.pendingGroups.map((g) => (
+                        <span
+                          key={g.groupId}
+                          style={{
+                            background: '#fef3c7',
+                            border: '1px solid #fcd34d',
+                            color: '#78350f',
+                            padding: '3px 8px',
+                            borderRadius: '4px',
+                            fontWeight: 600,
+                            fontSize: '0.78rem',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                          }}
+                        >
+                          <span>{g.groupName || g.groupId}</span>
+                          <span style={{ fontSize: '0.7rem', color: '#92400e', fontWeight: 500 }}>
+                            ({g.totalValidClips > 1 ? `${g.totalValidClips} parts` : '1 part'}
+                            {g.totalDurationSeconds > 0 ? ` · ${formatDuration(g.totalDurationSeconds)}` : ''}
+                            {g.isPartiallyAnalyzed ? ' · partial' : ''})
+                          </span>
                         </span>
                       ))}
                     </div>
                   </div>
                 )}
-                {weekAiStats.analyzedMeetings?.length > 0 && (
+                {weekAiStats.analyzedGroups?.length > 0 && (
                   <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '8px', padding: '10px 12px', fontSize: '0.82rem' }}>
-                    <strong style={{ color: '#166534', display: 'block', marginBottom: '4px' }}>
-                      ✨ Already Analyzed Groups in Week {studioWeekNumber} ({weekAiStats.analyzedMeetings.length}):
-                    </strong>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                      <strong style={{ color: '#166534' }}>
+                        ✨ Already Analyzed Groups in Week {studioWeekNumber} ({weekAiStats.analyzedGroups.length}):
+                      </strong>
+                      {weekAiStats.pendingGroupsCount === 0 && (
+                        <span style={{ fontSize: '0.7rem', background: '#dcfce7', color: '#15803d', border: '1px solid #86efac', padding: '1px 6px', borderRadius: '10px', fontWeight: 700 }}>
+                          ✅ All Done
+                        </span>
+                      )}
+                    </div>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                      {weekAiStats.analyzedMeetings.map((m) => (
-                        <span key={m.id} style={{ background: '#dcfce7', color: '#14532d', padding: '2px 8px', borderRadius: '4px', fontWeight: 600, fontSize: '0.78rem' }}>
-                          {m.groupName || m.groupId || 'Group'}
+                      {weekAiStats.analyzedGroups.map((g) => (
+                        <span
+                          key={g.groupId}
+                          style={{
+                            background: '#dcfce7',
+                            border: '1px solid #86efac',
+                            color: '#14532d',
+                            padding: '3px 8px',
+                            borderRadius: '4px',
+                            fontWeight: 600,
+                            fontSize: '0.78rem',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                          }}
+                        >
+                          <span>{g.groupName || g.groupId}</span>
+                          <span style={{ fontSize: '0.7rem', color: '#166534', fontWeight: 500 }}>
+                            ({g.totalValidClips > 1 ? `${g.totalValidClips} parts` : '1 part'}
+                            {g.totalDurationSeconds > 0 ? ` · ${formatDuration(g.totalDurationSeconds)}` : ''}
+                            {g.validMeetingsCount > 1 ? ` · ${g.validMeetingsCount} sessions` : ''})
+                          </span>
                         </span>
                       ))}
                     </div>
@@ -5432,7 +5666,7 @@ export default function ProjectMeetingsView({ classId, classInfo, user, isPrivac
                   <div style={{ border: '1.5px solid #fed7aa', background: '#fffbeb', borderRadius: '8px', padding: '12px 14px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
                       <strong style={{ fontSize: '0.92rem', color: '#9a3412' }}>
-                        ⚡ Mode 1: Run Missing Only ({weekAiStats.missingCount} groups)
+                        ⚡ Mode 1: Run Missing Only ({weekAiStats.pendingGroupsCount} group{weekAiStats.pendingGroupsCount === 1 ? '' : 's'})
                       </strong>
                       <span style={{ fontSize: '0.72rem', background: '#f97316', color: '#fff', padding: '2px 8px', borderRadius: '12px', fontWeight: 700 }}>
                         Recommended
@@ -5446,19 +5680,19 @@ export default function ProjectMeetingsView({ classId, classInfo, user, isPrivac
                       className="btn-start-meeting-rec"
                       style={{ width: '100%', background: '#f97316', borderColor: '#ea580c' }}
                       onClick={() => handleBatchAnalyzeWeek('missing_only')}
-                      disabled={weekAiStats.missingCount === 0 || isAnalyzing || Boolean(batchAnalysisProgress)}
+                      disabled={weekAiStats.pendingGroupsCount === 0 || isAnalyzing || Boolean(batchAnalysisProgress)}
                     >
-                      {weekAiStats.withAudioCount === 0
+                      {weekAiStats.recordedGroupsCount === 0
                         ? `⚠️ No Recordings in Week ${studioWeekNumber}`
-                        : weekAiStats.missingCount === 0
-                        ? `✅ All ${weekAiStats.withAudioCount} Groups in Week ${studioWeekNumber} Already Analyzed`
-                        : `⚡ Analyze ${weekAiStats.missingCount} Missing Group(s)`}
+                        : weekAiStats.pendingGroupsCount === 0
+                        ? `✅ All ${weekAiStats.analyzedGroupsCount} Groups in Week ${studioWeekNumber} Already Analyzed`
+                        : `⚡ Analyze ${weekAiStats.pendingGroupsCount} Missing Group(s) (${weekAiStats.pendingSessionsCount} session${weekAiStats.pendingSessionsCount === 1 ? '' : 's'})`}
                     </button>
                   </div>
 
                   <div style={{ border: '1px solid #cbd5e1', background: '#f8fafc', borderRadius: '8px', padding: '12px 14px' }}>
                     <strong style={{ display: 'block', fontSize: '0.92rem', color: '#334155', marginBottom: '4px' }}>
-                      🔄 Mode 2: Re-Run All ({weekAiStats.withAudioCount} groups)
+                      🔄 Mode 2: Re-Run All ({weekAiStats.recordedGroupsCount} group{weekAiStats.recordedGroupsCount === 1 ? '' : 's'})
                     </strong>
                     <p style={{ margin: '0 0 10px 0', fontSize: '0.8rem', color: '#64748b' }}>
                       Re-analyzes all recorded groups in Week {studioWeekNumber} from scratch. Useful if you updated student weekly logs or want to switch models.
@@ -5468,11 +5702,11 @@ export default function ProjectMeetingsView({ classId, classInfo, user, isPrivac
                       className="btn-pause-meeting-rec"
                       style={{ width: '100%' }}
                       onClick={() => handleBatchAnalyzeWeek('all')}
-                      disabled={weekAiStats.withAudioCount === 0 || isAnalyzing || Boolean(batchAnalysisProgress)}
+                      disabled={weekAiStats.recordedGroupsCount === 0 || isAnalyzing || Boolean(batchAnalysisProgress)}
                     >
-                      {weekAiStats.withAudioCount === 0
+                      {weekAiStats.recordedGroupsCount === 0
                         ? `⚠️ No Recordings in Week ${studioWeekNumber}`
-                        : `🔄 Re-Analyze All ${weekAiStats.withAudioCount} Group(s) in Week ${studioWeekNumber}`}
+                        : `🔄 Re-Analyze All ${weekAiStats.recordedGroupsCount} Group(s) in Week ${studioWeekNumber} (${weekAiStats.validSessionsCount} session${weekAiStats.validSessionsCount === 1 ? '' : 's'})`}
                     </button>
                   </div>
                 </div>

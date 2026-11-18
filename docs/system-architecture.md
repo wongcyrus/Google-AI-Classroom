@@ -190,6 +190,11 @@ The repository is structured as a modular monorepo composed of three decoupled f
 * **Real-Time Data Engine**: Direct, low-latency Firestore listeners (`onSnapshot`) with offline screen frame caching and positive clock-drift tolerances.
 * **Low-Bandwidth Screen Broadcaster**: Lightweight, delta-compressed JPEG canvas streaming for 1-to-many teacher screen sharing without WebRTC server strain.
 * **Live Lecture Subtitles & Multilingual Captioning**: Dual-Engine selectable pipeline (**Server Model**: LiteRT Whisper / Web Speech API + Cloud Function `translateTeacherSpeech` via Gemini 3.5 Flash-Lite; **Client Model**: LiteRT Whisper + LiteRT Gemma 4 E2B WebGPU with explicit download button and mobile OOM protection) with 350ms debounced Firestore synchronization to `classes/{classId}/liveSubtitles/current`.
+* **Project Supervision Studio & Batch AI Pipeline (`ProjectMeetingsView.jsx`)**:
+  - Group-Centric Aggregation (`computeWeekGroupAiStats`): Groups all supervision meeting documents, multi-part audio recordings, and screen demonstrations by `groupId`. Deduplicates entries so each project group is presented cleanly.
+  - Multi-Part Recording Transparency: Consolidates sequential recordings (Part 1, Part 2, Part 3) with accurate timestamp offsets, duration tracking, and session attribution.
+  - Automatic 0-Byte Stub Exclusion: Filters out accidental or corrupted recordings ($\le 2$s, 0 bytes) to prevent Vertex AI decoding failures (`INVALID_ARGUMENT: [400 Bad Request] The provided file is malformed or corrupted and could not be decoded`).
+  - Batch AI Modes: Mode 1 ("Run Missing Only") analyzes only valid unanalyzed recordings; Mode 2 ("Re-Run All") re-evaluates all valid sessions across the academic week.
 
 ### 2. Serverless Backend (`functions/`)
 * **Runtime**: Google Cloud Functions Gen 2 running on Google Cloud Run container instances.

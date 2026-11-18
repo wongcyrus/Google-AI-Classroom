@@ -4,6 +4,41 @@
 **System**: Google AI Classroom  
 **Production URL**: `https://it114115-2627.web.app`
 
+## 0.0.0.0.0.0.0.0.0.0.4.1 Batch AI Analysis Group-Centric Aggregation, Multi-Part Transparency & Empty Recording Exclusion
+
+**Date**: November 18, 2026  
+**Status**: Implemented, Verified with Passing Unit Tests (`ProjectMeetingsView.test.jsx` 21/21, `projectMeetingFlows.test.js` 21/21), Production Build Passing, and Deployed to `it114115-2627`  
+**Primary Files**:
+- [`web-app/src/components/meetings/ProjectMeetingsView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/meetings/ProjectMeetingsView.jsx)
+- [`web-app/src/components/meetings/ProjectMeetingsView.test.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/meetings/ProjectMeetingsView.test.jsx)
+- [`functions/ai_flows/projectMeetingFlows.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/projectMeetingFlows.js)
+- [`functions/ai_flows/projectMeetingFlows.test.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/projectMeetingFlows.test.js)
+
+### Problem & Root Cause:
+1. **Raw Document vs Project Group Mismatch**:
+   - In the Batch AI Analysis modal, statistics and listing chips mapped raw Firestore meeting documents directly to group names without aggregating by `groupId`.
+   - When a group had multiple meeting sessions in the same week (e.g. `Group A04` having 1 multi-part analyzed meeting, 1 short 3s analyzed meeting, and two 0-byte 1s abandoned test recordings), the modal displayed `A04` twice under "🟡 Groups Pending AI Analysis" and twice under "✨ Already Analyzed Groups", creating confusion as to whether A04 had completed results.
+2. **0-Byte Test Stub Ingestion & Vertex AI 400 Errors**:
+   - Accidental 0-byte or 1-second recordings were tagged as `analysis_failed`, causing `isMeetingPendingAnalysis` to flag them as "pending".
+   - When the instructor clicked **⚡ Mode 1: Run Missing Only**, the batch job attempted to analyze these empty files via Vertex AI, triggering `[400 Bad Request] The provided file is malformed or corrupted and could not be decoded. [500] 5 groups got error`.
+
+### Key Enhancements & Presentation Logic:
+1. **Group-Centric Aggregation (`computeWeekGroupAiStats`)**:
+   - Supervision meetings for the selected week are aggregated by `groupId`.
+   - Groups with multiple recording sessions or multi-part audio clips (e.g., A04 with 3 parts totaling 28m32s) appear **strictly once** in the list.
+   - Each group chip displays part count, total playable duration, and session count (e.g., `A04 (3 parts · 28m32s · 2 sessions)`).
+2. **Automatic 0-Byte / Corrupted Recording Exclusion**:
+   - Helper `isAudioClipValid` and `hasMeetingValidAudio` detect recordings where `fileSize === 0` or duration is $\le 2$s with $\le 256$ bytes.
+   - Empty/corrupted sessions are excluded from batch analysis targets (`validSessions` and `pendingSessions`) and from "Pending" counts.
+   - An informational notice in the modal informs instructors: `ℹ️ N empty session stub(s) (0 bytes or ≤ 2s) excluded to prevent AI errors.`
+3. **Smart Batch Mode 1 & Mode 2 Execution**:
+   - **Mode 1 ("Run Missing Only")**: Targets only `pendingSessions` containing valid audio. If all groups with recordings have been analyzed, the button is cleanly disabled with `✅ All N Groups in Week W Already Analyzed`.
+   - **Mode 2 ("Re-Run All")**: Re-analyzes `validSessions`, completely skipping empty stubs so that Vertex AI never receives malformed files.
+4. **Backend Resilience Fallback**:
+   - `handleAnalyzeProjectMeeting` in [`projectMeetingFlows.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/projectMeetingFlows.js) checks explicit `clip.fileSize` if Cloud Storage metadata lookup fails, safely skipping clips $\le 256$ bytes or duration $\le 2$s, and returns `{ success: false, reason: 'empty_audio' }` rather than invoking Gemini with corrupted media.
+
+---
+
 ## 0.0.0.0.0.0.0.0.0.0.4.0 Project Supervision Meeting AI Resilience, Gemini 4 Argon Long-Audio Routing, and Zero-Egress PII Privacy Protection
 
 **Date**: November 18, 2026  
