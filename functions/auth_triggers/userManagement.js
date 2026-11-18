@@ -210,14 +210,27 @@ export const onClassUpdate = onDocumentWritten({ document: 'classes/{classId}', 
     updateUserAssociations(classId, removedTeachers, 'teacher', 'remove'),
   ];
 
-  // Sync any student profiles present in this class to the central institutional studentDirectory
+  // Sync only added/changed student profiles to the central institutional studentDirectory
+  const beforeProfiles = (beforeData.studentProfiles && typeof beforeData.studentProfiles === 'object') ? beforeData.studentProfiles : {};
   if (afterData.studentProfiles && typeof afterData.studentProfiles === 'object') {
-    const dirBatch = db.batch();
+    let dirBatch = db.batch();
     let dirCount = 0;
     for (const [rawEmail, prof] of Object.entries(afterData.studentProfiles)) {
       const normEmail = rawEmail.trim().toLowerCase();
       if (!normEmail || !prof || typeof prof !== 'object') continue;
       if (!prof.studentName && !prof.nickname && !prof.programme && !prof.studentClass) continue;
+
+      const prevProf = beforeProfiles[rawEmail];
+      if (
+        prevProf &&
+        typeof prevProf === 'object' &&
+        (prevProf.studentName || '') === (prof.studentName || '') &&
+        (prevProf.nickname || '') === (prof.nickname || '') &&
+        (prevProf.programme || '') === (prof.programme || '') &&
+        (prevProf.studentClass || '') === (prof.studentClass || '')
+      ) {
+        continue;
+      }
 
       const dirRef = db.collection('studentDirectory').doc(normEmail);
       dirBatch.set(dirRef, {
@@ -230,6 +243,12 @@ export const onClassUpdate = onDocumentWritten({ document: 'classes/{classId}', 
         updatedAt: new Date().toISOString(),
       }, { merge: true });
       dirCount++;
+
+      if (dirCount >= 450) {
+        promises.push(dirBatch.commit());
+        dirBatch = db.batch();
+        dirCount = 0;
+      }
     }
     if (dirCount > 0) {
       promises.push(dirBatch.commit());

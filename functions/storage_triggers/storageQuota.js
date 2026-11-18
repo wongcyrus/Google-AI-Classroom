@@ -83,11 +83,6 @@ export const updateStorageUsageOnUpload = onObjectFinalized({
       [usageField]: FieldValue.increment(fileSize)
     };
     await storageRef.update(updatePayload);
-    try {
-      await classRef.set({ storageUsage: FieldValue.increment(fileSize) }, { merge: true });
-    } catch (e) {
-      console.warn(`Could not sync storageUsage to class ${classId}:`, e);
-    }
     console.log(`Successfully updated storage usage for class ${classId}.`);
 
     const classDoc = await classRef.get();
@@ -112,11 +107,6 @@ export const updateStorageUsageOnUpload = onObjectFinalized({
           [usageField]: FieldValue.increment(-fileSize)
         };
         await storageRef.update(revertPayload);
-        try {
-          await classRef.set({ storageUsage: FieldValue.increment(-fileSize) }, { merge: true });
-        } catch (e) {
-          console.warn(`Could not sync storageUsage to class ${classId}:`, e);
-        }
         console.log(`Reverted storage usage increment for ${classId}.`);
       }
     }
@@ -140,11 +130,6 @@ export const updateStorageUsageOnUpload = onObjectFinalized({
             [usageField]: fileSize
           };
           await storageRef.set(initialPayload);
-          try {
-            await classRef.set({ storageUsage: fileSize }, { merge: true });
-          } catch (e) {
-            console.warn(`Could not sync storageUsage to class ${classId}:`, e);
-          }
           console.log(`Initialized storageUsage for class ${classId}.`);
         }
       } else {
@@ -224,13 +209,6 @@ export const updateStorageUsageOnDelete = onObjectDeleted({
       if (decTotal > 0) updatePayload.storageUsage = FieldValue.increment(-decTotal);
 
       await storageRef.update(updatePayload);
-      if (decTotal > 0) {
-        try {
-          await classRef.set({ storageUsage: FieldValue.increment(-decTotal) }, { merge: true });
-        } catch (e) {
-          console.warn(`Could not sync storageUsage to class ${classId}:`, e);
-        }
-      }
       console.log(`Successfully decreased storage usage for class ${classId} (decField: ${decField}, decTotal: ${decTotal}).`);
     }
   } catch (error) {

@@ -369,4 +369,85 @@ describe('onClassUpdate Lifecycle & User Association Trigger', () => {
       })
     );
   });
+
+  it('skips studentDirectory writes for unchanged studentProfiles and syncs only changed entries', async () => {
+    const unchangedProf = {
+      studentName: 'Alice Wong',
+      nickname: 'Ali',
+      studentClass: '1A',
+      programme: 'SE',
+    };
+    const changedProfBefore = {
+      studentName: 'Bob Chan',
+      nickname: 'Bob',
+      studentClass: '1A',
+      programme: 'SE',
+    };
+    const changedProfAfter = {
+      studentName: 'Bob Chan',
+      nickname: 'Bobby',
+      studentClass: '1A',
+      programme: 'SE',
+    };
+
+    // 1. Unchanged studentProfiles (e.g. only isCapturing toggled) -> 0 studentDirectory writes
+    await onClassUpdate({
+      params: { classId: 'CLASS_C' },
+      data: {
+        before: {
+          data: () => ({
+            studentEmails: ['alice@stu.vtc.edu.hk'],
+            teacherEmails: [],
+            isCapturing: false,
+            studentProfiles: { 'alice@stu.vtc.edu.hk': unchangedProf },
+          }),
+        },
+        after: {
+          data: () => ({
+            studentEmails: ['alice@stu.vtc.edu.hk'],
+            teacherEmails: [],
+            isCapturing: true,
+            studentProfiles: { 'alice@stu.vtc.edu.hk': unchangedProf },
+          }),
+        },
+      },
+    });
+    expect(mockBatchSet).not.toHaveBeenCalled();
+
+    // 2. Only Bob's profile changed -> only Bob is synced to studentDirectory
+    await onClassUpdate({
+      params: { classId: 'CLASS_C' },
+      data: {
+        before: {
+          data: () => ({
+            studentEmails: ['alice@stu.vtc.edu.hk', 'bob@stu.vtc.edu.hk'],
+            teacherEmails: [],
+            studentProfiles: {
+              'alice@stu.vtc.edu.hk': unchangedProf,
+              'bob@stu.vtc.edu.hk': changedProfBefore,
+            },
+          }),
+        },
+        after: {
+          data: () => ({
+            studentEmails: ['alice@stu.vtc.edu.hk', 'bob@stu.vtc.edu.hk'],
+            teacherEmails: [],
+            studentProfiles: {
+              'alice@stu.vtc.edu.hk': unchangedProf,
+              'bob@stu.vtc.edu.hk': changedProfAfter,
+            },
+          }),
+        },
+      },
+    });
+    expect(mockBatchSet).toHaveBeenCalledTimes(1);
+    expect(mockBatchSet).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        email: 'bob@stu.vtc.edu.hk',
+        nickname: 'Bobby',
+      }),
+      { merge: true }
+    );
+  });
 });
