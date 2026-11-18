@@ -5920,15 +5920,14 @@ export default function ProjectMeetingsView({ classId, classInfo, user, isPrivac
       />
 
       {/* Batch Gemini Analysis Modal for Selected Week */}
-      {showBatchAiModal && (
-        <div
-          className="batch-ai-modal-backdrop"
-          onClick={() => !batchAnalysisProgress && setShowBatchAiModal(false)}
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="batch-ai-modal-title"
-        >
-          <div className="batch-ai-modal-card" onClick={(e) => e.stopPropagation()}>
+      <NativeModalDialog
+        open={showBatchAiModal}
+        onClose={() => { if (!batchAnalysisProgress) setShowBatchAiModal(false); }}
+        canDismiss={!batchAnalysisProgress}
+        ariaLabelledBy="batch-ai-modal-title"
+        className="batch-ai-modal-card"
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', maxHeight: 'inherit' }}>
             <div className="batch-ai-modal-header">
               <h3 id="batch-ai-modal-title" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
                 ⚡ Batch Gemini Analysis — Week {studioWeekNumber}
@@ -6225,23 +6224,18 @@ export default function ProjectMeetingsView({ classId, classInfo, user, isPrivac
                 </div>
               )}
             </div>
-          </div>
         </div>
-      )}
+      </NativeModalDialog>
 
       {/* Edit Student Record & Feedback Modal */}
-      {editingStudentContrib && (
-        <div
-          className="student-edit-modal-backdrop"
-          onClick={() => setEditingStudentUid(null)}
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="student-edit-modal-title"
-        >
-          <div
-            className="student-edit-modal-card"
-            onClick={(e) => e.stopPropagation()}
-          >
+      <NativeModalDialog
+        open={Boolean(editingStudentContrib)}
+        onClose={() => setEditingStudentUid(null)}
+        ariaLabelledBy="student-edit-modal-title"
+        className="student-edit-modal-card"
+      >
+        {editingStudentContrib && (
+          <div style={{ display: 'flex', flexDirection: 'column', maxHeight: 'inherit' }}>
             <div className="student-edit-modal-header">
               <div>
                 <h3 id="student-edit-modal-title" style={{ margin: 0, fontSize: '1.15rem', color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -6391,23 +6385,20 @@ export default function ProjectMeetingsView({ classId, classInfo, user, isPrivac
               </button>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </NativeModalDialog>
 
       {/* Email Report Modal */}
-      {showEmailReportModal && emailReportTargetMeeting && (
-        <div
-          className="student-edit-modal-backdrop"
-          onClick={() => !isSendingEmail && setShowEmailReportModal(false)}
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="email-report-modal-title"
-        >
-          <div
-            className="student-edit-modal-card"
-            style={{ maxWidth: '580px' }}
-            onClick={(e) => e.stopPropagation()}
-          >
+      <NativeModalDialog
+        open={Boolean(showEmailReportModal && emailReportTargetMeeting)}
+        onClose={() => { if (!isSendingEmail) setShowEmailReportModal(false); }}
+        canDismiss={!isSendingEmail}
+        ariaLabelledBy="email-report-modal-title"
+        className="student-edit-modal-card"
+        style={{ maxWidth: '580px' }}
+      >
+        {showEmailReportModal && emailReportTargetMeeting && (
+          <div style={{ display: 'flex', flexDirection: 'column', maxHeight: 'inherit' }}>
             <div className="student-edit-modal-header">
               <div>
                 <h3
@@ -6598,23 +6589,19 @@ export default function ProjectMeetingsView({ classId, classInfo, user, isPrivac
               </button>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </NativeModalDialog>
 
       {/* Whole-Class Weekly Meeting Reports Batch Email Modal */}
-      {showWeekBatchEmailModal && (
-        <div
-          className="student-edit-modal-backdrop"
-          onClick={() => !isBatchSendingEmails && setShowWeekBatchEmailModal(false)}
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="batch-email-modal-title"
-        >
-          <div
-            className="student-edit-modal-card"
-            style={{ maxWidth: '680px', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}
-            onClick={(e) => e.stopPropagation()}
-          >
+      <NativeModalDialog
+        open={showWeekBatchEmailModal}
+        onClose={() => { if (!isBatchSendingEmails) setShowWeekBatchEmailModal(false); }}
+        canDismiss={!isBatchSendingEmails}
+        ariaLabelledBy="batch-email-modal-title"
+        className="student-edit-modal-card"
+        style={{ maxWidth: '680px', maxHeight: '90vh' }}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', maxHeight: 'inherit' }}>
             <div className="student-edit-modal-header">
               <div>
                 <h3
@@ -7076,9 +7063,8 @@ export default function ProjectMeetingsView({ classId, classInfo, user, isPrivac
                   : `🚀 Send Reports to Selected (${batchEmailSelectedMeetingIds.length} Groups)`}
               </button>
             </div>
-          </div>
         </div>
-      )}
+      </NativeModalDialog>
 
       {/* Photo Lightbox Modal */}
       <NativeModalDialog
