@@ -1533,7 +1533,7 @@ Group Beta,New Beta Topic,other@vtc.edu.hk,eva@stu.vtc.edu.hk,Eva Ho,Leader`;
 
     // Lightbox modal should appear
     expect(screen.getAllByText(/Drafted 5 collections/i).length).toBeGreaterThanOrEqual(1);
-    const closeLightboxBtn = screen.getByRole('button', { name: '✕' });
+    const closeLightboxBtn = screen.getByRole('button', { name: /Close photo preview/i });
     fireEvent.click(closeLightboxBtn);
 
     // Open Photo Capture Modal

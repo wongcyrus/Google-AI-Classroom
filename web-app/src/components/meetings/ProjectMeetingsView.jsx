@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import NativeModalDialog from './NativeModalDialog';
 import { db, storage, functions } from '../../firebase-config';
 import {
   collection,
@@ -7080,27 +7081,23 @@ export default function ProjectMeetingsView({ classId, classInfo, user, isPrivac
       )}
 
       {/* Photo Lightbox Modal */}
-      {previewPhoto && (
-        <div
-          className="modal-overlay"
-          style={{ zIndex: 9999 }}
-          onClick={() => setPreviewPhoto(null)}
-        >
-          <div
-            className="photo-lightbox-modal"
-            style={{
-              maxWidth: '920px',
-              width: '95%',
-              background: '#0f172a',
-              color: '#ffffff',
-              borderRadius: '12px',
-              overflow: 'hidden',
-              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5)',
-              display: 'flex',
-              flexDirection: 'column',
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
+      <NativeModalDialog
+        open={Boolean(previewPhoto)}
+        onClose={() => setPreviewPhoto(null)}
+        ariaLabel={previewPhoto?.label || 'Meeting Photo Preview'}
+        className="photo-lightbox-modal"
+        style={{
+          maxWidth: '920px',
+          width: '95%',
+          background: '#0f172a',
+          color: '#ffffff',
+          borderRadius: '12px',
+          overflow: 'hidden',
+          boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5)',
+        }}
+      >
+        {previewPhoto && (
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', background: '#1e293b', borderBottom: '1px solid #334155' }}>
               <div>
                 <strong style={{ fontSize: '0.98rem' }}>{previewPhoto.label || 'Meeting Photo'}</strong>
@@ -7113,6 +7110,7 @@ export default function ProjectMeetingsView({ classId, classInfo, user, isPrivac
               <button
                 type="button"
                 onClick={() => setPreviewPhoto(null)}
+                aria-label="Close photo preview"
                 style={{ background: 'none', border: 'none', color: '#cbd5e1', fontSize: '1.2rem', cursor: 'pointer' }}
               >
                 ✕
@@ -7136,37 +7134,33 @@ export default function ProjectMeetingsView({ classId, classInfo, user, isPrivac
               </div>
             )}
           </div>
-        </div>
-      )}
+        )}
+      </NativeModalDialog>
 
       {/* Photo Capture & Upload Modal */}
-      {isPhotoModalOpen && (
-        <div
-          className="modal-overlay"
-          style={{ zIndex: 9998 }}
-          role="dialog"
-          aria-modal="true"
-          aria-label="Snap Meeting Photo"
-          onClick={() => !isUploadingPhoto && setIsPhotoModalOpen(false)}
-        >
-          <div
-            className="modal-card"
-            style={{ maxWidth: '480px', width: '92%', borderRadius: '12px', padding: '20px' }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-              <h3 style={{ margin: 0, fontSize: '1.05rem', color: '#1e293b', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                📸 Snap Meeting Photo / Artifact
-              </h3>
-              <button
-                type="button"
-                onClick={() => !isUploadingPhoto && setIsPhotoModalOpen(false)}
-                disabled={isUploadingPhoto}
-                style={{ background: 'none', border: 'none', fontSize: '1.1rem', cursor: 'pointer', color: '#64748b' }}
-              >
-                ✕
-              </button>
-            </div>
+      <NativeModalDialog
+        open={isPhotoModalOpen}
+        onClose={() => { if (!isUploadingPhoto) setIsPhotoModalOpen(false); }}
+        canDismiss={!isUploadingPhoto}
+        ariaLabel="Snap Meeting Photo"
+        className="modal-card"
+        style={{ maxWidth: '480px', width: '92%', borderRadius: '12px', padding: '20px' }}
+      >
+        <div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+            <h3 style={{ margin: 0, fontSize: '1.05rem', color: '#1e293b', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              📸 Snap Meeting Photo / Artifact
+            </h3>
+            <button
+              type="button"
+              onClick={() => !isUploadingPhoto && setIsPhotoModalOpen(false)}
+              disabled={isUploadingPhoto}
+              aria-label="Close photo capture modal"
+              style={{ background: 'none', border: 'none', fontSize: '1.1rem', cursor: 'pointer', color: '#64748b' }}
+            >
+              ✕
+            </button>
+          </div>
 
             <p style={{ margin: '0 0 12px 0', fontSize: '0.82rem', color: '#64748b' }}>
               Take or upload a photo of whiteboards, hardware wiring, or code. Gemini will inspect it alongside the consultation transcript to verify student contributions.
@@ -7184,7 +7178,7 @@ export default function ProjectMeetingsView({ classId, classInfo, user, isPrivac
                 style={{ width: '100%', padding: '7px 10px', borderRadius: '6px', border: '1px solid #cbd5e1', fontSize: '0.84rem' }}
               >
                 <option value="">👥 Whole Group / General Evidence</option>
-                {((activeStudioGroup || selectedGroup)?.members || []).map((m) => (
+                {(activeStudioGroup?.members || []).map((m) => (
                   <option key={m.uid || m.email} value={m.uid || m.email}>
                     👤 {formatStudentDisplayName(m.name, m.email)}
                   </option>
@@ -7293,35 +7287,27 @@ export default function ProjectMeetingsView({ classId, classInfo, user, isPrivac
                 </button>
               </div>
             )}
-          </div>
         </div>
-      )}
+      </NativeModalDialog>
 
       {/* 720p Mobile Video Demo Recording Viewfinder Modal */}
-      {isVideoRecordingOpen && (
-        <div
-          className="modal-overlay"
-          style={{ zIndex: 9998 }}
-          role="dialog"
-          aria-modal="true"
-          aria-label="Mobile Demo Video Recorder"
-          onClick={() => videoRecordingState !== 'uploading' && handleCloseVideoRecorder()}
-        >
-          <div
-            className="video-recorder-drawer"
-            style={{
-              maxWidth: '680px',
-              width: '95%',
-              background: '#0f172a',
-              color: '#ffffff',
-              borderRadius: '12px',
-              overflow: 'hidden',
-              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.6)',
-              display: 'flex',
-              flexDirection: 'column',
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
+      <NativeModalDialog
+        open={isVideoRecordingOpen}
+        onClose={() => { if (videoRecordingState !== 'uploading') handleCloseVideoRecorder(); }}
+        canDismiss={videoRecordingState !== 'uploading'}
+        ariaLabel="Mobile Demo Video Recorder"
+        className="video-recorder-drawer"
+        style={{
+          maxWidth: '680px',
+          width: '95%',
+          background: '#0f172a',
+          color: '#ffffff',
+          borderRadius: '12px',
+          overflow: 'hidden',
+          boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.6)',
+        }}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
             {/* Header */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', background: '#1e293b', borderBottom: '1px solid #334155' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -7354,7 +7340,7 @@ export default function ProjectMeetingsView({ classId, classInfo, user, isPrivac
                     style={{ width: '100%', padding: '5px 8px', borderRadius: '6px', background: '#334155', color: '#ffffff', border: '1px solid #475569', fontSize: '0.8rem' }}
                   >
                     <option value="">👥 Whole Group</option>
-                    {((activeStudioGroup || selectedGroup)?.members || []).map((m) => (
+                    {(activeStudioGroup?.members || []).map((m) => (
                       <option key={m.uid || m.email} value={m.uid || m.email}>
                         👤 {formatStudentDisplayName(m.name, m.email)}
                       </option>
@@ -7511,23 +7497,17 @@ export default function ProjectMeetingsView({ classId, classInfo, user, isPrivac
                 </button>
               </div>
             </div>
-          </div>
         </div>
-      )}
+      </NativeModalDialog>
 
       {/* Mobile-First Quick Group Picker Modal / Bottom Sheet */}
-      {showGroupPickerModal && (
-        <div
-          className="group-picker-modal-overlay"
-          onClick={() => setShowGroupPickerModal(false)}
-          role="dialog"
-          aria-modal="true"
-          aria-label="Select Project Group"
-        >
-          <div
-            className="group-picker-modal-sheet"
-            onClick={(e) => e.stopPropagation()}
-          >
+      <NativeModalDialog
+        open={showGroupPickerModal}
+        onClose={() => setShowGroupPickerModal(false)}
+        ariaLabel="Select Project Group"
+        className="group-picker-modal-sheet"
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', maxHeight: 'inherit', overflow: 'hidden' }}>
             <div className="group-picker-modal-header">
               <div>
                 <h3 style={{ margin: 0, fontSize: '1.05rem', color: '#0f172a' }}>
@@ -7642,9 +7622,8 @@ export default function ProjectMeetingsView({ classId, classInfo, user, isPrivac
               <span>🟡 Pending</span>
               <span>✓ Active Target</span>
             </div>
-          </div>
         </div>
-      )}
+      </NativeModalDialog>
 
       {/* Hidden File Inputs for Photo Capture */}
       <input
