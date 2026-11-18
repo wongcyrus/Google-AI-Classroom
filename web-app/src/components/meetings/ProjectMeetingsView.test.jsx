@@ -757,11 +757,7 @@ Group Beta,New Beta Topic,other@vtc.edu.hk,eva@stu.vtc.edu.hk,Eva Ho,Leader`;
 
     fireEvent.change(screen.getByLabelText(/📁 Project Group:/i), { target: { value: 'grp_1' } });
 
-    // Select Presenting Member & set Meeting Title & Force separate meeting doc
-    fireEvent.change(screen.getByLabelText(/👤 Presenting Member/i), {
-      target: { value: 'stu_1' },
-    });
-
+    // Set Meeting Title & Force separate meeting doc
     fireEvent.change(screen.getByLabelText(/📝 Meeting Title \/ Agenda:/i), {
       target: { value: 'Custom Demo Session' },
     });
@@ -772,11 +768,6 @@ Group Beta,New Beta Topic,other@vtc.edu.hk,eva@stu.vtc.edu.hk,Eva Ho,Leader`;
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /⏸️ Pause/i })).toBeInTheDocument();
-    });
-
-    // Switch Presenting Member mid-recording
-    fireEvent.change(screen.getByLabelText(/👤 Presenting Member/i), {
-      target: { value: 'stu_2' },
     });
 
     // Pause and Resume
@@ -1877,12 +1868,7 @@ Group Beta,New Beta Topic,other@vtc.edu.hk,eva@stu.vtc.edu.hk,Eva Ho,Leader`;
       />
     );
 
-    // 1. Studio presenter select has masked student names
-    const presenterSelect = screen.getByLabelText(/👤 Presenting Member/i);
-    expect(presenterSelect.textContent).toContain('C****** W***');
-    expect(presenterSelect.textContent).not.toContain('Charlie Wong');
-
-    // 2. Select Week 3 meeting to open inspector
+    // 1. Select Week 3 meeting to open inspector
     fireEvent.change(screen.getByLabelText(/📅 Week #:/i), { target: { value: '3' } });
     const meetingCard = screen.getByText(/Week 3: Week 3 Sprint Review/i);
     fireEvent.click(meetingCard);

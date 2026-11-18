@@ -3631,22 +3631,6 @@ export default function ProjectMeetingsView({ classId, classInfo, user, isPrivac
           </div>
 
           <div className="studio-field">
-            <label htmlFor="studio-presenter-select">👤 Presenting Member (Optional):</label>
-            <select
-              id="studio-presenter-select"
-              value={presenterStudentUid}
-              onChange={(e) => handleChangePresenterStudent(e.target.value)}
-            >
-              <option value="">👥 Whole Group / Unassigned</option>
-              {(activeStudioGroup?.members || []).map((m) => (
-                <option key={m.uid || m.email} value={m.uid || m.email}>
-                  👤 {formatStudentDisplayName(m.name, m.email)}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="studio-field">
             <label htmlFor="studio-title-input">📝 Meeting Title / Agenda:</label>
             <input
               id="studio-title-input"
