@@ -19,6 +19,7 @@ import {
   isPasskeySharingWhitelisted,
   DEFAULT_LECTURE_AI_MODEL,
   SUPPORTED_LECTURE_AI_MODELS,
+  DEFAULT_SAFETY_SETTINGS,
 } from './config.js';
 
 describe('functions/ai_flows/config.js Suite', () => {
@@ -29,6 +30,8 @@ describe('functions/ai_flows/config.js Suite', () => {
     expect(AI_TRANSCRIBE_MODEL).toBe('gemini-3.5-transcribe-preview');
     expect(DEFAULT_LECTURE_AI_MODEL).toBe('gemini-3.8-flash');
     expect(SUPPORTED_LECTURE_AI_MODELS).toEqual(['gemini-4-argon', 'gemini-3.8-flash', 'gemini-3.5-flash-lite']);
+    expect(DEFAULT_SAFETY_SETTINGS).toBeDefined();
+    expect(DEFAULT_SAFETY_SETTINGS.length).toBe(4);
     expect(VERTEX_AI_LOCATION).toBe('global');
     expect(AI_TEMPERATURE).toBe(0);
     expect(AI_TOP_P).toBe(0.1);

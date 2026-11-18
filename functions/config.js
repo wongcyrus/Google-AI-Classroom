@@ -14,6 +14,15 @@ export const VERTEX_AI_LOCATION = 'global';
 export const AI_TEMPERATURE = 0;
 export const AI_TOP_P = 0.1;
 
+// Permissive safety settings for classroom transcription & multimodal analysis
+// Prevents false-positive blocks on authentic classroom discussions (e.g. healthcare, social issues, Cantonese idioms)
+export const DEFAULT_SAFETY_SETTINGS = [
+  { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+  { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
+  { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+  { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+];
+
 // Job-specific configurations
 export const ZIP_COMPRESSION_LEVEL = 9;
 export const VIDEO_FRAME_RATE = 1;
