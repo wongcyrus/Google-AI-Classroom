@@ -32,11 +32,15 @@ export function getToolsForAudioAnalysis() {
 export async function generateWithResilience(
   generateConfig,
   preferredModel,
-  fallbackModel = 'gemini-3.5-flash-lite'
+  fallbackModel = 'gemini-3.5-flash-lite',
+  highTierFallbackModel = null
 ) {
   const modelsToTry = [preferredModel];
-  if (fallbackModel && preferredModel !== fallbackModel) {
+  if (fallbackModel && !modelsToTry.includes(fallbackModel)) {
     modelsToTry.push(fallbackModel);
+  }
+  if (highTierFallbackModel && !modelsToTry.includes(highTierFallbackModel)) {
+    modelsToTry.push(highTierFallbackModel);
   }
 
   let lastError = null;
@@ -47,8 +51,8 @@ export async function generateWithResilience(
       try {
         const baseConfig = generateConfig?.config && typeof generateConfig.config === 'object' ? generateConfig.config : {};
         const configWithSafety = {
-          safetySettings: baseConfig.safetySettings || DEFAULT_SAFETY_SETTINGS,
           ...baseConfig,
+          safetySettings: baseConfig.safetySettings || DEFAULT_SAFETY_SETTINGS,
         };
         let effectiveGenerateConfig = {
           ...generateConfig,

@@ -638,6 +638,23 @@ export async function handleAnalyzeProjectMeeting({
         ? storagePath
         : `gs://${bucketName}/${storagePath.replace(/^\/+/, '')}`;
       const contentType = resolveAudioMimeType(storagePath, clip.audioMimeType || clip.mimeType);
+
+      // Check audio file size in storage: skip 0-byte or corrupted clips to prevent Vertex AI decoding failures
+      const cleanStoragePath = storagePath.replace(/^gs:\/\/[^/]+\//, '').replace(/^\/+/, '');
+      let fileSize = -1;
+      try {
+        const [meta] = await storage.bucket(bucketName).file(cleanStoragePath).getMetadata();
+        fileSize = Number(meta?.size) || 0;
+      } catch (metaErr) {
+        console.warn(`[analyzeProjectMeeting] Could not get metadata for ${cleanStoragePath}:`, metaErr?.message || metaErr);
+      }
+
+      const clipDurationSecs = Number(clip.durationSeconds) || 0;
+      if (fileSize >= 0 && fileSize <= 256) {
+        console.warn(`[analyzeProjectMeeting] Skipping empty/corrupted audio clip ${clip.clipId || i} (${cleanStoragePath}, size: ${fileSize} bytes)`);
+        continue;
+      }
+
       const presenterHint = clip.presenterStudentName
         ? ` Note: Student "${clip.presenterStudentName}" (${clip.presenterStudentEmail || ''}) was selected as the presenter during this clip.`
         : '';
@@ -645,6 +662,12 @@ export async function handleAnalyzeProjectMeeting({
       const diarizePrompt = `Transcribe this project supervision meeting audio clip (${clip.label || `Part ${i + 1}`}) verbatim in its original spoken language (Cantonese, Mandarin, or English, preserving English technical terms like React, Firestore, Docker, API).
 Identify distinct voices using speaker diarization labels with [MM:SS] timestamps (e.g., [00:05] Speaker 1: ..., [00:42] Speaker 2: ...).${presenterHint}
 If a speaker states their name or is addressed by name, include their name next to the speaker label (e.g., [00:42] Speaker 2 (Alice): ...).`;
+
+      // For clips longer than 1700s (~28 min), gemini-3.5-transcribe-preview hard-limits at 45000 tokens (1800s).
+      // Prioritize gemini-4-argon for long clips, or transcribeModel with fallback to gemini-3.8-flash and gemini-4-argon.
+      const initialSttModel = clipDurationSecs > 1700 ? 'gemini-4-argon' : transcribeModel;
+      const secondarySttModel = initialSttModel === 'gemini-4-argon' ? DEFAULT_LECTURE_AI_MODEL : DEFAULT_LECTURE_AI_MODEL;
+      const tertiarySttModel = 'gemini-4-argon';
 
       const { response: sttResponse, modelUsed: sttModelUsed } = await generateWithResilience(
         {
@@ -657,8 +680,9 @@ If a speaker states their name or is addressed by name, include their name next 
             { media: { url: gsUri, contentType } },
           ],
         },
-        transcribeModel,
-        DEFAULT_LECTURE_AI_MODEL
+        initialSttModel,
+        secondarySttModel,
+        tertiarySttModel
       );
 
       modelsUsedSet.add(sttModelUsed);
@@ -677,9 +701,8 @@ If a speaker states their name or is addressed by name, include their name next 
       }
 
       // Safeguard: If transcribeModel returned empty or no-speech text on a recorded clip,
-      // fall back to multimodal DEFAULT_LECTURE_AI_MODEL (gemini-3.8-flash) which excels at
-      // quiet, low-volume, or multilingual classroom speech that STT models might filter out
-      if (!clipText && sttModelUsed !== (DEFAULT_LECTURE_AI_MODEL || 'gemini-3.8-flash')) {
+      // fall back to multimodal DEFAULT_LECTURE_AI_MODEL (gemini-3.8-flash) or gemini-4-argon
+      if (!clipText && sttModelUsed !== 'gemini-4-argon') {
         const emptyFallbackModel = DEFAULT_LECTURE_AI_MODEL || 'gemini-3.8-flash';
         const { response: fallbackSttResponse, modelUsed: fallbackSttModel } = await generateWithResilience(
           {
@@ -693,7 +716,8 @@ If a speaker states their name or is addressed by name, include their name next 
               { media: { url: gsUri, contentType } },
             ],
           },
-          emptyFallbackModel
+          emptyFallbackModel,
+          'gemini-4-argon'
         );
         modelsUsedSet.add(fallbackSttModel);
         const fbUsage = fallbackSttResponse.usage || {};
@@ -712,8 +736,7 @@ If a speaker states their name or is addressed by name, include their name next 
       }
 
       // Long-meeting safeguard (e.g. 20-60 min single clip): if gemini-3.5-transcribe-preview
-      // prematurely cut off on a mid-meeting silence pause, recover full-length diarization via gemini-3.8-flash
-      const clipDurationSecs = Number(clip.durationSeconds) || 0;
+      // prematurely cut off on a mid-meeting silence pause, recover full-length diarization via gemini-3.8-flash or gemini-4-argon
       if (
         sttModelUsed === transcribeModel &&
         isLongClipTranscriptTruncated(clipText, clipDurationSecs)
@@ -733,7 +756,8 @@ If a speaker states their name or is addressed by name, include their name next 
               { media: { url: gsUri, contentType } },
             ],
           },
-          longFallbackModel
+          longFallbackModel,
+          'gemini-4-argon'
         );
         modelsUsedSet.add(fullSttModel);
         const fullUsage = fullSttResponse.usage || {};
@@ -753,6 +777,21 @@ If a speaker states their name or is addressed by name, include their name next 
       );
 
       cumulativeOffsetSeconds += Number(clip.durationSeconds) || 0;
+    }
+
+    if (clipTranscripts.length === 0) {
+      console.warn(`[analyzeProjectMeeting] No valid audio clips found or all clips were empty for meeting ${meetingId}.`);
+      await meetingRef.update({
+        status: 'analysis_failed',
+        analysisError: 'Audio recording is empty (0 bytes). Please delete or re-record this meeting session.',
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+      return {
+        success: false,
+        meetingId,
+        reason: 'empty_audio',
+        message: 'Audio recording is empty (0 bytes).',
+      };
     }
 
     // Transcribe dialogue from any mobile camera demo videos recorded during the session (if any)
@@ -1009,7 +1048,9 @@ Respond strictly with valid JSON matching this exact structure:
           responseMimeType: 'application/json',
         },
       },
-      reasoningModel
+      reasoningModel,
+      DEFAULT_LECTURE_AI_MODEL,
+      'gemini-4-argon'
     );
 
     modelsUsedSet.add(reasoningModelUsed);
@@ -1176,7 +1217,7 @@ export const analyzeProjectMeeting = onCall(
     cors: CORS_ORIGINS,
     enforceAppCheck: false,
     memory: '2GiB',
-    timeoutSeconds: 300,
+    timeoutSeconds: 540,
   },
   async (request) => {
     if (!request.auth?.uid) {

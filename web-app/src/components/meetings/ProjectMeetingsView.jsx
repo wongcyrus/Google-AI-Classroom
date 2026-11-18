@@ -1383,6 +1383,12 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
 
       // Guard against iOS lock-screen or background microphone suspension (e.g. <25KB after >15s)
       const totalBytes = blob.size;
+      if (totalBytes === 0) {
+        showToastMessage('⚠️ Recording was empty (0 bytes) and was discarded.');
+        setRecordingState('idle');
+        setUploadProgress(0);
+        return;
+      }
       const isTruncated = durationSecs > 15 && totalBytes < 25000;
       if (isTruncated && typeof window !== 'undefined' && typeof window.confirm === 'function') {
         console.warn(
@@ -2030,7 +2036,7 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
         };
       });
 
-      const callAnalyze = httpsCallable(functions, 'analyzeProjectMeeting', { timeout: 300000 });
+      const callAnalyze = httpsCallable(functions, 'analyzeProjectMeeting', { timeout: 540000 });
       await callAnalyze({
         classId,
         meetingId: targetId,
