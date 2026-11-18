@@ -15,7 +15,14 @@ import {
 import { ref as storageRef, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
 import { httpsCallable } from 'firebase/functions';
 import { getSupportedAudioMimeType, injectWebmDuration, formatDuration } from '../../hooks/useLectureRecorder';
-import { normalizeStudentEmail, getStudentProfile } from '../../utils/studentDisplayUtils';
+import {
+  normalizeStudentEmail,
+  getStudentProfile,
+  maskStudentName,
+  maskStudentEmail,
+  maskStudentId,
+  usePrivacyMode,
+} from '../../utils/studentDisplayUtils';
 import {
   exportProjectMeetingsMatrixExcel,
   generateMeetingMarkdownMinutes,
@@ -171,9 +178,26 @@ export function isMeetingPendingAnalysis(m) {
   return isUnanalyzed || needsReanalysis || hadNoSpeechError || isFailed;
 }
 
-export default function ProjectMeetingsView({ classId, classInfo, user }) {
+export default function ProjectMeetingsView({ classId, classInfo, user, isPrivacyMode: propPrivacyMode }) {
+  const [hookPrivacyMode] = usePrivacyMode();
+  const isPrivacyMode = propPrivacyMode !== undefined ? propPrivacyMode : hookPrivacyMode;
   const currentUserEmail = normalizeStudentEmail(user?.email || '');
   const currentUserName = user?.displayName || currentUserEmail.split('@')[0] || 'Supervisor';
+
+  const formatStudentDisplayName = useCallback(
+    (name, email) => {
+      const raw = name || email || 'Student';
+      return isPrivacyMode ? maskStudentName(raw) : raw;
+    },
+    [isPrivacyMode]
+  );
+
+  const formatStudentDisplayEmail = useCallback(
+    (email) => {
+      return isPrivacyMode ? maskStudentEmail(email) : (email || '');
+    },
+    [isPrivacyMode]
+  );
 
   // Firestore collections state
   const [groups, setGroups] = useState([]);
@@ -3134,7 +3158,7 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
               <option value="">👥 Whole Group / Unassigned</option>
               {(activeStudioGroup?.members || []).map((m) => (
                 <option key={m.uid || m.email} value={m.uid || m.email}>
-                  👤 {m.name || m.email}
+                  👤 {formatStudentDisplayName(m.name, m.email)}
                 </option>
               ))}
             </select>
@@ -3467,7 +3491,7 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
                     <div key={card.email || card.studentId} className={`studio-log-member-card ${statusClass}`}>
                       <div className="studio-log-member-top">
                         <div>
-                          <strong>👤 {card.name || card.studentId || card.email}</strong>
+                          <strong>👤 {formatStudentDisplayName(card.name, card.studentId || card.email)}</strong>
                         </div>
                         <span className={`log-quality-pill ${statusClass}`}>
                           {statusBadgeText}
@@ -3598,6 +3622,7 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
                   exportStudentContributionProfilesExcel({
                     classId,
                     profiles: filteredStudentProfiles,
+                    privacyMode: isPrivacyMode,
                   })
                 }
                 disabled={filteredStudentProfiles.length === 0}
@@ -3663,7 +3688,7 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
                         <div>
                           <strong style={{ fontSize: '0.9rem', color: '#0f172a' }}>
-                            👤 {prof.name}
+                            👤 {formatStudentDisplayName(prof.name, prof.email || prof.studentId)}
                           </strong>
                           <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
                             📁 Group <strong>{prof.groupCode}</strong>
@@ -3720,7 +3745,7 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
                   <div className="dossier-header">
                     <div>
                       <h3 style={{ margin: 0 }}>
-                        👤 {selectedStudentProfile.name}
+                        👤 {formatStudentDisplayName(selectedStudentProfile.name, selectedStudentProfile.email || selectedStudentProfile.studentId)}
                       </h3>
                       <div style={{ fontSize: '0.82rem', color: '#475569', marginTop: '4px', display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
                         <span>📁 Group: <strong>{selectedStudentProfile.groupName}</strong></span>
@@ -3911,7 +3936,7 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
               <button
                 type="button"
                 className="btn-export-matrix-xlsx"
-                onClick={() => exportProjectMeetingsMatrixExcel({ classId, groups: visibleGroups, meetings })}
+                onClick={() => exportProjectMeetingsMatrixExcel({ classId, groups: visibleGroups, meetings, privacyMode: isPrivacyMode })}
                 disabled={visibleGroups.length === 0}
               >
                 📥 Export Full Matrix (.xlsx)
@@ -4019,7 +4044,7 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
                           return (
                             <tr key={email}>
                               <td>
-                                <strong>{member.name || email}</strong>
+                                <strong title={formatStudentDisplayEmail(email)}>{formatStudentDisplayName(member.name, email)}</strong>
                               </td>
                               <td>{member.role || 'Member'}</td>
                               <td>
@@ -4341,9 +4366,9 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
                       type="button"
                       className="btn-copy-markdown-minutes"
                       onClick={() => {
-                        const md = generateMeetingMarkdownMinutes(selectedMeeting);
+                        const md = generateMeetingMarkdownMinutes(selectedMeeting, { privacyMode: isPrivacyMode });
                         navigator.clipboard?.writeText(md);
-                        showToastMessage('📋 Copied Markdown Meeting Minutes to clipboard!');
+                        showToastMessage(isPrivacyMode ? '📋 Copied Privacy-Masked Meeting Minutes to clipboard!' : '📋 Copied Markdown Meeting Minutes to clipboard!');
                       }}
                     >
                       📋 Copy Minutes
@@ -4754,7 +4779,12 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
                       <div key={att.uid || att.email} className={`attendance-member-card ${att.status || 'absent'}`}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
                           <div>
-                            <strong style={{ fontSize: '0.9rem', color: '#0f172a' }}>{att.name || att.email}</strong>
+                            <strong style={{ fontSize: '0.9rem', color: '#0f172a' }}>{formatStudentDisplayName(att.name, att.email)}</strong>
+                            {att.email && (
+                              <div style={{ fontSize: '0.74rem', color: '#64748b' }}>
+                                {formatStudentDisplayEmail(att.email)}
+                              </div>
+                            )}
                           </div>
                           <span className={`speaking-level-badge ${att.speakingContribution || 'none'}`}>
                             🗣️ {att.speakingContribution || 'none'}
@@ -4985,7 +5015,12 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
                         <div key={sc.uid || sc.email} className="student-contribution-card">
                           <div className="student-contrib-header">
                             <div>
-                              <strong>👤 {sc.name || sc.email}</strong>
+                              <strong>👤 {formatStudentDisplayName(sc.name, sc.email)}</strong>
+                              {sc.email && (
+                                <span style={{ marginLeft: '8px', fontSize: '0.76rem', color: '#64748b', fontWeight: 400 }}>
+                                  ({formatStudentDisplayEmail(sc.email)})
+                                </span>
+                              )}
                             </div>
                             <button
                               type="button"
@@ -5092,7 +5127,7 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
                                       className="btn-timestamp-seek"
                                       onClick={() => {
                                         navigator.clipboard?.writeText(sc.weeklyFeedback);
-                                        showToastMessage(`📋 Copied weekly feedback for ${sc.name}!`);
+                                        showToastMessage(`📋 Copied weekly feedback for ${formatStudentDisplayName(sc.name, sc.email)}!`);
                                       }}
                                     >
                                       📋 Copy
@@ -5208,9 +5243,9 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
                       <button
                         type="button"
                         onClick={() => {
-                          const md = generateMeetingMarkdownMinutes(selectedMeeting);
+                          const md = generateMeetingMarkdownMinutes(selectedMeeting, { privacyMode: isPrivacyMode });
                           navigator.clipboard?.writeText(md);
-                          showToastMessage('📋 Copied Markdown Meeting Minutes to clipboard!');
+                          showToastMessage(isPrivacyMode ? '📋 Copied Privacy-Masked Meeting Minutes to clipboard!' : '📋 Copied Markdown Meeting Minutes to clipboard!');
                         }}
                         style={{
                           padding: '10px 14px',
@@ -5246,6 +5281,7 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
         currentUserEmail={currentUserEmail}
         currentUserName={currentUserName}
         onSaveGroups={handleSaveProjectGroups}
+        isPrivacyMode={isPrivacyMode}
       />
 
       {/* Batch Gemini Analysis Modal for Selected Week */}
@@ -5780,7 +5816,8 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
                           disabled={isSendingEmail}
                         />
                         <span>
-                          <strong>{m.name || m.email}</strong>
+                          <strong>{formatStudentDisplayName(m.name, m.email)}</strong>{' '}
+                          <span style={{ color: '#64748b', fontSize: '0.8rem' }}>({formatStudentDisplayEmail(m.email)})</span>
                         </span>
                       </label>
                     );
@@ -6161,7 +6198,7 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
                                     const contrib = (mtg.studentContributions || {})[studentUid] || {};
                                     return (
                                       <div key={studentUid} style={{ display: 'flex', justifyContent: 'space-between', background: '#f8fafc', padding: '4px 8px', borderRadius: '4px', fontSize: '0.78rem' }}>
-                                        <span><strong>{att.name || att.email}</strong> ({att.status || 'present'})</span>
+                                        <span><strong>{formatStudentDisplayName(att.name, att.email)}</strong> ({att.status || 'present'})</span>
                                         <span>
                                           Real Work: <strong>{contrib.realWorkScore ?? '-'}</strong>/10 • Log Quality: <strong>{contrib.logQualityScore ?? '-'}</strong>/10
                                         </span>
@@ -6454,7 +6491,7 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
                 <option value="">👥 Whole Group / General Evidence</option>
                 {((activeStudioGroup || selectedGroup)?.members || []).map((m) => (
                   <option key={m.uid || m.email} value={m.uid || m.email}>
-                    👤 {m.name || m.email}
+                    👤 {formatStudentDisplayName(m.name, m.email)}
                   </option>
                 ))}
               </select>
@@ -6621,7 +6658,7 @@ export default function ProjectMeetingsView({ classId, classInfo, user }) {
                     <option value="">👥 Whole Group</option>
                     {((activeStudioGroup || selectedGroup)?.members || []).map((m) => (
                       <option key={m.uid || m.email} value={m.uid || m.email}>
-                        👤 {m.name || m.email}
+                        👤 {formatStudentDisplayName(m.name, m.email)}
                       </option>
                     ))}
                   </select>

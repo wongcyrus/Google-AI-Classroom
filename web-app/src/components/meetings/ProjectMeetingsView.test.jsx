@@ -126,6 +126,7 @@ describe('projectGroupUtils & ProjectMeetingsView & ProjectGroupEditorModal', ()
 
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.setItem('teacher_privacy_mode', 'false');
     mockPcCaptureState = 'recording_screen';
     mockProfilesSnapshotDocs = [];
 
@@ -1655,5 +1656,88 @@ Group Beta,New Beta Topic,other@vtc.edu.hk,eva@stu.vtc.edu.hk,Eva Ho,Leader`;
 
     // Verify action button shows '🔄 Retry Gemini Analysis'
     expect(screen.getAllByRole('button', { name: /🔄 Retry Gemini Analysis/i }).length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('masks student names and emails across studio, attendance, matrix, and profiles when privacy mode is active', async () => {
+    mockProfilesSnapshotDocs = [
+      {
+        id: 'prof_1',
+        data: () => ({
+          studentId: '260047062',
+          studentName: 'Chan Tai Man',
+          email: '260047062@stu.vtc.edu.hk',
+          groupCode: 'A11',
+          groupName: 'Group A11',
+          avgLogQualityScore: 8.5,
+          totalWeeksSubmitted: 3,
+          activeYesWeeks: 3,
+          inactiveNoWeeks: 0,
+          genuineLogsCount: 3,
+          vagueLogsCount: 0,
+          suspectedAiLogsCount: 0,
+          meetingsAttended: 3,
+          meetingsTotal: 3,
+          weeklyTimeline: [],
+        }),
+      },
+    ];
+
+    mockMeetingsSnapshotDocs = [
+      {
+        id: 'mtg_privacy_test',
+        data: () => ({
+          groupId: 'grp_1',
+          groupName: 'Group A11',
+          weekNumber: 3,
+          title: 'Week 3 Sprint Review',
+          status: 'ready',
+          supervisorEmail: 'cywong@vtc.edu.hk',
+          supervisorName: 'Dr. Wong',
+          attendanceRecord: [
+            { uid: 'stu_1', name: 'Alice Chan', email: 'alice@stu.vtc.edu.hk', status: 'present', speakingContribution: 'high' },
+          ],
+          studentContributions: [
+            { uid: 'stu_1', name: 'Alice Chan', email: 'alice@stu.vtc.edu.hk', workCompleted: ['Firestore schema'], logQualityScore: 9, realWorkScore: 9, weeklyFeedback: 'Outstanding work' },
+          ],
+        }),
+      },
+    ];
+
+    render(
+      <ProjectMeetingsView
+        classId="it114115-fyp-2627"
+        classInfo={{
+          name: 'Final Year Project',
+          schedule: { startDate: '2026-09-01', endDate: '2027-05-04' },
+          teacherEmails: ['cywong@vtc.edu.hk'],
+        }}
+        user={{ uid: 't_1', email: 'cywong@vtc.edu.hk', displayName: 'Dr. Wong' }}
+        isPrivacyMode={true}
+      />
+    );
+
+    // 1. Studio presenter select has masked student names
+    const presenterSelect = screen.getByLabelText(/👤 Presenting Member/i);
+    expect(presenterSelect.textContent).toContain('C****** W***');
+    expect(presenterSelect.textContent).not.toContain('Charlie Wong');
+
+    // 2. Select Week 3 meeting to open inspector
+    fireEvent.change(screen.getByLabelText(/📅 Week #:/i), { target: { value: '3' } });
+    const meetingCard = screen.getByText(/Week 3: Week 3 Sprint Review/i);
+    fireEvent.click(meetingCard);
+
+    // 3. Attendance card has masked name and masked email
+    expect(screen.getByText('A**** C***')).toBeInTheDocument();
+    expect(screen.getByText('al***@stu.vtc.edu.hk')).toBeInTheDocument();
+    expect(screen.queryByText('alice@stu.vtc.edu.hk')).toBeNull();
+
+    // 4. Switch to Student Contribution Profiles tab
+    fireEvent.click(screen.getByRole('button', { name: /👤 Student Contribution Profiles/i }));
+    expect(screen.getAllByText((content) => content.includes('C*** T** M**')).length).toBeGreaterThan(0);
+    expect(screen.queryByText('Chan Tai Man')).toBeNull();
+
+    // 5. Switch to Weekly Matrix & Export tab
+    fireEvent.click(screen.getByRole('button', { name: /📊 Weekly Matrix & Export/i }));
+    expect(screen.getAllByText('A**** C***').length).toBeGreaterThan(0);
   });
 });

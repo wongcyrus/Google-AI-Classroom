@@ -4,6 +4,43 @@
 **System**: Google AI Classroom  
 **Production URL**: `https://it114115-2627.web.app`
 
+## 0.0.0.0.0.0.0.0.0.0.4.0 Project Supervision Meeting AI Resilience, Gemini 4 Argon Long-Audio Routing, and Zero-Egress PII Privacy Protection
+
+**Date**: November 18, 2026  
+**Status**: Implemented, Verified with Passing Unit Tests (`ProjectMeetingsView.test.jsx` 19/19, `projectGroupUtils.test.js` 9/9, `StudentRecordsView.test.jsx` 55/55, `ClassView.test.jsx` 20/20, `ai_flows` 455/455), Tested End-to-End on Production (`it114115-2627`), and Deployed  
+**Primary Files**:
+- [`functions/ai_flows/projectMeetingFlows.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/projectMeetingFlows.js) & [`functions/ai_flows/analysisFlows.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/analysisFlows.js)
+- [`web-app/src/components/meetings/ProjectMeetingsView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/meetings/ProjectMeetingsView.jsx)
+- [`web-app/src/components/meetings/ProjectGroupEditorModal.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/meetings/ProjectGroupEditorModal.jsx)
+- [`web-app/src/components/ClassView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/ClassView.jsx)
+- [`web-app/src/utils/projectGroupUtils.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/utils/projectGroupUtils.js)
+- [`web-app/src/components/StudentRecordsView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/StudentRecordsView.jsx)
+
+### Root Cause & Fix Summary:
+1. **0-Byte Corrupted Audio File Safeguard & Client-Side Guard**:
+   - **Root Cause**: When instructors or students started and stopped recordings in under 2 seconds, browsers created 0-byte `.webm` audio files in Cloud Storage. When passed as `fileData` to Vertex AI, Gemini rejected the request with `INVALID_ARGUMENT: [400 Bad Request] The provided file is malformed or corrupted and could not be decoded.`, crashing the batch analysis before processing other valid clips.
+   - **Backend Guard**: [`projectMeetingFlows.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/projectMeetingFlows.js) inspects Cloud Storage file metadata via `getMetadata()` before calling Gemini; audio clips `<= 256` bytes are safely skipped. If all clips in a meeting are empty, Firestore is updated with `status: 'analysis_failed'` and an explanatory error banner is shown without throwing an unhandled 500 error.
+   - **Frontend Guard**: [`ProjectMeetingsView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/meetings/ProjectMeetingsView.jsx) discards recording blobs where `blob.size === 0` before uploading to Cloud Storage.
+
+2. **Long-Audio Routing to Gemini 4 Argon & Thinking Budget Sanitization**:
+   - **Root Cause**: `gemini-3.5-transcribe-preview` strictly enforces a 45,000 audio token limit (~1,800s / 30 mins). Sessions exceeding 30 minutes (e.g., Group A06 at 55.5m, Group A11 at 34.8m) failed with HTTP 400. Falling back to `gemini-3.8-flash` caused false-positive `promptFeedback: { blockReason: "SAFETY" }` blocks on multi-speaker Cantonese classroom audio.
+   - **Dynamic Model Routing**: Audio clips `> 1700s` bypass `gemini-3.5-transcribe-preview` and route directly to `gemini-4-argon`, which transcribes 30–60 minute recordings without audio token cap errors or safety false-positives.
+   - **Config Sanitization**: `generateWithResilience` in [`analysisFlows.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/analysisFlows.js) automatically strips `thinkingConfig` and `thinkingBudget` when targeting `gemini-4*` models, preventing `INVALID_ARGUMENT: Thinking budget is not supported for this model`.
+   - **Extended Timeouts**: Increased Cloud Run Functions Gen 2 `timeoutSeconds` from 300s to 540s (9 minutes) and frontend `httpsCallable` timeout to 540,000ms.
+
+3. **Zero-Egress PII & Privacy Mode Protection in Project Supervision Meetings**:
+   - **Privacy Mode Integration**: [`ProjectMeetingsView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/meetings/ProjectMeetingsView.jsx) and [`ProjectGroupEditorModal.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/meetings/ProjectGroupEditorModal.jsx) now fully honor the global `🛡️ Privacy: ON` / `👁️ Privacy: OFF` toggle (`usePrivacyMode()`).
+   - **Masking Scope**: When Privacy Mode is active (default):
+     - **Overview Matrix**: Student names masked (`maskStudentName`) and emails masked (`maskStudentEmail`).
+     - **Attendance Cards**: Student display names, subtitle emails, and attendee selector options masked.
+     - **Student Contribution Cards & Dossier**: Student names, weekly feedback copy toasts, and Google Form log author identities masked.
+     - **Studio Recording Controls**: Presenter dropdown, photo artifact student attribution, and video demo presenter select tags masked.
+     - **Email Report Modal**: Recipient list checkboxes and student evaluation previews masked.
+     - **Clipboard Copy Minutes**: `generateMeetingMarkdownMinutes` accepts `{ privacyMode }` to mask student names and emails in generated Markdown text.
+     - **Excel Matrix & Profile Exports**: `exportProjectMeetingsMatrixExcel` and `exportStudentContributionProfilesExcel` generate privacy-safe spreadsheets with masked names, emails, and student IDs.
+
+---
+
 ## 0.0.0.0.0.0.0.0.0.0.3.9 Firestore Write-Amplification & Listener Fan-Out FinOps Fix
 
 **Date**: November 18, 2026  

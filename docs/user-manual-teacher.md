@@ -1227,6 +1227,28 @@ If a supervision audio recording was accidentally recorded under the wrong proje
 4. **Backend STT Multimodal Fallback**:
    - If `gemini-3.5-transcribe-preview` returns an empty transcript on short, low-volume, or accented clips, the backend automatically triggers a fallback to multimodal `gemini-3.8-flash` to ensure voices are captured accurately.
 
+### 19.6 Zero-Egress PII & Masked Privacy Mode in Project Meetings
+When teaching, presenting, or reviewing supervision meetings on a projector or in front of student audiences, instructors can toggle **Masked Privacy Mode** (`🛡️ Privacy: ON`) in the top navigation bar of Class Hub:
+1. **Roster & Attendance Protection**: Student real names (e.g., `CHAN,Ching Yeung` $\to$ `C***,C**** Y****`, `陳正洋` $\to$ `陳*洋`) and student institutional emails (`260047062@stu.vtc.edu.hk` $\to$ `***7062@stu.vtc.edu.hk`) are automatically masked across:
+   - The Cross-Week Meeting Matrix overview table and student tooltips.
+   - Attendance verification cards, attendance override buttons, and speech turn evidence.
+   - Individual student contribution cards, weekly feedback, and challenge questions.
+   - Longitudinal student contribution profiles and Google Form weekly log audit dossiers.
+2. **Recording Studio & Media Attribution Protection**:
+   - The Presenting Member select dropdown, photo artifact attribution select, and video demo presenter select options mask all student identities.
+   - Email report recipient checkboxes and evaluation summaries in the whole-class email dispatch dialog display masked identities.
+3. **Privacy-Preserving Clipboard & Excel Exports**:
+   - Clicking **`📋 Copy Minutes`** while Privacy Mode is active generates minutes with masked student names in the attendance record and student contribution headers.
+   - Clicking **`📥 Export Full Matrix (.xlsx)`** or **`📥 Export Student Profiles (.xlsx)`** respects Privacy Mode, generating spreadsheets with masked student names, masked emails, and masked student IDs for privacy-compliant reporting.
+
+### 19.7 Resilient AI Analysis for Corrupted Clips & Long Sessions
+1. **0-Byte Corrupted File Safeguard**:
+   - If an audio clip was accidentally started and stopped in under 2 seconds (creating a 0-byte `.webm` file), the backend automatically skips the empty clip. If all clips in a meeting are empty, the meeting is marked as `analysis_failed` with a clear explanation rather than throwing an unhandled error.
+2. **Long Audio (> 30 Mins) Routing to Gemini 4 Argon**:
+   - Meetings with single audio clips longer than 28 minutes (`> 1700s`) automatically route to **`gemini-4-argon`**, bypassing the 45,000-token audio limit of `gemini-3.5-transcribe-preview` and eliminating false-positive safety blocks on Cantonese discussions.
+3. **9-Minute Extended Execution Windows**:
+   - Cloud Functions Gen 2 and client callable timeouts are extended to 540 seconds (9 minutes) to support complete transcription, diarization, and grading of 60-minute capstone meetings in a single pass.
+
 ---
 
 ## 20. Troubleshooting & Best Practices
@@ -1239,6 +1261,8 @@ If a supervision audio recording was accidentally recorded under the wrong proje
 | **Audio clips are missing** | Silence suppression is discarding quiet chunks. | This is normal behavior to save storage. If you require continuous audio, disable **Silence Suppression (VAD)** in Class Settings. |
 | **Student cannot see recordings** | An active exam window is currently open. | Recordings are deliberately withheld behind exam confidentiality shields. Once the exam window ends, recordings become visible to students automatically. |
 | **Moved audio clip shows "No intelligible speech" / skipped in Batch AI** | Clip was moved into an existing meeting doc that had stale analysis from before the move. | The system now automatically clears stale analysis and flags `needsReanalysis: true` upon moving clips. Batch Mode 1 ("Run Missing Only") automatically picks up the meeting. You can also click **`✨ Run Gemini Analysis Now`** on the amber banner in the Meeting Inspector. |
+| **Meeting analysis failed with `The provided file is malformed or corrupted`** | Recording was started and stopped in under 2 seconds, producing an empty 0-byte `.webm` file. | The backend now automatically skips 0-byte audio clips, and the frontend prevents uploading empty recordings. If all clips are empty, the session is cleanly marked with an actionable retry banner. |
+| **Audio exceeds 45,000 token limit on long meeting (> 30 mins)** | `gemini-3.5-transcribe-preview` enforces a hard 45k audio token limit (~30 mins). | Clips `> 1700s` automatically route to `gemini-4-argon` with 540s (9m) timeouts, guaranteeing complete transcription and diarization of 60-minute sessions. |
 
 ---
 

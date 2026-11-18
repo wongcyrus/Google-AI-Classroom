@@ -473,4 +473,89 @@ describe('projectGroupUtils', () => {
     });
     expect(mockExportToExcel).toHaveBeenCalled();
   });
+
+  it('respects privacyMode by masking student names, emails, and IDs in Markdown minutes and Excel exports', async () => {
+    mockExportToExcel.mockClear();
+
+    const sampleMeeting = {
+      groupName: 'AI Innovators',
+      weekNumber: 3,
+      title: 'Sprint 3 Review',
+      meetingDate: '2026-09-20T10:00:00Z',
+      supervisorName: 'Dr. Alan Turing',
+      supervisorEmail: 'turing@vtc.edu.hk',
+      attendanceRecord: [
+        { name: 'CHAN,Ching Yeung', email: '260047062@stu.vtc.edu.hk', status: 'present', speakingContribution: 'high', evidence: 'Spoke at [01:20]' },
+        { name: '陳正洋', email: '990000101@stu.vtc.edu.hk', status: 'absent', speakingContribution: 'none' },
+      ],
+      studentContributions: [
+        { name: 'CHAN,Ching Yeung', email: '260047062@stu.vtc.edu.hk', workCompleted: ['Task A'], actionItemsNextWeek: ['Task B'], logQualityScore: 9, realWorkScore: 9, weeklyFeedback: 'Great job' },
+      ],
+      photos: [
+        { label: 'Whiteboard', studentName: 'CHAN,Ching Yeung' },
+      ],
+    };
+
+    // 1. Markdown minutes in Privacy Mode
+    const maskedMinutes = generateMeetingMarkdownMinutes(sampleMeeting, { privacyMode: true });
+    expect(maskedMinutes).toContain('C***,C**** Y****');
+    expect(maskedMinutes).toContain('陳*洋');
+    expect(maskedMinutes).not.toContain('CHAN,Ching Yeung');
+    expect(maskedMinutes).not.toContain('陳正洋');
+
+    // 2. Export matrix in Privacy Mode
+    await exportProjectMeetingsMatrixExcel({
+      classId: 'it114115',
+      groups: [
+        {
+          id: 'grp_1',
+          name: 'AI Innovators',
+          supervisorEmail: 'turing@vtc.edu.hk',
+          members: [
+            { name: 'CHAN,Ching Yeung', email: '260047062@stu.vtc.edu.hk', role: 'Leader' },
+          ],
+        },
+      ],
+      meetings: [sampleMeeting],
+      privacyMode: true,
+    });
+
+    const matrixCall = mockExportToExcel.mock.calls[0];
+    const matrixRows = matrixCall[1];
+    expect(matrixRows[0][3]).toBe('C***,C**** Y****'); // Masked name
+    expect(matrixRows[0][4]).toBe('***7062@stu.vtc.edu.hk'); // Masked email
+
+    // 3. Export contribution profiles in Privacy Mode
+    mockExportToExcel.mockClear();
+    await exportStudentContributionProfilesExcel({
+      classId: 'it114115',
+      profiles: [
+        {
+          groupName: 'AI Innovators',
+          studentId: '260047062',
+          name: 'CHAN,Ching Yeung',
+          email: '260047062@stu.vtc.edu.hk',
+          totalWeeksSubmitted: 3,
+          activeYesWeeks: 3,
+          inactiveNoWeeks: 0,
+          avgLogQualityScore: 9,
+          logQualityGrade: 'A',
+          genuineLogsCount: 3,
+          vagueLogsCount: 0,
+          suspectedAiLogsCount: 0,
+          meetingsAttended: 3,
+          meetingsTotal: 3,
+          riskFlags: [],
+          weeklyTimeline: [],
+        },
+      ],
+      privacyMode: true,
+    });
+
+    const profCall = mockExportToExcel.mock.calls[0];
+    const profRows = profCall[1];
+    expect(profRows[0][2]).toBe('***7062'); // Masked student ID
+    expect(profRows[0][3]).toBe('C***,C**** Y****'); // Masked name
+    expect(profRows[0][4]).toBe('***7062@stu.vtc.edu.hk'); // Masked email
+  });
 });

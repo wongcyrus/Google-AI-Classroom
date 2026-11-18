@@ -1,5 +1,12 @@
 import { exportToExcel, readExcelFile } from './exportUtils';
-import { normalizeStudentEmail, getStudentProfile } from './studentDisplayUtils';
+import {
+  normalizeStudentEmail,
+  getStudentProfile,
+  maskStudentName,
+  maskStudentEmail,
+  maskStudentId,
+  isPrivacyModeActive,
+} from './studentDisplayUtils';
 
 /**
  * Normalizes a header column name for fuzzy matching.
@@ -371,6 +378,7 @@ export async function exportProjectMeetingsMatrixExcel({
   classId = 'class',
   groups = [],
   meetings = [],
+  privacyMode = isPrivacyModeActive(),
 } = {}) {
   const weeks = [...new Set((meetings || []).map((m) => Number(m.weekNumber) || 1))].sort((a, b) => a - b);
   const weekHeaders = weeks.map((w) => `Week ${w}`);
@@ -429,12 +437,15 @@ export async function exportProjectMeetingsMatrixExcel({
       });
 
       const rate = groupMeetings.length > 0 ? Math.round((attendedCount / groupMeetings.length) * 100) : 0;
+      const displayName = privacyMode ? maskStudentName(member.name || email) : (member.name || '');
+      const displayEmail = privacyMode ? maskStudentEmail(email) : email;
+
       rows.push([
         grp.name || '',
         grp.projectTopic || '',
         grp.supervisorEmail || '',
-        member.name || '',
-        email,
+        displayName,
+        displayEmail,
         member.role || 'Member',
         rate,
         totalTasks,
@@ -450,7 +461,8 @@ export async function exportProjectMeetingsMatrixExcel({
 /**
  * Generates clean Markdown meeting minutes for a single Project Group Meeting.
  */
-export function generateMeetingMarkdownMinutes(meeting = {}) {
+export function generateMeetingMarkdownMinutes(meeting = {}, options = {}) {
+  const isPrivacy = options.privacyMode !== undefined ? options.privacyMode : isPrivacyModeActive();
   const lines = [
     `# 📋 ${meeting.groupName || 'Project Group'} — Week ${meeting.weekNumber || 1}: ${meeting.title || 'Supervision Meeting'}`,
     `- **Date**: ${meeting.meetingDate ? new Date(meeting.meetingDate).toLocaleString() : 'N/A'}`,
@@ -460,10 +472,11 @@ export function generateMeetingMarkdownMinutes(meeting = {}) {
     '## 1. Attendance Record',
     '| Student | Status | Speaking Level | Evidence |',
     '| :--- | :--- | :--- | :--- |',
-    ...(meeting.attendanceRecord || []).map(
-      (a) =>
-        `| ${a.name || a.email || ''} | **${(a.status || 'absent').toUpperCase()}** | ${a.speakingContribution || 'none'} | ${a.evidence || ''} |`
-    ),
+    ...(meeting.attendanceRecord || []).map((a) => {
+      const rawName = a.name || a.email || '';
+      const displayName = isPrivacy ? maskStudentName(rawName) : rawName;
+      return `| ${displayName} | **${(a.status || 'absent').toUpperCase()}** | ${a.speakingContribution || 'none'} | ${a.evidence || ''} |`;
+    }),
     '',
     '## 2. Key Meeting Insights',
     `**Executive Summary**: ${meeting.keyInsights?.executiveSummary || 'N/A'}`,
@@ -487,33 +500,38 @@ export function generateMeetingMarkdownMinutes(meeting = {}) {
       : []),
     '',
     '## 3. Work Done, Log Quality Audit & Weekly Feedback Per Student',
-    ...(meeting.studentContributions || []).flatMap((sc) => [
-      `### 👤 ${sc.name || sc.email || 'Student'}`,
-      ...(sc.logQualityScore !== undefined && sc.logQualityScore !== null
-        ? [
-            `- **Log Quality Score**: ${sc.logQualityScore}/10 (${sc.logQualityAssessment || 'evaluated'})`,
-          ]
-        : []),
-      ...(sc.realWorkScore !== undefined && sc.realWorkScore !== null
-        ? [`- **Verified Real Work Score**: ${sc.realWorkScore}/10`]
-        : []),
-      `- **Work Completed**: ${(sc.workCompleted || []).join('; ') || 'None reported'}`,
-      `- **Current Challenges**: ${(sc.currentChallenges || []).join('; ') || 'None'}`,
-      `- **Action Items (Next Week)**: ${(sc.actionItemsNextWeek || []).join('; ') || 'None assigned'}`,
-      `- **AI Assessment**: ${sc.aiContributionAssessment || 'N/A'}`,
-      ...((sc.challengeQuestions || []).length > 0
-        ? [`- **Challenge / Verification Questions**: ${(sc.challengeQuestions || []).join(' | ')}`]
-        : []),
-      ...(sc.weeklyFeedback ? [`- **Weekly Feedback**: ${sc.weeklyFeedback}`] : []),
-      '',
-    ]),
+    ...(meeting.studentContributions || []).flatMap((sc) => {
+      const rawName = sc.name || sc.email || 'Student';
+      const displayName = isPrivacy ? maskStudentName(rawName) : rawName;
+      return [
+        `### 👤 ${displayName}`,
+        ...(sc.logQualityScore !== undefined && sc.logQualityScore !== null
+          ? [
+              `- **Log Quality Score**: ${sc.logQualityScore}/10 (${sc.logQualityAssessment || 'evaluated'})`,
+            ]
+          : []),
+        ...(sc.realWorkScore !== undefined && sc.realWorkScore !== null
+          ? [`- **Verified Real Work Score**: ${sc.realWorkScore}/10`]
+          : []),
+        `- **Work Completed**: ${(sc.workCompleted || []).join('; ') || 'None reported'}`,
+        `- **Current Challenges**: ${(sc.currentChallenges || []).join('; ') || 'None'}`,
+        `- **Action Items (Next Week)**: ${(sc.actionItemsNextWeek || []).join('; ') || 'None assigned'}`,
+        `- **AI Assessment**: ${sc.aiContributionAssessment || 'N/A'}`,
+        ...((sc.challengeQuestions || []).length > 0
+          ? [`- **Challenge / Verification Questions**: ${(sc.challengeQuestions || []).join(' | ')}`]
+          : []),
+        ...(sc.weeklyFeedback ? [`- **Weekly Feedback**: ${sc.weeklyFeedback}`] : []),
+        '',
+      ];
+    }),
     ...((meeting.photos || []).length > 0
       ? [
           '## 4. Visual Artifacts & Photos Captured Live',
-          ...meeting.photos.map(
-            (p, idx) =>
-              `- **Photo ${idx + 1}**: ${p.label || 'Artifact'}${p.caption ? ` — "${p.caption}"` : ''}${p.studentName ? ` (${p.studentName})` : ''}`
-          ),
+          ...meeting.photos.map((p, idx) => {
+            const rawStu = p.studentName || '';
+            const displayStu = isPrivacy && rawStu ? maskStudentName(rawStu) : rawStu;
+            return `- **Photo ${idx + 1}**: ${p.label || 'Artifact'}${p.caption ? ` — "${p.caption}"` : ''}${displayStu ? ` (${displayStu})` : ''}`;
+          }),
           '',
         ]
       : []),
@@ -2021,6 +2039,7 @@ export function mergeIncrementalStudentProfiles({
 export async function exportStudentContributionProfilesExcel({
   classId = 'class',
   profiles = [],
+  privacyMode = isPrivacyModeActive(),
 } = {}) {
   const maxWeek = profiles.reduce(
     (max, p) => Math.max(max, (p.weeklyTimeline || []).length),
@@ -2067,12 +2086,16 @@ export async function exportStudentContributionProfilesExcel({
     });
 
     const latest = p.latestTimeline;
+    const displayId = privacyMode ? maskStudentId(p.studentId) : (p.studentId || '');
+    const displayName = privacyMode ? maskStudentName(p.name || p.studentName) : (p.name || '');
+    const displayEmail = privacyMode ? maskStudentEmail(p.email) : (p.email || '');
+
     return [
       p.groupName || p.groupCode || '',
       p.supervisorName || p.supervisorEmail || '',
-      p.studentId || '',
-      p.name || '',
-      p.email || '',
+      displayId,
+      displayName,
+      displayEmail,
       p.totalWeeksSubmitted,
       p.activeYesWeeks,
       p.inactiveNoWeeks,

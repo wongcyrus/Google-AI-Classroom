@@ -7,7 +7,12 @@ import {
   exportProjectGroupsExcel,
   autoSplitStudentsIntoGroups,
 } from '../../utils/projectGroupUtils';
-import { normalizeStudentEmail } from '../../utils/studentDisplayUtils';
+import {
+  normalizeStudentEmail,
+  maskStudentName,
+  maskStudentEmail,
+  usePrivacyMode,
+} from '../../utils/studentDisplayUtils';
 
 export default function ProjectGroupEditorModal({
   isOpen,
@@ -20,7 +25,10 @@ export default function ProjectGroupEditorModal({
   currentUserEmail = '',
   currentUserName = '',
   onSaveGroups,
+  isPrivacyMode: propPrivacyMode,
 }) {
+  const [hookPrivacyMode] = usePrivacyMode();
+  const isPrivacyMode = propPrivacyMode !== undefined ? propPrivacyMode : hookPrivacyMode;
   const [activeTab, setActiveTab] = useState('visual'); // 'visual' | 'import'
   const [draftGroups, setDraftGroups] = useState([]);
   const [unassignedSearch, setUnassignedSearch] = useState('');
@@ -424,7 +432,9 @@ export default function ProjectGroupEditorModal({
                       title="Click to assign student to selected group"
                     >
                       <div>
-                        <div style={{ fontWeight: 600, fontSize: '0.85rem', color: '#1e293b' }}>{stu.name || stu.email}</div>
+                        <div style={{ fontWeight: 600, fontSize: '0.85rem', color: '#1e293b' }}>
+                          {isPrivacyMode ? maskStudentName(stu.name || stu.email) : (stu.name || stu.email)}
+                        </div>
                       </div>
                       <span className="btn-quick-assign">➕ Add</span>
                     </div>
@@ -539,12 +549,14 @@ export default function ProjectGroupEditorModal({
                                 >
                                   {m.role === 'Leader' ? '⭐ Leader' : '👤 Member'}
                                 </button>
-                                <span style={{ fontWeight: 600, fontSize: '0.84rem' }}>{m.name || m.email}</span>
+                                <span style={{ fontWeight: 600, fontSize: '0.84rem' }}>
+                                  {isPrivacyMode ? maskStudentName(m.name || m.email) : (m.name || m.email)}
+                                </span>
                               </div>
                               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                 {draftGroups.length > 1 && (
                                   <select
-                                    aria-label={`Move ${m.name} to another group`}
+                                    aria-label={`Move ${isPrivacyMode ? maskStudentName(m.name || m.email) : m.name} to another group`}
                                     value=""
                                     onChange={(e) => handleMoveMember(grpIdx, m, e.target.value)}
                                     style={{ fontSize: '0.74rem', padding: '2px 4px', borderRadius: '4px', border: '1px solid #cbd5e1' }}

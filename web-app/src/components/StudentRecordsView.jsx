@@ -21,12 +21,19 @@ import {
   handleVideoEndedGuard,
 } from '../utils/videoSubtitleUtils';
 import { parsePeriodDateMs } from '../utils/examPeriodUtils';
-import { normalizeStudentEmail } from '../utils/studentDisplayUtils';
+import {
+  normalizeStudentEmail,
+  maskStudentName,
+  maskStudentEmail,
+  isPrivacyModeActive,
+  usePrivacyMode,
+} from '../utils/studentDisplayUtils';
 import './StudentRecordsView.css';
 
-export const generateStudentMeetingMarkdownMinutes = (m) => {
+export const generateStudentMeetingMarkdownMinutes = (m, options = {}) => {
   if (!m) return '';
-  if (m.minutesMarkdown) return m.minutesMarkdown;
+  const isPrivacy = Boolean(options.privacyMode);
+  if (m.minutesMarkdown && !isPrivacy) return m.minutesMarkdown;
   const lines = [
     `# Supervision Meeting Minutes — Week ${m.weekNumber || 1}: ${m.title || 'Meeting'}`,
     `**Group:** ${m.groupName || 'Project Group'}`,
@@ -36,7 +43,9 @@ export const generateStudentMeetingMarkdownMinutes = (m) => {
     '## Attendance Record',
   ];
   (m.attendanceRecord || []).forEach((a) => {
-    lines.push(`- **${a.name || a.email}:** ${a.status ? a.status.toUpperCase() : 'ABSENT'}${a.evidence ? ` (${a.evidence})` : ''}`);
+    const rawName = a.name || a.email || 'Student';
+    const safeName = isPrivacy ? maskStudentName(rawName) : rawName;
+    lines.push(`- **${safeName}:** ${a.status ? a.status.toUpperCase() : 'ABSENT'}${a.evidence ? ` (${a.evidence})` : ''}`);
   });
   if (m.keyInsights?.executiveSummary) {
     lines.push('', '## Executive Summary', m.keyInsights.executiveSummary);

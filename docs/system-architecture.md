@@ -261,6 +261,10 @@ To optimize cost, privacy, and responsiveness, computational workloads are parti
    - **Benefits**: Completely eliminates backend double-egress network fees, prevents 540-second serverless execution timeouts during large batch archives, and guarantees instructor Google OAuth credentials are never handled or stored by the backend.
    - Client-side acoustic silence suppression discards >80% of audio clips before cloud transmission.
    - Two-stage Map-Reduce-Map prompt synthesis eliminates repeated whole-video multimodal reprocessing.
+4. **Capstone Supervision Meeting PII & Masked Privacy Mode**:
+   - Instructors presenting or grading via classroom projectors can activate **Masked Privacy Mode** (`🛡️ Privacy: ON`), dynamically masking student names, institutional emails, and student IDs across meeting overview matrices, attendance cards, contribution cards, longitudinal dossiers, studio presenter selectors, and clipboard minutes.
+   - Excel exports (`exportProjectMeetingsMatrixExcel` and `exportStudentContributionProfilesExcel`) support privacy-masked generation for institutional reporting.
+   - Resilient multi-tier audio routing automatically skips 0-byte recordings and routes long audio slices (`> 1700s`) to `gemini-4-argon`, avoiding audio token cap failures and safety false-positives.
 
 ---
 

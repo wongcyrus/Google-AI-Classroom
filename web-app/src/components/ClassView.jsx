@@ -362,13 +362,13 @@ const ClassView = ({ user }) => {
       case 'video':
         switch (subTab) {
           case 'recordings': return <LectureRecordingsView classId={classId} user={user} lessons={lessons} selectedLesson={selectedLesson} timezone={timezone} className={classInfo?.name || classId} />;
-          case 'meetings': return <ProjectMeetingsView classId={classId} classInfo={classInfo} user={user} />;
+          case 'meetings': return <ProjectMeetingsView classId={classId} classInfo={classInfo} user={user} isPrivacyMode={isPrivacyMode} />;
           case 'library': return <VideoLibrary {...props} lessons={lessons} />;
           case 'jobs': return <VideoAnalysisJobs {...props} />;
           default: return <LectureRecordingsView classId={classId} user={user} lessons={lessons} selectedLesson={selectedLesson} timezone={timezone} className={classInfo?.name || classId} />;
         }
       case 'meetings':
-        return <ProjectMeetingsView classId={classId} classInfo={classInfo} user={user} />;
+        return <ProjectMeetingsView classId={classId} classInfo={classInfo} user={user} isPrivacyMode={isPrivacyMode} />;
       case 'analytics':
         switch (subTab) {
           case 'irregularities': return <IrregularitiesView {...props} />;
