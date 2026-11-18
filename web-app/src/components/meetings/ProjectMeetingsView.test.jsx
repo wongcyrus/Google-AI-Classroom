@@ -1927,6 +1927,10 @@ Group Beta,New Beta Topic,other@vtc.edu.hk,eva@stu.vtc.edu.hk,Eva Ho,Leader`;
     const pickerDialog = screen.getByRole('dialog', { name: /Select Project Group/i });
     expect(pickerDialog).toBeInTheDocument();
 
+    // Search input must NOT auto-focus on open (prevents mobile soft keyboard from covering the grid)
+    const searchInput = within(pickerDialog).getByPlaceholderText(/Search group code/i);
+    expect(document.activeElement).not.toBe(searchInput);
+
     // Stream tabs (Stream A, Stream E) should be dynamically extracted
     expect(within(pickerDialog).getByRole('button', { name: /Stream A \(2\)/i })).toBeInTheDocument();
     expect(within(pickerDialog).getByRole('button', { name: /Stream E \(1\)/i })).toBeInTheDocument();

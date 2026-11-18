@@ -7565,7 +7565,6 @@ export default function ProjectMeetingsView({ classId, classInfo, user, isPrivac
                 placeholder="🔍 Search group code, project topic, or student..."
                 value={groupPickerSearch}
                 onChange={(e) => setGroupPickerSearch(e.target.value)}
-                autoFocus
               />
             </div>
 

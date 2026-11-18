@@ -4,6 +4,7 @@
   padding: 0.75rem 1.25rem 2rem 1.25rem;
   width: 100%;
   box-sizing: border-box;
+  overflow-x: clip;
 }
 
 /* Class Hub Context Banner (Compact) */
@@ -19,12 +20,16 @@
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
   flex-wrap: wrap;
   gap: 0.75rem;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .class-hub-title-area {
   display: flex;
   align-items: center;
   gap: 0.6rem;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .class-hub-icon {
@@ -82,6 +87,8 @@
   align-items: center;
   gap: 0.75rem;
   flex-wrap: wrap;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .privacy-mode-btn {
@@ -215,12 +222,15 @@
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .class-switcher-label {
   font-size: 0.8rem;
   font-weight: 600;
   color: var(--color-text-muted);
+  white-space: nowrap;
 }
 
 .class-switcher-select {
@@ -232,6 +242,9 @@
   background-color: var(--color-surface);
   color: var(--color-text-main);
   cursor: pointer;
+  min-width: 0;
+  max-width: 100%;
+  text-overflow: ellipsis;
 }
 
 /* Unified Compact Navigation Ribbon (Mode + Tabs in ONE row) */
@@ -360,6 +373,23 @@
 @media (max-width: 900px) {
   .class-view {
     padding: 0.5rem 0.65rem 1.5rem 0.65rem;
+  }
+
+  .class-hub-right-actions {
+    width: 100%;
+    max-width: 100%;
+    gap: 0.5rem;
+  }
+
+  .class-switcher-wrapper {
+    width: 100%;
+  }
+
+  .class-switcher-select {
+    flex: 1 1 0;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
   }
 
   .class-hub-nav-bar {
