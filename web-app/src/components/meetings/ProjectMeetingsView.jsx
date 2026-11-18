@@ -2916,7 +2916,22 @@ export default function ProjectMeetingsView({ classId, classInfo, user, isPrivac
     if (!clipToMove) return;
 
     const clipLabel = clipToMove.label || `Part ${clipIdx + 1}`;
-    const targetWeek = Number(selectedMeeting.weekNumber) || studioWeekNumber || 1;
+    
+    // Resolve the week number from the clip's actual recorded date (recordedAt / meetingDate),
+    // falling back to selectedMeeting.weekNumber or studioWeekNumber
+    const clipTimestamp = clipToMove.recordedAt || clipToMove.createdAt || selectedMeeting.meetingDate;
+    let targetWeek = Number(selectedMeeting.weekNumber) || studioWeekNumber || 1;
+    if (clipTimestamp) {
+      const computedWeek = resolveCurrentProjectWeek(
+        classInfo,
+        semesterStartMonday,
+        totalProjectWeeks,
+        clipTimestamp
+      );
+      if (computedWeek && Number.isFinite(computedWeek) && computedWeek > 0) {
+        targetWeek = computedWeek;
+      }
+    }
 
     const confirmMsg = `Move "${clipLabel}" (${formatDuration(clipToMove.durationSeconds || 0)}) from ${selectedMeeting.groupName} to Group ${targetGroup.name} (Week ${targetWeek})?`;
     if (!window.confirm(confirmMsg)) return;
@@ -3054,11 +3069,29 @@ export default function ProjectMeetingsView({ classId, classInfo, user, isPrivac
     )
       return;
 
+    // Resolve the week number: if the meeting has a recorded meetingDate or clips with recordedAt,
+    // verify the week number matches the recorded date rather than arbitrary week selection.
+    let resolvedWeekNumber = Number(selectedMeeting.weekNumber) || 1;
+    const meetingDateRef = selectedMeeting.meetingDate || (selectedMeeting.audioClips?.[0]?.recordedAt);
+    if (meetingDateRef) {
+      const computedWeek = resolveCurrentProjectWeek(
+        classInfo,
+        semesterStartMonday,
+        totalProjectWeeks,
+        meetingDateRef
+      );
+      if (computedWeek && Number.isFinite(computedWeek) && computedWeek > 0) {
+        resolvedWeekNumber = computedWeek;
+      }
+    }
+
     await updateDoc(doc(db, `classes/${classId}/projectMeetings/${selectedMeeting.id}`), {
       groupId: targetGroup.id,
       groupName: targetGroup.name,
       projectTopic: targetGroup.projectTopic || '',
-      sessionGroupId: `${classId}_${targetGroup.id}_wk${selectedMeeting.weekNumber || 1}`,
+      weekNumber: resolvedWeekNumber,
+      title: `Week ${resolvedWeekNumber} Supervision Meeting`,
+      sessionGroupId: `${classId}_${targetGroup.id}_wk${resolvedWeekNumber}`,
       supervisorEmail: targetGroup.supervisorEmail || selectedMeeting.supervisorEmail,
       supervisorName: targetGroup.supervisorName || selectedMeeting.supervisorName,
       attendanceRecord: (targetGroup.members || []).map((m) => ({
