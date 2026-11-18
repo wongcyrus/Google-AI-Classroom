@@ -59,7 +59,16 @@ export async function generateWithResilience(
           config: configWithSafety,
         };
         if (typeof modelName === 'string' && modelName.startsWith('gemini-4')) {
-          const { temperature: _t, topP: _p, top_p: _tp, topK: _k, top_k: _tk, ...restConfig } = configWithSafety;
+          const {
+            temperature: _t,
+            topP: _p,
+            top_p: _tp,
+            topK: _k,
+            top_k: _tk,
+            thinkingConfig: _tc,
+            thinkingBudget: _tb,
+            ...restConfig
+          } = configWithSafety;
           effectiveGenerateConfig = {
             ...generateConfig,
             config: restConfig,
