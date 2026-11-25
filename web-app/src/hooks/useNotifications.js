@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { db } from '../firebase-config';
-import { collection, query, where, onSnapshot, orderBy } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, orderBy, limit } from 'firebase/firestore';
 
 export const useNotifications = (user) => {
   const [notifications, setNotifications] = useState([]);
@@ -17,7 +17,8 @@ export const useNotifications = (user) => {
     const q = query(
       notificationsRef,
       where('userId', '==', user.email),
-      orderBy('createdAt', 'desc')
+      orderBy('createdAt', 'desc'),
+      limit(25)
     );
 
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
@@ -35,7 +36,7 @@ export const useNotifications = (user) => {
     });
 
     return () => unsubscribe();
-  }, [user]);
+  }, [user?.email]);
 
   return { notifications, unreadCount };
 };

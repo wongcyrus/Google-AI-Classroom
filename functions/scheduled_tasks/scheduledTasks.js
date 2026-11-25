@@ -297,10 +297,30 @@ export const handlePostLessonMediaConsolidation = onSchedule(videoCombinationOpt
     const studentUids = Object.keys(students || {});
     const teacherUids = Object.keys(teachers || {});
 
+    // 1. STUDENT SCREEN VIDEO COMBINATION:
+    // Check schedule timeSlots BEFORE reading screenBroadcast/session to avoid unnecessary subcollection reads for idle classes
+    let hasRecentlyEndedSlot = false;
+    if (classData.automaticCombine !== false && schedule?.timeZone && Array.isArray(schedule.timeSlots)) {
+      const { timeZone } = schedule;
+      const { localDay } = getLocalTimeInfo(now, timeZone);
+      const todayStr = format(now, 'yyyy-MM-dd', { timeZone });
+      const thirtyMinutesAgo = new Date(now.getTime() - 30 * 60 * 1000);
+      const offset = format(now, 'XXX', { timeZone });
+
+      for (const slot of schedule.timeSlots) {
+        if (!slot.days?.includes(localDay)) continue;
+        const lessonEndDateTimeInZone = new Date(`${todayStr}T${slot.endTime}:00${offset}`);
+        if (lessonEndDateTimeInZone > thirtyMinutesAgo && lessonEndDateTimeInZone <= now) {
+          hasRecentlyEndedSlot = true;
+          break;
+        }
+      }
+    }
+
     // Check if class is currently in active overtime or teacher is still actively broadcasting
     const overtimeMs = classData.overtimeUntil ? parsePeriodDateMs(classData.overtimeUntil, schedule?.timeZone || 'UTC') : NaN;
     let isOvertimeOrBroadcasting = !isNaN(overtimeMs) && overtimeMs > now.getTime();
-    if (!isOvertimeOrBroadcasting) {
+    if (!isOvertimeOrBroadcasting && (hasRecentlyEndedSlot || classData.isBroadcasting)) {
       try {
         const sessionSnap = await db.doc(`classes/${classId}/screenBroadcast/session`).get();
         const sessionData = sessionSnap?.exists ? (sessionSnap.data() || {}) : {};
@@ -312,10 +332,9 @@ export const handlePostLessonMediaConsolidation = onSchedule(videoCombinationOpt
       }
     }
 
-    // 1. STUDENT SCREEN VIDEO COMBINATION:
     // Automatically enabled across ALL classes with a schedule and students (zero special settings required)
     // Only skips if explicitly disabled with automaticCombine === false (for backward compatibility)
-    if (!isOvertimeOrBroadcasting && classData.automaticCombine !== false && schedule?.timeZone && Array.isArray(schedule.timeSlots) && studentUids.length > 0) {
+    if (hasRecentlyEndedSlot && !isOvertimeOrBroadcasting && classData.automaticCombine !== false && schedule?.timeZone && Array.isArray(schedule.timeSlots) && studentUids.length > 0) {
       const { timeZone } = schedule;
       const { localDay, localTime } = getLocalTimeInfo(now, timeZone);
       const todayStr = format(now, 'yyyy-MM-dd', { timeZone });

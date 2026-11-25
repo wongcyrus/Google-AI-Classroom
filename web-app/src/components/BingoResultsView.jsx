@@ -5,6 +5,7 @@ import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../firebase-config';
 import { exportToExcel } from '../utils/exportUtils';
 import { getStudentDisplayName, getStudentProfile, maskStudentEmail, maskStudentName, isPrivacyModeActive } from '../utils/studentDisplayUtils';
+import { extractClassStudentEmails, fetchStudentDirectoryByEmails } from '../utils/studentDirectoryUtils';
 import './BingoResultsView.css';
 
 /**
@@ -152,15 +153,10 @@ export default function BingoResultsView({
       try {
         const classRef = doc(db, 'classes', classId);
         const classSnap = await getDoc(classRef);
-        const baseProfiles = classSnap.exists() ? (classSnap.data().studentProfiles || {}) : {};
+        const classData = classSnap.exists() ? (classSnap.data() || {}) : {};
+        const baseProfiles = classData.studentProfiles || {};
         try {
-          const dirSnap = await getDocs(collection(db, 'studentDirectory'));
-          const dirProfiles = {};
-          if (dirSnap && typeof dirSnap.forEach === 'function') {
-            dirSnap.forEach(d => {
-              dirProfiles[d.id.trim().toLowerCase()] = d.data();
-            });
-          }
+          const dirProfiles = await fetchStudentDirectoryByEmails(db, extractClassStudentEmails(classData));
           setStudentProfiles({ ...dirProfiles, ...baseProfiles, ...(externalProfiles || {}) });
         } catch {
           setStudentProfiles({ ...baseProfiles, ...(externalProfiles || {}) });

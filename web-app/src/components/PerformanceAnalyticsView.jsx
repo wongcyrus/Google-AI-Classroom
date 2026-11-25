@@ -5,6 +5,7 @@ import { db } from '../firebase-config';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell } from 'recharts';
 import { exportToExcel } from '../utils/exportUtils';
 import { getStudentDisplayName, getStudentProfile, maskStudentEmail, maskStudentName, isPrivacyModeActive } from '../utils/studentDisplayUtils';
+import { extractClassStudentEmails, fetchStudentDirectoryByEmails } from '../utils/studentDirectoryUtils';
 import './PerformanceAnalyticsView.css';
 
 /**
@@ -100,13 +101,10 @@ const PerformanceAnalyticsView = ({
           const cData = classSnap.data() || {};
           let mergedProfiles = { ...(cData.studentProfiles || {}) };
           try {
-            const dirSnap = await getDocs(collection(db, 'studentDirectory'));
-            if (dirSnap && typeof dirSnap.forEach === 'function') {
-              dirSnap.forEach(d => {
-                const emailKey = d.id.trim().toLowerCase();
-                mergedProfiles[emailKey] = { ...(d.data() || {}), ...(mergedProfiles[emailKey] || {}) };
-              });
-            }
+            const dirProfiles = await fetchStudentDirectoryByEmails(db, extractClassStudentEmails(cData));
+            Object.entries(dirProfiles).forEach(([emailKey, profileData]) => {
+              mergedProfiles[emailKey] = { ...(profileData || {}), ...(mergedProfiles[emailKey] || {}) };
+            });
           } catch (dirErr) {
             console.warn('Could not load studentDirectory:', dirErr);
           }

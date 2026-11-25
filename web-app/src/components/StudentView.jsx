@@ -1208,9 +1208,12 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
   }, [activeClass, aiMonitoringMode, isModelCached, isPreloading, clientAiStatus, enableAudioCapture, isAudioCaptureActive, isLocalVoiceAiEnabled, isWhisperCached, whisperStatus, preloadModel, preloadWhisperModel, shouldEvaluateVoiceWithGemma, isGemmaCached, isGemmaWorkable, gemmaStatus, preloadGemmaModel]);
 
   const lastTelemetrySyncRef = useRef(0);
+  const lastStatusWriteAtRef = useRef(0);
+  const lastDiscreteTelemetryRef = useRef('');
   const telemetryTimerRef = useRef(null);
 
-  // Sync real-time face, gaze, and audio telemetry to student status doc (Throttled to max once per 1.5s)
+  // Sync real-time face, gaze, and audio telemetry to student status doc
+  // Discrete state transitions (violations, speaking, faceStatus) sync promptly; numeric angles/levels are throttled to 10s
   useEffect(() => {
     if (!user || !user.uid || isSessionDisplaced) return;
     const classesToSync = targetClasses.length > 0 ? targetClasses : (activeClass ? [activeClass] : []);
@@ -1240,15 +1243,29 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
 
     if (Object.keys(updateData).length === 0) return;
 
+    const discreteKey = JSON.stringify([
+      isWebcamSharing,
+      faceStatus,
+      clientAiStatus,
+      activeViolation ? `${activeViolation.type || ''}:${activeViolation.message || ''}` : null,
+      isAudioRecording,
+      isSpeaking,
+    ]);
+    const hasDiscreteChange = discreteKey !== lastDiscreteTelemetryRef.current;
+
     const now = Date.now();
     const timeSinceLast = now - lastTelemetrySyncRef.current;
-    const THROTTLE_MS = 1500;
+    const THROTTLE_MS = hasDiscreteChange ? 1500 : 10000;
 
     const performSync = () => {
-      lastTelemetrySyncRef.current = Date.now();
+      const syncedAt = Date.now();
+      lastTelemetrySyncRef.current = syncedAt;
+      lastStatusWriteAtRef.current = syncedAt;
+      lastDiscreteTelemetryRef.current = discreteKey;
+      const payload = { ...updateData, timestamp: serverTimestamp() };
       for (const cls of classesToSync) {
         const statusRef = doc(db, "classes", cls, "status", user.uid);
-        setDoc(statusRef, updateData, { merge: true }).catch(err => console.debug(`Error updating telemetry status for ${cls}:`, err));
+        setDoc(statusRef, payload, { merge: true }).catch(err => console.debug(`Error updating telemetry status for ${cls}:`, err));
       }
     };
 
@@ -1263,7 +1280,7 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
     return () => {
       if (telemetryTimerRef.current) clearTimeout(telemetryTimerRef.current);
     };
-  }, [activeClass, targetClasses, user, isSessionDisplaced, isWebcamSharing, faceStatus, clientAiStatus, loadingProgress, isModelCached, fallbackReason, delegateUsed, yawAngle, pitchAngle, earValue, marValue, isCalibrated, metricDistance, activeViolation, isAudioRecording, audioLevel, isSpeaking]);
+  }, [activeClass, targetClasses, user?.uid, isSessionDisplaced, isWebcamSharing, faceStatus, clientAiStatus, loadingProgress, isModelCached, fallbackReason, delegateUsed, yawAngle, pitchAngle, earValue, marValue, isCalibrated, metricDistance, activeViolation, isAudioRecording, audioLevel, isSpeaking]);
 
   // Callbacks
   const handleCloseNotification = () => {
@@ -1307,7 +1324,11 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
     const classesToHeartbeat = targetClasses.length > 0 ? targetClasses : (activeClass ? [activeClass] : []);
     if (classesToHeartbeat.length === 0) return;
 
-    const sendHeartbeat = () => {
+    const sendHeartbeat = (forcePing = false) => {
+      if (!forcePing && Date.now() - lastStatusWriteAtRef.current < 10000) {
+        return;
+      }
+      lastStatusWriteAtRef.current = Date.now();
       const isMicActive = Boolean(
         isAudioUserEnabled &&
           (isAudioRecording || (hasMicPermission !== false && !audioError))
@@ -1331,8 +1352,8 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
       }
     };
 
-    sendHeartbeat();
-    const heartbeatInterval = setInterval(sendHeartbeat, 12000);
+    sendHeartbeat(true);
+    const heartbeatInterval = setInterval(() => sendHeartbeat(false), 12000);
 
     return () => clearInterval(heartbeatInterval);
   }, [user?.uid, user?.email, user?.displayName, isSharing, isScreenSharing, isWebcamSharing, enableAudioCapture, isAudioRecording, isAudioUserEnabled, hasMicPermission, audioError, activeClass, targetClasses]);
@@ -2481,7 +2502,7 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
     });
 
     return () => unsubscribe();
-  }, [user]);
+  }, [user?.uid]);
 
   // Handle notifications & warnings
   useEffect(() => {
@@ -2535,7 +2556,7 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
     });
 
     return () => unsubscribe();
-  }, [user]);
+  }, [user?.uid]);
 
   const captureAndUploadAllChannelsRef = useRef(captureAndUploadAllChannels);
   useEffect(() => {

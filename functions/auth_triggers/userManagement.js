@@ -203,6 +203,22 @@ export const onClassUpdate = onDocumentWritten({ document: 'classes/{classId}', 
   const addedTeachers = [...teachersAfter].filter(email => !teachersBefore.has(email));
   const removedTeachers = [...teachersBefore].filter(email => !teachersAfter.has(email));
 
+  // Fast-path early return for status-only updates (e.g. isCapturing, aiUsedQuota, lastAutoBingoAt)
+  const beforeProfiles = (beforeData.studentProfiles && typeof beforeData.studentProfiles === 'object') ? beforeData.studentProfiles : {};
+  const afterProfiles = (afterData.studentProfiles && typeof afterData.studentProfiles === 'object') ? afterData.studentProfiles : {};
+  const needsEmailSanitization = JSON.stringify(originalStudentEmails) !== JSON.stringify(cleanedStudentEmails);
+
+  if (
+    addedStudents.length === 0 &&
+    removedStudents.length === 0 &&
+    addedTeachers.length === 0 &&
+    removedTeachers.length === 0 &&
+    !needsEmailSanitization &&
+    JSON.stringify(beforeProfiles) === JSON.stringify(afterProfiles)
+  ) {
+    return null;
+  }
+
   const promises = [
     updateUserAssociations(classId, addedStudents, 'student', 'add', afterData.studentProfiles || {}),
     updateUserAssociations(classId, removedStudents, 'student', 'remove'),
@@ -211,7 +227,6 @@ export const onClassUpdate = onDocumentWritten({ document: 'classes/{classId}', 
   ];
 
   // Sync only added/changed student profiles to the central institutional studentDirectory
-  const beforeProfiles = (beforeData.studentProfiles && typeof beforeData.studentProfiles === 'object') ? beforeData.studentProfiles : {};
   if (afterData.studentProfiles && typeof afterData.studentProfiles === 'object') {
     let dirBatch = db.batch();
     let dirCount = 0;

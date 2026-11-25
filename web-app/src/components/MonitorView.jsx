@@ -47,6 +47,7 @@ import {
   closeTeacherSystemNotification,
 } from '../utils/broadcastHandover';
 import { useActiveClassroomSession } from '../utils/clientSessionGuard';
+import { extractClassStudentEmails, fetchStudentDirectoryByEmails } from '../utils/studentDirectoryUtils';
 
 const parseAutoRollConfig = (value) => {
   if (!value || value === 'off') return null;
@@ -1012,13 +1013,8 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
           setStudentProfiles({ ...cachedDirProfiles, ...baseProfiles });
         } else if (!isLoadingDirProfiles) {
           isLoadingDirProfiles = true;
-          getDocs(collection(db, 'studentDirectory')).then(dirSnap => {
-            const dirProfiles = {};
-            if (dirSnap && typeof dirSnap.forEach === 'function') {
-              dirSnap.forEach(d => {
-                dirProfiles[d.id.trim().toLowerCase()] = d.data();
-              });
-            }
+          const classEmails = extractClassStudentEmails(data);
+          fetchStudentDirectoryByEmails(db, classEmails).then(dirProfiles => {
             cachedDirProfiles = dirProfiles;
             setStudentProfiles({ ...dirProfiles, ...baseProfiles });
           }).catch(() => {
