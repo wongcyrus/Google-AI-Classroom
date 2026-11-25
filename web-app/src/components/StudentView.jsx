@@ -253,6 +253,7 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
   });
   const [dismissNotificationBanner, setDismissNotificationBanner] = useState(false);
   const [isSessionDisplaced, setIsSessionDisplaced] = useState(false);
+  const isSessionDisplacedRef = useRef(false);
   const [isOnline, setIsOnline] = useState(() => typeof navigator !== 'undefined' ? navigator.onLine : true);
   const [offlinePendingCount, setOfflinePendingCount] = useState(0);
 
@@ -1209,7 +1210,7 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
 
   // Sync real-time face, gaze, and audio telemetry to student status doc (Throttled to max once per 1.5s)
   useEffect(() => {
-    if (!user || !user.uid) return;
+    if (!user || !user.uid || isSessionDisplaced) return;
     const classesToSync = targetClasses.length > 0 ? targetClasses : (activeClass ? [activeClass] : []);
     if (classesToSync.length === 0) return;
 
@@ -1229,10 +1230,10 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
       updateData.metricDistance = metricDistance || 55;
       updateData.activeViolation = activeViolation || null;
     }
-    if (enableAudioCapture || isLocalVoiceAiEnabled || effectiveVoiceAiMode !== 'disabled' || isAudioUserEnabled || myProperties?.examReadiness?.isReady || isAudioRecording) {
-      updateData.isAudioSharing = Boolean(isAudioRecording);
+    if (isAudioRecording) {
+      updateData.isAudioSharing = true;
       updateData.audioLevel = Math.round(audioLevel * 100);
-      updateData.audioStatus = isSpeaking ? 'speaking' : (isAudioRecording ? 'idle' : 'muted');
+      updateData.audioStatus = isSpeaking ? 'speaking' : 'idle';
     }
 
     if (Object.keys(updateData).length === 0) return;
@@ -1260,7 +1261,7 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
     return () => {
       if (telemetryTimerRef.current) clearTimeout(telemetryTimerRef.current);
     };
-  }, [activeClass, targetClasses, user, isWebcamSharing, faceStatus, clientAiStatus, loadingProgress, isModelCached, fallbackReason, delegateUsed, yawAngle, pitchAngle, earValue, marValue, isCalibrated, metricDistance, activeViolation, enableAudioCapture, isLocalVoiceAiEnabled, effectiveVoiceAiMode, isAudioUserEnabled, myProperties, isAudioRecording, audioLevel, isSpeaking]);
+  }, [activeClass, targetClasses, user, isSessionDisplaced, isWebcamSharing, faceStatus, clientAiStatus, loadingProgress, isModelCached, fallbackReason, delegateUsed, yawAngle, pitchAngle, earValue, marValue, isCalibrated, metricDistance, activeViolation, isAudioRecording, audioLevel, isSpeaking]);
 
   // Callbacks
   const handleCloseNotification = () => {
@@ -1299,7 +1300,7 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
 
   // Dedicated presence & sharing heartbeat: guarantees freshness in Firestore even if screenshots buffer offline or upload slowly
   useEffect(() => {
-    if (!user?.uid || !isSharing) return;
+    if (!user?.uid || !isSharing || isSessionDisplaced) return;
 
     const classesToHeartbeat = targetClasses.length > 0 ? targetClasses : (activeClass ? [activeClass] : []);
     if (classesToHeartbeat.length === 0) return;
@@ -1386,7 +1387,7 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
     showSystemNotification("Webcam stream has stopped.");
   }, [enableAudioCapture, isAudioUserEnabled, hasMicPermission, audioError, isScreenSharing, updateCaptureStatus, showSystemNotification]);
 
-  const stopAllStreams = useCallback(async () => {
+  const stopAllStreams = useCallback(async ({ skipFirestoreUpdate = false } = {}) => {
     webcamRequestIdRef.current += 1;
     if (webcamAbortRef.current) {
       webcamAbortRef.current.aborted = true;
@@ -1408,7 +1409,9 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
     if (webcamVideoRef.current) webcamVideoRef.current.srcObject = null;
     setIsScreenSharing(false);
     setIsWebcamSharing(false);
-    await updateCaptureStatus([]);
+    if (!skipFirestoreUpdate) {
+      await updateCaptureStatus([]);
+    }
   }, [updateCaptureStatus]);
 
   const stopScreenRef = useRef(stopScreen);
@@ -2210,14 +2213,20 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
             !ownSessionIdsRef.current.has(data.sessionId) &&
             !sessionWriteFailedRef.current
           ) {
-            console.warn("Classroom session moved to another tab or device.");
-            stopAllStreamsRef.current?.();
-            setIsSessionDisplaced(true);
+            if (!isSessionDisplacedRef.current) {
+              console.warn("Classroom session moved to another tab or device.");
+              isSessionDisplacedRef.current = true;
+              stopAllStreamsRef.current?.({ skipFirestoreUpdate: true });
+              setIsSessionDisplaced(true);
+            }
           } else if (
             data.sessionId &&
             (data.sessionId === sessionIdRef.current || ownSessionIdsRef.current.has(data.sessionId))
           ) {
-            setIsSessionDisplaced(false);
+            if (isSessionDisplacedRef.current) {
+              isSessionDisplacedRef.current = false;
+              setIsSessionDisplaced(false);
+            }
           }
         }
       }, (error) => {
