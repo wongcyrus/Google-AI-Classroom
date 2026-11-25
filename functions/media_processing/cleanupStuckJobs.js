@@ -14,7 +14,7 @@ export const cleanupStuckJobs = onSchedule({ schedule: 'every 1 hours', region: 
 
   const stuckJobsQuery = db.collection('videoJobs')
     .where('status', '==', 'processing')
-    .where('startedAt', '< ', cutoffTime);
+    .where('startedAt', '<', cutoffTime);
 
   try {
     const querySnapshot = await stuckJobsQuery.get();

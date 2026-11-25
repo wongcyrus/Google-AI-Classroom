@@ -334,6 +334,9 @@ export const processVideoJob = onDocumentCreated({ document: 'videoJobs/{jobId}'
   }
   const jobData = snap.data();
   const { jobId, classId, studentUid, studentEmail, startTime, endTime } = jobData;
+  const isTaskSubmission = Boolean(jobData.isTaskSubmission);
+  const taskId = jobData.taskId || null;
+  const attemptNumber = jobData.attemptNumber || 1;
   const jobRef = snap.ref;
 
   if (jobData.status !== 'pending') {
@@ -529,10 +532,6 @@ export const processVideoJob = onDocumentCreated({ document: 'videoJobs/{jobId}'
       jobData.isExam ||
       isExamTimeRange(startTime, endTime, classData?.examPeriods, timezone)
     );
-
-    const isTaskSubmission = Boolean(jobData.isTaskSubmission);
-    const taskId = jobData.taskId || null;
-    const attemptNumber = jobData.attemptNumber || 1;
 
     const destinationPath = isTaskSubmission && taskId
       ? `classes/${classId}/tasks/${taskId}/submissions/${studentUid}/attempt_${attemptNumber}.mp4`
