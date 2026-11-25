@@ -438,6 +438,19 @@ Seeds the 24/7 active demo classroom (`IT114115-Demo`) with simulated student he
 node admin/scripts/seed_demo_class.js
 ```
 
+### 4. Class-Safe Remote Client Refresh (`scripts/force-refresh-clients.mjs`)
+Updates `system_config/clientControl` so outdated browser tabs load the latest production build without interrupting active classes, screen sharing, exams, broadcasts, or meeting recordings:
+```bash
+# Default (--mode=force_idle): reloads idle tabs immediately; active sessions see a banner and auto-refresh once idle
+node scripts/force-refresh-clients.mjs it114115-2627
+
+# Banner-only (--mode=prompt): never auto-reloads; displays a dismissible "Refresh Now" banner
+node scripts/force-refresh-clients.mjs it114115-2627 --mode=prompt --message="New update available"
+
+# Emergency (--mode=force_now): immediately reloads all connected tabs regardless of active session state
+node scripts/force-refresh-clients.mjs it114115-2627 --mode=force_now
+```
+
 ---
 
 ## 10. Testing, CI/CD & Production Verification

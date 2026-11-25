@@ -4,6 +4,30 @@
 **System**: Google AI Classroom  
 **Production URL**: `https://it114115-2627.web.app`
 
+## 0.0.0.0.0.0.0.0.0.0.4.2 Class-Safe Remote Client Refresh, Firestore Loop Fix & Native `<dialog>` Refactor
+
+**Date**: November 25, 2026  
+**Status**: Implemented, Verified with Unit Tests, Built, Deployed to `it114115-2627`, and Pushed to `main`  
+**Primary Files**:
+- [`web-app/src/App.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/App.jsx) & [`web-app/src/utils/clientSessionGuard.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/utils/clientSessionGuard.js)
+- [`scripts/force-refresh-clients.mjs`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/scripts/force-refresh-clients.mjs)
+- [`web-app/src/components/StudentView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/StudentView.jsx)
+- [`web-app/src/components/meetings/NativeModalDialog.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/meetings/NativeModalDialog.jsx) & [`web-app/src/components/meetings/ProjectMeetingsView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/meetings/ProjectMeetingsView.jsx)
+- [`functions/media_processing/processVideoJob.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/media_processing/processVideoJob.js) & [`functions/media_processing/cleanupStuckJobs.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/media_processing/cleanupStuckJobs.js)
+
+### Key Enhancements & Fixes:
+1. **Class-Safe Admin Remote Client Refresh**:
+   - Injected `__APP_BUILD_TIMESTAMP__` into `vite.config.js` and added a real-time `system_config/clientControl` listener in `App.jsx`.
+   - Added `clientSessionGuard.js` to track active sessions in `StudentView` (`isSharing || isCapturing || isExamActive`), `MonitorView` (`isCapturing || isScreenBroadcasting`), and `ProjectMeetingsView` (`recordingState !== 'idle'`).
+   - Admin CLI [`scripts/force-refresh-clients.mjs`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/scripts/force-refresh-clients.mjs) supports `--mode=prompt` (non-blocking banner only), `--mode=force_idle` (default; reloads idle tabs immediately and defers active sessions until idle), and `--mode=force_now` (emergency immediate reload).
+2. **Firestore Read/Write Loop Elimination & Media Function Fixes**:
+   - Fixed displaced-tab `onSnapshot(statusRef)` feedback loop and idle audio telemetry writes in `StudentView.jsx` that caused excessive Firestore read/write spikes.
+   - Fixed `isTaskSubmission` TDZ `ReferenceError` in `processVideoJob.js` and invalid `'< '` query operator in `cleanupStuckJobs.js`.
+3. **Native `<dialog>` Modal Refactor**:
+   - Migrated all 8 modals in `ProjectMeetingsView.jsx` to `<NativeModalDialog>` (`showModal()`, `closedby`, `::backdrop`, `overscroll-behavior: contain`, Safari `pointerdown`/`pointerup` fallback) and removed the duplicate `Email Whole Class` button.
+
+---
+
 ## 0.0.0.0.0.0.0.0.0.0.4.1 Batch AI Analysis Group-Centric Aggregation, Multi-Part Transparency & Empty Recording Exclusion
 
 **Date**: November 18, 2026  

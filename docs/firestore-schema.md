@@ -30,6 +30,7 @@ This document outlines the Firestore database schema for the AI Invigilator appl
    - [`studentProfiles`](#studentprofiles)
    - [`students`](#students)
    - [`system_config/loginPolicy`](#system_configloginpolicy)
+   - [`system_config/clientControl`](#system_configclientcontrol)
    - [`teacherProfiles`](#teacherprofiles)
    - [`teachers`](#teachers)
    - [`users`](#users)
@@ -1044,6 +1045,19 @@ System-level login policy document managing global password whitelist bypasses f
     *   `passwordWhitelistUids`: (array of strings) Corresponding Firebase Auth UIDs of whitelisted students.
     *   `lastModifiedBy`: (string) Email of the teacher or administrator who last updated the policy.
     *   `updatedAt`: (timestamp) Server timestamp of the latest policy change.
+
+### `system_config/clientControl`
+
+System-level remote client version control document written by the admin CLI (`scripts/force-refresh-clients.mjs`) and observed in real time by `App.jsx` against the Vite build timestamp (`__APP_BUILD_TIMESTAMP__`).
+
+*   **Document ID**: `clientControl` (inside `system_config` collection).
+*   **Security**: Public read access (`allow read: if true`) so unauthenticated and authenticated clients can detect stale builds; direct client write access is strictly forbidden (`allow write: if false`).
+*   **Fields**:
+    *   `forceReloadBefore`: (number) Epoch milliseconds threshold; clients built before this timestamp are considered stale.
+    *   `mode`: (string) `'prompt'` (banner only, default if omitted), `'force_idle'` (auto-reload idle tabs; defer active sharing/capturing/recording sessions until idle), or `'force_now'` (emergency immediate reload).
+    *   `message`: (string | null, optional) Custom banner message shown to users.
+    *   `triggeredBy`: (string) Identifier of the admin trigger (e.g. `'cli-admin'`).
+    *   `updatedAt`: (string) ISO-8601 timestamp of the latest update.
 
 ### `progress`
 
