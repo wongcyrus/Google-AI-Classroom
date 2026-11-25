@@ -757,18 +757,6 @@ export default function StudentMobileView({
                     )}
                   </div>
                   <div className="zoom-actions">
-                    {refreshFrame && (
-                      <button
-                        type="button"
-                        className={`mobile-overlay-btn mobile-refresh-btn ${hasNewFrame ? 'has-update' : ''} ${refreshStatus === 'up_to_date' && !hasNewFrame ? 'up-to-date' : ''}`}
-                        onClick={refreshFrame}
-                        disabled={isRefreshing}
-                        title={hasNewFrame ? 'New slide available — tap to load' : 'Refresh slide'}
-                        aria-label={hasNewFrame ? 'Refresh Slide (New slide available)' : 'Refresh Slide'}
-                      >
-                        {isRefreshing ? '⏳' : hasNewFrame ? '🔄 New' : refreshStatus === 'up_to_date' ? '✓ Latest' : '🔄 Refresh'}
-                      </button>
-                    )}
                     {zoomScale > 1 && (
                       <button type="button" className="mobile-overlay-btn" onClick={resetZoom} title="Reset Zoom" aria-label="Reset Zoom">
                         1x

@@ -198,9 +198,12 @@ export default function PublicLiveView() {
             const nextTs = active ? toEpochMillis(data.frameUpdatedAt) : null;
             if (!active) {
               legacyInitialAttemptedRef.current = false;
-            } else if (!frameDataRef.current) {
-              // Load initial slide automatically once upon joining; subsequent updates load on manual Refresh
-              if (data.frameUrl) {
+            } else {
+              // Auto-update whenever session delivers a new static slide URL/timestamp
+              if (
+                data.frameUrl &&
+                (data.frameUrl !== frameDataRef.current || nextTs !== displayedTimestampRef.current)
+              ) {
                 legacyInitialAttemptedRef.current = false;
                 frameDataRef.current = data.frameUrl;
                 displayedTimestampRef.current = nextTs;
@@ -209,7 +212,11 @@ export default function PublicLiveView() {
                 setFrameData(data.frameUrl);
                 setDisplayedTimestamp(nextTs);
                 setHasReceivedFrame(true);
-              } else if (data.broadcastMode !== 'static_url' && !legacyInitialAttemptedRef.current) {
+              } else if (
+                !frameDataRef.current &&
+                data.broadcastMode !== 'static_url' &&
+                !legacyInitialAttemptedRef.current
+              ) {
                 // Pre-deploy presenter emitting legacy `liveFrame`: single read on join without attaching listener
                 legacyInitialAttemptedRef.current = true;
                 handleRefreshSlideRef.current?.();
@@ -567,29 +574,6 @@ export default function PublicLiveView() {
             </span>
           )}
 
-          <button
-            type="button"
-            onClick={handleRefreshSlide}
-            disabled={isRefreshing}
-            className={`header-refresh-btn ${hasNewSlide ? 'has-update' : ''} ${refreshFeedback === 'up_to_date' && !hasNewSlide ? 'up-to-date' : ''}`}
-            title={
-              hasNewSlide
-                ? 'Presenter updated the slide — click to load the new slide'
-                : refreshFeedback === 'up_to_date'
-                ? 'Already viewing the latest slide (cached — 0 repeat download)'
-                : 'Check & refresh presentation slide'
-            }
-            aria-label={hasNewSlide ? 'Refresh Slide (New slide available)' : 'Refresh Slide'}
-          >
-            {isRefreshing
-              ? '⏳ Checking...'
-              : hasNewSlide
-              ? '🔄 Refresh • New'
-              : refreshFeedback === 'up_to_date'
-              ? '✓ Up to Date'
-              : '🔄 Refresh'}
-          </button>
-
           {/* Subtitle Translation Language Selector */}
           <select
             value={selectedLang}
@@ -653,16 +637,6 @@ export default function PublicLiveView() {
         {/* Floating Zoom & Orientation HUD (Always available in active/fullscreen view so CC & Fullscreen controls work in fullscreen) */}
         {(frameData || isFullscreen || currentTranslation || originalTranscript) && (
           <div className="stream-overlay-hud">
-            <button
-              type="button"
-              onClick={handleRefreshSlide}
-              disabled={isRefreshing}
-              className={`hud-btn hud-refresh-btn ${hasNewSlide ? 'has-update' : ''}`}
-              title={hasNewSlide ? 'Load new slide' : 'Refresh slide'}
-              aria-label={hasNewSlide ? 'Fullscreen Refresh Slide (New slide available)' : 'Fullscreen Refresh Slide'}
-            >
-              {isRefreshing ? '⏳' : hasNewSlide ? '🔄 New' : '🔄'}
-            </button>
             {isFullscreen && (
               <select
                 value={selectedLang}

@@ -589,6 +589,23 @@ describe('App remote clientControl refresh safety', () => {
       expect(window.location.reload).toHaveBeenCalledTimes(1);
     });
   });
+
+  it('does not loop or leave banner stuck after reload already ran for forceReloadBefore', async () => {
+    window.sessionStorage.setItem('client-force-reloaded-for', '2000');
+    onSnapshot.mockImplementation((ref, cb) => {
+      cb({
+        exists: () => true,
+        data: () => ({ forceReloadBefore: 2000, mode: 'force_idle' }),
+      });
+      return vi.fn();
+    });
+
+    render(<App />);
+    await waitFor(() => {
+      expect(window.location.reload).not.toHaveBeenCalled();
+    });
+    expect(screen.queryByText(/A new version of Classroom Assistant is available/i)).not.toBeInTheDocument();
+  });
 });
 
 

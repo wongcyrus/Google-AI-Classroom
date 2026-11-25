@@ -439,16 +439,19 @@ node admin/scripts/seed_demo_class.js
 ```
 
 ### 4. Class-Safe Remote Client Refresh (`scripts/force-refresh-clients.mjs`)
-Updates `system_config/clientControl` so outdated browser tabs load the latest production build without interrupting active classes, screen sharing, exams, broadcasts, or meeting recordings:
+Updates `system_config/clientControl` so outdated browser tabs load the latest Hosting build (`dist/version.json`) without interrupting active classes, screen sharing, exams, broadcasts, or meeting recordings:
 ```bash
-# Default (--mode=force_idle): reloads idle tabs immediately; active sessions see a banner and auto-refresh once idle
-node scripts/force-refresh-clients.mjs it114115-2627
+# Default (--mode=force_idle): matches live Hosting version.json; reloads outdated idle tabs, defers active sessions
+node scripts/force-refresh-clients.mjs --env=prod
+
+# Target dev environment & force even tabs already on current build to reload once (--now)
+node scripts/force-refresh-clients.mjs --env=dev --mode=force_now --now
 
 # Banner-only (--mode=prompt): never auto-reloads; displays a dismissible "Refresh Now" banner
-node scripts/force-refresh-clients.mjs it114115-2627 --mode=prompt --message="New update available"
+node scripts/force-refresh-clients.mjs --env=prod --mode=prompt --message="New update available"
 
-# Emergency (--mode=force_now): immediately reloads all connected tabs regardless of active session state
-node scripts/force-refresh-clients.mjs it114115-2627 --mode=force_now
+# Clear remote refresh override
+node scripts/force-refresh-clients.mjs --env=dev --clear
 ```
 
 ---

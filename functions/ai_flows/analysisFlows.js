@@ -618,14 +618,14 @@ export const analyzeAudioFlow = ai.defineFlow(
   {
     name: 'analyzeAudioFlow',
     inputSchema: z.object({
-      audioUrl: z.string().optional().describe('URL or storage path of the audio recording'),
-      transcript: z.string().optional().describe('Existing browser or on-device STT transcript to analyze without retranscribing audio'),
+      audioUrl: z.string().nullish().describe('URL or storage path of the audio recording'),
+      transcript: z.string().nullish().describe('Existing browser or on-device STT transcript to analyze without retranscribing audio'),
       classId: z.string(),
       studentUid: z.string(),
-      studentEmail: z.string().optional(),
-      prompt: z.string().optional(),
-      model: z.string().optional(),
-      diarization: z.boolean().optional().default(true),
+      studentEmail: z.string().nullish(),
+      prompt: z.string().nullish(),
+      model: z.string().nullish(),
+      diarization: z.boolean().nullish().default(true),
     }).refine(
       ({ audioUrl, transcript }) => Boolean(audioUrl?.trim() || transcript?.trim()),
       { message: 'Either audioUrl or transcript is required' }

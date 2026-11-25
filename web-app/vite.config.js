@@ -29,10 +29,22 @@ export default defineConfig(({ mode }) => {
     }
   }
 
+  const buildTimestamp = Date.now();
+  const emitVersionJsonPlugin = () => ({
+    name: 'emit-version-json',
+    generateBundle() {
+      this.emitFile({
+        type: 'asset',
+        fileName: 'version.json',
+        source: JSON.stringify({ buildTimestamp }, null, 2) + '\n',
+      });
+    },
+  });
+
   return {
-    plugins: [react()],
+    plugins: [react(), emitVersionJsonPlugin()],
     define: {
-      __APP_BUILD_TIMESTAMP__: JSON.stringify(Date.now()),
+      __APP_BUILD_TIMESTAMP__: JSON.stringify(buildTimestamp),
     },
     test: {
       globals: true,

@@ -112,13 +112,29 @@ const App = () => {
       const mode = ['prompt', 'force_idle', 'force_now'].includes(data.mode) ? data.mode : 'prompt';
       const customMessage = typeof data.message === 'string' ? data.message.trim() : '';
 
+      const alreadyReloadedThisTab = (() => {
+        try {
+          return window.sessionStorage.getItem('client-force-reloaded-for') === String(forceReloadBefore);
+        } catch {
+          return false;
+        }
+      })();
+
       if (mode === 'force_now') {
         pendingIdleReloadRef.current = null;
         if (tryAutoReload(forceReloadBefore, 'force_now')) return;
+        if (alreadyReloadedThisTab) {
+          setStaleBuildInfo(null);
+          return;
+        }
       } else if (mode === 'force_idle') {
         if (!hasActiveClassroomSession()) {
           pendingIdleReloadRef.current = null;
           if (tryAutoReload(forceReloadBefore, 'force_idle')) return;
+          if (alreadyReloadedThisTab) {
+            setStaleBuildInfo(null);
+            return;
+          }
         } else {
           pendingIdleReloadRef.current = forceReloadBefore;
         }

@@ -162,12 +162,18 @@ export default function useTeacherScreenBroadcastStudent({ classId, studentUid, 
               if (isViewingRef.current) {
                 leaveBroadcast();
               }
-            } else if (isViewingRef.current && !displayedFrameUrlRef.current) {
-              if (data.frameUrl) {
-                // First slide initial load only — subsequent slide changes wait for manual Refresh click
+            } else if (isViewingRef.current) {
+              if (
+                data.frameUrl &&
+                (data.frameUrl !== displayedFrameUrlRef.current || nextTs !== displayedTimestampRef.current)
+              ) {
                 legacyInitialFetchAttemptedRef.current = false;
                 applySlideFrame(data.frameUrl, nextTs, null);
-              } else if (data.broadcastMode !== 'static_url' && !legacyInitialFetchAttemptedRef.current) {
+              } else if (
+                !displayedFrameUrlRef.current &&
+                data.broadcastMode !== 'static_url' &&
+                !legacyInitialFetchAttemptedRef.current
+              ) {
                 // Pre-deploy teacher emitting legacy `liveFrame`: perform one-time single getDoc fetch without live listener
                 legacyInitialFetchAttemptedRef.current = true;
                 refreshFrameRef.current?.();

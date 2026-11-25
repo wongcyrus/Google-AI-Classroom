@@ -4,6 +4,27 @@
 **System**: Google AI Classroom  
 **Production URL**: `https://it114115-2627.web.app`
 
+## 0.0.0.0.0.0.0.0.0.0.4.4 Auto-Updating Broadcast Slides, `analyzeAudio` Schema Tolerance & `version.json` Client Refresh
+
+**Date**: November 25, 2026  
+**Status**: Implemented, Verified with Unit & Live Headless Chrome / HTTP E2E Tests on `it114115-dev-2026`, Pushed to `main`  
+**Primary Files**:
+- [`web-app/src/hooks/useTeacherScreenBroadcastStudent.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/hooks/useTeacherScreenBroadcastStudent.js), [`web-app/src/components/student/StudentMobileView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/student/StudentMobileView.jsx), & [`web-app/src/components/public/PublicLiveView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/public/PublicLiveView.jsx)
+- [`functions/ai_flows/analysisFlows.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/analysisFlows.js)
+- [`web-app/vite.config.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/vite.config.js), [`firebase.json`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/firebase.json), [`web-app/src/App.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/App.jsx), & [`scripts/force-refresh-clients.mjs`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/scripts/force-refresh-clients.mjs)
+
+### Key Enhancements & Fixes:
+1. **Automatic Slide Updates & Removal of Manual `Refresh Slide` Button**:
+   - Updated `useTeacherScreenBroadcastStudent.js` and `PublicLiveView.jsx` so student and public spectator views automatically swap to the latest Cloud Storage slide image as soon as `screenBroadcast/session.frameUrl` / `frameUpdatedAt` updates in Firestore, preserving Storage 404 recovery.
+   - Removed the redundant **Refresh Slide** button from `StudentMobileView.jsx` and `PublicLiveView.jsx` (header & fullscreen HUD).
+2. **`analyzeAudio` Nullish Input Tolerance**:
+   - Updated `analyzeAudioFlow` (`functions/ai_flows/analysisFlows.js`) `inputSchema` optional fields (`audioUrl`, `transcript`, `studentEmail`, `prompt`, `model`, `diarization`) from `.optional()` to `.nullish()`, fixing HTTP 500 `Schema validation failed: prompt: must be string` when clients omit custom prompts (`prompt: null`).
+3. **Exact `version.json`-Backed Remote Client Refresh**:
+   - `web-app/vite.config.js` emits `dist/version.json` sharing `__APP_BUILD_TIMESTAMP__` (served uncached via `firebase.json`), while `scripts/force-refresh-clients.mjs` supports `--env=dev|prod`, `--project=<id>`, `--now`, and `--clear` and defaults `forceReloadBefore` to live Hosting `version.json` so refreshed tabs never retain a stuck update banner.
+   - `App.jsx` also suppresses redundant post-reload banners on tabs that already executed the targeted `force_idle`/`force_now` reload.
+
+---
+
 ## 0.0.0.0.0.0.0.0.0.0.4.3 Static-URL Screen Broadcast, Cross-Service Storage Rules & Deployment Hardening
 
 **Date**: November 25, 2026  

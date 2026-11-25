@@ -158,8 +158,8 @@ describe('useTeacherScreenBroadcastStudent Hook', () => {
         }),
       });
     });
-    expect(result.current.liveFrame).toBe('https://storage.mock/slide.jpg?token=a&t=1000');
-    expect(result.current.hasNewFrame).toBe(true);
+    expect(result.current.liveFrame).toBe('https://storage.mock/slide.jpg?token=a&t=2000');
+    expect(result.current.hasNewFrame).toBe(false);
 
     // Manual Refresh compares timestamp 2000 !== 1000 and updates image
     mockGetDoc.mockResolvedValueOnce({
@@ -173,10 +173,10 @@ describe('useTeacherScreenBroadcastStudent Hook', () => {
     await act(async () => {
       refreshResult = await result.current.refreshFrame();
     });
-    expect(refreshResult).toEqual(expect.objectContaining({ updated: true, frameUpdatedAt: 2000 }));
+    expect(refreshResult).toEqual(expect.objectContaining({ updated: false, reason: 'up_to_date' }));
     expect(result.current.liveFrame).toBe('https://storage.mock/slide.jpg?token=a&t=2000');
     expect(result.current.hasNewFrame).toBe(false);
-    expect(result.current.refreshStatus).toBe('updated');
+    expect(result.current.refreshStatus).toBe('up_to_date');
 
     // Leave broadcast
     await act(async () => {

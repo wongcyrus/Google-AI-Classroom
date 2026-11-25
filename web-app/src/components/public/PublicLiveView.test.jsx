@@ -147,7 +147,7 @@ describe('PublicLiveView Component', () => {
     });
   });
 
-  it('auto-verifies PIN, loads initial static slide from session, skips unchanged refresh, and updates only on manual Refresh', async () => {
+  it('auto-verifies PIN, loads initial static slide from session, and auto-updates when session pushes a new slide', async () => {
     render(
       <MemoryRouter initialEntries={['/live/CLASS_TALK_101?pin=4321']}>
         <Routes>
@@ -201,26 +201,9 @@ describe('PublicLiveView Component', () => {
       expect(screen.getAllByText('Hello and welcome everyone').length).toBeGreaterThan(0);
     });
 
-    // Refresh when timestamp is unchanged -> keeps existing src and marks Up to Date
-    mockGetDoc.mockResolvedValueOnce({
-      exists: () => true,
-      data: () => ({
-        isBroadcasting: true,
-        isPublic: true,
-        frameUrl: 'https://storage.mock/broadcasts/CLASS_TALK_101/slide.jpg?t=1000',
-        frameUpdatedAt: 1000,
-      }),
-    });
-    const refreshBtn = screen.getByRole('button', { name: /^Refresh Slide$/i });
-    fireEvent.click(refreshBtn);
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /^Refresh Slide$/i })).toHaveTextContent('✓ Up to Date');
-      expect(screen.getByAltText('Live presentation stream').getAttribute('src')).toBe(
-        'https://storage.mock/broadcasts/CLASS_TALK_101/slide.jpg?t=1000'
-      );
-    });
+    expect(screen.queryByRole('button', { name: /Refresh Slide/i })).not.toBeInTheDocument();
 
-    // Presenter moves to slide 2 -> session updates timestamp, image stays cached until clicked
+    // Presenter moves to slide 2 -> session updates timestamp and auto-updates image src
     sessionCb({
       exists: () => true,
       data: () => ({
@@ -230,20 +213,6 @@ describe('PublicLiveView Component', () => {
         frameUpdatedAt: 2000,
       }),
     });
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /^Refresh Slide \(New slide available\)$/i })).toBeInTheDocument();
-    });
-
-    mockGetDoc.mockResolvedValueOnce({
-      exists: () => true,
-      data: () => ({
-        isBroadcasting: true,
-        isPublic: true,
-        frameUrl: 'https://storage.mock/broadcasts/CLASS_TALK_101/slide.jpg?t=2000',
-        frameUpdatedAt: 2000,
-      }),
-    });
-    fireEvent.click(screen.getByRole('button', { name: /^Refresh Slide \(New slide available\)$/i }));
     await waitFor(() => {
       expect(screen.getByAltText('Live presentation stream').getAttribute('src')).toBe(
         'https://storage.mock/broadcasts/CLASS_TALK_101/slide.jpg?t=2000'
