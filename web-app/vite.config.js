@@ -31,6 +31,9 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [react()],
+    define: {
+      __APP_BUILD_TIMESTAMP__: JSON.stringify(Date.now()),
+    },
     test: {
       globals: true,
       environment: 'jsdom',

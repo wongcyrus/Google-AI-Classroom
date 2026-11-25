@@ -57,11 +57,45 @@ const App = () => {
   const [unsupportedStudentBrowser, setUnsupportedStudentBrowser] = useState(false);
   const [detectedBrowser, setDetectedBrowser] = useState('');
   const [unverifiedUser, setUnverifiedUser] = useState(null);
+  const [staleBuildBanner, setStaleBuildBanner] = useState(false);
 
   useEffect(() => {
     if (appCheck) {
       console.info('[App] App Check state: Active');
     }
+  }, []);
+
+  // Global remote client refresh: listens to system_config/clientControl.forceReloadBefore
+  useEffect(() => {
+    const buildTs = typeof __APP_BUILD_TIMESTAMP__ !== 'undefined' ? Number(__APP_BUILD_TIMESTAMP__) : 0;
+    if (!buildTs || !db) return;
+
+    const controlRef = doc(db, 'system_config', 'clientControl');
+    const unsub = onSnapshot(controlRef, (snap) => {
+      if (!snap.exists()) return;
+      const data = snap.data() || {};
+      const forceReloadBefore = Number(data.forceReloadBefore || 0);
+      if (!forceReloadBefore || buildTs >= forceReloadBefore) return;
+
+      const markerKey = 'client-force-reloaded-for';
+      const markerVal = String(forceReloadBefore);
+      try {
+        if (window.sessionStorage.getItem(markerKey) === markerVal) {
+          setStaleBuildBanner(true);
+          return;
+        }
+        window.sessionStorage.setItem(markerKey, markerVal);
+      } catch {
+        // Ignore sessionStorage errors in restricted contexts
+      }
+
+      console.info(`[App] Remote force-refresh triggered (build ${buildTs} < ${forceReloadBefore}). Reloading...`);
+      window.location.reload();
+    }, (err) => {
+      console.debug('[App] clientControl listener note:', err?.message || err);
+    });
+
+    return () => unsub();
   }, []);
 
   useEffect(() => {
@@ -134,6 +168,39 @@ const App = () => {
 
   return (
     <Router>
+      {staleBuildBanner && (
+        <div
+          role="status"
+          style={{
+            background: '#1e40af',
+            color: '#ffffff',
+            padding: '8px 16px',
+            fontSize: '0.85rem',
+            fontWeight: 600,
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            gap: '12px',
+          }}
+        >
+          <span>🔄 A new version of Classroom Assistant is available.</span>
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            style={{
+              background: '#ffffff',
+              color: '#1e40af',
+              border: 'none',
+              borderRadius: '6px',
+              padding: '4px 10px',
+              fontWeight: 700,
+              cursor: 'pointer',
+            }}
+          >
+            Refresh Now
+          </button>
+        </div>
+      )}
       <AppShell
         user={user}
         role={role}
