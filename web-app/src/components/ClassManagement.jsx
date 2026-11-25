@@ -74,6 +74,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
   const [grantingBypass, setGrantingBypass] = useState({});
   const [bypassSuccessMsg, setBypassSuccessMsg] = useState('');
   const bypassTimeoutRef = useRef(null);
+  const customPropertiesManagerRef = useRef(null);
 
   useEffect(() => {
     return () => {
@@ -1333,6 +1334,12 @@ const ClassManagement = ({ user, embeddedClassId }) => {
     };
 
     await updateDoc(classRef, updateData);
+    if (customPropertiesManagerRef.current?.saveClassProperties) {
+      const propsSaved = await customPropertiesManagerRef.current.saveClassProperties({ silentIfClean: true });
+      if (propsSaved === false) {
+        throw new Error('Class settings updated, but failed to save Class-wide Custom Properties.');
+      }
+    }
     setStudentEmails(studentEmailList.join('\n'));
     setSuccessMessage('Class settings successfully updated!');
 
@@ -3104,7 +3111,11 @@ const ClassManagement = ({ user, embeddedClassId }) => {
 
         {(selectedClass || embeddedClassId) ? (
           <div style={{ marginTop: '1.25rem' }}>
-            <CustomPropertiesManager selectedClass={embeddedClassId || selectedClass} studentEmails={studentEmails} />
+            <CustomPropertiesManager
+              ref={customPropertiesManagerRef}
+              selectedClass={embeddedClassId || selectedClass}
+              studentEmails={studentEmails}
+            />
           </div>
         ) : (
           <div style={{ marginTop: '1.25rem', padding: '0.9rem 1.25rem', backgroundColor: 'var(--color-bg-secondary, #f8fafc)', border: '1px dashed var(--color-border, #cbd5e1)', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '0.6rem' }}>

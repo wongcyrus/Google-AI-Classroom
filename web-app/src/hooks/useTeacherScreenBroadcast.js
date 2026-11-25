@@ -25,7 +25,6 @@ function createRandomSlideToken() {
 }
 
 async function encodeCanvasToJpeg(canvas, quality) {
-  const dataUrl = canvas.toDataURL('image/jpeg', quality);
   if (typeof canvas.toBlob === 'function') {
     const blob = await new Promise((resolve) => {
       let settled = false;
@@ -52,10 +51,12 @@ async function encodeCanvasToJpeg(canvas, quality) {
       }
     });
     if (blob) {
-      return { blob, dataUrl };
+      return { blob, dataUrl: null };
     }
   }
 
+  // Fallback only when toBlob is unavailable or fails
+  const dataUrl = canvas.toDataURL('image/jpeg', quality);
   const base64Part = dataUrl.includes(',') ? dataUrl.split(',')[1] : '';
   let byteArray;
   try {
@@ -185,6 +186,7 @@ export default function useTeacherScreenBroadcast({ classId, teacherUid, teacher
   const stopBroadcastRef = useRef(null);
   const currentSlideStoragePathRef = useRef(null);
   const uploadedSlidePathsRef = useRef(new Set());
+  const lastPreviewBlobUrlRef = useRef(null);
 
   // Load & sync pre-configured public broadcast state and 4-digit PIN from Firestore DB
   // so switching computers (e.g. from office laptop to stage podium PC) keeps the exact same PIN.
@@ -430,6 +432,12 @@ export default function useTeacherScreenBroadcast({ classId, teacherUid, teacher
       }
     }
 
+    if (lastPreviewBlobUrlRef.current && typeof URL !== 'undefined' && typeof URL.revokeObjectURL === 'function') {
+      try {
+        URL.revokeObjectURL(lastPreviewBlobUrlRef.current);
+      } catch {}
+      lastPreviewBlobUrlRef.current = null;
+    }
     setIsBroadcasting(false);
     setIsPublicBroadcast(false);
     setPublicPin(null);
@@ -681,7 +689,7 @@ export default function useTeacherScreenBroadcast({ classId, teacherUid, teacher
               targetHeight = Math.round(targetHeight * scale);
             }
 
-            const captureCtx = captureCanvasRef.current.getContext('2d', { willReadFrequently: true });
+            const captureCtx = captureCanvasRef.current.getContext('2d');
             if (!captureCtx) return;
 
             if (captureCanvasRef.current.width !== targetWidth) captureCanvasRef.current.width = targetWidth;
@@ -701,7 +709,7 @@ export default function useTeacherScreenBroadcast({ classId, teacherUid, teacher
             let { blob: jpegBlob, dataUrl: jpegDataUrl } = await encodeCanvasToJpeg(captureCanvasRef.current, quality);
 
             const MAX_SLIDE_BYTES = 2500000;
-            if ((jpegBlob?.size || jpegDataUrl.length) > MAX_SLIDE_BYTES) {
+            if ((jpegBlob?.size || jpegDataUrl?.length || 0) > MAX_SLIDE_BYTES) {
               quality = Math.max(0.65, quality - 0.12);
               ({ blob: jpegBlob, dataUrl: jpegDataUrl } = await encodeCanvasToJpeg(captureCanvasRef.current, quality));
             }
@@ -712,7 +720,7 @@ export default function useTeacherScreenBroadcast({ classId, teacherUid, teacher
             const slideNonce = createRandomSlideToken();
             const frameStoragePath = `broadcasts/${classId}/slide_${frameUpdatedAt}_${slideNonce}.jpg`;
             const prevSlidePath = currentSlideStoragePathRef.current;
-            let versionedUrl = jpegDataUrl;
+            let versionedUrl = jpegDataUrl || '';
 
             if (storage && typeof ref === 'function' && typeof uploadBytes === 'function') {
               const slideStorageRef = ref(storage, frameStoragePath);
@@ -727,7 +735,7 @@ export default function useTeacherScreenBroadcast({ classId, teacherUid, teacher
                   const sep = baseUrl.includes('?') ? '&' : '?';
                   return `${baseUrl}${sep}t=${frameUpdatedAt}`;
                 }
-                return jpegDataUrl;
+                return versionedUrl;
               })();
               let uploadTimeoutId = null;
               const uploadTimeoutPromise = new Promise((_, reject) => {
@@ -798,11 +806,24 @@ export default function useTeacherScreenBroadcast({ classId, teacherUid, teacher
             const stats = {
               emittedFrames: seq,
               lastEmittedTime: now,
-              lastFrameSize: jpegBlob?.size || jpegDataUrl.length,
+              lastFrameSize: jpegBlob?.size || jpegDataUrl?.length || 0,
             };
             frameStatsRef.current = stats;
             setFrameStats(stats);
-            setLastFrameData(jpegDataUrl);
+            let nextPreviewUrl = jpegDataUrl || versionedUrl || null;
+            if (!jpegDataUrl && jpegBlob && typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function') {
+              try {
+                const createdObjUrl = URL.createObjectURL(jpegBlob);
+                if (lastPreviewBlobUrlRef.current && typeof URL.revokeObjectURL === 'function') {
+                  URL.revokeObjectURL(lastPreviewBlobUrlRef.current);
+                }
+                lastPreviewBlobUrlRef.current = createdObjUrl;
+                nextPreviewUrl = createdObjUrl;
+              } catch {
+                nextPreviewUrl = versionedUrl || null;
+              }
+            }
+            setLastFrameData(nextPreviewUrl);
           }
         } finally {
           // Release GPU texture memory for ImageBitmap immediately to avoid Chromium texture leak

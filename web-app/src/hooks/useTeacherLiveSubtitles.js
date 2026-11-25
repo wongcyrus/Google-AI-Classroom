@@ -178,9 +178,11 @@ export function useTeacherLiveSubtitles({
     if (!enabled) return;
     const interval = setInterval(() => {
       const elapsedSec = Math.floor((Date.now() - lastVoiceActivityAtRef.current) / 1000);
-      setSilenceDurationSeconds(elapsedSec);
+      if (elapsedSec >= 10) {
+        setSilenceDurationSeconds((prev) => (prev !== elapsedSec ? elapsedSec : prev));
+      }
       if (elapsedSec >= 45 || (isMicTrackMuted && elapsedSec >= 10)) {
-        setIsMicSilentWarning(true);
+        setIsMicSilentWarning((prev) => (prev ? prev : true));
       }
     }, 2000);
     return () => clearInterval(interval);
@@ -831,6 +833,7 @@ export function useTeacherLiveSubtitles({
 
         let speechVolDecayTimeout = null;
         let lastReportedVol = 0;
+        let lastMicVolumeEmitAt = 0;
 
         audioCtx = new AudioCtx();
         const tryResumeAudioCtx = () => {
@@ -869,8 +872,13 @@ export function useTeacherLiveSubtitles({
           }
           const rms = Math.sqrt(sumSq / pcm16k.length);
           const rmsPct = rms < 0.003 ? 0 : Math.min(100, Math.round(Math.pow(Math.min(1, rms / 0.25), 0.65) * 100));
-          if (rmsPct !== lastReportedVol) {
+          const volNow = Date.now();
+          if (
+            (rmsPct === 0 && lastReportedVol !== 0 && volNow - lastMicVolumeEmitAt >= 200) ||
+            (Math.abs(rmsPct - lastReportedVol) >= 5 && volNow - lastMicVolumeEmitAt >= 300)
+          ) {
             lastReportedVol = rmsPct;
+            lastMicVolumeEmitAt = volNow;
             setMicVolume(rmsPct);
           }
 

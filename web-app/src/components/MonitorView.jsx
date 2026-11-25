@@ -2028,9 +2028,22 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
     }
   }, [classId, isCapturing, frameRate]);
 
-  const handleStudentClick = (student) => {
+  const handleStudentClick = useCallback((student) => {
     setSelectedStudent(student);
-  };
+  }, []);
+
+  const handleSetShowNotSharingModal = useCallback((open) => {
+    if (open) setNotSharingFilter('screen');
+    setShowNotSharingModal(open);
+  }, []);
+
+  const handleOpenNotSharingFilter = useCallback((filterKey) => {
+    setNotSharingFilter(filterKey || 'screen');
+    setShowNotSharingModal(true);
+  }, []);
+
+  const handleOpenBingoModal = useCallback(() => setShowBingoModal(true), []);
+  const handleOpenLectureQrModal = useCallback(() => setShowLectureQrModal(true), []);
 
   const normalizeNotSharingStudent = useCallback((s) => {
     const rawDisplayName = s.displayName;
@@ -2469,14 +2482,8 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
         notSharingWebcamStudents={notSharingWebcamStudents}
         notSharingMicStudents={notSharingMicStudents}
         notSharingCamAndMicStudents={notSharingCamAndMicStudents}
-        setShowNotSharingModal={(open) => {
-          if (open) setNotSharingFilter('screen');
-          setShowNotSharingModal(open);
-        }}
-        onOpenNotSharingFilter={(filterKey) => {
-          setNotSharingFilter(filterKey || 'screen');
-          setShowNotSharingModal(true);
-        }}
+        setShowNotSharingModal={handleSetShowNotSharingModal}
+        onOpenNotSharingFilter={handleOpenNotSharingFilter}
         handleDownloadAttendance={handleDownloadAttendance}
         editablePromptText={editablePromptText}
         isPerImageAnalysisRunning={isPerImageAnalysisRunning}
@@ -2538,8 +2545,8 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
         handleRunAllImagesAnalysis={handleRunAllImagesAnalysis}
         isAnalyzing={isAnalyzing}
         storageRatePerGibMonth={storageRatePerGibMonth}
-        onOpenBingoModal={() => setShowBingoModal(true)}
-        onOpenLectureQrModal={() => setShowLectureQrModal(true)}
+        onOpenBingoModal={handleOpenBingoModal}
+        onOpenLectureQrModal={handleOpenLectureQrModal}
       />}
 
       <div className="monitor-main-content" style={{ flexGrow: 1 }}>

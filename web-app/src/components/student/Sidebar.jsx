@@ -18,7 +18,7 @@ const Sidebar = ({
 }) => {
   const [internalTab, setInternalTab] = useState('all'); // 'all' | 'transcript' | 'properties' | 'alerts'
   const activeTab = externalTab !== undefined ? externalTab : internalTab;
-  const transcriptEndRef = useRef(null);
+  const transcriptScrollRef = useRef(null);
 
   const handleTabClick = (tab) => {
     if (onTabChange) {
@@ -28,11 +28,12 @@ const Sidebar = ({
     }
   };
 
-  // Auto-scroll transcript container to newest sentence
+  // Auto-scroll ONLY the internal transcript scroll box (never scrollIntoView, which yanks the outer page window)
   useEffect(() => {
     if (activeTab === 'transcript' || activeTab === 'all') {
-      if (typeof transcriptEndRef.current?.scrollIntoView === 'function') {
-        transcriptEndRef.current.scrollIntoView({ behavior: 'smooth' });
+      const container = transcriptScrollRef.current;
+      if (container) {
+        container.scrollTop = container.scrollHeight;
       }
     }
   }, [liveTranscriptHistory, currentOriginalText, currentTranslationText, activeTab]);
@@ -54,22 +55,22 @@ const Sidebar = ({
         <button
           type="button"
           role="tab"
-          aria-selected={activeTab === 'transcript'}
-          className={`sidebar-tab-btn ${activeTab === 'transcript' ? 'active' : ''}`}
-          onClick={() => handleTabClick('transcript')}
-          title="Live Lecture Transcript"
-        >
-          💬 Transcript
-        </button>
-        <button
-          type="button"
-          role="tab"
           aria-selected={activeTab === 'properties'}
           className={`sidebar-tab-btn ${activeTab === 'properties' ? 'active' : ''}`}
           onClick={() => handleTabClick('properties')}
           title="Classroom & Device Properties"
         >
           📋 Class Info
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'transcript'}
+          className={`sidebar-tab-btn ${activeTab === 'transcript' ? 'active' : ''}`}
+          onClick={() => handleTabClick('transcript')}
+          title="Live Lecture Transcript"
+        >
+          💬 Transcript
         </button>
         <button
           type="button"
@@ -83,7 +84,15 @@ const Sidebar = ({
         </button>
       </div>
 
-      {/* Panel 1: Live Transcript Stream (YouTube Live Chat/Transcript Style) */}
+      {/* Panel 1: Class & Student Properties (Shown First) */}
+      <div
+        className="sidebar-tab-panel"
+        style={{ display: activeTab === 'properties' || activeTab === 'all' ? 'block' : 'none' }}
+      >
+        <PropertiesWidget classProperties={classProperties} myProperties={myProperties} />
+      </div>
+
+      {/* Panel 2: Live Transcript Stream (YouTube Live Chat/Transcript Style) */}
       <div
         className="sidebar-tab-panel transcript-panel"
         style={{ display: activeTab === 'transcript' || activeTab === 'all' ? 'flex' : 'none' }}
@@ -98,7 +107,7 @@ const Sidebar = ({
           </span>
         </div>
 
-        <div className="transcript-scroll-area" role="log" aria-live="polite">
+        <div className="transcript-scroll-area" ref={transcriptScrollRef} role="log" aria-live="polite">
           {liveTranscriptHistory.length === 0 && !currentOriginalText && !currentTranslationText ? (
             <div className="transcript-empty-placeholder">
               <span className="placeholder-icon">🎙️</span>
@@ -149,18 +158,9 @@ const Sidebar = ({
                   )}
                 </div>
               )}
-              <div ref={transcriptEndRef} />
             </>
           )}
         </div>
-      </div>
-
-      {/* Panel 2: Class & Student Properties */}
-      <div
-        className="sidebar-tab-panel"
-        style={{ display: activeTab === 'properties' || activeTab === 'all' ? 'block' : 'none' }}
-      >
-        <PropertiesWidget classProperties={classProperties} myProperties={myProperties} />
       </div>
 
       {/* Panel 3: Alerts & Messages */}

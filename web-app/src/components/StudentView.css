@@ -938,6 +938,22 @@
   color: #ffffff;
 }
 
+.btn-quick-start-screen.primary-action {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  color: #ffffff;
+  border: none;
+  padding: 0.85rem 1.75rem;
+  font-size: 1.05rem;
+  font-weight: 700;
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.4);
+}
+
+.btn-quick-start-screen.primary-action:hover {
+  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(37, 99, 235, 0.5);
+}
+
 .setup-system-summary {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -1519,6 +1535,21 @@
   will-change: transform;
 }
 
+.desktop-yt-player-box.fullscreen-mode .teacher-live-top-bar {
+  right: 12px;
+  flex-wrap: wrap;
+}
+
+.desktop-yt-player-box.mode-max:not(.fullscreen-mode) .teacher-live-top-bar {
+  right: 268px;
+  flex-wrap: wrap;
+}
+
+.desktop-yt-player-box.mode-smallest:not(.fullscreen-mode) .teacher-live-top-bar {
+  right: 196px;
+  flex-wrap: wrap;
+}
+
 .teacher-live-top-bar {
   position: absolute;
   top: 10px;
@@ -1528,7 +1559,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  z-index: 25;
+  z-index: 30;
   pointer-events: none;
 }
 
@@ -1593,8 +1624,35 @@
   transition: all 0.15s ease;
 }
 
-.yt-zoom-btn:hover {
+.yt-zoom-btn:hover:not(:disabled) {
   background: rgba(30, 41, 59, 0.9);
+}
+
+.yt-zoom-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.yt-zoom-pct-btn {
+  min-width: 44px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.teacher-live-pan-hint {
+  position: absolute;
+  bottom: 58px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(15, 23, 42, 0.78);
+  color: #e2e8f0;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 9999px;
+  padding: 3px 10px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  pointer-events: none;
+  z-index: 22;
 }
 
 .yt-refresh-btn.has-update {
@@ -2225,6 +2283,131 @@
 .preview-close-window-btn:hover {
   background: #dc2626;
 }
+
+/* ==========================================================================
+   Separated Outbound Self-Sharing Card & Collapsible Voice Diagnostics
+   ========================================================================== */
+
+.student-outbound-share-card {
+  margin-top: 14px;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-left: 4px solid #10b981;
+  border-radius: 12px;
+  padding: 12px 14px;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.05);
+}
+
+.student-outbound-share-card.hidden-stream {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+  margin: 0;
+  padding: 0;
+  border: none;
+}
+
+.outbound-share-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.outbound-share-title-group {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.outbound-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: #ecfdf5;
+  color: #047857;
+  border: 1px solid #a7f3d0;
+  border-radius: 9999px;
+  padding: 3px 10px;
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+}
+
+.outbound-hint {
+  font-size: 0.82rem;
+  color: #475569;
+  font-weight: 500;
+}
+
+.outbound-share-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.outbound-toggle-btn {
+  background: #f8fafc;
+  color: #1e293b;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  padding: 5px 10px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.outbound-toggle-btn:hover {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+}
+
+.outbound-toggle-btn.active {
+  background: #ecfdf5;
+  color: #065f46;
+  border-color: #34d399;
+}
+
+.outbound-preview-stage {
+  position: relative;
+  margin-top: 12px;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #020617;
+  border: 1px solid #1e293b;
+  min-height: 220px;
+}
+
+.voice-ai-diagnostics-details {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 8px 12px;
+}
+
+.voice-ai-diagnostics-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  font-size: 0.84rem;
+  font-weight: 700;
+  color: #1e293b;
+  list-style: none;
+  user-select: none;
+}
+
+.voice-ai-diagnostics-summary::-webkit-details-marker {
+  display: none;
+}
+
 
 
 

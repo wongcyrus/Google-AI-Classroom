@@ -8,6 +8,7 @@ const mockGetDocs = vi.fn();
 const mockSetDoc = vi.fn().mockResolvedValue();
 const mockAddDoc = vi.fn().mockResolvedValue({ id: 'job_1' });
 const mockCommit = vi.fn().mockResolvedValue();
+const mockBatchSet = vi.fn();
 const mockBatchUpdate = vi.fn();
 
 vi.mock('../firebase-config', () => ({
@@ -29,7 +30,7 @@ vi.mock('firebase/firestore', () => ({
   orderBy: vi.fn(),
   limit: vi.fn(),
   writeBatch: () => ({
-    set: vi.fn(),
+    set: mockBatchSet,
     update: mockBatchUpdate,
     commit: mockCommit,
   }),
@@ -271,5 +272,60 @@ describe('CustomPropertiesManager Component', () => {
     });
 
     confirmSpy.mockRestore();
+  });
+
+  it('excludes bingoQuestionBank from editable class rows, merges updates cleanly, deletes removed keys, and supports imperative save', async () => {
+    mockGetDoc.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({
+        CourseCode: 'IT114115',
+        OldKey: 'Legacy',
+        bingoQuestionBank: [{ question: 'Q1', answer: 'A1' }],
+      }),
+    });
+
+    const ref = React.createRef();
+    render(
+      <CustomPropertiesManager
+        ref={ref}
+        selectedClass="CLASS_101"
+        studentEmails="alice@school.edu"
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByDisplayValue('CourseCode')).toBeInTheDocument();
+      expect(screen.getByDisplayValue('OldKey')).toBeInTheDocument();
+    });
+
+    expect(screen.queryByDisplayValue('bingoQuestionBank')).not.toBeInTheDocument();
+
+    // When clean, silentIfClean skips Firestore write
+    await act(async () => {
+      await ref.current.saveClassProperties({ silentIfClean: true });
+    });
+    expect(mockBatchSet).not.toHaveBeenCalled();
+
+    // Update CourseCode and remove OldKey
+    const valueInputs = screen.getAllByPlaceholderText(/Value/i);
+    fireEvent.change(valueInputs[0], { target: { value: 'IT114115-V2' } });
+    const removeBtns = screen.getAllByTitle(/Remove Property/i);
+    fireEvent.click(removeBtns[1]);
+
+    // Imperative save from parent Save Class Settings now commits merge + deleteField
+    await act(async () => {
+      const ok = await ref.current.saveClassProperties({ silentIfClean: true });
+      expect(ok).toBe(true);
+    });
+
+    expect(mockBatchSet).toHaveBeenCalledWith(
+      expect.anything(),
+      {
+        CourseCode: 'IT114115-V2',
+        OldKey: '__DELETE_FIELD__',
+      },
+      { merge: true }
+    );
+    expect(mockCommit).toHaveBeenCalled();
   });
 });

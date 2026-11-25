@@ -455,30 +455,39 @@ export default function TeacherScreenBroadcastModal({
             ? new Uint8Array(analyser.fftSize || 256)
             : null;
 
+        let lastMeterEmitAt = 0;
+        let lastMeterPct = -1;
         const tick = () => {
           if (!isMounted) return;
-          analyser.getByteFrequencyData(dataArray);
-          let sum = 0;
-          for (let i = 0; i < dataArray.length; i++) {
-            sum += dataArray[i];
-          }
-          const avg = sum / dataArray.length;
-          const freqPct = Math.min(100, Math.round((avg / 128) * 100));
-
-          let timePct = 0;
-          if (timeDataArray && typeof analyser.getByteTimeDomainData === 'function') {
-            analyser.getByteTimeDomainData(timeDataArray);
-            let sumSq = 0;
-            for (let i = 0; i < timeDataArray.length; i++) {
-              const norm = (timeDataArray[i] - 128) / 128;
-              sumSq += norm * norm;
+          const nowTs = Date.now();
+          if (nowTs - lastMeterEmitAt >= 66) {
+            analyser.getByteFrequencyData(dataArray);
+            let sum = 0;
+            for (let i = 0; i < dataArray.length; i++) {
+              sum += dataArray[i];
             }
-            const rms = Math.sqrt(sumSq / timeDataArray.length);
-            timePct = rms < 0.003 ? 0 : Math.min(100, Math.round(Math.pow(Math.min(1, rms / 0.25), 0.65) * 100));
-          }
+            const avg = sum / dataArray.length;
+            const freqPct = Math.min(100, Math.round((avg / 128) * 100));
 
-          const pct = Math.max(freqPct, timePct);
-          setMicVolume(pct);
+            let timePct = 0;
+            if (timeDataArray && typeof analyser.getByteTimeDomainData === 'function') {
+              analyser.getByteTimeDomainData(timeDataArray);
+              let sumSq = 0;
+              for (let i = 0; i < timeDataArray.length; i++) {
+                const norm = (timeDataArray[i] - 128) / 128;
+                sumSq += norm * norm;
+              }
+              const rms = Math.sqrt(sumSq / timeDataArray.length);
+              timePct = rms < 0.003 ? 0 : Math.min(100, Math.round(Math.pow(Math.min(1, rms / 0.25), 0.65) * 100));
+            }
+
+            const pct = Math.max(freqPct, timePct);
+            if (Math.abs(pct - lastMeterPct) >= 3 || (pct === 0 && lastMeterPct !== 0)) {
+              lastMeterPct = pct;
+              setMicVolume(pct);
+            }
+            lastMeterEmitAt = nowTs;
+          }
           animId = requestAnimationFrame(tick);
         };
 
@@ -507,19 +516,21 @@ export default function TeacherScreenBroadcastModal({
     };
   }, [isOpen, step, isBroadcasting, selectedMicDeviceId]);
 
-  // Video element preview attachment in Live mode
+  // Video element preview attachment in Live mode (memoized so frequent modal renders do not detach/re-play video)
   const videoRef = useRef(null);
-  const attachVideo = (node) => {
+  const attachVideo = React.useCallback((node) => {
     videoRef.current = node;
     if (node && screenStream) {
       if (node.srcObject !== screenStream) {
         node.srcObject = screenStream;
       }
-      node.play().catch((err) => {
-        console.debug('[TeacherScreenBroadcastModal] video play note:', err);
-      });
+      if (node.paused) {
+        node.play().catch((err) => {
+          console.debug('[TeacherScreenBroadcastModal] video play note:', err);
+        });
+      }
     }
-  };
+  }, [screenStream]);
 
   useEffect(() => {
     const node = videoRef.current;

@@ -39,6 +39,8 @@ vi.mock('firebase/auth', () => ({
 const mockSetDoc = vi.fn().mockResolvedValue({});
 const mockUpdateDoc = vi.fn().mockResolvedValue({});
 const mockDeleteDoc = vi.fn().mockResolvedValue({});
+const mockBatchSet = vi.fn();
+const mockBatchCommit = vi.fn().mockResolvedValue({});
 
 vi.mock('firebase/firestore', () => ({
   doc: vi.fn((db, col, id, ...rest) => ({ path: `${col}/${id}${rest.length ? '/' + rest.join('/') : ''}` })),
@@ -95,13 +97,15 @@ vi.mock('firebase/firestore', () => ({
   orderBy: vi.fn(),
   limit: vi.fn(),
   writeBatch: vi.fn(() => ({
-    set: vi.fn(),
-    commit: vi.fn().mockResolvedValue({}),
+    set: mockBatchSet,
+    update: vi.fn(),
+    commit: mockBatchCommit,
   })),
   addDoc: vi.fn().mockResolvedValue({ id: 'job_1' }),
   setDoc: (...args) => mockSetDoc(...args),
   updateDoc: (...args) => mockUpdateDoc(...args),
   deleteDoc: (...args) => mockDeleteDoc(...args),
+  deleteField: vi.fn(() => '__DELETE_FIELD__'),
   serverTimestamp: vi.fn(),
   getDocs: vi.fn().mockResolvedValue({
     docs: [
@@ -265,11 +269,23 @@ describe('Class Settings & Management Full Suite', () => {
         fireEvent.change(selects[0], { target: { value: '20' } });
       }
 
+      // Edit a Class-wide Property and verify Save Class Settings saves it automatically
+      const propKeyInputs = screen.getAllByPlaceholderText(/Property Key/i);
+      const propValInputs = screen.getAllByPlaceholderText(/Value \(e\.g\., CS101\)/i);
+      fireEvent.change(propKeyInputs[0], { target: { value: 'LabRoom' } });
+      fireEvent.change(propValInputs[0], { target: { value: 'B204' } });
+
       const saveBtn = screen.getByRole('button', { name: /Save Class Settings/i });
       fireEvent.click(saveBtn);
 
       await waitFor(() => {
         expect(mockUpdateDoc).toHaveBeenCalled();
+        expect(mockBatchSet).toHaveBeenCalledWith(
+          expect.objectContaining({ path: 'classes/CLASS-101/classProperties/config' }),
+          expect.objectContaining({ LabRoom: 'B204' }),
+          { merge: true }
+        );
+        expect(mockBatchCommit).toHaveBeenCalled();
       });
     });
 

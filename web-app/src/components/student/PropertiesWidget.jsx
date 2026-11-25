@@ -32,6 +32,7 @@ export const isInternalPropertyKey = (key) => {
   const exactInternalKeys = new Set([
     'strikenumber',
     'bingostats',
+    'bingoquestionbank',
     'examreadiness',
     'retrycancelledreason',
     'passkeybypass',

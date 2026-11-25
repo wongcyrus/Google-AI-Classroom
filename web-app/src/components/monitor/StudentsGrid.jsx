@@ -101,4 +101,4 @@ const StudentsGrid = ({
   );
 };
 
-export default StudentsGrid;
+export default React.memo(StudentsGrid);

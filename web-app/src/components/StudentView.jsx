@@ -16,8 +16,6 @@ import { useClientLiteRTWhisper } from '../hooks/useClientLiteRTWhisper';
 import { useClientLiteRTGemma } from '../hooks/useClientLiteRTGemma';
 import useWebRTCPeekStudent from '../hooks/useWebRTCPeekStudent';
 import useTeacherScreenBroadcastStudent from '../hooks/useTeacherScreenBroadcastStudent';
-import TeacherScreenViewerModal from './TeacherScreenViewerModal';
-import LiveSubtitleOverlay from './subtitles/LiveSubtitleOverlay';
 import { useStudentLiveSubtitles } from '../hooks/useStudentLiveSubtitles';
 import MicSetupModal from './MicSetupModal';
 import ExamReadinessWizard from './ExamReadinessWizard';
@@ -45,10 +43,18 @@ import {
 import UnsupportedBrowserNotice from './UnsupportedBrowserNotice';
 import StudentMobileView from './student/StudentMobileView';
 import { useActiveClassroomSession } from '../utils/clientSessionGuard';
+import { useSingleDesktopTab } from '../hooks/useSingleDesktopTab';
 
 import Sidebar from './student/Sidebar';
 
-const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeToggle, onSwitchToMobile }) => {
+const StudentDesktopView = ({
+  user,
+  previewClassId,
+  isPreviewMode,
+  onViewModeToggle,
+  onSwitchToMobile,
+  onRemoteSessionDisplaced,
+}) => {
   // State
   const [ipAddress, setIpAddress] = useState(null);
   const [notification, setNotification] = useState('');
@@ -77,8 +83,112 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
   const [isCcEnabled, setIsCcEnabled] = useState(true);
   const [showYtSettings, setShowYtSettings] = useState(false);
   const [teacherZoomScale, setTeacherZoomScale] = useState(1);
+  const [teacherPanOffset, setTeacherPanOffset] = useState({ x: 0, y: 0 });
+  const [isDraggingTeacherFrame, setIsDraggingTeacherFrame] = useState(false);
+  const isDraggingTeacherFrameRef = useRef(false);
+  const teacherDragStartRef = useRef({ x: 0, y: 0 });
+  const teacherPanStartRef = useRef({ x: 0, y: 0 });
+  const teacherStreamContainerRef = useRef(null);
   const playerContainerRef = useRef(null);
   const [isPlayerFullscreen, setIsPlayerFullscreen] = useState(false);
+
+  const resetTeacherZoom = useCallback(() => {
+    setTeacherZoomScale(1);
+    setTeacherPanOffset({ x: 0, y: 0 });
+    isDraggingTeacherFrameRef.current = false;
+    setIsDraggingTeacherFrame(false);
+  }, []);
+
+  const handleTeacherZoomIn = useCallback(() => {
+    setTeacherZoomScale((prev) => Math.min(3.0, Math.round((prev + 0.25) * 100) / 100));
+  }, []);
+
+  const handleTeacherZoomOut = useCallback(() => {
+    setTeacherZoomScale((prev) => {
+      const next = Math.max(1.0, Math.round((prev - 0.25) * 100) / 100);
+      if (next === 1.0) {
+        setTeacherPanOffset({ x: 0, y: 0 });
+        isDraggingTeacherFrameRef.current = false;
+        setIsDraggingTeacherFrame(false);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleTeacherDoubleClick = useCallback(() => {
+    setTeacherZoomScale((prev) => {
+      if (prev > 1) {
+        setTeacherPanOffset({ x: 0, y: 0 });
+        isDraggingTeacherFrameRef.current = false;
+        setIsDraggingTeacherFrame(false);
+        return 1;
+      }
+      return 1.75;
+    });
+  }, []);
+
+  const getTeacherPanBounds = useCallback((scale) => {
+    const el = teacherStreamContainerRef.current;
+    if (el && el.clientWidth > 0 && el.clientHeight > 0) {
+      return {
+        maxX: ((scale - 1) * el.clientWidth) / 2,
+        maxY: ((scale - 1) * el.clientHeight) / 2,
+      };
+    }
+    const fallback = (scale - 1) * 450;
+    return { maxX: fallback, maxY: fallback };
+  }, []);
+
+  const handleTeacherMouseDown = useCallback((e) => {
+    if (teacherZoomScale <= 1 || e.button !== 0) return;
+    if (e.target?.closest?.('button')) return;
+    e.preventDefault();
+    isDraggingTeacherFrameRef.current = true;
+    setIsDraggingTeacherFrame(true);
+    teacherDragStartRef.current = { x: e.clientX, y: e.clientY };
+    teacherPanStartRef.current = { ...teacherPanOffset };
+  }, [teacherZoomScale, teacherPanOffset]);
+
+  const handleTeacherMouseMove = useCallback((e) => {
+    if (!isDraggingTeacherFrameRef.current || teacherZoomScale <= 1) return;
+    const dx = e.clientX - teacherDragStartRef.current.x;
+    const dy = e.clientY - teacherDragStartRef.current.y;
+    const { maxX, maxY } = getTeacherPanBounds(teacherZoomScale);
+    setTeacherPanOffset({
+      x: Math.max(-maxX, Math.min(maxX, teacherPanStartRef.current.x + dx)),
+      y: Math.max(-maxY, Math.min(maxY, teacherPanStartRef.current.y + dy)),
+    });
+  }, [teacherZoomScale, getTeacherPanBounds]);
+
+  const handleTeacherMouseUp = useCallback(() => {
+    isDraggingTeacherFrameRef.current = false;
+    setIsDraggingTeacherFrame(false);
+  }, []);
+
+  const handleTeacherTouchStart = useCallback((e) => {
+    if (teacherZoomScale <= 1 || e.touches.length !== 1) return;
+    if (e.target?.closest?.('button')) return;
+    isDraggingTeacherFrameRef.current = true;
+    setIsDraggingTeacherFrame(true);
+    teacherDragStartRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    teacherPanStartRef.current = { ...teacherPanOffset };
+  }, [teacherZoomScale, teacherPanOffset]);
+
+  const handleTeacherTouchMove = useCallback((e) => {
+    if (!isDraggingTeacherFrameRef.current || teacherZoomScale <= 1 || e.touches.length !== 1) return;
+    const dx = e.touches[0].clientX - teacherDragStartRef.current.x;
+    const dy = e.touches[0].clientY - teacherDragStartRef.current.y;
+    const { maxX, maxY } = getTeacherPanBounds(teacherZoomScale);
+    setTeacherPanOffset({
+      x: Math.max(-maxX, Math.min(maxX, teacherPanStartRef.current.x + dx)),
+      y: Math.max(-maxY, Math.min(maxY, teacherPanStartRef.current.y + dy)),
+    });
+  }, [teacherZoomScale, getTeacherPanBounds]);
+
+  const handleTeacherTouchEnd = useCallback(() => {
+    isDraggingTeacherFrameRef.current = false;
+    setIsDraggingTeacherFrame(false);
+  }, []);
 
   const exitPlayerFullscreen = useCallback(() => {
     if (typeof document !== 'undefined' && (document.fullscreenElement || document.webkitFullscreenElement)) {
@@ -97,14 +207,39 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
     }
   }, [isPlayerFullscreen, exitPlayerFullscreen]);
 
-  // Sync fullscreenchange events and Escape key to exit fullscreen easily
+  // Sync fullscreenchange events and Escape / zoom keyboard shortcuts in fullscreen
   useEffect(() => {
     const handleFullscreenChange = () => {
       setIsPlayerFullscreen(Boolean(document.fullscreenElement || document.webkitFullscreenElement));
     };
     const handleKeyDown = (e) => {
-      if (e.key === 'Escape' && isPlayerFullscreen) {
-        exitPlayerFullscreen();
+      const tag = e.target?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+
+      if (isPlayerFullscreen) {
+        if (e.key === '+' || e.key === '=') {
+          e.preventDefault();
+          handleTeacherZoomIn();
+          return;
+        }
+        if (e.key === '-' || e.key === '_') {
+          e.preventDefault();
+          handleTeacherZoomOut();
+          return;
+        }
+        if (e.key === '0') {
+          e.preventDefault();
+          resetTeacherZoom();
+          return;
+        }
+        if (e.key === 'Escape') {
+          if (teacherZoomScale > 1) {
+            e.preventDefault();
+            resetTeacherZoom();
+          } else {
+            exitPlayerFullscreen();
+          }
+        }
       }
     };
     document.addEventListener('fullscreenchange', handleFullscreenChange);
@@ -115,7 +250,7 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
       document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [isPlayerFullscreen, exitPlayerFullscreen]);
+  }, [isPlayerFullscreen, teacherZoomScale, handleTeacherZoomIn, handleTeacherZoomOut, resetTeacherZoom, exitPlayerFullscreen]);
 
   // Schedule-driven class state with enrolled classes fallback
   const { userClasses, currentActiveClassId, activeClassIds } = useStudentClassSchedule(user);
@@ -216,6 +351,7 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
   const [imageQuality, setImageQuality] = useState(0.5);
   const [maxImageSize, setMaxImageSize] = useState(0.1 * 1024 * 1024);
   const [captureMode, setCaptureMode] = useState('dual');
+  const requiresWebcam = captureMode !== 'screen' && captureMode !== 'screen_only';
   const [requireFullScreenOnly, setRequireFullScreenOnly] = useState(true);
   const displaySurfaceRef = useRef(null);
   const [isCapturing, setIsCapturing] = useState(false);
@@ -228,7 +364,6 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
   const [isScreenSharePrecheckOpen, setIsScreenSharePrecheckOpen] = useState(false);
   const [wizardInitialStep, setWizardInitialStep] = useState(1);
   const [isExamReadyLocal, setIsExamReadyLocal] = useState(false);
-  const [isViewingTeacherScreen, setIsViewingTeacherScreen] = useState(false);
 
   // Multi-camera selection & Layout State
   const [availableWebcams, setAvailableWebcams] = useState([]);
@@ -255,8 +390,9 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
     return 'granted';
   });
   const [dismissNotificationBanner, setDismissNotificationBanner] = useState(false);
-  const [isSessionDisplaced, setIsSessionDisplaced] = useState(false);
   const isSessionDisplacedRef = useRef(false);
+  const onRemoteSessionDisplacedRef = useRef(onRemoteSessionDisplaced);
+  onRemoteSessionDisplacedRef.current = onRemoteSessionDisplaced;
   const [isOnline, setIsOnline] = useState(() => typeof navigator !== 'undefined' ? navigator.onLine : true);
   const [offlinePendingCount, setOfflinePendingCount] = useState(0);
 
@@ -780,7 +916,6 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
   const isAudioCaptureActive =
     (isSharing || isWebcamSharing || isScreenSharing) &&
     isAudioUserEnabled &&
-    !isSessionDisplaced &&
     (enableAudioCapture || isLocalVoiceAiEnabled || effectiveVoiceAiMode !== 'disabled' || isAudioUserEnabled);
 
   // 1. Segmented Audio Recording Hook with Moving Window & Selected Mic Device
@@ -1130,7 +1265,6 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
     handleFrameLoadError: handleTeacherFrameLoadError,
     connectionState: teacherConnectionState,
     joinBroadcast: joinTeacherBroadcast,
-    leaveBroadcast: leaveTeacherBroadcast,
   } = useTeacherScreenBroadcastStudent({
     classId: activeClass,
     studentUid: user?.uid,
@@ -1144,19 +1278,41 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
   // Screen layout modes (Max / Smallest / Fullscreen) only apply when Teacher is sharing their screen to students
   const effectiveDesktopScreenMode = isTeacherBroadcastActive ? desktopScreenMode : 'standard';
 
-  // Automatically open teacher broadcast viewer for student when teacher starts sharing
+  // Automatically show inline teacher broadcast stage for student when teacher starts sharing
   useEffect(() => {
     if (isTeacherBroadcastActive && activeClass) {
       setStickyBroadcastClassId(activeClass);
-      setIsViewingTeacherScreen(true);
       joinTeacherBroadcast();
     } else if (!isTeacherBroadcastActive) {
       setStickyBroadcastClassId(null);
-      setIsViewingTeacherScreen(false);
+      resetTeacherZoom();
       // Never stay in fullscreen when teacher stops sharing screen
       exitPlayerFullscreen();
     }
-  }, [isTeacherBroadcastActive, activeClass, joinTeacherBroadcast, exitPlayerFullscreen]);
+  }, [isTeacherBroadcastActive, activeClass, joinTeacherBroadcast, exitPlayerFullscreen, resetTeacherZoom]);
+
+  // Mouse wheel & trackpad pinch zoom on teacher screen (non-passive so fullscreen / zoomed scroll does not jump page)
+  useEffect(() => {
+    const el = teacherStreamContainerRef.current;
+    if (!el || !isTeacherBroadcastActive) return;
+    const onWheel = (e) => {
+      if (!isPlayerFullscreen && teacherZoomScale <= 1 && !e.ctrlKey && !e.metaKey) {
+        return;
+      }
+      e.preventDefault();
+      const delta = e.deltaY < 0 ? 0.25 : -0.25;
+      setTeacherZoomScale((prev) => {
+        const next = Math.min(3.0, Math.max(1.0, Math.round((prev + delta) * 100) / 100));
+        if (next === 1.0) {
+          setTeacherPanOffset({ x: 0, y: 0 });
+          setIsDraggingTeacherFrame(false);
+        }
+        return next;
+      });
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [isPlayerFullscreen, teacherZoomScale, isTeacherBroadcastActive]);
 
   // MediaPipe Face & Gaze AI Monitor
   const {
@@ -1223,7 +1379,7 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
   // Sync real-time face, gaze, and audio telemetry to student status doc
   // Discrete state transitions (violations, speaking, faceStatus) sync promptly; numeric angles/levels are throttled to 10s
   useEffect(() => {
-    if (!user || !user.uid || isSessionDisplaced) return;
+    if (!user || !user.uid) return;
     const classesToSync = targetClasses.length > 0 ? targetClasses : (activeClass ? [activeClass] : []);
     if (classesToSync.length === 0) return;
 
@@ -1288,7 +1444,7 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
     return () => {
       if (telemetryTimerRef.current) clearTimeout(telemetryTimerRef.current);
     };
-  }, [activeClass, targetClasses, user?.uid, isSessionDisplaced, isWebcamSharing, faceStatus, clientAiStatus, loadingProgress, isModelCached, fallbackReason, delegateUsed, yawAngle, pitchAngle, earValue, marValue, isCalibrated, metricDistance, activeViolation, isAudioRecording, audioLevel, isSpeaking]);
+  }, [activeClass, targetClasses, user?.uid, isWebcamSharing, faceStatus, clientAiStatus, loadingProgress, isModelCached, fallbackReason, delegateUsed, yawAngle, pitchAngle, earValue, marValue, isCalibrated, metricDistance, activeViolation, isAudioRecording, audioLevel, isSpeaking]);
 
   // Callbacks
   const handleCloseNotification = () => {
@@ -1327,7 +1483,7 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
 
   // Dedicated presence & sharing heartbeat: guarantees freshness in Firestore even if screenshots buffer offline or upload slowly
   useEffect(() => {
-    if (!user?.uid || !isSharing || isSessionDisplaced) return;
+    if (!user?.uid || !isSharing) return;
 
     const classesToHeartbeat = targetClasses.length > 0 ? targetClasses : (activeClass ? [activeClass] : []);
     if (classesToHeartbeat.length === 0) return;
@@ -1364,7 +1520,7 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
     const heartbeatInterval = setInterval(() => sendHeartbeat(false), 12000);
 
     return () => clearInterval(heartbeatInterval);
-  }, [user?.uid, user?.email, user?.displayName, isSharing, isScreenSharing, isWebcamSharing, isSessionDisplaced, isAudioRecording, isAudioUserEnabled, hasMicPermission, audioError, activeClass, targetClasses]);
+  }, [user?.uid, user?.email, user?.displayName, isSharing, isScreenSharing, isWebcamSharing, isAudioRecording, isAudioUserEnabled, hasMicPermission, audioError, activeClass, targetClasses]);
 
   const stopScreen = useCallback(async () => {
     displaySurfaceRef.current = null;
@@ -2190,30 +2346,17 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
 
   const ownSessionIdsRef = useRef(new Set());
   const sessionWriteFailedRef = useRef(false);
+  const initialSessionWriteSettledRef = useRef(false);
   const ipAddressRef = useRef(ipAddress);
   ipAddressRef.current = ipAddress;
 
-  const handleResumeSession = useCallback(() => {
-    if (!user?.uid || !activeClass) return;
-    const newSessionId = uuidv4();
-    sessionIdRef.current = newSessionId;
-    ownSessionIdsRef.current.add(newSessionId);
-    sessionWriteFailedRef.current = false;
-    setIsSessionDisplaced(false);
-    const statusRef = doc(db, "classes", activeClass, "status", user.uid);
-    const statusData = { sessionId: newSessionId };
-    if (ipAddressRef.current) {
-      statusData.ipAddress = ipAddressRef.current;
-    }
-    setDoc(statusRef, statusData, { merge: true })
-      .then(() => {
-        sessionWriteFailedRef.current = false;
-      })
-      .catch(err => {
-        sessionWriteFailedRef.current = true;
-        console.error("Firestore: Error updating session ID:", err);
-      });
-  }, [activeClass, user?.uid]);
+  // Ensure all local MediaStream tracks and capture timers stop cleanly on unmount
+  // (including when displaced by another device or yielding to another tab).
+  useEffect(() => {
+    return () => {
+      stopAllStreamsRef.current?.({ skipFirestoreUpdate: true });
+    };
+  }, []);
 
   useEffect(() => {
     if (user?.uid && activeClass && ipAddress) {
@@ -2225,46 +2368,49 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
 
   useEffect(() => {
     if (user?.uid && activeClass) {
+      let isEffectActive = true;
       const newSessionId = uuidv4();
       sessionIdRef.current = newSessionId;
       ownSessionIdsRef.current.add(newSessionId);
       sessionWriteFailedRef.current = false;
+      initialSessionWriteSettledRef.current = false;
+      isSessionDisplacedRef.current = false;
+
       const statusRef = doc(db, "classes", activeClass, "status", user.uid);
-      const statusData = { sessionId: newSessionId };
+      const statusData = { desktopSessionId: newSessionId };
       if (ipAddressRef.current) {
         statusData.ipAddress = ipAddressRef.current;
       }
       setDoc(statusRef, statusData, { merge: true })
         .then(() => {
+          if (!isEffectActive) return;
           sessionWriteFailedRef.current = false;
+          initialSessionWriteSettledRef.current = true;
         })
         .catch(err => {
+          if (!isEffectActive) return;
           sessionWriteFailedRef.current = true;
-          console.error("Firestore: Error setting session ID:", err);
+          initialSessionWriteSettledRef.current = true;
+          console.error("Firestore: Error setting desktop session ID:", err);
         });
 
       const unsubscribe = onSnapshot(statusRef, (docSnap) => {
+        if (!isEffectActive) return;
+        if (!initialSessionWriteSettledRef.current || sessionWriteFailedRef.current) return;
+        if (docSnap.metadata?.hasPendingWrites) return;
         if (docSnap.exists()) {
           const data = docSnap.data();
+          const remoteDesktopSessionId = data.desktopSessionId;
           if (
-            data.sessionId &&
-            data.sessionId !== sessionIdRef.current &&
-            !ownSessionIdsRef.current.has(data.sessionId) &&
-            !sessionWriteFailedRef.current
+            remoteDesktopSessionId &&
+            remoteDesktopSessionId !== sessionIdRef.current &&
+            !ownSessionIdsRef.current.has(remoteDesktopSessionId)
           ) {
             if (!isSessionDisplacedRef.current) {
-              console.warn("Classroom session moved to another tab or device.");
+              console.warn("Desktop classroom session moved to another browser or device.");
               isSessionDisplacedRef.current = true;
               stopAllStreamsRef.current?.({ skipFirestoreUpdate: true });
-              setIsSessionDisplaced(true);
-            }
-          } else if (
-            data.sessionId &&
-            (data.sessionId === sessionIdRef.current || ownSessionIdsRef.current.has(data.sessionId))
-          ) {
-            if (isSessionDisplacedRef.current) {
-              isSessionDisplacedRef.current = false;
-              setIsSessionDisplaced(false);
+              onRemoteSessionDisplacedRef.current?.();
             }
           }
         }
@@ -2272,7 +2418,10 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
         console.error(`Firestore: Error subscribing to status for ${user.uid}:`, error);
       });
 
-      return () => unsubscribe();
+      return () => {
+        isEffectActive = false;
+        unsubscribe();
+      };
     }
   }, [user?.uid, activeClass]);
 
@@ -2909,47 +3058,6 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
         </div>
       )}
 
-      {isSessionDisplaced && (
-        <div style={{
-          background: '#fef2f2',
-          border: '1px solid #f87171',
-          color: '#991b1b',
-          padding: '12px 16px',
-          borderRadius: '8px',
-          margin: '12px 0',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: '12px',
-          boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ fontSize: '1.25rem' }}>⚠️</span>
-            <div>
-              <strong>Classroom session active in another tab or device.</strong>
-              <div style={{ fontSize: '0.85rem', color: '#b91c1c' }}>
-                Streaming in this tab is paused to prevent dual-streaming conflicts.
-              </div>
-            </div>
-          </div>
-          <button 
-            onClick={handleResumeSession}
-            style={{
-              background: '#dc2626',
-              color: '#fff',
-              border: 'none',
-              padding: '6px 14px',
-              borderRadius: '6px',
-              fontWeight: 600,
-              cursor: 'pointer',
-              whiteSpace: 'nowrap'
-            }}
-          >
-            Resume Here
-          </button>
-        </div>
-      )}
-
       {/* Live Exam Mode Protected Session Banner */}
       {isExamActive && (
         <div
@@ -2973,31 +3081,6 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
             <p style={{ margin: 0, fontSize: '0.82rem', color: '#7f1d1d' }}>
               Full screen sharing and continuous proctoring are mandatory. Screen recordings and audio transcripts are protected under exam confidentiality policies and will not be shared.
             </p>
-          </div>
-        </div>
-      )}
-
-      {/* Teacher Live Screen Broadcast Alert Banner */}
-      {isTeacherBroadcastActive && !isViewingTeacherScreen && (
-        <div className="teacher-broadcast-alert-banner">
-          <div className="broadcast-banner-info">
-            <span className="live-pulse-dot" />
-            <span className="broadcast-banner-title">
-              🖥️ <strong>Teacher is sharing their screen:</strong>{' '}
-              {teacherBroadcastInfo?.teacherEmail ? teacherBroadcastInfo.teacherEmail : 'Live Classroom Broadcast'}
-            </span>
-          </div>
-          <div className="broadcast-banner-action">
-            <button
-              type="button"
-              className="broadcast-view-btn"
-              onClick={() => {
-                setIsViewingTeacherScreen(true);
-                joinTeacherBroadcast();
-              }}
-            >
-              🖥️ View Teacher's Screen
-            </button>
           </div>
         </div>
       )}
@@ -3135,22 +3218,26 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
                   </div>
                   <h2 className="setup-hero-title">Welcome to Your Classroom Session</h2>
                   <p className="setup-hero-subtitle">
-                    Please complete the guided device check and pose calibration before starting your proctored session.
+                    {requiresWebcam
+                      ? 'Please complete the guided device check and pose calibration before starting your proctored session.'
+                      : 'Screen-only session: Click Quick Start below to share your entire screen and join the classroom.'}
                   </p>
                 </div>
 
                 <div className="setup-hero-actions">
-                  <button
-                    type="button"
-                    onClick={() => openReadinessWizard(1)}
-                    className="btn-start-setup-wizard"
-                  >
-                    🚀 Start Setup & Readiness Test
-                  </button>
+                  {requiresWebcam && (
+                    <button
+                      type="button"
+                      onClick={() => openReadinessWizard(1)}
+                      className="btn-start-setup-wizard"
+                    >
+                      🚀 Start Setup & Readiness Test
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => setIsScreenSharePrecheckOpen(true)}
-                    className="btn-quick-start-screen"
+                    className={`btn-quick-start-screen${requiresWebcam ? '' : ' primary-action'}`}
                     title={
                       isAudioUserEnabled
                         ? 'Start Screen Sharing and Microphone Recording Directly'
@@ -3173,21 +3260,23 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
                     <span className="summary-badge ready">Ready</span>
                   </div>
 
-                  <div
-                    className="summary-item summary-item-clickable"
-                    onClick={() => openReadinessWizard(2)}
-                    title="Click to check camera and calibrate gaze in Setup Wizard"
-                    style={{ cursor: 'pointer' }}
-                  >
-                    <span className="summary-icon">📷</span>
-                    <div className="summary-text">
-                      <strong>Camera & Gaze</strong>
-                      <span>{availableWebcams.length > 0 ? `${availableWebcams.length} Detected` : 'Optional / Screen-Only'}</span>
+                  {requiresWebcam && (
+                    <div
+                      className="summary-item summary-item-clickable"
+                      onClick={() => openReadinessWizard(2)}
+                      title="Click to check camera and calibrate gaze in Setup Wizard"
+                      style={{ cursor: 'pointer' }}
+                    >
+                      <span className="summary-icon">📷</span>
+                      <div className="summary-text">
+                        <strong>Camera & Gaze</strong>
+                        <span>{availableWebcams.length > 0 ? `${availableWebcams.length} Detected` : 'Optional / Screen-Only'}</span>
+                      </div>
+                      <span className={`summary-badge ${availableWebcams.length > 0 ? 'ready' : 'info'}`}>
+                        {availableWebcams.length > 0 ? 'Detected' : 'No Webcam'}
+                      </span>
                     </div>
-                    <span className={`summary-badge ${availableWebcams.length > 0 ? 'ready' : 'info'}`}>
-                      {availableWebcams.length > 0 ? 'Detected' : 'No Webcam'}
-                    </span>
-                  </div>
+                  )}
 
                   <div
                     className="summary-item summary-item-clickable"
@@ -3370,8 +3459,8 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
                       : '🎙️ Mic Active'}
                   </button>
 
-                  {/* Webcam Switcher if multiple webcams */}
-                  {availableWebcams.length > 1 && (
+                  {/* Webcam Switcher if multiple webcams and webcam capture is enabled */}
+                  {requiresWebcam && availableWebcams.length > 1 && (
                     <select
                       value={selectedWebcamId}
                       onChange={handleWebcamChange}
@@ -3386,7 +3475,7 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
                     </select>
                   )}
 
-                  {!isWebcamSharing && availableWebcams.length > 0 && (
+                  {requiresWebcam && !isWebcamSharing && availableWebcams.length > 0 && (
                     <button
                       type="button"
                       onClick={() => startWebcam(selectedWebcamId)}
@@ -3397,15 +3486,17 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
                     </button>
                   )}
 
-                  {/* Re-Open Setup / Calibration Wizard */}
-                  <button
-                    type="button"
-                    onClick={() => openReadinessWizard(1)}
-                    className="active-tool-button btn-retest"
-                    title="Open Setup & Device Calibration"
-                  >
-                    ⚙️ Setup & Re-Test
-                  </button>
+                  {/* Re-Open Setup / Calibration Wizard (only when webcam setup applies) */}
+                  {requiresWebcam && (
+                    <button
+                      type="button"
+                      onClick={() => openReadinessWizard(1)}
+                      className="active-tool-button btn-retest"
+                      title="Open Setup & Device Calibration"
+                    >
+                      ⚙️ Setup & Re-Test
+                    </button>
+                  )}
 
                   {/* Stop Session Button */}
                   <button
@@ -3572,18 +3663,9 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
             <div
               className={`preview-stage desktop-yt-player-box mode-${effectiveDesktopScreenMode} ${isPlayerFullscreen ? 'fullscreen-mode' : ''}`}
               ref={playerContainerRef}
+              aria-label="Teacher Live Class Player"
             >
-              {/* Prominent Top-Right Exit Control when in Fullscreen, Max, or Small Corner Mode */}
-              {isPlayerFullscreen && (
-                <button
-                  type="button"
-                  className="fullscreen-exit-prominent-btn"
-                  onClick={exitPlayerFullscreen}
-                  title="Exit Fullscreen (Esc)"
-                >
-                  <span aria-hidden="true">✕</span> Exit Fullscreen (Esc)
-                </button>
-              )}
+              {/* Prominent Top-Right Exit Control for Max or Small Corner Mode (Fullscreen uses bottom control bar button) */}
               {!isPlayerFullscreen && effectiveDesktopScreenMode === 'max' && (
                 <button
                   type="button"
@@ -3605,21 +3687,40 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
                 </button>
               )}
 
-              {/* Teacher Live Stream Frame Overlay (if teacher broadcast active) */}
-              {isTeacherBroadcastActive && teacherLiveFrame && (
-                <div className="teacher-live-stream-container">
+              {/* Teacher Live Stream Frame Overlay (Inbound: Watching Teacher - Always Visible When Broadcasting) */}
+              {isTeacherBroadcastActive && (
+                <div
+                  ref={teacherStreamContainerRef}
+                  className="teacher-live-stream-container"
+                  style={{
+                    cursor: teacherZoomScale > 1 ? (isDraggingTeacherFrame ? 'grabbing' : 'grab') : 'default',
+                    touchAction: teacherZoomScale > 1 ? 'none' : 'auto',
+                  }}
+                  onDoubleClick={handleTeacherDoubleClick}
+                  onMouseDown={handleTeacherMouseDown}
+                  onMouseMove={handleTeacherMouseMove}
+                  onMouseUp={handleTeacherMouseUp}
+                  onMouseLeave={handleTeacherMouseUp}
+                  onTouchStart={handleTeacherTouchStart}
+                  onTouchMove={handleTeacherTouchMove}
+                  onTouchEnd={handleTeacherTouchEnd}
+                >
                   <div className="teacher-live-top-bar">
                     <div className="live-badges-group">
-                      <span className="live-pill"><span className="live-dot" /> LIVE</span>
+                      <span className="live-pill"><span className="live-dot" /> WATCHING TEACHER</span>
                       <span className="res-tag">{teacherBroadcastInfo?.resolution?.toUpperCase() || '1080P'}</span>
                       {teacherFrameUpdatedAt && (
                         <span className="res-tag">
                           🕒 {new Date(teacherFrameUpdatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                         </span>
                       )}
-                      <span className="teacher-name-tag">{teacherBroadcastInfo?.teacherEmail || 'Teacher Stream'}</span>
+                      <span className="teacher-name-tag">
+                        {teacherBroadcastInfo?.teacherEmail
+                          ? `${teacherBroadcastInfo.teacherEmail}'s Screen`
+                          : 'Teacher Screen'}
+                      </span>
                     </div>
-                    <div className="stream-zoom-controls" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <div className="stream-zoom-controls" style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
                       {refreshTeacherBroadcastFrame && (
                         <button
                           type="button"
@@ -3640,197 +3741,89 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
                       )}
                       <button
                         type="button"
-                        onClick={() => setTeacherZoomScale(prev => (prev > 1 ? 1 : 1.75))}
+                        onClick={handleTeacherZoomOut}
+                        disabled={teacherZoomScale <= 1}
                         className="yt-zoom-btn"
-                        title="Toggle Zoom (1x / 1.75x)"
+                        title="Zoom Out (-)"
+                        aria-label="Zoom Out Teacher Screen"
                       >
-                        {teacherZoomScale > 1 ? '🔍 1x' : '🔍 Zoom'}
+                        🔍−
                       </button>
+                      <button
+                        type="button"
+                        onClick={resetTeacherZoom}
+                        className="yt-zoom-btn yt-zoom-pct-btn"
+                        title="Reset Zoom to 100% (0)"
+                        aria-label={`Reset Teacher Screen Zoom (${Math.round(teacherZoomScale * 100)}%)`}
+                      >
+                        {Math.round(teacherZoomScale * 100)}%
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleTeacherZoomIn}
+                        disabled={teacherZoomScale >= 3}
+                        className="yt-zoom-btn"
+                        title="Zoom In (+)"
+                        aria-label="Zoom In Teacher Screen"
+                      >
+                        🔍+
+                      </button>
+                      {teacherZoomScale > 1 && (
+                        <button
+                          type="button"
+                          onClick={resetTeacherZoom}
+                          className="yt-zoom-btn"
+                          title="Fit Slide (100%)"
+                          aria-label="Fit Teacher Screen"
+                        >
+                          ↺ Fit
+                        </button>
+                      )}
                     </div>
                   </div>
-                  <img
-                    src={teacherLiveFrame}
-                    alt="Teacher Live Screen Broadcast"
-                    className="teacher-live-screen-img"
-                    fetchPriority="high"
-                    onError={handleTeacherFrameLoadError}
-                    style={{
-                      transform: `scale(${teacherZoomScale})`,
-                    }}
-                  />
-                </div>
-              )}
-
-              {/* Screen Stream Element (Hidden in Fullscreen so student only sees Teacher's screen in Fullscreen) */}
-              <div
-                className={`stream-feed-wrapper ${
-                  !isScreenSharing || isPlayerFullscreen
-                    ? 'hidden-stream'
-                    : isWebcamSharing && primaryStream === 'webcam'
-                    ? 'pip-stream'
-                    : 'hero-stream'
-                } ${isTeacherBroadcastActive && teacherLiveFrame ? 'docked-proctor-pip' : ''}`}
-                onClick={
-                  isScreenSharing && isWebcamSharing && primaryStream === 'webcam'
-                    ? handleSwapFeeds
-                    : undefined
-                }
-                title={
-                  isScreenSharing && isWebcamSharing && primaryStream === 'webcam'
-                    ? 'Click to make Screen main feed'
-                    : undefined
-                }
-              >
-                <span className="video-preview-tag">🖥️ Screen</span>
-                {isScreenSharing && isWebcamSharing && primaryStream === 'webcam' && (
-                  <div className="pip-swap-overlay">
-                    <span>🔄 Click to Swap</span>
-                  </div>
-                )}
-                <video
-                  ref={(el) => {
-                    screenVideoRef.current = el;
-                    if (el && screenStreamRef.current && el.srcObject !== screenStreamRef.current) {
-                      el.srcObject = screenStreamRef.current;
-                      try {
-                        const p = el.play?.();
-                        if (p && typeof p.catch === 'function') p.catch(() => {});
-                      } catch {}
-                    }
-                  }}
-                  autoPlay
-                  muted
-                  playsInline
-                  className="video-preview"
-                />
-              </div>
-
-              {/* Webcam Stream Element (Hidden in Fullscreen so student never fullscreens their own face) */}
-              <div
-                className={`stream-feed-wrapper ${
-                  !isWebcamSharing || isPlayerFullscreen
-                    ? 'hidden-stream'
-                    : isScreenSharing && primaryStream === 'screen'
-                    ? 'pip-stream'
-                    : 'hero-stream'
-                } ${isTeacherBroadcastActive && teacherLiveFrame ? 'docked-proctor-pip' : ''}`}
-                onClick={
-                  isScreenSharing && isWebcamSharing && primaryStream === 'screen'
-                    ? handleSwapFeeds
-                    : undefined
-                }
-                title={
-                  isScreenSharing && isWebcamSharing && primaryStream === 'screen'
-                    ? 'Click to make Webcam main feed'
-                    : undefined
-                }
-              >
-                <span className="video-preview-tag">📷 Webcam</span>
-                {isScreenSharing && isWebcamSharing && primaryStream === 'screen' && (
-                  <div className="pip-swap-overlay">
-                    <span>🔄 Click to Swap</span>
-                  </div>
-                )}
-                <video
-                  ref={(el) => {
-                    webcamVideoRef.current = el;
-                    if (el && webcamStreamRef.current && el.srcObject !== webcamStreamRef.current) {
-                      el.srcObject = webcamStreamRef.current;
-                      el.onloadedmetadata = () => {
-                        try {
-                          const p = el.play?.();
-                          if (p && typeof p.catch === 'function') p.catch(() => {});
-                        } catch {}
-                      };
-                      try {
-                        const p = el.play?.();
-                        if (p && typeof p.catch === 'function') p.catch(() => {});
-                      } catch {}
-                    }
-                  }}
-                  autoPlay
-                  muted
-                  playsInline
-                  className="video-preview"
-                />
-                <canvas ref={overlayCanvasRef} className="webcam-mesh-overlay" />
-                {isWebcamSharing && (
-                  <div className={`ai-face-hud ${clientAiStatus === 'initializing' ? 'initializing' : faceStatus}`}>
-                    {clientAiStatus === 'initializing' && <span>⏳ Initializing AI ({loadingProgress}%)...</span>}
-                    {clientAiStatus !== 'initializing' && faceStatus === 'normal' && <span>🟢 Face Centered {metricDistance ? `(~${metricDistance}cm)` : ''}</span>}
-                    {clientAiStatus !== 'initializing' && faceStatus === 'no_face' && <span>🔴 No Face Detected</span>}
-                    {clientAiStatus !== 'initializing' && faceStatus === 'looking_away' && <span>🟡 Please Face Screen (Looking Away)</span>}
-                    {clientAiStatus !== 'initializing' && faceStatus === 'multiple_faces' && <span>🔴 Multiple People in Frame</span>}
-                    {clientAiStatus !== 'initializing' && faceStatus === 'cloud_fallback' && <span>☁️ AI Cloud Fallback Active {fallbackReason ? `(${fallbackReason})` : ''}</span>}
-                    {clientAiStatus !== 'initializing' && faceStatus === 'unsupported' && <span>⚠️ Local AI Unsupported (Cloud Fallback Disabled)</span>}
-                    {clientAiStatus !== 'initializing' && faceStatus === 'quota_exceeded' && <span>⚠️ Class AI Quota Exceeded</span>}
-                  </div>
-                )}
-                {whisperTranscript && (isWebcamSharing || isScreenSharing) && (
-                  <div
-                    className="ai-speech-transcript-hud"
-                    style={{
-                      position: 'absolute',
-                      bottom: '8px',
-                      left: '8px',
-                      right: '8px',
-                      backgroundColor: 'rgba(15, 23, 42, 0.88)',
-                      backdropFilter: 'blur(6px)',
-                      color: '#34d399',
-                      fontSize: '0.78rem',
-                      padding: '5px 10px',
-                      borderRadius: '6px',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      zIndex: 10,
-                      boxShadow: '0 2px 6px rgba(0,0,0,0.3)',
-                      border: '1px solid rgba(52, 211, 153, 0.3)',
-                      whiteSpace: 'nowrap',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                    }}
-                    title={`Transcribed Speech: "${whisperTranscript}"`}
-                  >
-                    <span style={{ flexShrink: 0 }}>🎙️ Live Speech:</span>
-                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', fontWeight: 600 }}>
-                      {whisperTranscript}
-                    </span>
-                  </div>
-                )}
-              </div>
-
-              {/* Stage Top Right Action Controls (Only shown for student's own proctor feeds when not in teacher fullscreen) */}
-              {isSharing && !isPlayerFullscreen && !(isTeacherBroadcastActive && teacherLiveFrame) && (
-                <div className="stage-actions-overlay">
-                  {isScreenSharing && isWebcamSharing && (
-                    <button
-                      onClick={handleSwapFeeds}
-                      className="stage-action-btn"
-                      title="Swap Main and PiP Feeds"
-                    >
-                      🔄 Swap Focus
-                    </button>
+                  {teacherLiveFrame ? (
+                    <img
+                      src={teacherLiveFrame}
+                      alt="Teacher Live Screen Broadcast"
+                      className="teacher-live-screen-img"
+                      fetchPriority="high"
+                      draggable={false}
+                      onError={handleTeacherFrameLoadError}
+                      style={{
+                        transform: `translate(${teacherPanOffset.x}px, ${teacherPanOffset.y}px) scale(${teacherZoomScale})`,
+                        transition: isDraggingTeacherFrame ? 'none' : 'transform 0.15s ease-out',
+                      }}
+                    />
+                  ) : (
+                    <div className="inactive-streams-placeholder">
+                      <div className="placeholder-icon">📺</div>
+                      <p className="placeholder-title">Connecting to Teacher's Screen...</p>
+                      <p className="placeholder-subtitle">
+                        {teacherConnectionState === 'connected'
+                          ? 'Waiting for the first slide frame from your instructor.'
+                          : 'Joining live classroom broadcast...'}
+                      </p>
+                    </div>
                   )}
-                  {isWebcamSharing && (
-                    <button
-                      onClick={() => setShowMeshOverlay(prev => !prev)}
-                      className={`ai-mesh-toggle-btn ${showMeshOverlay ? 'active' : ''}`}
-                      title="Toggle AI Face Detection Mesh & Gaze Points Overlay"
-                    >
-                      🕸️ AI Mesh: {showMeshOverlay ? 'ON' : 'OFF'}
-                    </button>
+                  {teacherZoomScale > 1 && teacherLiveFrame && (
+                    <div className="teacher-live-pan-hint" aria-hidden="true">
+                      Drag to pan • Wheel / + − to zoom • Esc or ↺ Fit to reset
+                    </div>
                   )}
                 </div>
               )}
 
-              {/* Inactive Placeholder */}
-              {!isSharing && !isTeacherBroadcastActive && (
+              {/* Idle / CC-Only Stage when Teacher is not sharing screen */}
+              {!isTeacherBroadcastActive && (
                 <div className="inactive-streams-placeholder">
-                  <div className="placeholder-icon">📡</div>
-                  <p className="placeholder-title">Streams Inactive</p>
+                  <div className="placeholder-icon">📺</div>
+                  <p className="placeholder-title">
+                    {studentSubtitles.active
+                      ? 'Live Classroom Captions'
+                      : "Waiting for Teacher's Screen"}
+                  </p>
                   <p className="placeholder-subtitle">
-                    Click "Share Screen" or "Start Webcam" above to begin streaming to your instructor.
+                    When your instructor shares their screen or speaks, slides and live captions appear right here.
                   </p>
                 </div>
               )}
@@ -3891,7 +3884,9 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
                   {/* Live Status Pill */}
                   <div className="yt-live-indicator">
                     <span className="yt-live-dot" />
-                    <span className="yt-live-label">{isTeacherBroadcastActive ? 'LIVE' : isSharing ? 'PROCTORED' : 'STANDBY'}</span>
+                    <span className="yt-live-label">
+                      {isTeacherBroadcastActive ? 'TEACHER LIVE' : studentSubtitles.active ? 'LIVE CC' : 'IDLE'}
+                    </span>
                   </div>
                 </div>
 
@@ -3993,12 +3988,205 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
               </div>
             </div>
 
-            {/* Live Speech AI & Voice Proctoring HUD (Shown when audio recording or voice AI is active) */}
+            {/* Physically Separated Outbound Self-Sharing Card ("What YOU are sending to Teacher") */}
+            <section
+              className={`student-outbound-share-card ${!isSharing ? 'hidden-stream' : ''}`}
+              aria-label="Your Shared Screen and Camera Sent to Teacher"
+            >
+              <div className="outbound-share-header">
+                <div className="outbound-share-title-group">
+                  <span className="outbound-badge">📤 SENDING TO TEACHER</span>
+                  <span className="outbound-hint">
+                    Only your instructor sees your shared screen and camera preview.
+                  </span>
+                </div>
+                <div className="outbound-share-actions">
+                  {isScreenSharing && isWebcamSharing && (
+                    <button
+                      type="button"
+                      onClick={handleSwapFeeds}
+                      className="outbound-toggle-btn"
+                      title="Swap Screen and Webcam Preview"
+                    >
+                      🔄 Swap Preview
+                    </button>
+                  )}
+                  {isWebcamSharing && (
+                    <button
+                      type="button"
+                      onClick={() => setShowMeshOverlay(prev => !prev)}
+                      className={`outbound-toggle-btn ${showMeshOverlay ? 'active' : ''}`}
+                      title="Toggle AI Face Detection Mesh Overlay"
+                    >
+                      🕸️ AI Mesh: {showMeshOverlay ? 'ON' : 'OFF'}
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Video elements stay mounted cleanly in DOM so capture & FaceMonitor never interrupt */}
+              <div className="outbound-preview-stage">
+                <div
+                  className={`stream-feed-wrapper ${
+                    !isScreenSharing
+                      ? 'hidden-stream'
+                      : isWebcamSharing && primaryStream === 'webcam'
+                      ? 'pip-stream'
+                      : 'hero-stream'
+                  }`}
+                  onClick={
+                    isScreenSharing && isWebcamSharing && primaryStream === 'webcam'
+                      ? handleSwapFeeds
+                      : undefined
+                  }
+                  title={
+                    isScreenSharing && isWebcamSharing && primaryStream === 'webcam'
+                      ? 'Click to make My Shared Screen main preview'
+                      : undefined
+                  }
+                >
+                  <span className="video-preview-tag">📤 My Shared Screen (Sent to Teacher)</span>
+                  {isScreenSharing && isWebcamSharing && primaryStream === 'webcam' && (
+                    <div className="pip-swap-overlay">
+                      <span>🔄 Click to Swap</span>
+                    </div>
+                  )}
+                  <video
+                    ref={(el) => {
+                      screenVideoRef.current = el;
+                      if (el && screenStreamRef.current && el.srcObject !== screenStreamRef.current) {
+                        el.srcObject = screenStreamRef.current;
+                        try {
+                          const p = el.play?.();
+                          if (p && typeof p.catch === 'function') p.catch(() => {});
+                        } catch {}
+                      }
+                    }}
+                    autoPlay
+                    muted
+                    playsInline
+                    className="video-preview"
+                  />
+                </div>
+
+                <div
+                  className={`stream-feed-wrapper ${
+                    !isWebcamSharing
+                      ? 'hidden-stream'
+                      : isScreenSharing && primaryStream === 'screen'
+                      ? 'pip-stream'
+                      : 'hero-stream'
+                  }`}
+                  onClick={
+                    isScreenSharing && isWebcamSharing && primaryStream === 'screen'
+                      ? handleSwapFeeds
+                      : undefined
+                  }
+                  title={
+                    isScreenSharing && isWebcamSharing && primaryStream === 'screen'
+                      ? 'Click to make My Webcam main preview'
+                      : undefined
+                  }
+                >
+                  <span className="video-preview-tag">📤 My Webcam (Sent to Teacher)</span>
+                  {isScreenSharing && isWebcamSharing && primaryStream === 'screen' && (
+                    <div className="pip-swap-overlay">
+                      <span>🔄 Click to Swap</span>
+                    </div>
+                  )}
+                  <video
+                    ref={(el) => {
+                      webcamVideoRef.current = el;
+                      if (el && webcamStreamRef.current && el.srcObject !== webcamStreamRef.current) {
+                        el.srcObject = webcamStreamRef.current;
+                        el.onloadedmetadata = () => {
+                          try {
+                            const p = el.play?.();
+                            if (p && typeof p.catch === 'function') p.catch(() => {});
+                          } catch {}
+                        };
+                        try {
+                          const p = el.play?.();
+                          if (p && typeof p.catch === 'function') p.catch(() => {});
+                        } catch {}
+                      }
+                    }}
+                    autoPlay
+                    muted
+                    playsInline
+                    className="video-preview"
+                  />
+                  <canvas ref={overlayCanvasRef} className="webcam-mesh-overlay" />
+                  {isWebcamSharing && (
+                    <div className={`ai-face-hud ${clientAiStatus === 'initializing' ? 'initializing' : faceStatus}`}>
+                      {clientAiStatus === 'initializing' && <span>⏳ Initializing AI ({loadingProgress}%)...</span>}
+                      {clientAiStatus !== 'initializing' && faceStatus === 'normal' && <span>🟢 Face Centered {metricDistance ? `(~${metricDistance}cm)` : ''}</span>}
+                      {clientAiStatus !== 'initializing' && faceStatus === 'no_face' && <span>🔴 No Face Detected</span>}
+                      {clientAiStatus !== 'initializing' && faceStatus === 'looking_away' && <span>🟡 Please Face Screen (Looking Away)</span>}
+                      {clientAiStatus !== 'initializing' && faceStatus === 'multiple_faces' && <span>🔴 Multiple People in Frame</span>}
+                      {clientAiStatus !== 'initializing' && faceStatus === 'cloud_fallback' && <span>☁️ AI Cloud Fallback Active {fallbackReason ? `(${fallbackReason})` : ''}</span>}
+                      {clientAiStatus !== 'initializing' && faceStatus === 'unsupported' && <span>⚠️ Local AI Unsupported (Cloud Fallback Disabled)</span>}
+                      {clientAiStatus !== 'initializing' && faceStatus === 'quota_exceeded' && <span>⚠️ Class AI Quota Exceeded</span>}
+                    </div>
+                  )}
+                  {whisperTranscript && (isWebcamSharing || isScreenSharing) && (
+                    <div
+                      className="ai-speech-transcript-hud"
+                      style={{
+                        position: 'absolute',
+                        bottom: '8px',
+                        left: '8px',
+                        right: '8px',
+                        backgroundColor: 'rgba(15, 23, 42, 0.88)',
+                        backdropFilter: 'blur(6px)',
+                        color: '#34d399',
+                        fontSize: '0.78rem',
+                        padding: '5px 10px',
+                        borderRadius: '6px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        zIndex: 10,
+                        boxShadow: '0 2px 6px rgba(0,0,0,0.3)',
+                        border: '1px solid rgba(52, 211, 153, 0.3)',
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                      }}
+                      title={`Transcribed Speech: "${whisperTranscript}"`}
+                    >
+                      <span style={{ flexShrink: 0 }}>🎙️ Live Speech:</span>
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', fontWeight: 600 }}>
+                        {whisperTranscript}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </section>
+
+            {/* Live Speech AI & Voice Proctoring HUD — tucked inside collapsible disclosure when quiet */}
             {(enableAudioCapture || isLocalVoiceAiEnabled || isAudioRecording || isAudioCaptureActive || Boolean(whisperTranscript)) && (
+              <details
+                className="voice-ai-diagnostics-details"
+                open={Boolean(whisperTranscript || gemmaEvaluation)}
+                style={{ marginTop: '12px' }}
+              >
+                <summary className="voice-ai-diagnostics-summary">
+                  <span>
+                    🎙️ Mic & Voice Diagnostics{' '}
+                    <span style={{ fontWeight: 500, color: '#64748b', fontSize: '0.8rem' }}>
+                      ({isSpeaking ? 'Speaking' : isAudioRecording ? 'Listening' : 'Standby'})
+                    </span>
+                  </span>
+                  <span style={{ fontSize: '0.75rem', color: '#4f46e5', fontWeight: 600 }}>
+                    Details
+                  </span>
+                </summary>
               <div
                 className="student-voice-proctoring-hud"
                 style={{
-                marginTop: '16px',
+                marginTop: '8px',
                 padding: '16px',
                 backgroundColor: 'var(--color-surface, #ffffff)',
                 border: '1px solid var(--color-border, #e2e8f0)',
@@ -4224,7 +4412,7 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
                     <span>👂 Listening for speech into microphone... Speak a sentence to test on-device STT & AI intent analysis.</span>
                     <button
                       type="button"
-                      onClick={() => setIsReadinessWizardOpen(true)}
+                      onClick={() => (requiresWebcam ? openReadinessWizard(1) : setIsMicSetupOpen(true))}
                       style={{
                         background: 'none',
                         border: 'none',
@@ -4241,6 +4429,7 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
                   </div>
                 )}
               </div>
+              </details>
             )}
         </div>
         <Sidebar 
@@ -4267,7 +4456,7 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
       />
 
       <ExamReadinessWizard
-        isOpen={isReadinessWizardOpen}
+        isOpen={isReadinessWizardOpen && requiresWebcam}
         onClose={handleCloseReadinessWizard}
         initialStep={wizardInitialStep}
         user={user}
@@ -4290,50 +4479,6 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
         onCancel={handleCancelScreenSharePrecheck}
         onConfirm={handleConfirmScreenSharePrecheck}
       />
-
-      {/* Teacher Live Screen Viewer Modal for Students */}
-      <TeacherScreenViewerModal
-        isOpen={isViewingTeacherScreen}
-        onClose={() => {
-          setIsViewingTeacherScreen(false);
-          leaveTeacherBroadcast();
-        }}
-        liveFrame={teacherLiveFrame}
-        connectionState={teacherConnectionState}
-        broadcastInfo={teacherBroadcastInfo}
-        onRefreshFrame={refreshTeacherBroadcastFrame}
-        onFrameError={handleTeacherFrameLoadError}
-        frameUpdatedAt={teacherFrameUpdatedAt}
-        hasNewFrame={hasTeacherNewFrame}
-        isRefreshing={isTeacherFrameRefreshing}
-        refreshStatus={teacherFrameRefreshStatus}
-        classId={activeClass}
-        activeClassIds={activeClassIds}
-        userClasses={userClasses}
-        onSelectClass={handleSelectClass}
-        subtitleState={studentSubtitles}
-      />
-
-      {/* Floating Subtitle Overlay when not viewing screen broadcast */}
-      {!isViewingTeacherScreen && (
-        <LiveSubtitleOverlay
-          active={studentSubtitles.active}
-          originalText={studentSubtitles.originalText}
-          sourceLang={studentSubtitles.sourceLang}
-          currentTranslation={studentSubtitles.currentTranslation}
-          translations={studentSubtitles.translations}
-          selectedLanguage={studentSubtitles.selectedLanguage}
-          onSelectLanguage={studentSubtitles.setSelectedLanguage}
-          displayMode={studentSubtitles.displayMode}
-          onSelectDisplayMode={studentSubtitles.setDisplayMode}
-          fontSize={studentSubtitles.fontSize}
-          onSelectFontSize={studentSubtitles.setFontSize}
-          isVisible={studentSubtitles.isVisible}
-          onToggleVisible={studentSubtitles.setIsVisible}
-          isDocked={false}
-          engine={studentSubtitles.engine}
-        />
-      )}
 
       {/* Active Bingo Verification Modal (dismissed when class ends or expired) */}
       {isBingoActiveAndValid && currentBingoChallenge && (
@@ -4491,6 +4636,38 @@ const StudentView = ({
     onViewModeChange?.(mode);
   }, [onViewModeChange]);
 
+  const [isRemoteDisplaced, setIsRemoteDisplaced] = useState(false);
+  const [sessionMountKey, setSessionMountKey] = useState(0);
+
+  const isDesktopMode = effectiveViewMode === 'desktop';
+  const isChrome = isGoogleChrome();
+  const isDesktopBrowserEligible = isDesktopMode && (isChrome || isPreviewMode);
+
+  const {
+    status: tabLockStatus,
+    closeBlockedByBrowser,
+    tryCloseTab,
+    takeOverFromDuplicateTab,
+    resetLock,
+  } = useSingleDesktopTab({
+    enabled: isDesktopBrowserEligible && !isPreviewMode && Boolean(user?.uid),
+    uid: user?.uid,
+  });
+
+  useEffect(() => {
+    setIsRemoteDisplaced(false);
+  }, [user?.uid, effectiveViewMode]);
+
+  const handleRemoteSessionDisplaced = useCallback(() => {
+    setIsRemoteDisplaced(true);
+  }, []);
+
+  const handleRestartSessionHere = useCallback(() => {
+    setIsRemoteDisplaced(false);
+    resetLock();
+    setSessionMountKey((k) => k + 1);
+  }, [resetLock]);
+
   // Synchronize body class for instant CSS layout adaptation
   useEffect(() => {
     if (effectiveViewMode === 'mobile') {
@@ -4526,7 +4703,6 @@ const StudentView = ({
     );
   }
 
-  const isChrome = isGoogleChrome();
   if (!isChrome && !isPreviewMode) {
     return (
       <UnsupportedBrowserNotice
@@ -4535,12 +4711,122 @@ const StudentView = ({
     );
   }
 
+  if (tabLockStatus === 'checking') {
+    return (
+      <div
+        role="status"
+        aria-live="polite"
+        style={{
+          minHeight: '50vh',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '24px',
+          color: '#475569',
+          fontSize: '0.95rem',
+        }}
+      >
+        Checking active classroom session...
+      </div>
+    );
+  }
+
+  if (tabLockStatus === 'duplicate' || tabLockStatus === 'yielded' || isRemoteDisplaced) {
+    const isSameBrowserDuplicate = tabLockStatus === 'duplicate';
+    const isSameBrowserYielded = tabLockStatus === 'yielded';
+    const titleText = isSameBrowserDuplicate
+      ? 'Classroom desktop session is already open in another tab.'
+      : isSameBrowserYielded
+        ? 'Classroom session moved to another tab in this browser.'
+        : 'Classroom desktop session active on another device or browser.';
+    const detailText = isSameBrowserDuplicate
+      ? 'Only one desktop tab can run in this browser. Close this tab and return to your active classroom tab.'
+      : 'Streaming and background sync in this window have stopped so two sessions do not conflict. You can safely close this tab.';
+
+    return (
+      <div
+        role="alert"
+        style={{
+          minHeight: '60vh',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '24px',
+        }}
+      >
+        <div
+          style={{
+            maxWidth: '520px',
+            width: '100%',
+            background: '#fef2f2',
+            border: '1px solid #f87171',
+            borderRadius: '12px',
+            padding: '24px',
+            color: '#991b1b',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.06)',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', marginBottom: '16px' }}>
+            <span style={{ fontSize: '1.5rem', lineHeight: 1.2 }}>⚠️</span>
+            <div>
+              <h2 style={{ margin: '0 0 6px 0', fontSize: '1.1rem', color: '#7f1d1d' }}>
+                {titleText}
+              </h2>
+              <p style={{ margin: 0, fontSize: '0.9rem', color: '#991b1b', lineHeight: 1.45 }}>
+                {detailText}
+              </p>
+              {closeBlockedByBrowser && (
+                <p style={{ margin: '10px 0 0 0', fontSize: '0.82rem', color: '#b91c1c' }}>
+                  Your browser prevented automatic tab closing — please close this tab manually (Ctrl+W / Cmd+W).
+                </p>
+              )}
+            </div>
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', justifyContent: 'flex-end' }}>
+            <button
+              type="button"
+              onClick={tryCloseTab}
+              style={{
+                background: '#ffffff',
+                color: '#7f1d1d',
+                border: '1px solid #fca5a5',
+                padding: '8px 16px',
+                borderRadius: '6px',
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+            >
+              Close This Tab
+            </button>
+            <button
+              type="button"
+              onClick={isSameBrowserDuplicate ? takeOverFromDuplicateTab : handleRestartSessionHere}
+              style={{
+                background: '#dc2626',
+                color: '#ffffff',
+                border: 'none',
+                padding: '8px 16px',
+                borderRadius: '6px',
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+            >
+              {isSameBrowserDuplicate ? 'Move Session to This Tab' : 'Restart Session Here'}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <StudentDesktopView
+      key={sessionMountKey}
       user={user}
       previewClassId={previewClassId}
       isPreviewMode={isPreviewMode}
       onViewModeToggle={onViewModeToggle}
+      onRemoteSessionDisplaced={handleRemoteSessionDisplaced}
       onSwitchToMobile={() => {
         if (onViewModeToggle) {
           onViewModeToggle();

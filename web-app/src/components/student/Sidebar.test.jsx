@@ -134,11 +134,11 @@ describe('Sidebar Component', () => {
     expect(screen.getByText('讓我們開始示範。')).toBeInTheDocument();
   });
 
-  it('invokes scrollIntoView when transcript updates and tab is active', () => {
+  it('scrolls only the internal transcript container without calling scrollIntoView on the page window', () => {
     const scrollIntoViewMock = vi.fn();
     window.HTMLElement.prototype.scrollIntoView = scrollIntoViewMock;
 
-    const { rerender } = render(
+    const { rerender, container } = render(
       <Sidebar
         activeTab="transcript"
         liveTranscriptHistory={[]}
@@ -146,7 +146,9 @@ describe('Sidebar Component', () => {
       />
     );
 
-    expect(scrollIntoViewMock).toHaveBeenCalled();
+    const scrollBox = container.querySelector('.transcript-scroll-area');
+    expect(scrollBox).not.toBeNull();
+    Object.defineProperty(scrollBox, 'scrollHeight', { value: 640, configurable: true });
 
     rerender(
       <Sidebar
@@ -156,6 +158,28 @@ describe('Sidebar Component', () => {
       />
     );
 
-    expect(scrollIntoViewMock).toHaveBeenCalled();
+    expect(scrollBox.scrollTop).toBe(640);
+    expect(scrollIntoViewMock).not.toHaveBeenCalled();
+  });
+
+  it('places Class Properties panel before Live Lecture Transcript in All Panels mode', () => {
+    const { container } = render(
+      <Sidebar
+        classProperties={mockClassProps}
+        myProperties={mockMyProps}
+        recentIrregularities={mockIrregularities}
+        ipAddress="192.168.1.100"
+        recentMessages={mockMessages}
+      />
+    );
+
+    const propertiesHeading = screen.getByText('Class Properties');
+    const transcriptHeading = screen.getByText(/Live Lecture Transcript/i);
+    const relation = propertiesHeading.compareDocumentPosition(transcriptHeading);
+    expect(relation & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    const tabs = container.querySelectorAll('[role="tab"]');
+    expect(tabs[1]).toHaveTextContent(/Class Info/i);
+    expect(tabs[2]).toHaveTextContent(/Transcript/i);
   });
 });

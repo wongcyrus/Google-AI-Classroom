@@ -240,4 +240,4 @@ const StudentScreen = ({ student, isSharing, screenshotData, screenshotUrl, sele
   );
 };
 
-export default StudentScreen;
+export default React.memo(StudentScreen);

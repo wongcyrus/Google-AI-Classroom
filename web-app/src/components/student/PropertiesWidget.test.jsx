@@ -145,6 +145,23 @@ describe('PropertiesWidget Component and Helpers', () => {
       expect(myLink).toHaveAttribute('target', '_blank');
       expect(myLink).toHaveAttribute('rel', 'noopener noreferrer');
     });
+
+    it('filters internal bingoQuestionBank out of Class Properties', () => {
+      render(
+        <PropertiesWidget
+          classProperties={{
+            CourseCode: 'IT114115',
+            bingoQuestionBank: [{ question: 'Hidden question', answer: '42' }],
+          }}
+          myProperties={{}}
+        />
+      );
+
+      expect(screen.getByText('CourseCode')).toBeInTheDocument();
+      expect(screen.getByText('IT114115')).toBeInTheDocument();
+      expect(screen.queryByText('bingoQuestionBank')).not.toBeInTheDocument();
+      expect(screen.queryByText(/Hidden question/)).not.toBeInTheDocument();
+    });
   });
 });
 

@@ -4,6 +4,34 @@
 **System**: Google AI Classroom  
 **Production URL**: `https://it114115-2627.web.app`
 
+## 0.0.0.0.0.0.0.0.0.0.4.5 Student View UX Simplification, Zoom/Pan, Single-Tab Guard & Class Properties Fixes
+
+**Date**: November 25, 2026  
+**Status**: Implemented, Verified with Unit Tests, Typecheck & ESLint, Deployed to `it114115-dev-2026` & `it114115-2627`  
+**Primary Files**:
+- [`web-app/src/components/StudentView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/StudentView.jsx), [`web-app/src/components/StudentView.css`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/StudentView.css), & [`web-app/src/components/student/Sidebar.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/student/Sidebar.jsx)
+- [`web-app/src/hooks/useSingleDesktopTab.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/hooks/useSingleDesktopTab.js)
+- [`web-app/src/components/CustomPropertiesManager.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/CustomPropertiesManager.jsx), [`web-app/src/components/ClassManagement.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/ClassManagement.jsx), & [`web-app/src/components/student/PropertiesWidget.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/student/PropertiesWidget.jsx)
+- [`functions/property_processing/index.mjs`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/property_processing/index.mjs)
+- [`web-app/src/components/MonitorView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/MonitorView.jsx), [`web-app/src/components/StudentScreen.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/StudentScreen.jsx), [`web-app/src/components/TeacherScreenBroadcastModal.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/TeacherScreenBroadcastModal.jsx), [`web-app/src/components/monitor/StudentsGrid.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/monitor/StudentsGrid.jsx), [`web-app/src/hooks/useTeacherLiveSubtitles.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/hooks/useTeacherLiveSubtitles.js), & [`web-app/src/hooks/useTeacherScreenBroadcast.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/hooks/useTeacherScreenBroadcast.js)
+
+### Key Enhancements & Fixes:
+1. **Inline YouTube-Style Desktop Student Player & Unambiguous Directional Labels**:
+   - Unified the teacher screen viewer and live closed-captions (`CC`) overlay directly inside the inline player box (`📺 Teacher's Live Screen` + bottom control bar + `CC` settings popover) instead of juggling overlapping modals, clearly separated from the outbound `📤 SENDING TO TEACHER` self-preview card directly beneath.
+   - Removed the teacher screen hide/show toggle (`✕ Hide` / `Show Teacher's Screen`) and `Hide My Preview` toggle so both the active teacher broadcast and the student's outbound preview stay consistently visible.
+   - Added slide zoom and pan (`100%`–`300%` via `🔍+`/`🔍−`/`↺ Fit`, scroll wheel, click-drag / touch pan, double-click, and fullscreen keyboard shortcuts `+`/`-`/`0`/`Esc`), and removed the redundant top-right `Exit Fullscreen` overlay button so fullscreen exits cleanly via the bottom bar or `Esc`.
+   - When a class does not capture webcam (`captureMode` is `'screen'` or `'screen_only'`), hides `🚀 Start Setup & Readiness Test`, the `📷 Camera & Gaze` card, and `⚙️ Setup & Re-Test`, promoting `Quick Start` as the primary action.
+2. **Single Desktop Tab Guard & Sidebar Scroll/Ordering**:
+   - Added [`useSingleDesktopTab.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/hooks/useSingleDesktopTab.js) (`BroadcastChannel` + `localStorage` heartbeat) to block duplicate desktop `StudentView` tabs in the same browser with a recovery/takeover prompt while leaving Mobile Companion tabs unblocked.
+   - Reordered [`Sidebar.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/student/Sidebar.jsx) so **Class Properties & My Properties** appear first before **Live Lecture Transcript**, and replaced `scrollIntoView()` with internal `.transcript-scroll-area` `scrollTop` assignment so incoming live captions never yank the outer page scroll position.
+3. **Class-Wide Custom Properties Save & `bingoQuestionBank` Isolation**:
+   - Connected [`CustomPropertiesManager.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/CustomPropertiesManager.jsx) via `forwardRef` / `useImperativeHandle` to [`ClassManagement.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/ClassManagement.jsx) so clicking **`Save Class Settings`** automatically commits dirty class-wide custom properties too.
+   - Added `'bingoquestionbank'` to `isInternalPropertyKey` in [`PropertiesWidget.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/student/PropertiesWidget.jsx) and [`functions/property_processing/index.mjs`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/property_processing/index.mjs), switched saves to `{ merge: true }` + `deleteField()` for removed keys, and removed shallow row mutation so `bingoQuestionBank` is neither leaked to students nor overwritten on save.
+4. **Teacher Broadcast & Grid Render Optimization**:
+   - Switched teacher slide local previews to `toBlob` + `URL.createObjectURL` with cleanup, throttled Broadcast audio meter updates, memoized `StudentScreen` (`React.memo`), and stabilized callback props in `MonitorView.jsx` and `useTeacherLiveSubtitles.js`.
+
+---
+
 ## 0.0.0.0.0.0.0.0.0.0.4.4 Auto-Updating Broadcast Slides, `analyzeAudio` Schema Tolerance & `version.json` Client Refresh
 
 **Date**: November 25, 2026  

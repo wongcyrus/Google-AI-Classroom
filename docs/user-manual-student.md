@@ -65,8 +65,8 @@ To prevent password sharing and enable 2-second in-class attendance, your accoun
 
 ### D. Arriving at the Student Home Dashboard
 Once authenticated:
-- **`🚀 Start Setup & Readiness Test` (`Start Hardware Check →`)**: Launches the guided calibration wizard. As soon as your class is selected on Step 1, background pre-warming of on-device speech and intent AI models (**Whisper Base** & **Gemma 4 E2B**) starts automatically so your lab PC is ready by the time you finish hardware checks.
-- **`⚡ Quick Start (Screen + Mic)` / `⚡ Quick Start (Screen Only)`**:
+- **`🚀 Start Setup & Readiness Test` (`Start Hardware Check →`)**: Launches the guided calibration wizard *(displayed only for classes that require webcam capture; hidden in Screen-Only classes to keep setup simple)*. As soon as your class is selected on Step 1, background pre-warming of on-device speech and intent AI models (**Whisper Base** & **Gemma 4 E2B**) starts automatically so your lab PC is ready by the time you finish hardware checks.
+- **`⚡ Quick Start (Screen + Mic)` / `🖥️ Quick Start (Screen Only)`**:
   - Dynamically adapts to your class settings:
     - When your instructor has enabled class audio monitoring (`enableAudioCapture: true`), the card displays **`⚡ Quick Start (Screen + Mic)`** and informs you that Chrome will prompt for both **Screen Share** and **Microphone** permissions.
     - When class audio monitoring is disabled, it displays **`⚡ Quick Start (Screen Only)`**.
@@ -242,13 +242,15 @@ flowchart TD
 
 ## 6. Viewing the Teacher's Screen Broadcast
 
-When your teacher shares their screen during class, a presentation viewer automatically appears on your display ([`TeacherScreenViewerModal.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/TeacherScreenViewerModal.jsx)).
+When your teacher shares their screen during class, their live slides appear **automatically inside the inline YouTube-style Teacher Live Class Player** on your dashboard, while the `📤 SENDING TO TEACHER` card directly below shows the screen and camera feeds you are sharing.
 
-You can customize how the broadcast is displayed without interrupting your work:
-- **`🪟 Float`**: Keeps the teacher's presentation in a compact picture-in-picture window that you can reposition over your code.
-- **`🔲 Standard`**: Docks the broadcast into a clean side-by-side drawer.
-- **`⛶ Max`**: Expands the presentation to fullscreen.
-- **`➖ Min`**: Minimizes the broadcast into a small floating pill (`🖥️ Teacher Screen Sharing (Click to Expand)`).
+- **Layout Modes:**
+  - **`⬜ Standard`**: Side-by-side player and sidebar (**Class Properties** first, followed by **Live Lecture Transcript** and **Alerts & Messages**).
+  - **`🗖 Max`**: Expands the teacher player to full content width above the sidebar.
+  - **`🗗 Smallest`**: Docks the teacher player as a compact floating corner mini-player.
+  - **`⛶ Fullscreen`**: Expands the teacher broadcast to fill your screen (click **`✕ Exit Fullscreen`** in the bottom player bar or press `Esc` to exit).
+- **Zoom & Pan Slides:** Use `🔍+` / `🔍−` / `↺ Fit`, double-click a slide, scroll with the mouse wheel (in fullscreen or while zoomed), or click-drag to inspect small text/code (`100%`–`300%`).
+- **Live Closed Captions (`CC`):** Toggle **`CC`** in the bottom player bar to view live bilingual/translated subtitles overlaid on the player, and click the caption gear icon to switch language, font size, or display mode.
 
 ---
 

@@ -468,7 +468,7 @@ flowchart TD
     - `⚠️ Unregistered & Not Exempt`: Filters students who are unlinked and not exempt (action required).
   - **Header Status Chips:** Real-time summary chips displaying total roster count, profile metadata, linked passkeys, directory auto-fills, and dynamic chips for `🛡️ N Exempt` and `⚡ N Temp Bypass`.
   - **`[ 🔄 Reset ]` Passkey Button:** Securely unlinks a student's paired phone upon legitimate hardware loss/replacement and logs to `passkeyAuditLogs`.
-- **Class-wide Custom Properties Table:** Key-value pairs injected into all AI prompts (e.g., `CourseCode: CS101`).
+- **Class-wide Custom Properties Table:** Key-value pairs injected into all AI prompts and shown to students (`CourseCode: CS101`). Dirty edits save automatically from both `💾 Save Class-wide Properties` and the bottom `Save Class Settings` button using `{ merge: true }` + `deleteField()` (preserving internal `bingoQuestionBank` data).
 - **Student-Specific Custom Properties Tool & Column Removal:**
   - `📥 Export / Download Existing Excel`: Generates `.xlsx` spreadsheet with `StudentEmail` and existing custom property columns.
   - `📤 Choose Excel (.xlsx) to Upload`: Dispatches background job (`propertyUploadJobs`) mapping student metadata. Deleting a column in the spreadsheet dynamically prunes that property via `FieldValue.delete()` across all students.

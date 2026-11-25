@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, forwardRef, useImperativeHandle } from 'react';
 import { doc, getDoc, collection, onSnapshot, query, where, addDoc, serverTimestamp, orderBy, limit, getDocs, deleteField } from 'firebase/firestore';
 import { db, auth } from '../firebase-config';
 import { commitBatchChunks } from '../utils/firestoreBatchUtils';
@@ -19,8 +19,13 @@ const getSnapshotDocs = (snap) => {
 
 const getDocData = (docSnap) => (typeof docSnap?.data === 'function' ? docSnap.data() : (docSnap?.data || {}));
 
-const CustomPropertiesManager = ({ selectedClass, studentEmails }) => {
-  const [classProperties, setClassProperties] = useState([{ key: '', value: '' }]);
+const CustomPropertiesManager = forwardRef(({ selectedClass, studentEmails }, ref) => {
+  const nextRowIdRef = useRef(1);
+  const loadedCustomKeysRef = useRef(new Set());
+  const isDirtyRef = useRef(false);
+  const [classProperties, setClassProperties] = useState(() => [{ id: 0, key: '', value: '' }]);
+  const classPropertiesRef = useRef(classProperties);
+  classPropertiesRef.current = classProperties;
 
   const [propertyUploadJobs, setPropertyUploadJobs] = useState([]);
   const [detectedStudentProperties, setDetectedStudentProperties] = useState([]);
@@ -64,24 +69,63 @@ const CustomPropertiesManager = ({ selectedClass, studentEmails }) => {
   }, []);
 
   useEffect(() => {
+    let isCancelled = false;
+    isDirtyRef.current = false;
+    setError(null);
+    setSuccessMessage('');
+
     const fetchClassProperties = async () => {
       if (selectedClass) {
-        const classPropsRef = doc(db, 'classes', selectedClass, 'classProperties', 'config');
-        const classPropsSnap = await getDoc(classPropsRef);
-        if (classPropsSnap.exists()) {
-          const propsData = classPropsSnap.data();
-          const propsArray = Object.entries(propsData).map(([key, value]) => ({ key, value }));
-          setClassProperties(propsArray.length > 0 ? propsArray : [{ key: '', value: '' }]);
-        } else {
-          setClassProperties([{ key: '', value: '' }]);
+        try {
+          const classPropsRef = doc(db, 'classes', selectedClass, 'classProperties', 'config');
+          const classPropsSnap = await getDoc(classPropsRef);
+          if (isCancelled) return;
+
+          if (classPropsSnap.exists()) {
+            const propsData = classPropsSnap.data() || {};
+            const propsArray = Object.entries(propsData)
+              .filter(([key]) => !isInternalPropertyKey(key))
+              .map(([key, value]) => ({
+                id: nextRowIdRef.current++,
+                key,
+                value:
+                  value === null || value === undefined
+                    ? ''
+                    : typeof value === 'object'
+                    ? JSON.stringify(value)
+                    : String(value),
+              }));
+            loadedCustomKeysRef.current = new Set(
+              propsArray.map((p) => p.key.trim()).filter(Boolean)
+            );
+            setClassProperties(
+              propsArray.length > 0 ? propsArray : [{ id: nextRowIdRef.current++, key: '', value: '' }]
+            );
+          } else {
+            loadedCustomKeysRef.current = new Set();
+            setClassProperties([{ id: nextRowIdRef.current++, key: '', value: '' }]);
+          }
+        } catch (err) {
+          if (!isCancelled) {
+            console.warn('[CustomPropertiesManager] Failed to load class-wide properties:', err);
+            loadedCustomKeysRef.current = new Set();
+            setClassProperties([{ id: nextRowIdRef.current++, key: '', value: '' }]);
+          }
         }
-        fetchStudentPropertiesStats(selectedClass);
+        if (!isCancelled) {
+          fetchStudentPropertiesStats(selectedClass);
+        }
       } else {
-        setClassProperties([{ key: '', value: '' }]);
+        loadedCustomKeysRef.current = new Set();
+        setClassProperties([{ id: nextRowIdRef.current++, key: '', value: '' }]);
         setDetectedStudentProperties([]);
       }
     };
     fetchClassProperties();
+
+    return () => {
+      isCancelled = true;
+    };
   }, [selectedClass, fetchStudentPropertiesStats]);
 
   // Listen for property upload jobs
@@ -183,44 +227,86 @@ const CustomPropertiesManager = ({ selectedClass, studentEmails }) => {
   };
 
   const handlePropertyChange = (index, field, value) => {
-    const updated = [...classProperties];
-    updated[index][field] = value;
-    setClassProperties(updated);
+    isDirtyRef.current = true;
+    setError(null);
+    setSuccessMessage('');
+    setClassProperties((prev) =>
+      prev.map((row, i) => (i === index ? { ...row, [field]: value } : row))
+    );
   };
 
   const addPropertyRow = () => {
-    setClassProperties([...classProperties, { key: '', value: '' }]);
+    setError(null);
+    setSuccessMessage('');
+    setClassProperties((prev) => [...prev, { id: nextRowIdRef.current++, key: '', value: '' }]);
   };
 
   const removePropertyRow = (index) => {
-    setClassProperties(classProperties.filter((_, i) => i !== index));
+    const removedKey = classPropertiesRef.current[index]?.key?.trim();
+    if (removedKey) {
+      isDirtyRef.current = true;
+    }
+    setError(null);
+    setSuccessMessage('');
+    setClassProperties((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const handleSaveProperties = async () => {
+  const handleSaveProperties = useCallback(async ({ silentIfClean = false } = {}) => {
+    if (silentIfClean && !isDirtyRef.current) {
+      return true;
+    }
     if (!selectedClass) {
       setError("Please select a class first.");
-      return;
+      return false;
     }
     setError(null);
     setSuccessMessage('');
 
     try {
-      // Save class-wide properties
+      // Save class-wide properties cleanly with merge: true so internal fields (e.g. bingoQuestionBank)
+      // on classes/{classId}/classProperties/config are never overwritten or lost.
       const classPropsRef = doc(db, 'classes', selectedClass, 'classProperties', 'config');
-      const classPropsMap = classProperties.reduce((acc, prop) => {
-        if (prop.key.trim()) {
-          acc[prop.key.trim()] = prop.value;
+      const currentRows = classPropertiesRef.current || [];
+      const classPropsMap = currentRows.reduce((acc, prop) => {
+        const trimmedKey = (prop?.key || '').trim();
+        if (trimmedKey && !isInternalPropertyKey(trimmedKey)) {
+          acc[trimmedKey] = prop.value ?? '';
         }
         return acc;
       }, {});
-      await commitBatchChunks(db, [{ type: 'set', ref: classPropsRef, data: classPropsMap }]);
-      setSuccessMessage("Successfully saved class-wide properties!");
 
+      const patchData = { ...classPropsMap };
+      loadedCustomKeysRef.current.forEach((prevKey) => {
+        if (prevKey && !(prevKey in classPropsMap) && !isInternalPropertyKey(prevKey)) {
+          patchData[prevKey] = deleteField();
+        }
+      });
+
+      if (Object.keys(patchData).length > 0) {
+        await commitBatchChunks(db, [
+          { type: 'set', ref: classPropsRef, data: patchData, options: { merge: true } },
+        ]);
+      }
+
+      loadedCustomKeysRef.current = new Set(Object.keys(classPropsMap));
+      isDirtyRef.current = false;
+      setSuccessMessage("Successfully saved class-wide properties!");
+      return true;
     } catch (err) {
       setError("Failed to save properties: " + err.message);
       console.error(err);
+      return false;
     }
-  };
+  }, [selectedClass]);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      saveClassProperties: handleSaveProperties,
+      hasUnsavedChanges: () => isDirtyRef.current,
+    }),
+    [handleSaveProperties]
+  );
 
   // Direct deletion of an individual custom property across all students in the class
   const handleDeleteStudentPropertyKey = async (propKey) => {
@@ -370,7 +456,7 @@ const CustomPropertiesManager = ({ selectedClass, studentEmails }) => {
         </p>
         <div className="properties-table">
           {classProperties.map((prop, index) => (
-            <div key={index} className="property-row" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+            <div key={prop.id ?? index} className="property-row" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
               <input
                 type="text"
                 placeholder="Property Key (e.g., CourseCode)"
@@ -410,7 +496,7 @@ const CustomPropertiesManager = ({ selectedClass, studentEmails }) => {
             type="button"
             className="btn-secondary"
             style={{ fontSize: '0.85rem', padding: '0.4rem 0.8rem', fontWeight: 600 }}
-            onClick={handleSaveProperties}
+            onClick={() => handleSaveProperties()}
           >
             💾 Save Class-wide Properties
           </button>
@@ -578,6 +664,8 @@ const CustomPropertiesManager = ({ selectedClass, studentEmails }) => {
       </div>
     </div>
   );
-};
+});
+
+CustomPropertiesManager.displayName = 'CustomPropertiesManager';
 
 export default CustomPropertiesManager;

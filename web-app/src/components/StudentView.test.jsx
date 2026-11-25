@@ -814,7 +814,7 @@ describe('StudentView Component Extended Test Suite', () => {
     });
   });
 
-  it('automatically opens TeacherScreenViewerModal when teacher broadcast starts and joins broadcast', async () => {
+  it('automatically displays inline teacher broadcast viewer when teacher broadcast starts and joins broadcast', async () => {
     mockTeacherBroadcastReturn = {
       ...mockTeacherBroadcastReturn,
       isBroadcastActive: true,
@@ -828,12 +828,10 @@ describe('StudentView Component Extended Test Suite', () => {
       expect(screen.getByText(/teacher@school\.edu's Screen/i)).toBeInTheDocument();
     });
 
-    const closeBtn = screen.getByTitle('Close Stream');
-    fireEvent.click(closeBtn);
-    expect(mockTeacherBroadcastReturn.leaveBroadcast).toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: /Hide Teacher Stream|Show Teacher's Screen/i })).toBeNull();
   });
 
-  it('shows Refresh Slide button with new-slide indicator in viewer modal and invokes refreshFrame on click', async () => {
+  it('shows Refresh button with new-slide indicator in inline teacher viewer and invokes refreshFrame on click', async () => {
     const refreshMock = vi.fn().mockResolvedValue({ updated: true });
     mockTeacherBroadcastReturn = {
       ...mockTeacherBroadcastReturn,
@@ -850,7 +848,7 @@ describe('StudentView Component Extended Test Suite', () => {
 
     render(<StudentView user={mockUser} />);
 
-    const refreshBtn = await screen.findByRole('button', { name: /Refresh Slide \(New slide available\)/i });
+    const refreshBtn = await screen.findByRole('button', { name: /Refresh Teacher Screen \(New slide available\)/i });
     fireEvent.click(refreshBtn);
     expect(refreshMock).toHaveBeenCalledTimes(1);
   });
@@ -875,10 +873,15 @@ describe('StudentView Component Extended Test Suite', () => {
     expect(mockGemmaReturn.preloadGemmaModel).toHaveBeenCalled();
   });
 
-  it('handles session displacement and resuming session in current tab', async () => {
+  it('unmounts monitoring view on cross-device displacement and allows clean restart', async () => {
     render(<StudentView user={mockUser} />);
 
     await waitFor(() => {
+      expect(mockSetDoc).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ desktopSessionId: expect.any(String) }),
+        { merge: true }
+      );
       const statusCallbackObj = snapshotCallbacks.find(item => item.ref?.path?.includes('status'));
       expect(statusCallbackObj).toBeDefined();
     });
@@ -887,22 +890,73 @@ describe('StudentView Component Extended Test Suite', () => {
     act(() => {
       statusCallbackObj.callback({
         exists: () => true,
-        data: () => ({ sessionId: 'different-uuid-from-another-tab' }),
+        metadata: { hasPendingWrites: false },
+        data: () => ({ desktopSessionId: 'different-uuid-from-another-device' }),
       });
     });
 
     await waitFor(() => {
-      expect(screen.getByText(/Classroom session active in another tab or device/i)).toBeInTheDocument();
+      expect(
+        screen.getByText(/Classroom desktop session active on another device or browser/i)
+      ).toBeInTheDocument();
+    });
+    // StudentDesktopView is completely unmounted — desktop monitoring controls are gone
+    expect(screen.queryByRole('button', { name: /Quick Start/i })).not.toBeInTheDocument();
+
+    const restartBtn = screen.getByRole('button', { name: /Restart Session Here/i });
+    mockSetDoc.mockClear();
+    await act(async () => {
+      fireEvent.click(restartBtn);
     });
 
-    const resumeBtn = screen.getByRole('button', { name: /Resume Here/i });
-    fireEvent.click(resumeBtn);
+    await waitFor(() => {
+      expect(mockSetDoc).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ desktopSessionId: expect.any(String) }),
+        { merge: true }
+      );
+    });
+  });
 
-    expect(mockSetDoc).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({ sessionId: expect.any(String) }),
-      { merge: true }
-    );
+  it('blocks duplicate desktop tabs in the same browser via Web Locks with zero Firestore activity while mobile stays independent', async () => {
+    const originalLocks = navigator.locks;
+    const originalClose = window.close;
+    window.close = vi.fn();
+    Object.defineProperty(navigator, 'locks', {
+      configurable: true,
+      writable: true,
+      value: {
+        request: vi.fn(async (_name, _opts, cb) => cb(null)),
+      },
+    });
+
+    try {
+      const { unmount } = render(<StudentView user={mockUser} />);
+
+      await waitFor(() => {
+        expect(
+          screen.getByText(/Classroom desktop session is already open in another tab/i)
+        ).toBeInTheDocument();
+      });
+      expect(window.close).toHaveBeenCalled();
+      expect(mockSetDoc).not.toHaveBeenCalled();
+      expect(snapshotCallbacks.length).toBe(0);
+      unmount();
+
+      // Mobile view remains completely unblocked even when another desktop tab holds the lock
+      render(<StudentView user={mockUser} forceViewMode="mobile" />);
+      expect(
+        screen.queryByText(/Classroom desktop session is already open in another tab/i)
+      ).not.toBeInTheDocument();
+      expect(screen.getByRole('navigation', { name: /Viewing Mode Selection/i })).toBeInTheDocument();
+    } finally {
+      Object.defineProperty(navigator, 'locks', {
+        configurable: true,
+        writable: true,
+        value: originalLocks,
+      });
+      window.close = originalClose;
+    }
   });
 
   it('allows switching webcam selection in active invigilation mode', async () => {
@@ -1382,15 +1436,16 @@ describe('StudentView Component Extended Test Suite', () => {
     expect(contentContainer.classList.contains('mode-standard')).toBe(true);
     expect(localStorage.getItem('student_desktop_screen_mode')).toBe('standard');
 
-    // Fullscreen button is available when teacher is sharing screen, and shows prominent Exit Fullscreen button
+    // Fullscreen button is available when teacher is sharing screen, and shows a single Exit Fullscreen button in bottom controls (no top overlay button covering top bar)
     const fsBtn = screen.getByTitle('Fullscreen Teacher Screen');
     await act(async () => {
       fireEvent.click(fsBtn);
     });
     const exitFsBtns = screen.getAllByRole('button', { name: /Exit Fullscreen/i });
-    expect(exitFsBtns.length).toBeGreaterThanOrEqual(2);
+    expect(exitFsBtns).toHaveLength(1);
+    expect(document.querySelector('.fullscreen-exit-prominent-btn')).toBeNull();
 
-    // Clicking prominent Exit Fullscreen button leaves fullscreen immediately
+    // Clicking the bottom Exit Fullscreen button leaves fullscreen immediately
     await act(async () => {
       fireEvent.click(exitFsBtns[0]);
     });
@@ -1607,31 +1662,31 @@ describe('StudentView Component Extended Test Suite', () => {
       fireEvent.click(finishBtn);
     });
 
-    // Dual stream is now live and Swap Focus button is available
+    // Dual stream is now live inside the outbound card and Swap Preview button is available
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /Swap Focus/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Swap Preview/i })).toBeInTheDocument();
     });
 
     // Initial state: primary stream is screen, webcam is PiP
-    const webcamPip = screen.getByTitle('Click to make Webcam main feed');
+    const webcamPip = screen.getByTitle('Click to make My Webcam main preview');
     expect(webcamPip).toBeInTheDocument();
 
-    // Click Swap Focus button
-    const swapBtn = screen.getByRole('button', { name: /Swap Focus/i });
+    // Click Swap Preview button
+    const swapBtn = screen.getByRole('button', { name: /Swap Preview/i });
     fireEvent.click(swapBtn);
 
     // State flipped: primary stream is webcam, screen is PiP
     await waitFor(() => {
-      expect(screen.getByTitle('Click to make Screen main feed')).toBeInTheDocument();
+      expect(screen.getByTitle('Click to make My Shared Screen main preview')).toBeInTheDocument();
     });
 
     // Click the PiP stream wrapper directly
-    const screenPip = screen.getByTitle('Click to make Screen main feed');
+    const screenPip = screen.getByTitle('Click to make My Shared Screen main preview');
     fireEvent.click(screenPip);
 
     // State flipped back: primary stream is screen, webcam is PiP
     await waitFor(() => {
-      expect(screen.getByTitle('Click to make Webcam main feed')).toBeInTheDocument();
+      expect(screen.getByTitle('Click to make My Webcam main preview')).toBeInTheDocument();
     });
   });
 
@@ -2073,7 +2128,7 @@ describe('StudentView Component Extended Test Suite', () => {
 
   it('keeps screen sharing active when user object reference refreshes, initial sessionId write fails, or screenshot upload fails', async () => {
     mockSetDoc.mockImplementation((docRef, data) => {
-      if (data && data.sessionId) {
+      if (data && data.desktopSessionId) {
         return Promise.reject(new Error('Network write failed'));
       }
       return Promise.resolve({});
@@ -2101,20 +2156,171 @@ describe('StudentView Component Extended Test Suite', () => {
       rerender(<StudentView user={{ uid: 'student123', email: 'student@vtc.edu.hk' }} />);
     });
 
-    // Simulate stale cached status snapshot arriving after failed initial sessionId write
+    // Simulate stale cached status snapshot arriving after failed initial desktopSessionId write
     const statusCallbackObj = snapshotCallbacks.find(item => item.ref?.path?.includes('status'));
     if (statusCallbackObj) {
       act(() => {
         statusCallbackObj.callback({
           exists: () => true,
-          data: () => ({ sessionId: 'stale-cached-session-id' }),
+          data: () => ({ desktopSessionId: 'stale-cached-session-id' }),
         });
       });
     }
 
     // Screen sharing must remain active and not be falsely displaced
     expect(screen.getByText(/Streaming Active/i)).toBeInTheDocument();
-    expect(screen.queryByText(/Classroom session active in another tab or device/i)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/Classroom desktop session active on another device or browser/i)
+    ).not.toBeInTheDocument();
+  });
+
+  it('keeps student outbound preview visible underneath teacher screen without Hide My Preview toggle', async () => {
+    mockTeacherBroadcastReturn.isBroadcastActive = true;
+    mockTeacherBroadcastReturn.liveFrame = 'data:image/jpeg;base64,teacherframe123';
+
+    render(<StudentView user={mockUser} />);
+
+    // Start student screen sharing while teacher is broadcasting
+    const quickStartBtn = screen.getByRole('button', { name: /Quick Start \(Screen/i });
+    await act(async () => {
+      fireEvent.click(quickStartBtn);
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('confirm-screen-share-precheck'));
+    });
+
+    const outboundCard = screen.getByRole('region', { name: /Your Shared Screen and Camera Sent to Teacher/i });
+    expect(outboundCard).not.toHaveClass('hidden-stream');
+    expect(document.querySelector('.outbound-preview-stage.collapsed-preview')).toBeNull();
+    expect(screen.queryByRole('button', { name: /Hide My Preview|Show My Preview/i })).toBeNull();
+  });
+
+  it('supports zoom in, zoom out, wheel zoom, drag pan, and reset while in fullscreen mode', async () => {
+    mockTeacherBroadcastReturn.isBroadcastActive = true;
+    mockTeacherBroadcastReturn.liveFrame = 'data:image/jpeg;base64,slide999';
+
+    render(<StudentView user={mockUser} />);
+
+    // Enter Fullscreen mode
+    const fsBtn = screen.getByTitle('Fullscreen Teacher Screen');
+    await act(async () => {
+      fireEvent.click(fsBtn);
+    });
+    expect(document.querySelector('.desktop-yt-player-box.fullscreen-mode')).not.toBeNull();
+
+    const zoomInBtn = screen.getByRole('button', { name: /Zoom In Teacher Screen/i });
+    const zoomOutBtn = screen.getByRole('button', { name: /Zoom Out Teacher Screen/i });
+    const pctBtn = screen.getByRole('button', { name: /Reset Teacher Screen Zoom/i });
+
+    expect(pctBtn).toHaveTextContent('100%');
+    expect(zoomOutBtn).toBeDisabled();
+
+    // Zoom in twice (100% -> 125% -> 150%) in fullscreen
+    await act(async () => {
+      fireEvent.click(zoomInBtn);
+      fireEvent.click(zoomInBtn);
+    });
+    expect(pctBtn).toHaveTextContent('150%');
+    expect(zoomOutBtn).not.toBeDisabled();
+
+    const img = screen.getByAltText('Teacher Live Screen Broadcast');
+    expect(img.style.transform).toContain('scale(1.5)');
+
+    // Keyboard '-' in fullscreen zooms out (150% -> 125%), wheel up zooms in (125% -> 150%)
+    await act(async () => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: '-' }));
+    });
+    expect(pctBtn).toHaveTextContent('125%');
+
+    const streamContainer = document.querySelector('.teacher-live-stream-container');
+    await act(async () => {
+      streamContainer.dispatchEvent(new WheelEvent('wheel', { deltaY: -100, cancelable: true, bubbles: true }));
+    });
+    expect(pctBtn).toHaveTextContent('150%');
+
+    // Drag to pan while zoomed in fullscreen
+    await act(async () => {
+      fireEvent.mouseDown(streamContainer, { button: 0, clientX: 100, clientY: 100 });
+      fireEvent.mouseMove(streamContainer, { clientX: 140, clientY: 120 });
+      fireEvent.mouseUp(streamContainer);
+    });
+    expect(img.style.transform).toContain('translate(40px, 20px) scale(1.5)');
+
+    // Clicking Fit resets zoom & pan back to 100%
+    const fitBtn = screen.getByRole('button', { name: /Fit Teacher Screen/i });
+    await act(async () => {
+      fireEvent.click(fitBtn);
+    });
+    expect(pctBtn).toHaveTextContent('100%');
+    expect(img.style.transform).toContain('translate(0px, 0px) scale(1)');
+  });
+
+  it('hides Start Setup & Readiness Test, Camera & Gaze, and Setup & Re-Test when captureMode is screen-only', async () => {
+    const mockScreenTrack = { stop: vi.fn(), getSettings: () => ({ displaySurface: 'monitor' }), addEventListener: vi.fn() };
+    const mockScreenStream = {
+      getTracks: vi.fn().mockReturnValue([mockScreenTrack]),
+      getVideoTracks: vi.fn().mockReturnValue([mockScreenTrack]),
+    };
+    navigator.mediaDevices.getDisplayMedia = vi.fn().mockResolvedValue(mockScreenStream);
+
+    const prevSnapshotImpl = mockOnSnapshot.getMockImplementation();
+    mockOnSnapshot.mockImplementation((refOrQuery, callback) => {
+      snapshotCallbacks.push({ ref: refOrQuery, callback });
+      callback({
+        docs: [
+          {
+            id: 'class1',
+            data: () => ({
+              name: 'Screen-Only Lecture',
+              students: { student123: 'student@school.edu' },
+              teachers: ['teacher@school.edu'],
+              requireFullScreenOnly: true,
+              enableAudioCapture: false,
+              captureMode: 'screen',
+            }),
+          },
+        ],
+        exists: () => true,
+        data: () => ({
+          name: 'Screen-Only Lecture',
+          students: { student123: 'student@school.edu' },
+          teachers: ['teacher@school.edu'],
+          requireFullScreenOnly: true,
+          enableAudioCapture: false,
+          captureMode: 'screen',
+        }),
+      });
+      return () => {};
+    });
+
+    try {
+      render(<StudentView user={mockUser} />);
+
+      // Readiness wizard buttons & camera card should be hidden when class does not capture webcam
+      expect(screen.queryByRole('button', { name: /Start Setup & Readiness Test/i })).toBeNull();
+      expect(screen.queryByText(/Camera & Gaze/i)).toBeNull();
+
+      // Quick Start remains primary
+      const quickStartBtn = screen.getByRole('button', { name: /Quick Start \(Screen/i });
+      expect(quickStartBtn).toHaveClass('primary-action');
+
+      await act(async () => {
+        fireEvent.click(quickStartBtn);
+      });
+      await act(async () => {
+        fireEvent.click(screen.getByTestId('confirm-screen-share-precheck'));
+      });
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /Stop Session/i })).toBeInTheDocument();
+      });
+      expect(screen.queryByRole('button', { name: /Setup & Re-Test/i })).toBeNull();
+      expect(screen.queryByRole('button', { name: /Start Camera/i })).toBeNull();
+    } finally {
+      if (prevSnapshotImpl) {
+        mockOnSnapshot.mockImplementation(prevSnapshotImpl);
+      }
+    }
   });
 });
 
