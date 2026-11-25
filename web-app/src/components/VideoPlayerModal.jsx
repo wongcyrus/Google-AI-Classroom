@@ -12,7 +12,7 @@ export function formatDuration(seconds) {
   return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
 }
 
-const VideoPlayerModal = ({ show, onClose, videoUrl, loading, video, classId: propClassId, audioUrl = null }) => {
+const VideoPlayerModal = ({ show, onClose, videoUrl, loading, video, classId: propClassId, audioUrl = null, hideAudioTrack = false }) => {
   const [resolvedAudioUrl, setResolvedAudioUrl] = useState(audioUrl || null);
   const [audioMeta, setAudioMeta] = useState(null);
   const [rawAudioCount, setRawAudioCount] = useState(0);
@@ -37,7 +37,7 @@ const VideoPlayerModal = ({ show, onClose, videoUrl, loading, video, classId: pr
     : (endTime?._seconds ? new Date(endTime._seconds * 1000).toISOString() : (endTime?.seconds ? new Date(endTime.seconds * 1000).toISOString() : (endTime || null)));
 
   useEffect(() => {
-    if (!show) {
+    if (!show || hideAudioTrack) {
       setResolvedAudioUrl(null);
       setAudioMeta(null);
       setRawAudioCount(0);
@@ -225,7 +225,7 @@ const VideoPlayerModal = ({ show, onClose, videoUrl, loading, video, classId: pr
     return () => {
       isMounted = false;
     };
-  }, [show, classId, studentUid, studentEmail, videoId, startTimeIso, endTimeIso, directAudioUrl, videoAudioDuration, videoAudioClipCount]);
+  }, [show, hideAudioTrack, classId, studentUid, studentEmail, videoId, startTimeIso, endTimeIso, directAudioUrl, videoAudioDuration, videoAudioClipCount]);
 
   if (!show) return null;
 
@@ -318,7 +318,8 @@ const VideoPlayerModal = ({ show, onClose, videoUrl, loading, video, classId: pr
           </video>
         )}
 
-        {/* Dedicated Student Audio Recording Section */}
+        {/* Dedicated Student Audio Recording Section (hidden for students) */}
+        {!hideAudioTrack && (
         <div
           style={{
             marginTop: '4px',
@@ -443,6 +444,7 @@ const VideoPlayerModal = ({ show, onClose, videoUrl, loading, video, classId: pr
             </div>
           )}
         </div>
+        )}
       </div>
     </NativeDialog>
   );

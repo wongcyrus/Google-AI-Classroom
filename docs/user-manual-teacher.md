@@ -244,7 +244,7 @@ To enforce anti-proxy attendance, student accounts are bound 1-to-1 to physical 
      - Clicking **`[ 🛡️ Exempt ]`** in the main Roster or **Enrolled Roster Modal** displays an explicit confirmation alert:
        > ⚠️ **UNCOMMON CASE CONFIRMATION** ⚠️  
        > *Permanently exempt <student> from mobile passkey authentication? This permits the student to sign in on Desktop computers using only their password, completely bypassing mobile phone hardware passkey verification. Are you sure you want to grant permanent passkey exemption?*
-     - Upon confirmation, the student is granted permanent desktop password access via `system_config/loginPolicy` (`passwordWhitelist`), the student row displays a green **`🛡️ Passkey Exempt`** badge, and the button changes to **`🛡️ Exempt (Perm)`**.
+     - Upon confirmation, the student is granted permanent desktop password access via teacher/admin-only `system_config/loginPolicy` (`passwordWhitelist`) and their owner-only `studentProfiles/{uid}.passkeyPermanentExempt` mirror, the student row displays a green **`🛡️ Passkey Exempt`** badge, and the button changes to **`🛡️ Exempt (Perm)`**.
    - **Click Again to Cancel / Revoke Exemption**:
      - The exemption is fully revocable at any time. Clicking the green **`[ 🛡️ Exempt (Perm) ]`** button again triggers a revocation prompt:
        > *Revoke permanent passkey exemption for <student>? The student will once again be required to authenticate with a personal mobile passkey on desktop computers.*
@@ -482,9 +482,10 @@ You can broadcast your instructor desktop and live speech subtitles directly to 
    - `0.8s / 1.2 FPS` or `0.5s / 2.0 FPS`: High responsiveness for live UI interactions.
 4. In **Step 1**, select your microphone device (for live subtitles) and audio recording preferences.
 5. In **Step 2**, confirm resolution and interval presets.
-6. Click **`Start Sharing & Subtitles`** and select the display or application window you wish to present.
+6. Click **`🔴 Start Live Stream & Record`** (or **`🚀 Start Live Stream Only`**) and select the display or application window you wish to present. Once screen sharing begins, the setup studio automatically minimizes back to the Teacher View so you can monitor students immediately while broadcasting & recording run in the background.
 7. The broadcast transmits through lightweight diffed JPEG frames directly into the student client's floating presentation window.
-8. Click **`⏹️ Stop Sharing`** (or the header **`⏹ Stop`** button) when your demonstration is finished.
+8. To inspect your live preview, connected student count, recording pause/stop controls, or change resolution/FPS mid-class, click **`● Live (N)`** in the header (or the **`🔴 REC`** toolbar badge) to re-open the studio, and click **`✓ Close & Continue Broadcast`** (or **`✕ Hide Studio (Keep Live)`**) anytime to return without interrupting the stream.
+9. Click **`⏹ Stop Screen Broadcast`** inside the studio (or the header **`⏹ Stop`** button) when your demonstration is finished.
 
 ---
 
@@ -499,7 +500,7 @@ When delivering a seminar, lightning talk, or public conference presentation, yo
 > Public Mode is designed as an **ephemeral, session-level feature** rather than a permanent class setting:
 > - Normal classes remain **100% private** by default.
 > - Teachers can safely use an existing class that already has registered students without modifying the class roster or exposing sensitive classroom data.
-> - As soon as you click **"Stop Sharing"**, public access is **automatically terminated and revoked immediately**, restoring total classroom privacy without any manual cleanup.
+> - As soon as you click **`⏹ Stop`** in the header or **`⏹ Stop Screen Broadcast`** inside the studio, public access is **automatically terminated and revoked immediately**, restoring total classroom privacy without any manual cleanup (or click **`✓ Close & Continue Broadcast`** to dismiss only the studio window while keeping the presentation live).
 
 #### Step-by-Step Speaker Workflow:
 1. **Open Broadcast Modal**: In any class (e.g., `it3101-ab` or a dedicated talk class like `open-talk`), click **`🎙️🖥️ Broadcast`**.
@@ -510,7 +511,7 @@ When delivering a seminar, lightning talk, or public conference presentation, yo
    - Click **`📱 Preview Projector QR Code ↗`** to launch a **standalone browser popup window** (`580×760`).
    - Because the QR code opens in a separate popup window, the main setup wizard remains completely unblocked—you can keep the QR code popup open on the projector screen (or click **`⛶ Fullscreen`** inside the popup) while immediately continuing your setup.
    - If you change the PIN (`🔄 New PIN`) while the popup window is open, the QR code and PIN inside the popup automatically update in real time and sync to Firestore DB.
-4. **Start Broadcast**: Click **`🔴 Start Live Stream & Record`** (or **`🚀 Start Live Stream Only`**) in the main window to begin.
+4. **Start Broadcast**: Click **`🔴 Start Live Stream & Record`** (or **`🚀 Start Live Stream Only`**) in the main window to begin. Once screen selection completes, the setup studio auto-minimizes back to Teacher View so your screen stays clear.
 5. **In-Flight Live Controls (Broadcast Studio & Top Classroom Header)**:
    - During the live talk, you can re-open or focus the Projector QR Code popup window at any time with 1 click:
      - Directly from the top classroom header bar via **`📱 Projector QR ↗`** (next to `● Live (N)` and `⏹ Stop`), without needing to open the Broadcast Studio modal.
@@ -585,7 +586,7 @@ Click **`🎯 Call Bingo`** inside the student modal to trigger a surprise prese
 - **HTML5 Player & Downloads:** Listen to the student's latest 30-second audio clip directly or click **`📥 Download`** to save the standalone `.webm` audio recording.
 - **`📋 Clips Drawer`**: Expand to see the chronological playlist of all recorded audio segments for this student during the lesson.
 - **`📜 View Transcript & Diarization`**: Opens the full diarization modal showing multi-speaker turn-taking, risk level, and Gemini cheat-detection rationale.
-- **Continuous Auto-Play & Lesson Audio Merge (`StudentRecordsView.jsx`):** In the student record center under the **Audio Transcripts** tab, teachers and students can click **`▶️ Play All Clips Sequentially`** for hands-free listening, or click **`🎛️ Combine Full Lesson Audio (.m4a)`** to let the backend FFmpeg engine concatenate all speech chunks into a unified `.m4a` audio file for direct in-browser playback and high-quality download.
+- **Unified Session Audio Track in Video Player (`VideoPlayerModal.jsx`):** When teachers open a student's compiled screencast in `VideoLibrary` or `VideoAnalysisJobs`, the modal automatically resolves or merges the student's session voice clips via `mergeStudentSessionAudio` into a continuous **🎙️ Student Session Audio Track** with inline HTML5 playback and **`⬇ Download Audio`** (hidden when `VideoPlayerModal` is opened by students in `StudentRecordsView.jsx` with `hideAudioTrack={true}`).
 
 ### 📡 Real-Time Broadcasting, Live Peek & Intercom Signaling Flow
 
@@ -785,7 +786,7 @@ In computer labs lacking webcams where students may share login credentials, tea
 5. **Permanent Passkey Exemption with Confirmation & Cancellation Toggle (`[ 🛡️ Exempt ]` / `[ 🛡️ Exempt (Perm) ]`)**:
    - For students with phones lacking Credential Manager support (Huawei / non-GMS), teachers can click **`[ 🛡️ Exempt ]`** in the roster.
    - Requires explicit double-confirmation via alert dialog (`window.confirm`).
-   - When confirmed, sets exemption in `system_config/loginPolicy` and displays the **`🛡️ Passkey Exempt`** badge.
+   - When confirmed, updates `system_config/loginPolicy` (teacher/admin-only) and mirrors `studentProfiles/{uid}.passkeyPermanentExempt = true`, displaying the **`🛡️ Passkey Exempt`** badge.
    - **Clicking again cancels/revokes exemption**: Prompts with *"Revoke permanent passkey exemption for <student>?"* and immediately restores mandatory mobile passkey verification upon confirmation.
 6. **Desktop Registration Block Guarantee**:
    - Shared lab computers are strictly prohibited from registering or executing passkey challenges. If accessed on desktop, `/pair-phone` and `/verify-passkey` display a blocked alert requiring a mobile phone.

@@ -429,3 +429,105 @@ export const getAttendanceData = onCall({
 
   return { attendanceData };
 });
+
+function serializeTimestampValue(val) {
+  if (!val) return null;
+  if (typeof val.toDate === 'function') return val.toDate().toISOString();
+  if (val instanceof Date) return val.toISOString();
+  if (typeof val === 'object' && typeof val._seconds === 'number') {
+    return new Date(val._seconds * 1000).toISOString();
+  }
+  if (typeof val === 'object' && typeof val.seconds === 'number') {
+    return new Date(val.seconds * 1000).toISOString();
+  }
+  return val;
+}
+
+/**
+ * Returns lesson summaries and the authenticated caller's own per-lesson attendance/feedback
+ * without exposing other students' attendance records, UIDs, or institutional emails.
+ */
+export const getStudentLessons = onCall({
+  region: FUNCTION_REGION,
+  cors: CORS_ORIGINS,
+  memory: '256MiB',
+  timeoutSeconds: 60,
+}, async (request) => {
+  if (!request?.auth?.uid && request?.auth?.token?.role !== 'admin') {
+    throw new HttpsError('unauthenticated', 'User must be authenticated.');
+  }
+
+  const { classId } = request.data || {};
+  if (!classId || typeof classId !== 'string') {
+    throw new HttpsError('invalid-argument', 'The function must be called with a valid "classId" argument.');
+  }
+
+  const classSnap = await db.collection('classes').doc(classId).get();
+  if (!classSnap.exists) {
+    throw new HttpsError('not-found', `Class with ID ${classId} not found.`);
+  }
+
+  const classData = classSnap.data() || {};
+  const isAdminCaller = request.auth?.token?.role === 'admin';
+  const callerUid = request.auth?.uid;
+  const callerEmail = (request.auth?.token?.email || '').trim().toLowerCase();
+
+  const isClassTeacher = isAdminCaller ||
+    Boolean(
+      callerUid && (
+        classData.ownerUid === callerUid ||
+        classData.teacherUid === callerUid ||
+        classData.createdBy === callerUid ||
+        (classData.teachers && typeof classData.teachers === 'object' && classData.teachers[callerUid])
+      )
+    ) ||
+    Boolean(
+      callerEmail && (
+        (classData.teacherEmail && String(classData.teacherEmail).trim().toLowerCase() === callerEmail) ||
+        (Array.isArray(classData.teacherEmails) && classData.teacherEmails.some(e => typeof e === 'string' && e.trim().toLowerCase() === callerEmail))
+      )
+    );
+
+  const isEnrolledStudent = Boolean(
+    callerUid && classData.students && typeof classData.students === 'object' && classData.students[callerUid]
+  ) || Boolean(
+    callerEmail && Array.isArray(classData.studentEmails) && classData.studentEmails.some(
+      e => typeof e === 'string' && e.trim().toLowerCase() === callerEmail
+    )
+  );
+
+  if (!isClassTeacher && !isEnrolledStudent) {
+    throw new HttpsError('permission-denied', 'You are not enrolled in this class.');
+  }
+
+  const lessonsSnap = await db.collection('classes').doc(classId).collection('lessons').get();
+  const lessons = [];
+
+  if (lessonsSnap && typeof lessonsSnap.forEach === 'function') {
+    lessonsSnap.forEach((docSnap) => {
+      const data = docSnap.data() || {};
+      const rawEntry = callerUid && data.students && typeof data.students === 'object'
+        ? data.students[callerUid]
+        : null;
+
+      let studentEntry = null;
+      if (rawEntry && typeof rawEntry === 'object') {
+        const { email: _omitEmail, studentEmail: _omitStudentEmail, ...safeEntry } = rawEntry;
+        studentEntry = safeEntry;
+      }
+
+      lessons.push({
+        lessonId: docSnap.id,
+        classId,
+        startTime: serializeTimestampValue(data.startTime),
+        endTime: serializeTimestampValue(data.endTime),
+        duration: data.duration ?? null,
+        generalSummary: data.generalSummary || null,
+        generalFeedback: data.generalFeedback || null,
+        studentEntry,
+      });
+    });
+  }
+
+  return { lessons };
+});

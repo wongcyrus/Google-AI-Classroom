@@ -1829,6 +1829,140 @@ describe('LectureRecordingsView Component', () => {
     expect(screen.getByText(/How to Recover This Lecture:/i)).toBeInTheDocument();
     expect(screen.getByText(/Upload Video File Manually/i)).toBeInTheDocument();
   });
+
+  it('covers formatFileSize, class-level student sharing policies, per-recording sharing with exam guard, auto-reconcile, and manual recovery file upload', async () => {
+    expect(formatFileSize(0)).toBe('');
+    expect(formatFileSize(512 * 1024)).toBe('512.0 KB');
+    expect(formatFileSize(5 * 1024 * 1024)).toBe('5.0 MB');
+
+    mockHttpsCallableFactory.mockReturnValue(mockHttpsCallable);
+    mockHttpsCallable.mockResolvedValue({ data: { reconciledCount: 2, success: true } });
+    const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
+    const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+    mockGetPendingRecoverySessions.mockResolvedValueOnce([
+      {
+        sessionId: 'rec_orphan_1',
+        classId: 'test_class',
+        mimeType: 'video/mp4',
+        chunks: [new Blob(['abc'], { type: 'video/mp4' })],
+      },
+    ]);
+
+    render(<LectureRecordingsView classId="test_class" onBack={vi.fn()} />);
+
+    // Emit class doc snapshot with private sharing policy
+    const classListener = snapshotCallbacks.find((s) => s.path === 'classes/test_class');
+    await act(async () => {
+      classListener?.cb({
+        exists: () => true,
+        data: () => ({
+          teacherRecordingsPolicy: 'private',
+          allowShareTeacherRecordings: false,
+        }),
+      });
+    });
+
+    // Emit lectureRecordings snapshot with:
+    // 1. An orphaned old 'uploading' recording (triggers handleAutoReconcile automatically)
+    // 2. A ready recording that can be shared with students
+    // 3. An exam recording that is blocked from sharing
+    const recListener = snapshotCallbacks.find((s) => s.path === 'classes/test_class/lectureRecordings');
+    await act(async () => {
+      recListener?.cb({
+        docs: [
+          {
+            id: 'rec_ready_share',
+            data: () => ({
+              title: 'Shareable Lecture',
+              status: 'ready',
+              startedAt: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
+              videoUrl: 'https://storage.googleapis.com/test/share.webm',
+              hasMissingSegment: true,
+              aiModelUsed: 'gemini-3.8-flash',
+              aiCost: 0.0125,
+            }),
+          },
+          {
+            id: 'rec_exam_confidential',
+            data: () => ({
+              title: 'Midterm Exam Recording',
+              status: 'ready',
+              isExamPeriod: true,
+              startedAt: new Date(Date.now() - 20 * 60 * 1000).toISOString(),
+              videoUrl: 'https://storage.googleapis.com/test/exam.webm',
+              subtitlesDisabled: true,
+            }),
+          },
+          {
+            id: 'rec_orphan_1',
+            data: () => ({
+              title: 'Orphaned Lecture',
+              status: 'interrupted',
+              startedAt: new Date(Date.now() - 3 * 3600 * 1000).toISOString(),
+            }),
+          },
+        ],
+      });
+    });
+
+    // Auto-reconcile was triggered by orphaned recording
+    await waitFor(() => {
+      expect(mockHttpsCallable).toHaveBeenCalledWith({ classId: 'test_class' });
+    });
+
+    // Test Class-Level Sharing Policy buttons (Always Share All & Enable Student Access)
+    const alwaysShareBtn = screen.getByRole('button', { name: /🌐 Always Share All/i });
+    await act(async () => {
+      fireEvent.click(alwaysShareBtn);
+    });
+    expect(mockUpdateDoc).toHaveBeenCalledWith(
+      expect.objectContaining({ path: 'classes/test_class' }),
+      expect.objectContaining({
+        teacherRecordingsPolicy: 'always_shared',
+        allowShareTeacherRecordings: true,
+      })
+    );
+
+    const toggleClassShareBtn = screen.getByRole('button', { name: /📢 Enable Student Access for Class/i });
+    await act(async () => {
+      fireEvent.click(toggleClassShareBtn);
+    });
+    expect(mockUpdateDoc).toHaveBeenCalledWith(
+      expect.objectContaining({ path: 'classes/test_class' }),
+      expect.objectContaining({
+        teacherRecordingsPolicy: 'selective',
+        allowShareTeacherRecordings: true,
+      })
+    );
+
+    // Select Orphaned Lecture to test Discard Local Chunks and Manual Video Upload
+    const orphanCard = screen.getByText('Orphaned Lecture').closest('.recording-card');
+    await act(async () => {
+      fireEvent.click(orphanCard);
+    });
+
+    const discardBtn = screen.queryByRole('button', { name: /Discard Local Cache/i });
+    if (discardBtn) {
+      await act(async () => {
+        fireEvent.click(discardBtn);
+      });
+      expect(mockClearRecoverySession).toHaveBeenCalledWith('rec_orphan_1');
+    }
+
+    // Trigger manual video upload on interrupted session
+    const manualFileInput = document.querySelector('input[type="file"]');
+    if (manualFileInput) {
+      const manualFile = new File(['video-bytes'], 'recovered_lecture.mp4', { type: 'video/mp4' });
+      await act(async () => {
+        fireEvent.change(manualFileInput, { target: { files: [manualFile] } });
+      });
+      expect(mockUploadBytesResumable).toHaveBeenCalled();
+    }
+
+    alertSpy.mockRestore();
+    confirmSpy.mockRestore();
+  });
 });
 
 

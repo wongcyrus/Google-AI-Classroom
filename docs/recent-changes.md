@@ -4,6 +4,96 @@
 **System**: Google AI Classroom  
 **Production URL**: `https://it114115-2627.web.app`
 
+## 0.0.0.0.0.0.0.0.0.0.4.9 Student Voice Recording Playback & Download Removal (`StudentRecordsView` & `VideoPlayerModal`) & Frontend Coverage Expansion
+
+**Date**: November 25, 2026  
+**Status**: Implemented, Verified (`157/157` frontend test suites / `1,865` tests passed, `84.08%` V8 line coverage) & Deployed to `it114115-dev-2026` & `it114115-2627`  
+**Primary Files**:
+- [`web-app/src/components/StudentRecordsView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/StudentRecordsView.jsx), [`web-app/src/components/VideoPlayerModal.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/VideoPlayerModal.jsx)
+- [`web-app/src/components/StudentRecordsView.test.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/StudentRecordsView.test.jsx), [`web-app/src/components/TeacherScreenBroadcastModal.test.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/TeacherScreenBroadcastModal.test.jsx), [`web-app/src/components/TeacherScreenViewerModal.test.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/TeacherScreenViewerModal.test.jsx), [`web-app/src/utils/broadcastHandover.test.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/utils/broadcastHandover.test.js), [`web-app/src/utils/gemmaLiteRTLoader.test.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/utils/gemmaLiteRTLoader.test.js), [`web-app/src/components/VideoSubComponents.test.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/VideoSubComponents.test.jsx), [`web-app/src/components/tasks/tasks.test.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/tasks/tasks.test.jsx), [`web-app/src/components/ClassView.test.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/ClassView.test.jsx), [`web-app/src/components/VideoAnalysisJobs.test.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/VideoAnalysisJobs.test.jsx), [`web-app/src/components/LectureRecordingsView.test.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/LectureRecordingsView.test.jsx), [`web-app/src/components/MonitorView.test.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/MonitorView.test.jsx), [`web-app/src/hooks/useTeacherScreenBroadcast.test.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/hooks/useTeacherScreenBroadcast.test.js)
+- [`docs/user-manual-student.md`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/docs/user-manual-student.md), [`docs/user-manual-teacher.md`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/docs/user-manual-teacher.md), [`docs/audio-invigilation-and-transcription.md`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/docs/audio-invigilation-and-transcription.md), [`docs/comprehensive-ui-controls-and-features-catalog.md`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/docs/comprehensive-ui-controls-and-features-catalog.md), [`docs/frontend-components.md`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/docs/frontend-components.md), [`docs/project-group-meetings-and-weekly-log-user-guide.md`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/docs/project-group-meetings-and-weekly-log-user-guide.md), [`docs/testing-strategy-and-coverage.md`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/docs/testing-strategy-and-coverage.md)
+
+### Changes:
+1. **Transcript-Only Student Audio View**:
+   - Removed individual clip playback (`▶ Play Clip`), clip download (`📥 Download`), sequential playlist (`▶️ Play All Clips Sequentially`), and FFmpeg session audio merging/download (`🎛️ Combine Full Lesson Audio (.m4a)`) from the student **Audio Transcripts** tab in [`StudentRecordsView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/StudentRecordsView.jsx). Students now view only the timestamp, detected language, and speech-to-text transcript.
+   - Removed consultation room audio clip playback from the student **Project Meetings** media bar in [`StudentRecordsView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/StudentRecordsView.jsx).
+2. **Hiding Student Session Audio Track in Student Video Screencast Player**:
+   - Added `hideAudioTrack` support to [`VideoPlayerModal.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/VideoPlayerModal.jsx) and passed `hideAudioTrack={true}` from [`StudentRecordsView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/StudentRecordsView.jsx) so students watching their screen recordings do not trigger background audio merging or see the `Student Session Audio Track` player/download button (while instructors retain full audio track playback and download in teacher views).
+3. **Frontend Unit Test Coverage Expansion**:
+   - Expanded unit tests across 11 frontend test suites (`TeacherScreenBroadcastModal`, `TeacherScreenViewerModal`, `broadcastHandover`, `gemmaLiteRTLoader`, `VideoSubComponents`, `tasks`, `ClassView`, `VideoAnalysisJobs`, `LectureRecordingsView`, `MonitorView`, `useTeacherScreenBroadcast`), raising `web-app` V8 line coverage to **84.08%** (`82.02%` statements, `79.50%` functions, `70.39%` branches).
+
+---
+
+## 0.0.0.0.0.0.0.0.0.0.4.8 Student View Sidebar Streamlining (Remove Live Lecture Transcript & Move Messages After Class Properties)
+
+**Date**: November 25, 2026  
+**Status**: Implemented, Verified & Deployed to `it114115-dev-2026` & `it114115-2627`  
+**Primary Files**:
+- [`web-app/src/components/student/Sidebar.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/student/Sidebar.jsx), [`web-app/src/components/StudentView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/StudentView.jsx), & [`web-app/src/components/StudentView.css`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/StudentView.css)
+- [`web-app/src/components/student/Sidebar.test.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/student/Sidebar.test.jsx), [`web-app/src/components/StudentView.test.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/StudentView.test.jsx)
+- [`docs/user-manual-student.md`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/docs/user-manual-student.md)
+
+### Changes:
+1. **Removed Live Lecture Transcript from Desktop Student Sidebar**:
+   - Removed the **💬 Live Lecture Transcript** card, `💬 Transcript` tab button, unused auto-scroll refs/effects, unused transcript CSS rules (`.transcript-panel*`, `.transcript-scroll-area`, `.transcript-entry*`), and unused transcript props from [`Sidebar.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/student/Sidebar.jsx) and `<Sidebar />` usage in [`StudentView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/StudentView.jsx).
+   - Preserved live bilingual closed captions (`CC`) inside the YouTube-style player overlay and mobile companion `CC Only` view (`StudentMobileView.jsx`).
+2. **Moved Messages Immediately After Class Properties**:
+   - Reordered sidebar panels so **`My Recent Messages`** (`MessagesWidget`) renders directly after **`Class Properties` / `My Properties`** (`PropertiesWidget`) and before **`My Recent Alerts`** (`AlertsWidget`).
+   - Replaced the sidebar Transcript tab with a dedicated **`💬 Messages`** tab (`📑 All Panels` | `📋 Class Info` | `💬 Messages` | `🔔 Alerts`) with accessible ARIA `role="tabpanel"` / `aria-controls` linkage.
+
+---
+
+## 0.0.0.0.0.0.0.0.0.0.4.7 Teacher Broadcast Studio Auto-Minimize & Safe Continue Controls (`TeacherScreenBroadcastModal`)
+
+**Date**: November 25, 2026  
+**Status**: Implemented, Verified & Deployed to `it114115-dev-2026` & `it114115-2627`  
+**Primary Files**:
+- [`web-app/src/components/TeacherScreenBroadcastModal.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/TeacherScreenBroadcastModal.jsx), [`web-app/src/components/TeacherScreenBroadcastModal.css`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/TeacherScreenBroadcastModal.css)
+- [`web-app/src/components/TeacherScreenBroadcastModal.test.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/TeacherScreenBroadcastModal.test.jsx)
+- [`docs/user-manual-teacher.md`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/docs/user-manual-teacher.md), [`docs/frontend-components.md`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/docs/frontend-components.md), [`docs/comprehensive-ui-controls-and-features-catalog.md`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/docs/comprehensive-ui-controls-and-features-catalog.md), [`docs/teacher-lecture-recording-and-youtube-workflow.md`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/docs/teacher-lecture-recording-and-youtube-workflow.md)
+
+### Root Cause & Fixes:
+Previously, clicking **`🔴 Start Live Stream & Record`** (or **`🚀 Start Live Stream Only`**) in `TeacherScreenBroadcastModal.jsx` left the modal open, immediately morphing it into Mode 2 (`🖥️ Live Class Screen Broadcast`), whose unstyled `.broadcast-modal-footer` rendered only a full-width red `width: 100%` **`⏹ Stop Screen Broadcast`** button alongside a faint unlabeled top-right `✕` icon. Teachers had no clear signal on how to dismiss the dialog without halting the live stream or lecture recording.
+1. **Auto-Minimize Studio Upon Successful Broadcast Start (`handleStart`)**:
+   - After `onStartBroadcast(...)` completes cleanly, `handleStart` invokes `onClose?.()` to immediately return the instructor to Teacher Monitor View (where `● Live (N)`, `🔴 REC`, and `📱 Projector QR ↗` remain visible in the header/toolbar).
+   - Added an inline `startError` alert banner in Step 2 so cancelled/denied screen-sharing prompts (`NotAllowedError`) or startup errors keep the setup modal open with actionable feedback.
+2. **Clear Mode 2 Safe-Continue vs. Destructive-Stop Separation**:
+   - Replaced the ambiguous Mode 2 header `✕` icon with a clearly labeled bordered button **`✕ Hide Studio (Keep Live)`**.
+   - Added complete `.broadcast-modal-footer` layout styling with scoped `.broadcast-modal-footer .broadcast-stop-btn` (`width: auto`, secondary destructive styling on the left — also eliminating a CSS cascade collision with `.broadcast-stop-btn` in `ClassView.css`), paired on the right with a reassurance note and prominent primary CTA **`✓ Close & Continue Broadcast`**.
+   - Added responsive scrolling and `min-height: 0` containment across `.broadcast-modal-body`, `.broadcast-sidebar`, and `< 820px` viewports so the footer actions are never clipped on shorter laptop screens.
+
+---
+
+## 0.0.0.0.0.0.0.0.0.0.4.6 Student PII Isolation Hardening & Scoped Callables (`dev` & `prod`)
+
+**Date**: November 25, 2026  
+**Status**: Implemented, Verified with Full Backend/Frontend Unit Tests + 110 Live Security Rules Tests (`it114115-dev-2026`), Backfilled & Deployed in Strict Order (Functions → Backfill → Hosting → Rules) to `it114115-dev-2026` & `it114115-2627`  
+**Primary Files**:
+- [`firestore.rules`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/firestore.rules) & [`tests/security_rules.test.mjs`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/tests/security_rules.test.mjs)
+- [`functions/auth_triggers/userManagement.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/auth_triggers/userManagement.js), [`functions/storage_triggers/cleanupTriggers.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/storage_triggers/cleanupTriggers.js), & [`scripts/backfill-pii-isolation.mjs`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/scripts/backfill-pii-isolation.mjs)
+- [`functions/attendance/index.mjs`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/attendance/index.mjs), [`functions/ai_flows/projectMeetingFlows.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/projectMeetingFlows.js), [`functions/ai_flows/passkeyFlows.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/passkeyFlows.js), & [`functions/ai_flows/index.mjs`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/index.mjs)
+- [`web-app/src/hooks/useStudentClassSchedule.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/hooks/useStudentClassSchedule.js), [`web-app/src/components/StudentView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/StudentView.jsx), [`web-app/src/components/StudentRecordsView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/StudentRecordsView.jsx), [`web-app/src/components/passkey/PasskeyEnforcementGate.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/passkey/PasskeyEnforcementGate.jsx), & [`web-app/src/App.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/App.jsx)
+
+### Key Enhancements & Fixes:
+1. **Non-PII Public Class Config Mirror (`classes/{classId}/studentConfig/public`)**:
+   - Raw `classes/{classId}` documents (which store `studentEmails`, `students`, and instructor contact maps) are now strictly teacher-only in [`firestore.rules`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/firestore.rules).
+   - `onClassUpdate` (`functions/auth_triggers/userManagement.js`) automatically projects an allowlisted set of non-PII schedule, capture, AI monitoring, subtitle, exam, and recording fields into `classes/{classId}/studentConfig/public` (and `onClassDocDeleted` cleans it up on class deletion).
+   - Migrated [`useStudentClassSchedule.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/hooks/useStudentClassSchedule.js) and [`StudentView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/StudentView.jsx) to read/subscribe to `classes/{classId}/studentConfig/public`, and backfilled both `it114115-dev-2026` (21/21 classes) and `it114115-2627` (29/29 classes) via [`scripts/backfill-pii-isolation.mjs`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/scripts/backfill-pii-isolation.mjs).
+2. **Caller-Scoped Callables for Lessons & Capstone Project Records**:
+   - Added [`getStudentLessons`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/attendance/index.mjs) and [`getStudentProjectRecords`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/projectMeetingFlows.js) so enrolled students in [`StudentRecordsView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/StudentRecordsView.jsx) receive only their own lesson attendance intervals and caller-scoped project records.
+   - `getStudentProjectRecords` strictly strips classmate names, emails, UIDs (returning anonymized `me` / `teammate_N` slots), raw multi-speaker transcripts, `voiceAnchors`, `minutesMarkdown`, and other students' logs/evaluations.
+   - Locked direct client reads of `classes/{classId}/lessons`, `projectGroups`, `projectMeetings`, and `projectStudentProfiles` to teachers/supervisors only.
+3. **Passkey Exemption Mirror & Global Whitelist Lockdown**:
+   - Locked `system_config/loginPolicy` to teachers/admins (`allow list: if isTeacher()` on `system_config`, explicit teacher-only read/write on `loginPolicy`), while `toggleStudentPasskeyExemption` and the backfill script mirror the boolean `passkeyPermanentExempt` flag onto owner-only `studentProfiles/{uid}` (with `getStudentPasskeyStatus` callable fallback).
+   - Updated [`PasskeyEnforcementGate.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/passkey/PasskeyEnforcementGate.jsx) and [`App.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/App.jsx) to check `studentProfiles/{uid}.passkeyPermanentExempt` and callable fallback without reading `system_config/loginPolicy`.
+4. **Defense-in-Depth Firestore Rules Hardening**:
+   - Restricted `studentProfiles/{userId}` writes to Cloud Functions / Admin SDK only (`allow write: if false`).
+   - Added `allow list: if false` on `loginSessions` (while keeping `allow get: if true` for unauthenticated QR login screens).
+   - Dropped legacy `studentUid == 'all'` wildcard read access on `classes/{classId}/bingoRecords`, and locked `systemConfig` to teachers/admins.
+   - Updated [`tests/security_rules.test.mjs`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/tests/security_rules.test.mjs) with safe `system_config/loginPolicy` snapshot save/restore cleanup and new PII isolation assertions (**110 PASSED, 0 FAILED** live against `it114115-dev-2026`).
+
+---
+
 ## 0.0.0.0.0.0.0.0.0.0.4.5 Student View UX Simplification, Zoom/Pan, Single-Tab Guard & Class Properties Fixes
 
 **Date**: November 25, 2026  

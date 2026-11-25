@@ -2428,7 +2428,7 @@ const StudentDesktopView = ({
   useEffect(() => {
     if (!activeClass) return;
 
-    const classRef = doc(db, "classes", activeClass);
+    const classRef = doc(db, "classes", activeClass, "studentConfig", "public");
     const unsubscribe = onSnapshot(classRef, (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
@@ -4432,16 +4432,12 @@ const StudentDesktopView = ({
               </details>
             )}
         </div>
-        <Sidebar 
-          classProperties={classProperties} 
-          myProperties={myProperties} 
-          recentIrregularities={recentIrregularities} 
-          ipAddress={ipAddress} 
-          recentMessages={recentMessages} 
-          liveTranscriptHistory={studentSubtitles.recentHistory}
-          currentOriginalText={studentSubtitles.originalText}
-          currentTranslationText={studentSubtitles.currentTranslation}
-          selectedLanguage={studentSubtitles.selectedLanguage}
+        <Sidebar
+          classProperties={classProperties}
+          myProperties={myProperties}
+          recentIrregularities={recentIrregularities}
+          ipAddress={ipAddress}
+          recentMessages={recentMessages}
         />
       </div>
 

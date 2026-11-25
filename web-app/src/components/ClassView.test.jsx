@@ -59,7 +59,13 @@ vi.mock('../hooks/useClassSchedule', async (importOriginal) => {
 });
 
 // Mock sub-views to keep tests clean and targeted
-vi.mock('./MonitorView', () => ({ default: () => <div data-testid="monitor-view">Live Monitor Content</div> }));
+let capturedOnBroadcastStateChange = null;
+vi.mock('./MonitorView', () => ({
+  default: ({ onBroadcastStateChange }) => {
+    capturedOnBroadcastStateChange = onBroadcastStateChange;
+    return <div data-testid="monitor-view">Live Monitor Content</div>;
+  },
+}));
 vi.mock('./IrregularitiesView', () => ({ default: () => <div data-testid="irregularities-view">Irregularities Content</div> }));
 vi.mock('./AttendanceView', () => ({ default: () => <div data-testid="attendance-view">Attendance Content</div> }));
 vi.mock('./ProgressView', () => ({ default: () => <div data-testid="progress-view">Progress Content</div> }));
@@ -634,6 +640,152 @@ describe('ClassView Component Full Suite', () => {
 
       expect(getDoc.mock.calls.length).toBe(initialGetDocCalls);
       expect(onSnapshot.mock.calls.length).toBe(initialSnapshotCalls);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('handles live broadcast header controls, timetable handover banner, 30s auto-handover countdown, and SW message notifications', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-08-31T10:15:00Z')); // Monday 10:15 UTC
+    try {
+      const { getDoc, onSnapshot } = await import('firebase/firestore');
+      const handoverBroadcastSpy = vi.fn();
+      const stopBroadcastSpy = vi.fn();
+      const openStudioSpy = vi.fn();
+
+      // Mock Service Worker for showSystemNotification
+      const postMessageSpy = vi.fn();
+      const origSw = navigator.serviceWorker;
+      const origNotif = window.Notification;
+      Object.defineProperty(navigator, 'serviceWorker', {
+        configurable: true,
+        value: {
+          ready: Promise.resolve({ active: { postMessage: postMessageSpy } }),
+        },
+      });
+      window.Notification = { permission: 'granted', requestPermission: vi.fn() };
+
+      getDoc.mockImplementation(async (ref) => {
+        if (ref?.path?.includes('teacherProfiles')) {
+          return {
+            exists: () => true,
+            data: () => ({ classes: ['CLASS-101', 'CLASS-202'] }),
+          };
+        }
+        if (ref?.path?.includes('CLASS-202')) {
+          return {
+            id: 'CLASS-202',
+            exists: () => true,
+            data: () => ({
+              name: 'Database Architecture',
+              schedule: {
+                startDate: '2026-08-01',
+                endDate: '2026-12-31',
+                timeZone: 'UTC',
+                timeSlots: [{ days: ['Mon'], startTime: '10:00', endTime: '11:00' }],
+              },
+            }),
+          };
+        }
+        return {
+          id: 'CLASS-101',
+          exists: () => true,
+          data: () => ({ name: 'Morning Algorithms' }),
+        };
+      });
+
+      onSnapshot.mockImplementation((ref, cb) => {
+        cb({
+          exists: () => true,
+          id: 'CLASS-101',
+          data: () => ({
+            name: 'Current Ended Class',
+            students: { s1: 's1@school.edu' },
+          }),
+          docChanges: () => [
+            {
+              type: 'added',
+              doc: {
+                id: 'msg_new_1',
+                metadata: { hasPendingWrites: false },
+                data: () => ({ classId: 'CLASS-101', message: 'Help needed at desk 3' }),
+              },
+            },
+          ],
+          forEach: () => {},
+        });
+        return () => {};
+      });
+
+      render(
+        <MemoryRouter initialEntries={['/class/CLASS-101?tab=monitor']}>
+          <Routes>
+            <Route path="/class/:classId" element={<ClassView user={mockUser} />} />
+          </Routes>
+        </MemoryRouter>
+      );
+
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(postMessageSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'show-notification',
+          body: 'Help needed at desk 3',
+        })
+      );
+
+      // Report active broadcast state from MonitorView
+      await act(async () => {
+        capturedOnBroadcastStateChange?.({
+          isBroadcasting: true,
+          viewersCount: 14,
+          isPublicBroadcast: true,
+          publicPin: '8899',
+          openStudio: openStudioSpy,
+          stopBroadcast: stopBroadcastSpy,
+          handoverBroadcast: handoverBroadcastSpy,
+        });
+      });
+
+      // Verify Live (14), Projector QR, and Stop buttons in Class Hub header
+      const liveBtn = screen.getByRole('button', { name: /Open Broadcast Studio/i });
+      expect(liveBtn).toHaveTextContent('Live (14)');
+      fireEvent.click(liveBtn);
+      expect(openStudioSpy).toHaveBeenCalled();
+
+      const stopBtn = screen.getByRole('button', { name: /Stop Broadcast/i });
+      fireEvent.click(stopBtn);
+      expect(stopBroadcastSpy).toHaveBeenCalled();
+
+      // Verify Live Timetable Transition Warning Banner
+      expect(screen.getByText(/Next Session Handover Ready:|Hands-Free Auto-Handover/i)).toBeInTheDocument();
+
+      // Toggle Auto-Handover OFF and back ON
+      const autoToggleBtn = screen.getByRole('button', { name: /Auto-Handover: ON/i });
+      fireEvent.click(autoToggleBtn);
+      expect(screen.getByRole('button', { name: /Auto-Handover: OFF/i })).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: /Auto-Handover: OFF/i }));
+
+      // Click Switch Broadcast button to trigger handleSmartClassTransition -> handoverBroadcast
+      const switchBroadcastBtn = screen.getByRole('button', { name: /Switch Broadcast/i });
+      fireEvent.click(switchBroadcastBtn);
+      expect(handoverBroadcastSpy).toHaveBeenCalledWith('CLASS-202');
+
+      // Dismiss warning banner
+      const dismissBtn = screen.getByRole('button', { name: /Dismiss warning/i });
+      fireEvent.click(dismissBtn);
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+
+      if (origSw !== undefined) {
+        Object.defineProperty(navigator, 'serviceWorker', { configurable: true, value: origSw });
+      } else {
+        delete navigator.serviceWorker;
+      }
+      window.Notification = origNotif;
     } finally {
       vi.useRealTimers();
     }

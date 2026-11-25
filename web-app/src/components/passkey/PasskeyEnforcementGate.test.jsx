@@ -5,29 +5,33 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const mockRequestToken = vi.fn();
 const mockRequestBypass = vi.fn();
 const mockVerifyPin = vi.fn();
+const mockGetPasskeyStatus = vi.fn();
 
 vi.mock('firebase/functions', () => ({
   httpsCallable: vi.fn((functions, name) => {
     if (name === 'requestPasskeyPairingToken') return mockRequestToken;
     if (name === 'requestTeacherPasskeyBypass') return mockRequestBypass;
     if (name === 'verifyTeacherPasskeyBypassPin') return mockVerifyPin;
+    if (name === 'getStudentPasskeyStatus') return mockGetPasskeyStatus;
     return vi.fn();
   }),
 }));
 
-const mockDoc = vi.fn((db, path) => ({ path }));
+const mockDoc = vi.fn((db, ...args) => ({ path: args.join('/') }));
 let mockPasskeySnapshotCallback = null;
 let mockBypassSnapshotCallback = null;
 let mockWhitelistSnapshotCallback = null;
+const subscribedPaths = [];
 
 vi.mock('firebase/firestore', () => ({
   doc: (...args) => mockDoc(...args),
   onSnapshot: vi.fn((docRef, cb) => {
+    subscribedPaths.push(docRef.path);
     if (docRef.path.startsWith('studentPasskeys/')) {
       mockPasskeySnapshotCallback = cb;
     } else if (docRef.path.includes('/studentProperties/')) {
       mockBypassSnapshotCallback = cb;
-    } else if (docRef.path.includes('system_config/loginPolicy')) {
+    } else if (docRef.path.startsWith('studentProfiles/')) {
       mockWhitelistSnapshotCallback = cb;
     }
     return vi.fn(); // unsubscribe
@@ -75,6 +79,7 @@ describe('PasskeyEnforcementGate Component', () => {
     mockPasskeySnapshotCallback = null;
     mockBypassSnapshotCallback = null;
     mockWhitelistSnapshotCallback = null;
+    subscribedPaths.length = 0;
     vi.mocked(isHandheldPhone).mockReturnValue(false);
     mockScheduleReturn = {
       userClasses: ['class-1'],
@@ -83,6 +88,7 @@ describe('PasskeyEnforcementGate Component', () => {
       loading: false,
     };
     mockRequestToken.mockResolvedValue({ data: { tokenId: 'token-xyz-789' } });
+    mockGetPasskeyStatus.mockResolvedValue({ data: { hasPasskey: false, isExempt: false } });
   });
 
   it('bypasses gate immediately for teachers and renders protected children', () => {
@@ -278,12 +284,15 @@ describe('PasskeyEnforcementGate Component', () => {
     expect(screen.getByText(/Emergency PIN verified/i)).toBeInTheDocument();
   });
 
-  it('unlocks access and renders banner when student is on the global password whitelist', async () => {
+  it('unlocks access and renders banner when student profile marks passkeyPermanentExempt without subscribing to loginPolicy', async () => {
     render(
       <PasskeyEnforcementGate user={mockUser} role="student" classId="class-1">
         <div data-testid="protected-content">Classroom Content</div>
       </PasskeyEnforcementGate>
     );
+
+    expect(subscribedPaths.some((p) => p.includes('system_config/loginPolicy'))).toBe(false);
+    expect(subscribedPaths).toContain(`studentProfiles/${mockUser.uid}`);
 
     act(() => {
       if (mockPasskeySnapshotCallback) {
@@ -293,13 +302,43 @@ describe('PasskeyEnforcementGate Component', () => {
         mockWhitelistSnapshotCallback({
           exists: () => true,
           data: () => ({
-            passwordWhitelist: ['alex@stu.vtc.edu.hk'],
+            passkeyPermanentExempt: true,
           }),
         });
       }
     });
 
     await waitFor(() => {
+      expect(screen.getByTestId('protected-content')).toBeInTheDocument();
+      expect(screen.getByText(/Password Whitelist Active/i)).toBeInTheDocument();
+    });
+  });
+
+  it('falls back to getStudentPasskeyStatus callable when studentProfiles lacks passkeyPermanentExempt flag', async () => {
+    mockGetPasskeyStatus.mockResolvedValueOnce({
+      data: { hasPasskey: false, isExempt: true },
+    });
+
+    render(
+      <PasskeyEnforcementGate user={mockUser} role="student" classId="class-1">
+        <div data-testid="protected-content">Classroom Content</div>
+      </PasskeyEnforcementGate>
+    );
+
+    await act(async () => {
+      if (mockPasskeySnapshotCallback) {
+        mockPasskeySnapshotCallback({ exists: () => false });
+      }
+      if (mockWhitelistSnapshotCallback) {
+        mockWhitelistSnapshotCallback({
+          exists: () => true,
+          data: () => ({ classes: ['class-1'] }),
+        });
+      }
+    });
+
+    await waitFor(() => {
+      expect(mockGetPasskeyStatus).toHaveBeenCalledWith({ studentUid: mockUser.uid });
       expect(screen.getByTestId('protected-content')).toBeInTheDocument();
       expect(screen.getByText(/Password Whitelist Active/i)).toBeInTheDocument();
     });

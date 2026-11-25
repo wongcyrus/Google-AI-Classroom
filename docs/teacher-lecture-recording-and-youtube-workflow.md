@@ -47,7 +47,7 @@ To prevent teachers from accidentally forgetting to record lecture archives, the
    - In Step 2 of the Teacher Broadcast Setup Wizard, instructors are presented with two interactive mode cards:
      - **Option 1: 🎥 Stream & Record (YouTube & CC)**: Transmits live frames to students and records full composite HD WebM video + pure audio to Cloud Storage for YouTube packaging and Gemini CC. Action button: `🔴 Start Live Stream & Record`.
      - **Option 2: 📡 Live Stream Only (0 Storage / Ephemeral)**: Streams real-time screen frames and voice subtitles directly to student monitors with zero files saved to Cloud Storage. Action button: `🚀 Start Live Stream Only (No Saving)`.
-   - Teachers retain complete per-session override freedom: selecting a different card immediately flips the mode and dynamically updates the start action button.
+   - Teachers retain complete per-session override freedom: selecting a different card immediately flips the mode and dynamically updates the start action button. Once screen sharing begins, the setup studio automatically minimizes back to Teacher View while recording (`● REC`) and streaming run in the background; re-opening the studio exposes **`✓ Close & Continue Broadcast`** / **`✕ Hide Studio (Keep Live)`** alongside **`⏹ Stop Screen Broadcast`** so instructors never mistake closing the studio for stopping a recording.
 
 ### Asymmetric Data Nature: Teacher Sovereign Deletion vs. Student Telemetry TTL
 Student data and teacher data serve fundamentally different educational purposes and are governed by distinct lifecycles:
@@ -526,7 +526,7 @@ When merging is triggered, the `mergeLectureRecordings` Cloud Function (`functio
 ### 8.4 User Experience & Workflow
 
 #### Automatic Merging on Broadcast Stop
-When a teacher finishes broadcasting in `MonitorView` and clicks **"Stop Sharing"**, the system checks if multiple recordings were generated during that broadcast. If so, `mergeSessionRecordings` is automatically dispatched in the background after a 2.5-second buffer (ensuring all chunk uploads have completed).
+When a teacher finishes broadcasting in `MonitorView` and clicks **`⏹ Stop Screen Broadcast`** (or the header **`⏹ Stop`** button), the system checks if multiple recordings were generated during that broadcast. If so, `mergeSessionRecordings` is automatically dispatched in the background after a 2.5-second buffer (ensuring all chunk uploads have completed).
 
 #### Smart Detection Banner in Lecture Recordings View
 When visiting **🎬 Recordings & Sessions -> 🎥 Teacher Lecture Recordings**:
@@ -591,7 +591,7 @@ flowchart TD
 
 #### Tier 4: Decoupled Scheduled Post-Class Concatenation (`scheduledTasks.js`)
 - **Always-On After-Class Merging**: Teacher lecture video merging is completely decoupled from the student video analysis toggle (`classData.automaticCombine`). Lecture recordings require no special settings or toggles—the scheduled background worker (`checkAndCombineClipsTask`) automatically initiates serverless concatenation once the class timetable ends.
-- **On-Demand & Real-Time Triggers**: Teachers can also click **"Stop Sharing"** or tap **"Merge into Full Lecture"** at any time to combine clips immediately.
+- **On-Demand & Real-Time Triggers**: Teachers can also click **`⏹ Stop Screen Broadcast`** / **`⏹ Stop`** or tap **"Merge into Full Lecture"** at any time to combine clips immediately.
 
 #### Tier 5: 5-Point Pre-Deletion Integrity Verification Gate & Multi-Tier Fallback (`mergeLectureRecordings.js`)
 Before any raw 1-minute segment clips are purged or archived, `mergeLectureRecordings.js` strictly enforces a 5-point verification gate:

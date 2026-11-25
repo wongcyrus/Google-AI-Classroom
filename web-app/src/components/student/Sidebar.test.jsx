@@ -7,9 +7,9 @@ describe('Sidebar Component', () => {
   const mockClassProps = { classId: 'CLASS_101', name: 'Software Architecture' };
   const mockMyProps = { Seat: 'Lab PC 12' };
   const mockIrregularities = [{ id: 'irr_1', type: 'tab_switch', timestamp: Date.now() }];
-  const mockMessages = [{ id: 'msg_1', text: 'Please pay attention to demo', sender: 'Teacher' }];
+  const mockMessages = [{ id: 'msg_1', message: 'Please pay attention to demo', timestamp: Date.now() }];
 
-  it('renders all 4 tabs and displays all panels by default', () => {
+  it('renders Class Info, Messages, and Alerts tabs without Live Lecture Transcript', () => {
     render(
       <Sidebar
         classProperties={mockClassProps}
@@ -21,15 +21,21 @@ describe('Sidebar Component', () => {
     );
 
     expect(screen.getByRole('tab', { name: /All Panels/i })).toHaveClass('active');
-    expect(screen.getByRole('tab', { name: /Transcript/i })).not.toHaveClass('active');
     expect(screen.getByRole('tab', { name: /Class Info/i })).not.toHaveClass('active');
+    expect(screen.getByRole('tab', { name: /Messages/i })).not.toHaveClass('active');
     expect(screen.getByRole('tab', { name: /Alerts/i })).not.toHaveClass('active');
+    expect(screen.queryByRole('tab', { name: /Transcript/i })).not.toBeInTheDocument();
 
-    // In 'all' mode, empty placeholder for transcript is visible
-    expect(screen.getByText(/Listening for instructor lecture speech\.\.\./i)).toBeInTheDocument();
+    expect(screen.queryByText(/Live Lecture Transcript/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Listening for instructor lecture speech/i)).not.toBeInTheDocument();
+
+    // All three panels visible in 'all' mode
+    expect(screen.getByText('Class Properties')).toBeVisible();
+    expect(screen.getByText('My Recent Messages')).toBeVisible();
+    expect(screen.getByText('My Recent Alerts')).toBeVisible();
   });
 
-  it('switches internal tab when clicking tab buttons', () => {
+  it('switches internal tab when clicking tab buttons and toggles panel visibility', () => {
     render(
       <Sidebar
         classProperties={mockClassProps}
@@ -40,22 +46,32 @@ describe('Sidebar Component', () => {
       />
     );
 
-    // Click Transcript tab
-    fireEvent.click(screen.getByRole('tab', { name: /Transcript/i }));
-    expect(screen.getByRole('tab', { name: /Transcript/i })).toHaveClass('active');
+    // Click Messages tab
+    fireEvent.click(screen.getByRole('tab', { name: /Messages/i }));
+    expect(screen.getByRole('tab', { name: /Messages/i })).toHaveClass('active');
     expect(screen.getByRole('tab', { name: /All Panels/i })).not.toHaveClass('active');
+    expect(screen.getByText('My Recent Messages')).toBeVisible();
+    expect(screen.getByText('Class Properties')).not.toBeVisible();
+    expect(screen.getByText('My Recent Alerts')).not.toBeVisible();
 
     // Click Class Info tab
     fireEvent.click(screen.getByRole('tab', { name: /Class Info/i }));
     expect(screen.getByRole('tab', { name: /Class Info/i })).toHaveClass('active');
+    expect(screen.getByText('Class Properties')).toBeVisible();
+    expect(screen.getByText('My Recent Messages')).not.toBeVisible();
 
     // Click Alerts tab
     fireEvent.click(screen.getByRole('tab', { name: /Alerts/i }));
     expect(screen.getByRole('tab', { name: /Alerts/i })).toHaveClass('active');
+    expect(screen.getByText('My Recent Alerts')).toBeVisible();
+    expect(screen.getByText('My Recent Messages')).not.toBeVisible();
 
     // Click All Panels tab
     fireEvent.click(screen.getByRole('tab', { name: /All Panels/i }));
     expect(screen.getByRole('tab', { name: /All Panels/i })).toHaveClass('active');
+    expect(screen.getByText('Class Properties')).toBeVisible();
+    expect(screen.getByText('My Recent Messages')).toBeVisible();
+    expect(screen.getByText('My Recent Alerts')).toBeVisible();
   });
 
   it('honors external activeTab and triggers onTabChange callback', () => {
@@ -72,9 +88,9 @@ describe('Sidebar Component', () => {
 
     expect(screen.getByRole('tab', { name: /Class Info/i })).toHaveClass('active');
 
-    // Click transcript tab
-    fireEvent.click(screen.getByRole('tab', { name: /Transcript/i }));
-    expect(handleTabChange).toHaveBeenCalledWith('transcript');
+    // Click messages tab
+    fireEvent.click(screen.getByRole('tab', { name: /Messages/i }));
+    expect(handleTabChange).toHaveBeenCalledWith('messages');
 
     // Re-render with new external activeTab
     rerender(
@@ -88,81 +104,7 @@ describe('Sidebar Component', () => {
     expect(screen.getByRole('tab', { name: /Alerts/i })).toHaveClass('active');
   });
 
-  it('renders live transcript entries and in-flight current speech sentence', () => {
-    const mockTranscript = [
-      {
-        id: 't1',
-        time: '10:00:15',
-        speaker: 'Dr. Wong',
-        original: 'Today we will discuss Docker containers.',
-        translation: '今天我們將討論 Docker 容器。',
-        lang: 'zh-Hant',
-      },
-      {
-        id: 't2',
-        timestamp: new Date('2026-09-26T10:01:00Z').getTime(),
-        original: 'Make sure your terminals are open.',
-        translation: '請確保打開終端機。',
-      },
-    ];
-
-    render(
-      <Sidebar
-        activeTab="transcript"
-        liveTranscriptHistory={mockTranscript}
-        currentOriginalText="Let us start the demo."
-        currentTranslationText="讓我們開始示範。"
-        selectedLanguage="zh-Hant"
-      />
-    );
-
-    // Total entries badge: 2 history + 1 in-flight = 3 entries
-    expect(screen.getByText('3 entries')).toBeInTheDocument();
-
-    // History items
-    expect(screen.getByText('Today we will discuss Docker containers.')).toBeInTheDocument();
-    expect(screen.getByText('今天我們將討論 Docker 容器。')).toBeInTheDocument();
-    expect(screen.getByText('Dr. Wong')).toBeInTheDocument();
-    expect(screen.getByText('10:00:15')).toBeInTheDocument();
-
-    expect(screen.getByText('Make sure your terminals are open.')).toBeInTheDocument();
-    expect(screen.getByText('請確保打開終端機。')).toBeInTheDocument();
-
-    // In-flight sentence
-    expect(screen.getByText('Speaking now')).toBeInTheDocument();
-    expect(screen.getByText('Let us start the demo.')).toBeInTheDocument();
-    expect(screen.getByText('讓我們開始示範。')).toBeInTheDocument();
-  });
-
-  it('scrolls only the internal transcript container without calling scrollIntoView on the page window', () => {
-    const scrollIntoViewMock = vi.fn();
-    window.HTMLElement.prototype.scrollIntoView = scrollIntoViewMock;
-
-    const { rerender, container } = render(
-      <Sidebar
-        activeTab="transcript"
-        liveTranscriptHistory={[]}
-        currentOriginalText="First sentence."
-      />
-    );
-
-    const scrollBox = container.querySelector('.transcript-scroll-area');
-    expect(scrollBox).not.toBeNull();
-    Object.defineProperty(scrollBox, 'scrollHeight', { value: 640, configurable: true });
-
-    rerender(
-      <Sidebar
-        activeTab="transcript"
-        liveTranscriptHistory={[{ id: 'item1', original: 'Sentence 1' }]}
-        currentOriginalText="Second sentence."
-      />
-    );
-
-    expect(scrollBox.scrollTop).toBe(640);
-    expect(scrollIntoViewMock).not.toHaveBeenCalled();
-  });
-
-  it('places Class Properties panel before Live Lecture Transcript in All Panels mode', () => {
+  it('places Class Properties first, followed immediately by My Recent Messages, then My Recent Alerts', () => {
     const { container } = render(
       <Sidebar
         classProperties={mockClassProps}
@@ -174,12 +116,21 @@ describe('Sidebar Component', () => {
     );
 
     const propertiesHeading = screen.getByText('Class Properties');
-    const transcriptHeading = screen.getByText(/Live Lecture Transcript/i);
-    const relation = propertiesHeading.compareDocumentPosition(transcriptHeading);
-    expect(relation & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const messagesHeading = screen.getByText('My Recent Messages');
+    const alertsHeading = screen.getByText('My Recent Alerts');
+
+    expect(
+      propertiesHeading.compareDocumentPosition(messagesHeading) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    expect(
+      messagesHeading.compareDocumentPosition(alertsHeading) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
 
     const tabs = container.querySelectorAll('[role="tab"]');
+    expect(tabs).toHaveLength(4);
+    expect(tabs[0]).toHaveTextContent(/All Panels/i);
     expect(tabs[1]).toHaveTextContent(/Class Info/i);
-    expect(tabs[2]).toHaveTextContent(/Transcript/i);
+    expect(tabs[2]).toHaveTextContent(/Messages/i);
+    expect(tabs[3]).toHaveTextContent(/Alerts/i);
   });
 });

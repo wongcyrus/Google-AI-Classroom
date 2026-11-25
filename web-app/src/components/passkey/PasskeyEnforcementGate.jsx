@@ -70,33 +70,60 @@ const PasskeyEnforcementGate = ({ user, classId: propClassId, role, children }) 
     }
   }, [autoResolvedClassId, selectedClassId]);
 
-  // 1. Listen for system_config/loginPolicy password whitelist
+  // 1. Listen to owner-only studentProfiles/{uid} passkey exemption flag (+ server fallback for legacy email whitelist)
   useEffect(() => {
-    if (!user?.email || !isStudent) return;
+    if (!user?.uid || !isStudent) {
+      setIsWhitelisted(false);
+      return;
+    }
 
-    const userEmail = user.email.toLowerCase().trim();
+    let isCancelled = false;
+    let checkedServerFallback = false;
+
     const unsubWhitelist = subscribeDocShared(
       db,
-      'system_config/loginPolicy',
+      `studentProfiles/${user.uid}`,
       (snapshot) => {
-        if (snapshot.exists()) {
-          const data = snapshot.data();
-          const list = Array.isArray(data.passwordWhitelist) ? data.passwordWhitelist : [];
-          const isListed = list.some((e) => e && e.toLowerCase().trim() === userEmail) || (data.passwordWhitelistUids && data.passwordWhitelistUids.includes(user.uid));
-          setIsWhitelisted(!!isListed);
-        } else {
+        if (isCancelled) return;
+        const data = snapshot.exists() ? snapshot.data() || {} : {};
+        if (data.passkeyPermanentExempt === true) {
+          setIsWhitelisted(true);
+          return;
+        }
+        if (data.passkeyPermanentExempt === false) {
           setIsWhitelisted(false);
+          return;
+        }
+        if (!checkedServerFallback) {
+          checkedServerFallback = true;
+          try {
+            const getStatusFn = httpsCallable(functions, 'getStudentPasskeyStatus');
+            Promise.resolve(getStatusFn?.({ studentUid: user.uid }))
+              .then((res) => {
+                if (!isCancelled) {
+                  setIsWhitelisted(Boolean(res?.data?.isExempt));
+                }
+              })
+              .catch(() => {
+                if (!isCancelled) setIsWhitelisted(false);
+              });
+          } catch {
+            if (!isCancelled) setIsWhitelisted(false);
+          }
         }
       },
       (err) => {
-        console.warn('[PasskeyEnforcementGate] loginPolicy listener warning:', err);
-        setIsWhitelisted(false);
+        console.warn('[PasskeyEnforcementGate] studentProfiles exemption listener warning:', err);
+        if (!isCancelled) setIsWhitelisted(false);
       },
-      () => doc(db, 'system_config/loginPolicy')
+      () => doc(db, 'studentProfiles', user.uid)
     );
 
-    return () => unsubWhitelist();
-  }, [user?.email, user?.uid, isStudent]);
+    return () => {
+      isCancelled = true;
+      unsubWhitelist();
+    };
+  }, [user?.uid, isStudent]);
 
   // 1. Listen for studentPasskeys/{uid}
   useEffect(() => {

@@ -649,19 +649,43 @@ export async function handleVerifyInPersonAttendanceOverride({ classId, bingoId,
 /**
  * 8. Get Student Passkey Status
  */
-export async function handleGetStudentPasskeyStatus({ studentUid }) {
+export async function handleGetStudentPasskeyStatus({ studentUid, studentEmail }) {
   if (!studentUid) {
     throw new HttpsError('invalid-argument', 'Missing studentUid.');
   }
 
-  const doc = await db.doc(`studentPasskeys/${studentUid}`).get();
-  if (!doc.exists) {
-    return { isPaired: false };
+  const passkeySnap = await db.doc(`studentPasskeys/${studentUid}`).get();
+
+  let isExempt = false;
+  try {
+    const profileSnap = await db.doc(`studentProfiles/${studentUid}`).get();
+    const profileData = profileSnap?.exists ? profileSnap.data() || {} : {};
+    if (profileData.passkeyPermanentExempt === true) {
+      isExempt = true;
+    } else {
+      const policySnap = await db.doc('system_config/loginPolicy').get();
+      if (policySnap?.exists) {
+        const policyData = policySnap.data() || {};
+        const uidList = Array.isArray(policyData.passwordWhitelistUids) ? policyData.passwordWhitelistUids : [];
+        const emailList = Array.isArray(policyData.passwordWhitelist) ? policyData.passwordWhitelist : [];
+        const normalizedEmail = (studentEmail || profileData.email || '').toLowerCase().trim();
+        isExempt =
+          uidList.includes(studentUid) ||
+          (normalizedEmail !== '' && emailList.some((e) => typeof e === 'string' && e.toLowerCase().trim() === normalizedEmail));
+      }
+    }
+  } catch (err) {
+    console.warn(`[handleGetStudentPasskeyStatus] Exemption lookup failed for ${studentUid}:`, err);
   }
 
-  const data = doc.data();
+  if (!passkeySnap?.exists) {
+    return { isPaired: false, isExempt };
+  }
+
+  const data = passkeySnap.data() || {};
   return {
     isPaired: true,
+    isExempt,
     deviceModel: data.deviceModel || 'Mobile Device',
     registeredAt: data.registeredAt || null,
   };
@@ -1806,6 +1830,21 @@ export async function handleToggleStudentPasskeyExemption({
       }, { merge: true });
     } catch (e) {
       console.warn(`[handleToggleStudentPasskeyExemption] Could not update studentProperties for ${resolvedUid}:`, e);
+    }
+  }
+
+  // Also mirror exemption status onto the student's owner-only studentProfiles/{uid} document
+  // so clients do not need read access to the global system_config/loginPolicy email whitelist.
+  if (resolvedUid) {
+    try {
+      await db.doc(`studentProfiles/${resolvedUid}`).set({
+        passkeyPermanentExempt: !!exempt,
+        passkeyExemptionReason: reason || (exempt ? 'Phone incompatible with Credential Manager' : 'Revoked by teacher'),
+        passkeyExemptionUpdatedAt: FieldValue.serverTimestamp(),
+        passkeyExemptionUpdatedBy: teacherEmail || 'teacher',
+      }, { merge: true });
+    } catch (e) {
+      console.warn(`[handleToggleStudentPasskeyExemption] Could not update studentProfiles for ${resolvedUid}:`, e);
     }
   }
 

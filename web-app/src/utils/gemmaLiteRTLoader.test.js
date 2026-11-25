@@ -5,7 +5,6 @@ import {
   checkGemmaHardwareAcceleration,
   precheckGemmaViability,
   GEMMA_CACHE_NAME,
-  DEFAULT_GEMMA_CONFIG,
 } from './gemmaLiteRTLoader';
 
 describe('gemmaLiteRTLoader', () => {
@@ -52,6 +51,59 @@ describe('gemmaLiteRTLoader', () => {
       open: vi.fn().mockRejectedValue(new Error('CacheStorage permission denied')),
     };
     expect(await isGemmaModelCached('https://example.com/gemma-2b.bin')).toBe(false);
+  });
+
+  it('falls back to IndexedDB in isGemmaModelCached and resolves true when model blob exists or false on IDB error', async () => {
+    const origIndexedDB = globalThis.indexedDB;
+    globalThis.caches = {
+      open: vi.fn().mockResolvedValue({
+        match: vi.fn().mockResolvedValue(null),
+      }),
+    };
+
+    try {
+      globalThis.indexedDB = {
+        open: vi.fn(() => {
+          const req = {};
+          setTimeout(() => {
+            req.result = {
+              objectStoreNames: { contains: () => false },
+              createObjectStore: vi.fn(),
+              transaction: () => ({
+                objectStore: () => ({
+                  get: () => {
+                    const getReq = {};
+                    setTimeout(() => {
+                      getReq.result = { size: 2048 };
+                      getReq.onsuccess?.();
+                    }, 0);
+                    return getReq;
+                  },
+                }),
+              }),
+            };
+            req.onupgradeneeded?.();
+            req.onsuccess?.();
+          }, 0);
+          return req;
+        }),
+      };
+
+      const cachedInIdb = await isGemmaModelCached('https://example.com/idb-gemma.bin');
+      expect(cachedInIdb).toBe(true);
+
+      // Test IDB open error path
+      globalThis.indexedDB = {
+        open: vi.fn(() => {
+          const req = {};
+          setTimeout(() => req.onerror?.(), 0);
+          return req;
+        }),
+      };
+      expect(await isGemmaModelCached('https://example.com/idb-gemma.bin')).toBe(false);
+    } finally {
+      globalThis.indexedDB = origIndexedDB;
+    }
   });
 
   it('returns cached arrayBuffer immediately on cache hit in fetchGemmaWithProgress', async () => {

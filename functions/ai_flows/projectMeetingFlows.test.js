@@ -4,6 +4,7 @@ const mockDocGet = vi.fn();
 const mockDocUpdate = vi.fn().mockResolvedValue(true);
 const mockDocSet = vi.fn().mockResolvedValue(true);
 const mockCollectionWhereGet = vi.fn().mockResolvedValue({ docs: [] });
+const mockCollectionGet = vi.fn().mockResolvedValue({ docs: [] });
 
 vi.mock('./firebase.js', () => ({}));
 
@@ -17,6 +18,7 @@ vi.mock('firebase-admin/firestore', () => ({
       set: (data, opts) => mockDocSet(path, data, opts),
     }),
     collection: (path) => ({
+      get: () => mockCollectionGet(path),
       where: () => ({
         get: () => mockCollectionWhereGet(path),
       }),
@@ -70,6 +72,7 @@ import {
   emailProjectMeetingReport,
   handleBatchEmailProjectMeetingReports,
   batchEmailProjectMeetingReports,
+  handleGetStudentProjectRecords,
 } from './projectMeetingFlows.js';
 
 describe('projectMeetingFlows', () => {
@@ -1320,6 +1323,192 @@ describe('projectMeetingFlows', () => {
       expect(authCallableRes.count).toBe(1);
 
       delete process.env.SMTP_PASSWORD;
+    });
+  });
+
+  describe('handleGetStudentProjectRecords', () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+    });
+
+    it('rejects unauthenticated and non-enrolled callers', async () => {
+      await expect(
+        handleGetStudentProjectRecords({ classId: 'c1', auth: null })
+      ).rejects.toThrow(/authenticated/);
+
+      await expect(
+        handleGetStudentProjectRecords({ classId: '', auth: { uid: 's1' } })
+      ).rejects.toThrow(/classId/);
+
+      mockDocGet.mockResolvedValueOnce({ exists: false });
+      await expect(
+        handleGetStudentProjectRecords({ classId: 'missing', auth: { uid: 's1' } })
+      ).rejects.toThrow(/not found/);
+
+      mockDocGet.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({
+          students: { other_uid: 'other@stu.vtc.edu.hk' },
+          studentEmails: ['other@stu.vtc.edu.hk'],
+        }),
+      });
+      await expect(
+        handleGetStudentProjectRecords({
+          classId: 'c1',
+          auth: { uid: 'intruder', token: { email: 'intruder@stu.vtc.edu.hk' } },
+        })
+      ).rejects.toThrow(/not enrolled/);
+    });
+
+    it('returns group, meetings, and weekly logs scoped exclusively to caller without teammate PII', async () => {
+      mockDocGet.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({
+          students: {
+            stu_alice: 'alice@stu.vtc.edu.hk',
+            stu_bob: 'bob@stu.vtc.edu.hk',
+          },
+          studentEmails: ['alice@stu.vtc.edu.hk', 'bob@stu.vtc.edu.hk'],
+        }),
+      });
+
+      mockCollectionGet.mockImplementation(async (colPath) => {
+        if (colPath.endsWith('/projectGroups')) {
+          return {
+            docs: [
+              {
+                id: 'grp_10',
+                data: () => ({
+                  name: 'Group A10',
+                  projectTopic: 'AI Classroom Assistant',
+                  supervisorName: 'Dr. Alan Turing',
+                  supervisorEmail: 'turing@vtc.edu.hk',
+                  members: [
+                    { uid: 'stu_alice', email: 'alice@stu.vtc.edu.hk', name: 'Alice Chan', role: 'Leader' },
+                    { uid: 'stu_bob', email: 'bob@stu.vtc.edu.hk', name: 'Bob Lee', role: 'Member' },
+                  ],
+                }),
+              },
+              {
+                id: 'grp_other',
+                data: () => ({
+                  name: 'Group B99',
+                  members: [{ uid: 'stu_carol', email: 'carol@stu.vtc.edu.hk', name: 'Carol Secret' }],
+                }),
+              },
+            ],
+          };
+        }
+        if (colPath.endsWith('/projectMeetings')) {
+          return {
+            docs: [
+              {
+                id: 'mtg_10',
+                data: () => ({
+                  groupId: 'grp_10',
+                  groupName: 'Group A10',
+                  weekNumber: 10,
+                  title: 'Architecture Review',
+                  meetingDate: '2026-11-01T10:00:00Z',
+                  supervisorName: 'Dr. Alan Turing',
+                  rawDiarizedTranscript: 'Alice Chan and Bob Lee secret transcript',
+                  transcriptSegments: [{ speaker: 'Bob Lee', text: 'secret' }],
+                  minutesMarkdown: 'Contains Bob Lee PII',
+                  weeklyLogs: [{ email: 'bob@stu.vtc.edu.hk', secret: true }],
+                  voiceAnchors: { stu_bob: 'anchor_secret' },
+                  keyInsights: {
+                    overallGroupProgress: 'on_track',
+                    executiveSummary: 'Good architecture progress.',
+                    weeklyGroupFeedback: 'Keep writing tests.',
+                    supervisorFeedback: ['Private note'],
+                  },
+                  attendanceRecord: [
+                    { uid: 'stu_alice', email: 'alice@stu.vtc.edu.hk', name: 'Alice Chan', status: 'late', evidence: 'Joined at 02:15' },
+                    { uid: 'stu_bob', email: 'bob@stu.vtc.edu.hk', name: 'Bob Lee', status: 'absent', evidence: 'Bob was absent' },
+                  ],
+                  studentContributions: [
+                    { uid: 'stu_alice', email: 'alice@stu.vtc.edu.hk', realWorkScore: 9, supervisorFeedback: 'Solid PRs' },
+                    { uid: 'stu_bob', email: 'bob@stu.vtc.edu.hk', realWorkScore: 2, supervisorFeedback: 'Bob did poorly' },
+                  ],
+                  audioClips: [{ id: 'a1', label: 'Part 1', downloadUrl: 'https://example.com/a1.m4a', uploaderEmail: 'bob@stu.vtc.edu.hk' }],
+                }),
+              },
+              {
+                id: 'mtg_other',
+                data: () => ({
+                  groupId: 'grp_other',
+                  weekNumber: 10,
+                  attendanceRecord: [{ email: 'carol@stu.vtc.edu.hk', status: 'present' }],
+                }),
+              },
+            ],
+          };
+        }
+        if (colPath.endsWith('/projectStudentProfiles')) {
+          return {
+            docs: [
+              {
+                id: 'alice@stu.vtc.edu.hk',
+                data: () => ({
+                  email: 'alice@stu.vtc.edu.hk',
+                  name: 'Alice Chan',
+                  weeklyLogEntries: [{ weekNumber: 10, qualityScore: 9 }],
+                }),
+              },
+              {
+                id: 'bob@stu.vtc.edu.hk',
+                data: () => ({
+                  email: 'bob@stu.vtc.edu.hk',
+                  name: 'Bob Lee',
+                  weeklyLogEntries: [{ weekNumber: 10, qualityScore: 1, explanation: 'Bob secret log' }],
+                }),
+              },
+            ],
+          };
+        }
+        return { docs: [] };
+      });
+
+      const res = await handleGetStudentProjectRecords({
+        classId: 'c1',
+        auth: { uid: 'stu_alice', token: { email: 'alice@stu.vtc.edu.hk', role: 'student' } },
+      });
+
+      expect(res.myProjectGroup).toEqual({
+        id: 'grp_10',
+        name: 'Group A10',
+        projectTopic: 'AI Classroom Assistant',
+        supervisorName: 'Dr. Alan Turing',
+        supervisorEmail: 'turing@vtc.edu.hk',
+        coSupervisorEmails: [],
+        teamSize: 2,
+        members: [
+          { id: 'me', role: 'Leader', isMe: true },
+          { id: 'teammate_2', role: 'Member', isMe: false },
+        ],
+      });
+
+      expect(res.myProjectMeetings).toHaveLength(1);
+      expect(res.myProjectMeetings[0].attendanceRecord).toHaveLength(1);
+      expect(res.myProjectMeetings[0].attendanceRecord[0].status).toBe('late');
+      expect(res.myProjectMeetings[0].studentContributions).toHaveLength(1);
+      expect(res.myProjectMeetings[0].studentContributions[0].realWorkScore).toBe(9);
+      expect(res.myProjectProfile).toEqual({
+        id: 'me',
+        weeklyLogEntries: [{ weekNumber: 10, qualityScore: 9 }],
+      });
+
+      const serialized = JSON.stringify(res);
+      expect(serialized).not.toContain('bob@stu.vtc.edu.hk');
+      expect(serialized).not.toContain('Bob Lee');
+      expect(serialized).not.toContain('stu_bob');
+      expect(serialized).not.toContain('carol@stu.vtc.edu.hk');
+      expect(serialized).not.toContain('Carol Secret');
+      expect(serialized).not.toContain('secret transcript');
+      expect(serialized).not.toContain('Bob did poorly');
+      expect(serialized).not.toContain('Bob secret log');
+      expect(serialized).not.toContain('Contains Bob Lee PII');
+      expect(serialized).not.toContain('anchor_secret');
     });
   });
 });

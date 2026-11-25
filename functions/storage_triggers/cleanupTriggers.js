@@ -280,6 +280,7 @@ export const onClassDocDeleted = onDocumentDeleted({
     'bingoRecords',
     'attendanceAdjustments',
     'studentProperties',
+    'studentConfig',
     'classProperties',
     'passkeyBypassRequests',
     'screenBroadcastViewers',

@@ -115,6 +115,7 @@ export default function TeacherScreenBroadcastModal({
   const [lectureTitle, setLectureTitle] = useState('');
   const [lectureTopic, setLectureTopic] = useState('');
   const [isStarting, setIsStarting] = useState(false);
+  const [startError, setStartError] = useState(null);
   const [isHandingOver, setIsHandingOver] = useState(false);
   const [selectedHandoverClassId, setSelectedHandoverClassId] = useState('');
   const [isAlertChimeMuted, setIsAlertChimeMuted] = useState(() => {
@@ -315,6 +316,7 @@ export default function TeacherScreenBroadcastModal({
 
   useEffect(() => {
     if (initialStep) setStep(initialStep);
+    setStartError(null);
   }, [initialStep, isOpen]);
 
   useEffect(() => {
@@ -557,7 +559,9 @@ export default function TeacherScreenBroadcastModal({
 
   // Unified synchronized start handler
   const handleStart = async () => {
+    setStartError(null);
     setIsStarting(true);
+    let startSucceeded = false;
     try {
       if (setBroadcastResolution) setBroadcastResolution(selectedRes);
       if (setBroadcastInterval) setBroadcastInterval(selectedInterval);
@@ -577,11 +581,21 @@ export default function TeacherScreenBroadcastModal({
           micDeviceId: selectedMicDeviceId,
           enableSubtitles: effectiveSubtitlesEnabled,
         });
+        startSucceeded = true;
       }
     } catch (err) {
       console.warn('[TeacherScreenBroadcastModal] Start error:', err);
+      setStartError(
+        err?.name === 'NotAllowedError'
+          ? 'Screen sharing was cancelled or blocked. Select a screen or window when prompted to start broadcasting.'
+          : err?.message || 'Unable to start live broadcast. Please check screen share and microphone permissions.'
+      );
     } finally {
       setIsStarting(false);
+    }
+
+    if (startSucceeded) {
+      onClose?.();
     }
   };
 
@@ -685,7 +699,7 @@ export default function TeacherScreenBroadcastModal({
                 </p>
               </div>
             </div>
-            <button className="broadcast-close-btn" onClick={onClose} aria-label="Close setup modal">
+            <button type="button" className="broadcast-close-btn" onClick={onClose} aria-label="Close setup modal">
               ✕
             </button>
           </div>
@@ -1453,6 +1467,13 @@ export default function TeacherScreenBroadcastModal({
             )}
           </div>
 
+          {startError && step === 2 && (
+            <div className="broadcast-start-error-banner" role="alert">
+              <span>⚠️</span>
+              <span>{startError}</span>
+            </div>
+          )}
+
           {/* Footer Navigation */}
           <div className="broadcast-setup-footer">
             {step === 1 ? (
@@ -1663,8 +1684,15 @@ export default function TeacherScreenBroadcastModal({
               </div>
             </div>
           </div>
-          <button className="broadcast-close-btn" onClick={onClose} aria-label="Close modal">
-            ✕
+          <button
+            type="button"
+            className="broadcast-minimize-header-btn"
+            onClick={onClose}
+            aria-label="Hide studio and continue broadcast"
+            title="Close this studio panel and return to Teacher View — your broadcast and recording continue running in the background"
+          >
+            <span>✕</span>
+            <span>Hide Studio (Keep Live)</span>
           </button>
         </div>
 
@@ -2194,17 +2222,31 @@ export default function TeacherScreenBroadcastModal({
           </div>
         </div>
 
-        {/* Live Broadcast Footer with Stop Sharing Action */}
+        {/* Live Broadcast Footer: Hide/Continue (Primary Safe) vs Stop (Destructive) */}
         <div className="broadcast-modal-footer">
           <button
             type="button"
             className="broadcast-stop-btn"
             onClick={handleStop}
             aria-label="Stop Screen Broadcast"
-            title="Stop Screen and Voice Broadcast"
+            title="Stop screen broadcast, live subtitles, and active lecture recording"
           >
             ⏹ Stop Screen Broadcast
           </button>
+          <div className="broadcast-footer-safe-actions">
+            <span className="broadcast-footer-hint">
+              Closing keeps broadcast &amp; recording live (re-open via <strong>● Live</strong>)
+            </span>
+            <button
+              type="button"
+              className="broadcast-continue-btn"
+              onClick={onClose}
+              aria-label="Close and Continue Broadcast"
+              title="Minimize this studio dialog and return to Teacher View while broadcast and recording continue"
+            >
+              ✓ Close &amp; Continue Broadcast
+            </button>
+          </div>
         </div>
       </div>
 

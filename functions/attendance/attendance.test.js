@@ -43,7 +43,7 @@ vi.mock('firebase-functions/v2/https', () => ({
 }));
 
 // Import after mocks
-import { parseDateTime, getAttendanceData } from './index.mjs';
+import { parseDateTime, getAttendanceData, getStudentLessons } from './index.mjs';
 
 describe('Attendance Calculation Logic (functions/attendance/index.mjs)', () => {
   beforeEach(() => {
@@ -830,6 +830,109 @@ describe('Attendance Calculation Logic (functions/attendance/index.mjs)', () => 
       expect(student.deductedMinutes).toBe(2);
       expect(student.totalMinutes).toBe(1);
       expect(student.rawMinutes).toBe(3);
+    });
+  });
+
+  describe('getStudentLessons Callable Function', () => {
+    const studentAuth = { uid: 's1', token: { role: 'student', email: 's1@stu.vtc.edu.hk' } };
+    const teacherAuth = { uid: 't1', token: { role: 'teacher', email: 't1@vtc.edu.hk' } };
+
+    it('rejects unauthenticated callers and missing classId', async () => {
+      await expect(getStudentLessons({ auth: null, data: { classId: 'c1' } })).rejects.toThrow('User must be authenticated.');
+      await expect(getStudentLessons({ auth: studentAuth, data: {} })).rejects.toThrow('classId');
+    });
+
+    it('throws not-found when class does not exist and permission-denied for non-enrolled users', async () => {
+      mockDoc.get.mockResolvedValueOnce({ exists: false });
+      await expect(getStudentLessons({ auth: studentAuth, data: { classId: 'missing' } })).rejects.toThrow('not found');
+
+      mockDoc.get.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({
+          ownerUid: 'other_teacher',
+          students: { other_stu: 'other@stu.vtc.edu.hk' },
+          studentEmails: ['other@stu.vtc.edu.hk'],
+        }),
+      });
+      await expect(getStudentLessons({ auth: studentAuth, data: { classId: 'c1' } })).rejects.toThrow('not enrolled');
+    });
+
+    it('returns lessons scoped exclusively to caller without exposing classmates entries or emails', async () => {
+      mockDoc.get.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({
+          ownerUid: 't1',
+          students: {
+            s1: 's1@stu.vtc.edu.hk',
+            s2: 's2@stu.vtc.edu.hk',
+          },
+          studentEmails: ['s1@stu.vtc.edu.hk', 's2@stu.vtc.edu.hk'],
+        }),
+      });
+
+      const lessonDocs = [
+        {
+          id: 'lesson_1',
+          data: () => ({
+            startTime: { toDate: () => new Date('2026-10-10T09:00:00Z') },
+            endTime: { toDate: () => new Date('2026-10-10T10:00:00Z') },
+            duration: 60,
+            generalSummary: 'OOP inheritance lab',
+            generalFeedback: 'Good participation',
+            students: {
+              s1: {
+                email: 's1@stu.vtc.edu.hk',
+                sharedScreenMinutes: 50,
+                workingMinutes: 40,
+                attendance: [1, 1, 1],
+                summary: 'Built Shape hierarchy',
+              },
+              s2: {
+                email: 's2@stu.vtc.edu.hk',
+                sharedScreenMinutes: 10,
+                summary: 'Classmate secret note',
+              },
+            },
+          }),
+        },
+      ];
+
+      mockCollection.get.mockResolvedValueOnce({
+        forEach: (cb) => lessonDocs.forEach(cb),
+      });
+
+      const res = await getStudentLessons({ auth: studentAuth, data: { classId: 'c1' } });
+      expect(res.lessons).toHaveLength(1);
+      expect(res.lessons[0]).toEqual({
+        lessonId: 'lesson_1',
+        classId: 'c1',
+        startTime: '2026-10-10T09:00:00.000Z',
+        endTime: '2026-10-10T10:00:00.000Z',
+        duration: 60,
+        generalSummary: 'OOP inheritance lab',
+        generalFeedback: 'Good participation',
+        studentEntry: {
+          sharedScreenMinutes: 50,
+          workingMinutes: 40,
+          attendance: [1, 1, 1],
+          summary: 'Built Shape hierarchy',
+        },
+      });
+      const serialized = JSON.stringify(res);
+      expect(serialized).not.toContain('s2@stu.vtc.edu.hk');
+      expect(serialized).not.toContain('Classmate secret note');
+      expect(res.lessons[0].students).toBeUndefined();
+    });
+
+    it('allows assigned teacher to call getStudentLessons preview', async () => {
+      mockDoc.get.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({ ownerUid: 't1', students: {} }),
+      });
+      mockCollection.get.mockResolvedValueOnce({ forEach: () => {} });
+
+      const res = await getStudentLessons({ auth: teacherAuth, data: { classId: 'c1' } });
+      expect(res.lessons).toEqual([]);
     });
   });
 });

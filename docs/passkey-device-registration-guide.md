@@ -169,7 +169,7 @@ sequenceDiagram
      - Typing email/password on desktop triggers [`PasskeyEnforcementGate`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/passkey/PasskeyEnforcementGate.jsx), locking navigation, streaming, and attendance.
      - The only desktop bypasses are:
        1. **Teacher Manual Failsafe** (Podium 1-click or Emergency PIN).
-       2. **Global Password Whitelist (`system_config/loginPolicy`)**: Admins and test accounts placed in the `passwordWhitelist` array are permitted to sign in on Desktop with their institutional email/password without passkey barrier blocking.
+       2. **Permanent Passkey Exemption (`studentProfiles/{uid}.passkeyPermanentExempt` / `system_config/loginPolicy`)**: Instructors can grant permanent exemption to accounts with incompatible smartphone hardware. [`toggleStudentPasskeyExemption`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/passkeyFlows.js) updates teacher/admin-only `system_config/loginPolicy` and mirrors `passkeyPermanentExempt: true|false` to the student's owner-only `studentProfiles/{uid}` doc (with `getStudentPasskeyStatus` callable fallback) so the desktop gate unlocks without granting students read access to global email whitelists.
 
 ---
 
@@ -293,13 +293,13 @@ To resolve this edge case safely without compromising whole-class security:
   Are you sure you want to grant permanent passkey exemption?
   ```
 - If the teacher confirms, backend Cloud Function `toggleStudentPasskeyExemption` executes:
-  - Adds the student email and UID to `system_config/loginPolicy.passwordWhitelist` and `passwordWhitelistUids`.
-  - Sets `classes/{classId}/studentProperties/{uid}.passkeyPermanentExempt = { exempt: true, updatedAt, updatedBy }`.
+  - Adds the student email and UID to teacher/admin-only `system_config/loginPolicy.passwordWhitelist` and `passwordWhitelistUids`.
+  - Sets `studentProfiles/{uid}.passkeyPermanentExempt = true` (owner-only profile mirror) and `classes/{classId}/studentProperties/{uid}.passkeyPermanentExempt = { exempt: true, updatedAt, updatedBy }`.
   - Appends an audit log `GRANT_PERMANENT_PASSKEY_EXEMPTION` to `passkeyAuditLogs`.
 - **UI Indicators**:
   - The student row immediately displays a green **`🛡️ Passkey Exempt`** badge.
   - The button changes to green **`🛡️ Exempt (Perm)`**.
-  - On the desktop lab PC, [`PasskeyEnforcementGate`](file:///web-app/src/components/PasskeyEnforcementGate.jsx) detects the whitelist in real time and automatically unlocks desktop password login.
+  - On the desktop lab PC, [`PasskeyEnforcementGate`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/passkey/PasskeyEnforcementGate.jsx) listens to `studentProfiles/{uid}.passkeyPermanentExempt` (falling back to callable `getStudentPasskeyStatus` if unset) in real time and automatically unlocks desktop password login without reading `system_config/loginPolicy`.
 
 #### 2. Click Again to Cancel / Revoke Exemption
 Instructors can revoke the permanent exemption at any time by simply clicking the button again:
@@ -313,6 +313,7 @@ Instructors can revoke the permanent exemption at any time by simply clicking th
   ```
 - Upon confirmation:
   - The student's email and UID are atomically removed from `system_config/loginPolicy`'s `passwordWhitelist` via `FieldValue.arrayRemove`.
+  - `studentProfiles/{uid}.passkeyPermanentExempt` is set to `false` (and `classes/{classId}/studentProperties/{uid}.passkeyPermanentExempt.exempt` is set to `false`).
   - The green **`🛡️ Passkey Exempt`** badge is removed and the button reverts back to standard **`🛡️ Exempt`**.
   - A `REVOKE_PERMANENT_PASSKEY_EXEMPTION` event is recorded in `passkeyAuditLogs`.
   - The desktop gate immediately reinstates mandatory mobile passkey authentication for the student.
@@ -758,8 +759,8 @@ Real-time active lecture hall dynamic rotating QR code session listener:
 }
 ```
 
-### `system_config/loginPolicy`
-Global password whitelist and permanent passkey exemption configuration:
+### `system_config/loginPolicy` (Teacher / Admin Only)
+Global password whitelist and permanent passkey exemption configuration (server/teacher-only; students read their own boolean mirror at `studentProfiles/{uid}.passkeyPermanentExempt`):
 ```json
 {
   "passwordWhitelist": [

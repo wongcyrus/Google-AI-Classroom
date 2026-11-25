@@ -189,7 +189,7 @@ This directory contains all the Cloud Functions related to AI-powered analysis, 
     -   **Description**: Instructor physically inspects the student standing at the podium and approves attendance with 1 click. Marks `inPersonVerified = true`, clears pending claim, and sets `verifiedByTeacherEmail`.
 -   **`getStudentPasskeyStatus`**:
     -   **Trigger**: Callable `onCall`.
-    -   **Description**: Checks if a given student UID has an enrolled passkey hardware credential and returns device model and pairing timestamp.
+    -   **Description**: Checks if a given student UID has an enrolled passkey hardware credential, returns device model and pairing timestamp, and computes server-side `isExempt` status from `system_config/loginPolicy` (supporting permanent passkey exemptions without client access to the global email whitelist).
 -   **`resetStudentPasskey`**:
     -   **Trigger**: Callable `onCall` (Teacher or whitelisted testing account authorized).
     -   **Description**: Enables teachers to assist students with phone replacement, device loss, or hardware re-pairing. **Anti-Proxy Protection**: Regular students cannot call this function to self-unlink; unauthorized requests are rejected with `permission-denied`. Whitelisted test accounts (`PASSKEY_DEVICE_SHARING_WHITELIST`) and teachers can unlink their own devices. Unlinks `studentPasskeys/{studentUid}`, invalidates old hardware bindings, and logs an immutable audit entry in `passkeyAuditLogs` with caller UID, student UID, timestamp, and previous device model.
@@ -214,7 +214,7 @@ This directory contains all the Cloud Functions related to AI-powered analysis, 
 -   **`toggleStudentPasskeyExemption`**:
     -   **Trigger**: Callable `onCall` (`functions/ai_flows/index.mjs`).
     -   **Authentication & Authorization**: Authenticated teacher or school domain.
-    -   **Description**: Toggles permanent passkey exemption for students whose smartphones lack Credential Manager support (e.g. Huawei or non-GMS Android devices). Accepts `studentEmail`, `studentUid`, `classId`, `exempt` (boolean), and `reason`. When granting (`exempt = true`), atomically adds the student's email and UID to `system_config/loginPolicy`'s `passwordWhitelist` and `passwordWhitelistUids`, updates `classes/{classId}/studentProperties/{studentUid}.passkeyPermanentExempt`, and logs `GRANT_PERMANENT_PASSKEY_EXEMPTION` to `passkeyAuditLogs`. When revoking (`exempt = false`), atomically removes the student from the whitelist via `arrayRemove`, updates `passkeyPermanentExempt.exempt = false`, and logs `REVOKE_PERMANENT_PASSKEY_EXEMPTION` to `passkeyAuditLogs`.
+    -   **Description**: Toggles permanent passkey exemption for students whose smartphones lack Credential Manager support (e.g. Huawei or non-GMS Android devices). Accepts `studentEmail`, `studentUid`, `classId`, `exempt` (boolean), and `reason`. When granting (`exempt = true`), atomically adds the student's email and UID to `system_config/loginPolicy`'s `passwordWhitelist` and `passwordWhitelistUids`, updates `classes/{classId}/studentProperties/{studentUid}.passkeyPermanentExempt` and mirrors boolean `studentProfiles/{studentUid}.passkeyPermanentExempt = true`, and logs `GRANT_PERMANENT_PASSKEY_EXEMPTION` to `passkeyAuditLogs`. When revoking (`exempt = false`), atomically removes the student from the whitelist via `arrayRemove`, updates `passkeyPermanentExempt` to `false` on both documents, and logs `REVOKE_PERMANENT_PASSKEY_EXEMPTION` to `passkeyAuditLogs`.
 -   **`createLectureBingoSession`**:
     -   **Trigger**: Callable `onCall` (`functions/ai_flows/index.mjs`).
     -   **Authentication & Authorization**: Authenticated teacher or class owner.
@@ -257,6 +257,10 @@ This directory contains all the Cloud Functions related to AI-powered analysis, 
     -   **Description**: Dispatches consultation meeting report emails for all or selected meetings in a given academic week ($W$) across the whole class. Queries `classes/{classId}/projectMeetings` where `weekNumber == W`, iterates groups, injects optional overarching supervisor notes (`customNote`), and provides per-group delivery summaries.
     -   **Input Schema**: `{ classId: string, weekNumber: number, meetingIds?: string[], customNote?: string, onlyAnalyzed?: boolean, portalUrl?: string }`.
     -   **Output Schema**: `{ success: boolean, totalMeetingsProcessed: number, totalDelivered: number, totalFailed: number, results: Array<{ id, groupName, success, count, error? }> }`.
+-   **`getStudentProjectRecords`**:
+    -   **Trigger**: Callable `onCall` (`functions/ai_flows/projectMeetingFlows.js`, `memory: 256MiB`, `timeoutSeconds: 60`, region `asia-east2`).
+    -   **Authentication & Authorization**: Requires authenticated enrolled student, teacher, or admin in `classes/{classId}`.
+    -   **Description**: Returns caller-scoped Capstone project group summary, supervision meeting attendance/contributions/weekly group feedback, and the caller's own weekly log profile (`myProjectGroup`, `myProjectMeetings`, `myProjectProfile`). Strictly strips teammate names, emails, UIDs (returning only anonymized `me` / `teammate_N` slots), raw transcripts, `voiceAnchors`, `minutesMarkdown`, and other students' records so student views never directly read `projectGroups`, `projectMeetings`, or `projectStudentProfiles`.
 
 #### Task Queue Workers (`firebase-functions/v2/tasks`)
 
@@ -397,7 +401,8 @@ This directory contains Cloud Functions that are triggered by authentication eve
 
 -   **`onClassUpdate`**:
     -   **Trigger**: `onDocumentWritten` in `classes/{classId}`.
-    -   **Description**: This function manages the relationship between users and classes and maintains cross-class profile synchronization:
+    -   **Description**: This function manages the relationship between users and classes and maintains non-PII student config and cross-class profile synchronization:
+        -   **Non-PII Public Config Mirror (`classes/{classId}/studentConfig/public`)**: Extracts allowlisted non-PII class fields (`PUBLIC_STUDENT_CONFIG_FIELDS` covering schedule, capture/AI monitoring config, exam periods, and recording policies) and writes `classes/{classId}/studentConfig/public` whenever those fields change (or deletes it on class deletion), allowing enrolled students to observe class schedules without read access to `classes/{classId}` rosters.
         -   **User Creation**: If a user for an added email does not exist, it creates a new Firebase Auth user and assigns the appropriate role.
         -   **Association**: It links/unlinks the class to/from the user's profile (`studentProfiles` or `teacherProfiles`).
         -   **Denormalization**: It adds/removes the user's UID and email from the `students` or `teachers` map within the class document for efficient lookups.
@@ -573,7 +578,7 @@ This directory contains Cloud Functions that are triggered by events in Cloud St
 
 -   **`onClassDocDeleted`**:
     -   **Trigger**: `onDocumentDeleted` in `classes/{classId}`.
-    -   **Description**: Automatically purges all associated Storage folders (`screenshots/{classId}/`, `videos/{classId}/`, `zips/{classId}/`) when an entire class is deleted.
+    -   **Description**: Automatically purges all associated Storage folders (`screenshots/{classId}/`, `videos/{classId}/`, `zips/{classId}/`) and class subcollections (including `studentConfig`, `lessons`, `projectGroups`, `projectMeetings`, `projectStudentProfiles`, `bingoRecords`, etc.) when an entire class is deleted.
 
 -   **`onClassRetentionUpdated`**:
     -   **Trigger**: `onDocumentUpdated` in `classes/{classId}`.
@@ -627,6 +632,11 @@ This directory contains the Cloud Function for calculating student attendance.
         -   **Strict Verified Math**: Attended minutes (`totalMinutes` / `sharedScreenMinutes`) strictly counts slots where the student was active and verified (`val === 1`). Slots marked `2` are excluded from attended time.
         -   Calculates `deductedMinutes` (`count(val === 2)`), representing the total penalty time docked.
     -   **Persistence**: Persists the calculated data into `classes/{classId}/lessons/{lessonId}` (`students[uid].attendance`, `students[uid].sharedScreenMinutes`, and `students[uid].deductedMinutes`) and returns the complete payload to the client.
+
+-   **`getStudentLessons`**:
+    -   **Trigger**: Callable `onCall` (`functions/attendance/index.mjs`, `memory: 256MiB`, `timeoutSeconds: 60`, region `asia-east2`).
+    -   **Authentication & Authorization**: Requires authenticated user enrolled as a student or assigned teacher in `classes/{classId}`.
+    -   **Description**: Server-side caller-scoped lesson history reader replacing direct client reads on `classes/{classId}/lessons`. Iterates lessons in the class and returns `{ lessons }` containing lesson metadata (`startTime`, `endTime`, `duration`, `generalSummary`, `generalFeedback`) and only the calling student's own `studentEntry` (`students[callerUid]` with `email`/`studentEmail` stripped), ensuring classmates' UIDs and attendance records are never sent to student browsers.
 
 ---
 

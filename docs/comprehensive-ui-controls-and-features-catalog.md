@@ -213,11 +213,13 @@ flowchart TD
       > **Architecture Note**: This setting lives directly inside the broadcast modal rather than Class Management to keep everyday classes private by default, allow hybrid use of existing classes with enrolled students, and auto-terminate public access the moment broadcasting ends.
       - **4-Digit PIN Management:** Displays auto-generated 4-digit PIN with "Generate New PIN" button and manual override input.
       - **Projector QR Code Launcher (`Show Projector QR`):** Opens [`PresentationQrModal.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/broadcast/PresentationQrModal.jsx) displaying a high-contrast SVG QR code pointing to `https://<domain>/live/<classId>?pin=XXXX` with one-click copy and bold PIN typography.
-  - **Live Floating HUD:**
-    - Displays active broadcast status, frame counter, recording duration, and dynamic quality/interval selectors.
+  - **Live Floating HUD (Auto-Minimizes on Start; Re-open via `● Live (N)` or `🔴 REC`):**
+    - Clicking **`🔴 Start Live Stream & Record`** (or **`🚀 Start Live Stream Only`**) automatically minimizes the setup dialog back into Teacher Monitor View as soon as screen sharing starts (staying open with an inline warning alert only if screen selection is cancelled or fails).
+    - Re-opening Mode 2 via the header **`● Live (N)`** pill or toolbar **`🔴 REC`** pill displays the active screen preview, frame counter, recording duration, and dynamic quality/interval selectors.
     - **Public PIN Pill:** Shows active `📢 Public PIN: XXXX`.
     - **`Projector QR` Button:** Re-opens the projector QR code modal at any point during the presentation.
-    - **`⏹️ Stop Sharing` Button:** Terminates screen capture, resets `isBroadcasting: false`, `isPublic: false`, and `publicPin: null`, immediately closing external guest access.
+    - **Non-Destructive Dismissal (**`✕ Hide Studio (Keep Live)`** & **`✓ Close & Continue Broadcast`**):** Closes the studio dialog and returns to Teacher Monitor View while broadcast, subtitles, and recording continue uninterrupted in the background.
+    - **Destructive Stop (**`⏹ Stop Screen Broadcast`**):** Left-aligned compact stop button in `.broadcast-modal-footer` (matched by the header **`⏹ Stop`** quick button) that terminates screen capture, stops active lecture recording, resets `isBroadcasting: false`, `isPublic: false`, and `publicPin: null`, immediately closing external guest access.
 - **Public Spectator View (`PublicLiveView.jsx` at `/live/:classId`):**
   - Public audience portal requiring zero prior registration or student accounts.
   - Anonymous Firebase Auth (`signInAnonymously`) authentication.
@@ -411,7 +413,7 @@ flowchart TD
 - **Incident History Table:** Timestamp, deviation category (`looking_away`, `no_face`, `multiple_faces`), duration, and evidence thumbnails (shielded during exam periods).
 
 ### Tab 5: Audio Transcripts (`audio`)
-- **Speech History Table:** Monitored speech timestamps, language tags, transcription snippets, and inline `▶ Play Clip` / `⏹ Stop` audio player.
+- **Speech History Table:** Monitored speech timestamps, language tags, and speech-to-text transcription snippets (voice recording playback and audio downloads are reserved for instructors).
 
 ---
 
@@ -457,7 +459,7 @@ flowchart TD
   - **`[ 🛡️ Exempt ]` / `[ 🛡️ Exempt (Perm) ]` Permanent Exemption Button & Cancellation Toggle:**
     - Intended for uncommon cases where a student's phone hardware physically lacks Credential Manager support (e.g., Huawei or non-GMS Android devices).
     - Clicking `[ 🛡️ Exempt ]` triggers a double-confirmation alert dialog (`window.confirm`) warning of the uncommon exception.
-    - Upon confirmation, adds student to `system_config/loginPolicy.passwordWhitelist`, displays the green **`🛡️ Passkey Exempt`** badge, and changes the button to **`🛡️ Exempt (Perm)`**.
+    - Upon confirmation, updates teacher/admin-only `system_config/loginPolicy.passwordWhitelist` and mirrors `studentProfiles/{uid}.passkeyPermanentExempt = true`, displays the green **`🛡️ Passkey Exempt`** badge, and changes the button to **`🛡️ Exempt (Perm)`**.
     - **Clicking again cancels / revokes exemption**: Clicking `[ 🛡️ Exempt (Perm) ]` displays a revocation prompt and, upon confirmation, immediately removes the student from the whitelist, dismisses the badge, and restores the passkey requirement.
   - **Passkey Status Filter Dropdown (`roster-filter-passkey`):**
     - `All Passkey Statuses`: Shows all enrolled students.

@@ -13,6 +13,94 @@ const adminAuth = getAuth();
 const sanitizeEmailList = (arr) =>
   Array.isArray(arr) ? arr.map((e) => (typeof e === 'string' ? e.replace(/\s/g, '') : '')).filter(Boolean) : [];
 
+export const PUBLIC_STUDENT_CONFIG_FIELDS = [
+  'name',
+  'schedule',
+  'scheduleHistory',
+  'isBroadcasting',
+  'isCapturing',
+  'overtimeUntil',
+  'broadcastStartedAt',
+  'captureStartedAt',
+  'frameRate',
+  'sessionFrameRate',
+  'activeSessionId',
+  'imageQuality',
+  'maxImageSize',
+  'captureMode',
+  'requireFullScreenOnly',
+  'faceDebounceSeconds',
+  'aiMonitoringMode',
+  'enableClientAi',
+  'preloadClientAi',
+  'gazeSensitivity',
+  'customYawAngle',
+  'customPitchDownAngle',
+  'customPitchUpAngle',
+  'enableCloudFallback',
+  'cloudFallbackRate',
+  'enableAudioCapture',
+  'audioCaptureMode',
+  'voiceAiMode',
+  'speechLanguage',
+  'audioSegmentDuration',
+  'audioSilenceSuppression',
+  'vadSensitivity',
+  'voiceAiCloudFallbackRate',
+  'enableSegmentTranscription',
+  'audioMovingWindowDuration',
+  'audioMovingWindowStride',
+  'retentionDays',
+  'gemmaIntentPrompt',
+  'liveAudioPrompt',
+  'sessionAudioPrompt',
+  'isExamActive',
+  'examPeriods',
+  'studentRecordingsPolicy',
+  'studentRecordingsReleaseDate',
+  'teacherRecordingsPolicy',
+  'allowShareTeacherRecordings',
+];
+
+export const extractPublicStudentConfig = (classData = {}) => {
+  const config = {};
+  if (!classData || typeof classData !== 'object') return config;
+  for (const field of PUBLIC_STUDENT_CONFIG_FIELDS) {
+    if (classData[field] !== undefined) {
+      config[field] = classData[field];
+    }
+  }
+  return config;
+};
+
+const normalizeComparableValue = (val) => {
+  if (val === null || val === undefined) return val;
+  if (typeof val?.toMillis === 'function') return { __tsMillis: val.toMillis() };
+  if (val instanceof Date) return { __dateMillis: val.getTime() };
+  if (typeof val === 'object' && typeof val._seconds === 'number' && typeof val._nanoseconds === 'number') {
+    return { __tsMillis: val._seconds * 1000 + Math.floor(val._nanoseconds / 1e6) };
+  }
+  if (typeof val === 'object' && typeof val.seconds === 'number' && typeof val.nanoseconds === 'number') {
+    return { __tsMillis: val.seconds * 1000 + Math.floor(val.nanoseconds / 1e6) };
+  }
+  if (Array.isArray(val)) return val.map(normalizeComparableValue);
+  if (typeof val === 'object') {
+    const sorted = {};
+    for (const key of Object.keys(val).sort()) {
+      sorted[key] = normalizeComparableValue(val[key]);
+    }
+    return sorted;
+  }
+  return val;
+};
+
+export const arePublicStudentConfigsEqual = (beforeData = {}, afterData = {}) => {
+  return (
+    JSON.stringify(normalizeComparableValue(extractPublicStudentConfig(beforeData))) ===
+    JSON.stringify(normalizeComparableValue(extractPublicStudentConfig(afterData)))
+  );
+};
+
 // Helper function to get or create multiple users in bulk, ensuring one UID per email.
 const getOrCreateUsers = async (emails, userType) => {
     const expectedRole = userType === 'student' ? 'student' : 'teacher';
@@ -225,12 +313,36 @@ const updateUserAssociations = async (classId, emails, userType, action, student
 
 export const onClassUpdate = onDocumentWritten({ document: 'classes/{classId}', region: FUNCTION_REGION }, async (event) => {
   const classId = event.params.classId;
-  const beforeData = event.data.before.data() || {};
+  const beforeSnap = event.data?.before;
+  const beforeData = beforeSnap?.data?.() || {};
+  const beforeExists = typeof beforeSnap?.exists === 'function'
+    ? beforeSnap.exists()
+    : (typeof beforeSnap?.exists === 'boolean' ? beforeSnap.exists : Boolean(beforeSnap?.data?.()));
   const afterSnap = event.data?.after;
   const afterData = afterSnap?.data?.() || {};
   const afterExists = typeof afterSnap?.exists === 'function'
     ? afterSnap.exists()
     : (typeof afterSnap?.exists === 'boolean' ? afterSnap.exists : Boolean(afterSnap?.data?.()));
+
+  // Sync non-PII public config mirror (classes/{classId}/studentConfig/public) for enrolled students.
+  // Done independently of roster diffs so schedule/capture/exam changes propagate immediately
+  // without sending classmate emails, UIDs, or profiles to students.
+  let publicConfigSyncPromise = null;
+  const publicConfigRef = db.collection('classes').doc(classId).collection('studentConfig').doc('public');
+  if (!afterExists) {
+    if (typeof publicConfigRef?.delete === 'function') {
+      publicConfigSyncPromise = publicConfigRef.delete().catch((err) => {
+        logger.warn(`Could not delete studentConfig/public for deleted class ${classId}:`, err);
+      });
+    }
+  } else if (!beforeExists || !arePublicStudentConfigsEqual(beforeData, afterData)) {
+    const publicPayload = extractPublicStudentConfig(afterData);
+    if (typeof publicConfigRef?.set === 'function') {
+      publicConfigSyncPromise = publicConfigRef.set(publicPayload).catch((err) => {
+        logger.warn(`Could not sync studentConfig/public for class ${classId}:`, err);
+      });
+    }
+  }
 
   // Handle Students (normalize both before & after identically so whitespace differences don't churn associations)
   const originalStudentEmails = Array.isArray(afterData.studentEmails) ? afterData.studentEmails : [];
@@ -260,6 +372,9 @@ export const onClassUpdate = onDocumentWritten({ document: 'classes/{classId}', 
     !needsEmailSanitization &&
     (!afterExists || JSON.stringify(beforeProfiles) === JSON.stringify(afterProfiles))
   ) {
+    if (publicConfigSyncPromise) {
+      await publicConfigSyncPromise;
+    }
     return null;
   }
 
@@ -269,6 +384,9 @@ export const onClassUpdate = onDocumentWritten({ document: 'classes/{classId}', 
     updateUserAssociations(classId, addedTeachers, 'teacher', 'add'),
     updateUserAssociations(classId, removedTeachers, 'teacher', 'remove', {}, { skipClassDocUpdate: !afterExists }),
   ];
+  if (publicConfigSyncPromise) {
+    promises.push(publicConfigSyncPromise);
+  }
 
   // Sync only added/changed student profiles to the central institutional studentDirectory
   if (afterExists && afterData.studentProfiles && typeof afterData.studentProfiles === 'object') {

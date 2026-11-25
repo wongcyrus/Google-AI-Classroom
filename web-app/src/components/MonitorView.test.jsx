@@ -178,7 +178,7 @@ vi.mock('../hooks/useLectureRecorder', () => ({
 }));
 
 vi.mock('./BingoResultsView', () => ({
-  default: ({ classId, isModal, studentStatuses }) => (
+  default: ({ classId, studentStatuses }) => (
     <div data-testid="mock-bingo-results-modal">
       <span>Mock Bingo Results View for {classId}</span>
       <span>Statuses count: {studentStatuses?.length || 0}</span>
@@ -1120,6 +1120,127 @@ describe('MonitorView Component Suite', () => {
       // Optimistically hides banner
       expect(screen.queryByText(/Passkey Bypass Claims/i)).not.toBeInTheDocument();
     });
+  });
+
+  it('handles broadcast handover consumption, overtime extension, AudioContext stream mixing, and historical reviewTime screenshot fetching', async () => {
+    const { setPendingBroadcastHandover } = await import('../utils/broadcastHandover');
+    const firestoreMod = await import('firebase/firestore');
+
+    // Mock AudioContext for hardware clock A/V synchronization in handleStartSynchronizedBroadcast
+    const origAudioCtx = window.AudioContext;
+    const origMediaStream = window.MediaStream;
+    class MockAudioContext {
+      constructor() {
+        this.state = 'running';
+        this.close = vi.fn();
+      }
+      createMediaStreamDestination() {
+        return { stream: { id: 'mixed-audio-stream', getTracks: () => [], getAudioTracks: () => [] } };
+      }
+      createMediaStreamSource() {
+        return { connect: vi.fn() };
+      }
+    }
+    window.AudioContext = MockAudioContext;
+    window.MediaStream = function (tracks = []) {
+      return {
+        getTracks: () => tracks,
+        getVideoTracks: () => tracks,
+        getAudioTracks: () => tracks,
+      };
+    };
+
+    try {
+      const mockVideoTrack = {
+        readyState: 'live',
+        stop: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      };
+      const mockAudioTrack = {
+        readyState: 'live',
+        stop: vi.fn(),
+      };
+      const handedOverScreen = {
+        getVideoTracks: () => [mockVideoTrack],
+        getAudioTracks: () => [mockAudioTrack],
+        getTracks: () => [mockVideoTrack, mockAudioTrack],
+      };
+      const handedOverMic = {
+        getAudioTracks: () => [mockAudioTrack],
+        getTracks: () => [mockAudioTrack],
+      };
+
+      setPendingBroadcastHandover({
+        fromClassId: 'CLASS_PREV',
+        targetClassId: 'CLASS_101',
+        screenStream: handedOverScreen,
+        micStream: handedOverMic,
+        options: {
+          resolution: '1080p',
+          interval: 1500,
+          recordOnStart: true,
+          openStudio: true,
+        },
+      });
+
+      let broadcastController = null;
+      render(
+        <MonitorView
+          {...defaultProps}
+          onBroadcastStateChange={(st) => {
+            broadcastController = st;
+          }}
+        />
+      );
+
+      await waitFor(() => {
+        expect(mockStartBroadcast).toHaveBeenCalled();
+        expect(currentLectureRecorderState.startRecording).toHaveBeenCalled();
+      });
+
+      // Test stopping synchronized broadcast via controller
+      await act(async () => {
+        await broadcastController?.stopBroadcast();
+      });
+      expect(mockStopBroadcast).toHaveBeenCalled();
+
+      // Test timeline review mode fetching historical screen + webcam screenshots
+      firestoreMod.getDocs.mockResolvedValue({
+        empty: false,
+        docs: [
+          {
+            data: () => ({
+              channel: 'screen',
+              imagePath: 'screenshots/CLASS_101/s_1/hist_screen.jpg',
+              timestamp: fixedDate,
+            }),
+          },
+          {
+            data: () => ({
+              channel: 'webcam',
+              imagePath: 'screenshots/CLASS_101/s_1/hist_webcam.jpg',
+              timestamp: fixedDate,
+            }),
+          },
+        ],
+      });
+
+      const slider = screen.getByRole('slider');
+      const reviewTs = new Date('2026-08-30T09:00:00Z').getTime();
+      fireEvent.change(slider, { target: { value: String(reviewTs) } });
+
+      await act(async () => {
+        vi.advanceTimersByTime(600);
+      });
+
+      await waitFor(() => {
+        expect(firestoreMod.getDocs).toHaveBeenCalled();
+      });
+    } finally {
+      window.AudioContext = origAudioCtx;
+      window.MediaStream = origMediaStream;
+    }
   });
 });
 

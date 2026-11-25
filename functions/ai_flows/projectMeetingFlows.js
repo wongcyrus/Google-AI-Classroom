@@ -14,7 +14,7 @@ import { generateWithResilience } from './analysisFlows.js';
 import { calculateCost, estimateCost } from './cost.js';
 import { logJob } from './jobLogger.js';
 import { checkQuota } from './quotaManagement.js';
-import { isAdminCaller, isTeacherInClassData } from './authHelpers.js';
+import { isAdminCaller, isTeacherInClassData, isStudentInClassData } from './authHelpers.js';
 
 const db = getFirestore();
 const storage = getStorage();
@@ -1798,6 +1798,219 @@ export const batchEmailProjectMeetingReports = onCall(
       customNote,
       onlyAnalyzed,
       portalUrl,
+      auth: request.auth,
+    });
+  }
+);
+
+const normalizeStudentIdentity = (val) => String(val || '').replace(/\s+/g, '').toLowerCase();
+
+function serializeProjectFieldDate(val) {
+  if (!val) return val ?? null;
+  if (typeof val.toDate === 'function') return val.toDate().toISOString();
+  if (val instanceof Date) return val.toISOString();
+  if (typeof val === 'object' && typeof val._seconds === 'number') {
+    return new Date(val._seconds * 1000).toISOString();
+  }
+  if (typeof val === 'object' && typeof val.seconds === 'number') {
+    return new Date(val.seconds * 1000).toISOString();
+  }
+  return val;
+}
+
+function extractQueryDocs(snap) {
+  if (!snap) return [];
+  if (Array.isArray(snap.docs)) return snap.docs;
+  const out = [];
+  if (typeof snap.forEach === 'function') {
+    snap.forEach((d) => out.push(d));
+  }
+  return out;
+}
+
+/**
+ * Fetches student-scoped Capstone project group, supervision meetings, and weekly log profile
+ * strictly stripped of classmate names, emails, UIDs, raw transcripts, and other students' logs.
+ */
+export async function handleGetStudentProjectRecords({ classId, auth }) {
+  if (!auth?.uid && !isAdminCaller(auth)) {
+    throw new HttpsError('unauthenticated', 'User must be authenticated.');
+  }
+  if (!classId || typeof classId !== 'string') {
+    throw new HttpsError('invalid-argument', 'Missing required classId.');
+  }
+
+  const classSnap = await db.doc(`classes/${classId}`).get();
+  if (!classSnap?.exists) {
+    throw new HttpsError('not-found', `Class ${classId} not found.`);
+  }
+  const classData = (typeof classSnap.data === 'function' ? classSnap.data() : classSnap.data) || {};
+
+  const authorized =
+    isAdminCaller(auth) ||
+    isTeacherInClassData(classData, auth) ||
+    isStudentInClassData(classData, auth);
+  if (!authorized) {
+    throw new HttpsError('permission-denied', 'You are not enrolled in this class.');
+  }
+
+  const callerUid = auth?.uid || '';
+  const callerEmail = normalizeStudentIdentity(auth?.token?.email || '');
+
+  const matchesCaller = (entry, fallbackDocId = '') => {
+    if (!entry || typeof entry !== 'object') {
+      return Boolean(callerEmail && fallbackDocId && normalizeStudentIdentity(fallbackDocId) === callerEmail);
+    }
+    if (callerUid && (entry.uid === callerUid || entry.studentUid === callerUid || fallbackDocId === callerUid)) {
+      return true;
+    }
+    const candidateEmail = normalizeStudentIdentity(entry.email || entry.studentEmail || fallbackDocId);
+    return Boolean(callerEmail && candidateEmail && candidateEmail === callerEmail);
+  };
+
+  const [groupsSnap, meetingsSnap, profilesSnap] = await Promise.all([
+    db.collection(`classes/${classId}/projectGroups`).get(),
+    db.collection(`classes/${classId}/projectMeetings`).get(),
+    db.collection(`classes/${classId}/projectStudentProfiles`).get(),
+  ]);
+
+  const allGroups = extractQueryDocs(groupsSnap).map((d) => ({ id: d.id, ...(d.data() || {}) }));
+  const foundGroup = allGroups.find((g) => (g.members || []).some((m) => matchesCaller(m))) || null;
+
+  let myProjectGroup = null;
+  if (foundGroup) {
+    const rawMembers = Array.isArray(foundGroup.members) ? foundGroup.members : [];
+    const members = rawMembers.map((m, idx) => {
+      const isMe = matchesCaller(m);
+      return {
+        id: isMe ? 'me' : `teammate_${idx + 1}`,
+        role: m?.role || 'Member',
+        isMe,
+      };
+    });
+    myProjectGroup = {
+      id: foundGroup.id,
+      name: foundGroup.name || 'Project Group',
+      projectTopic: foundGroup.projectTopic || '',
+      supervisorName: foundGroup.supervisorName || '',
+      supervisorEmail: foundGroup.supervisorEmail || '',
+      coSupervisorEmails: Array.isArray(foundGroup.coSupervisorEmails) ? foundGroup.coSupervisorEmails : [],
+      teamSize: rawMembers.length,
+      members,
+    };
+  }
+
+  const allMeetings = extractQueryDocs(meetingsSnap).map((d) => ({ id: d.id, ...(d.data() || {}) }));
+  const matchedMeetings = allMeetings.filter((m) => {
+    const isGroupMatch = myProjectGroup && m.groupId === myProjectGroup.id;
+    const isAttendanceMatch = (m.attendanceRecord || []).some((a) => matchesCaller(a));
+    const isContributionMatch = (m.studentContributions || []).some((c) => matchesCaller(c));
+    return isGroupMatch || isAttendanceMatch || isContributionMatch;
+  });
+
+  matchedMeetings.sort((a, b) => (Number(b.weekNumber) || 0) - (Number(a.weekNumber) || 0));
+
+  const sanitizeMediaClips = (list) =>
+    Array.isArray(list)
+      ? list.map((item) => ({
+          id: item?.id || null,
+          clipId: item?.clipId || null,
+          photoId: item?.photoId || null,
+          label: item?.label || null,
+          type: item?.type || null,
+          downloadUrl: item?.downloadUrl || null,
+        }))
+      : [];
+
+  const myProjectMeetings = matchedMeetings.map((m) => {
+    const rawAtt = (m.attendanceRecord || []).find((a) => matchesCaller(a)) || null;
+    const safeAtt = rawAtt
+      ? {
+          isMe: true,
+          status: rawAtt.status || 'pending',
+          speakingContribution: rawAtt.speakingContribution || null,
+          firstHeardSec: rawAtt.firstHeardSec ?? null,
+          firstHeardTimestamp: rawAtt.firstHeardTimestamp || null,
+          evidence: rawAtt.evidence || null,
+        }
+      : null;
+
+    const rawContrib = (m.studentContributions || []).find((c) => matchesCaller(c)) || null;
+    let safeContrib = null;
+    if (rawContrib) {
+      safeContrib = {
+        isMe: true,
+        realWorkScore: rawContrib.realWorkScore ?? null,
+        logQualityScore: rawContrib.logQualityScore ?? null,
+        weeklyLogScore: rawContrib.weeklyLogScore ?? null,
+        logQualityAssessment: rawContrib.logQualityAssessment || null,
+        weeklyFeedback: rawContrib.weeklyFeedback || null,
+        supervisorFeedback: rawContrib.supervisorFeedback || null,
+        challengeQuestions: Array.isArray(rawContrib.challengeQuestions) ? rawContrib.challengeQuestions : [],
+      };
+      if (Array.isArray(rawContrib.workCompleted)) safeContrib.workCompleted = rawContrib.workCompleted;
+      if (Array.isArray(rawContrib.workDone)) safeContrib.workDone = rawContrib.workDone;
+      if (Array.isArray(rawContrib.verifiedTasks)) safeContrib.verifiedTasks = rawContrib.verifiedTasks;
+      if (Array.isArray(rawContrib.actionItemsNextWeek)) safeContrib.actionItemsNextWeek = rawContrib.actionItemsNextWeek;
+      if (Array.isArray(rawContrib.actionItems)) safeContrib.actionItems = rawContrib.actionItems;
+    }
+
+    const safeKeyInsights = m.keyInsights && typeof m.keyInsights === 'object'
+      ? {
+          overallGroupProgress: m.keyInsights.overallGroupProgress || null,
+          executiveSummary: m.keyInsights.executiveSummary || null,
+          weeklyGroupFeedback: m.keyInsights.weeklyGroupFeedback || null,
+        }
+      : null;
+
+    return {
+      id: m.id,
+      groupId: m.groupId || null,
+      groupName: m.groupName || null,
+      weekNumber: m.weekNumber ?? null,
+      title: m.title || null,
+      meetingDate: serializeProjectFieldDate(m.meetingDate),
+      supervisorName: m.supervisorName || null,
+      supervisorEmail: m.supervisorEmail || null,
+      keyInsights: safeKeyInsights,
+      attendanceRecord: safeAtt ? [safeAtt] : [],
+      studentContributions: safeContrib ? [safeContrib] : [],
+      audioClips: sanitizeMediaClips(m.audioClips),
+      screenClips: sanitizeMediaClips(m.screenClips),
+      photos: sanitizeMediaClips(m.photos),
+    };
+  });
+
+  const allProfiles = extractQueryDocs(profilesSnap).map((d) => ({ docId: d.id, ...(d.data() || {}) }));
+  const foundProfile = allProfiles.find((p) => matchesCaller(p, p.docId)) || null;
+  const myProjectProfile = foundProfile
+    ? {
+        id: 'me',
+        weeklyLogEntries: Array.isArray(foundProfile.weeklyLogEntries) ? foundProfile.weeklyLogEntries : [],
+      }
+    : null;
+
+  return {
+    myProjectGroup,
+    myProjectMeetings,
+    myProjectProfile,
+  };
+}
+
+/**
+ * Callable Cloud Function: getStudentProjectRecords
+ */
+export const getStudentProjectRecords = onCall(
+  {
+    region: FUNCTION_REGION,
+    cors: CORS_ORIGINS,
+    memory: '256MiB',
+    timeoutSeconds: 60,
+  },
+  async (request) => {
+    const { classId } = request.data || {};
+    return await handleGetStudentProjectRecords({
+      classId,
       auth: request.auth,
     });
   }

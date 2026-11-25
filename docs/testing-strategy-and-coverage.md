@@ -30,12 +30,12 @@ The project uses a four-tier automated testing pyramid designed to ensure bullet
 
 ```mermaid
 flowchart TD
-    subgraph Pyramid [Multi-Tier Automated Test Pyramid - >2,575 Passing Tests & Assertions]
+    subgraph Pyramid [Multi-Tier Automated Test Pyramid - >2,715 Passing Tests & Assertions]
         direction TB
         L4[Level 4: Live E2E & System Smoke Suite - 35 Assertions]
-        L3[Level 3: Real-Token Security Rules Verification - 75 Assertions]
+        L3[Level 3: Real-Token Security Rules Verification - 110 Assertions]
         L2[Level 2: Backend Cloud Functions Logic - 708 Tests across 6 Codebases]
-        L1[Level 1: Frontend React Component & Hook Unit Tests - 1,757 Tests across 154 Suites]
+        L1[Level 1: Frontend React Component & Hook Unit Tests - 1,865 Tests across 157 Suites]
         
         L4 --> L3 --> L2 --> L1
     end
@@ -67,7 +67,7 @@ flowchart TD
 ## 🔬 Test Suite Breakdown
 
 ### 1. Frontend Component & Hook Suite (`web-app/src/`)
-* **Framework**: `vitest` + `@testing-library/react` + `@testing-library/jest-dom` + `jsdom` (154 Test Files / 1,757 Tests).
+* **Framework**: `vitest` + `@testing-library/react` + `@testing-library/jest-dom` + `jsdom` (157 Test Files / 1,865 Tests).
 * **Covered Modules**:
   * `web-app/src/components/meetings/ProjectMeetingsView.test.jsx` & `web-app/src/utils/projectGroupUtils.test.js`: 24 comprehensive tests validating **91.16% Lines** on `projectGroupUtils.js`, **89.69% Stmts** on `ProjectGroupEditorModal.jsx`, and **81.25% Lines** on `ProjectMeetingsView.jsx` (including photo artifact capture, canvas image compression, lightbox viewer, 720p mobile demo video recording with seamless voice auto-slicing Part 1 $\to$ Demo $\to$ Part 2, clip movement, session transfers, stale analysis auto-invalidation, batch mode 1 queuing with `isMeetingPendingAnalysis`, and whole-class email dispatch) (VTC `@stu.vtc.edu.hk` email normalization, 1-digit Student ID typo self-healing, class schedule Monday Week 1 anchoring, holiday week skipping without penalty, multi-supervisor same-week meeting aggregation, on-demand Google Sheet CSV backfill & incremental profile ingestion, Gemini pre-meeting fake/AI log challenge questions, and Excel/Markdown exports).
   * `web-app/src/utils/examPeriodUtils.test.js`: 6 tests validating 100% lines/stmts/branch/funcs for exam period date boundaries, active exam period detection, and policy lookups (`disabled`, `delayed_release`).
@@ -109,6 +109,7 @@ flowchart TD
   * `web-app/src/components/monitor/StudentsGrid.test.jsx`: Validates negative clock-drift tolerance (student timestamp up to 60s ahead of teacher clock), freshness window boundary enforcement (`Math.max(frameRate * 3, 30)`), and empty/stale state filtering.
   * `web-app/src/components/StudentScreen.test.jsx`: Tests dual feeds, webcam placeholders, looking-away / no-face / multiple-people alerts, eyes-closed (`😴 Eyes Closed / Sleeping`) and talking (`🗣️ Talking / Whispering`) badges, eager image loading attributes (`loading="eager"`, `fetchPriority="high"`, `decoding="async"`), and AI model loading status indicators (`⏳ 65%`).
   * `web-app/src/hooks/useTeacherScreenBroadcast.test.js`: Validates teacher pure frame broadcaster lifecycle, offscreen canvas 720p clamping, 32x18 thumbnail pixel delta diffing (emits on visual change or 5s heartbeat), viewer tracking from `screenBroadcastViewers`, and clean teardown without WebRTC peer connection overhead.
+  * `web-app/src/components/TeacherScreenBroadcastModal.test.jsx`: 37 tests covering the 2-step setup wizard, Stream & Record vs. Live Stream Only modes, Public Presentation PIN/QR setup, live VU metering, handover controls, auto-minimize via `onClose` on broadcast start (keeping setup open with error alert on cancellation/failure), and safe `Close & Continue Broadcast` / `Hide Studio (Keep Live)` vs. `Stop Screen Broadcast` controls.
   * `web-app/src/hooks/useTeacherScreenBroadcastStudent.test.js`: Validates student receiver subscription to `classes/{classId}/screenBroadcast/liveFrame`, presence registration in `screenBroadcastViewers`, frame sequence ordering, and clean disconnect handling.
   * `web-app/src/utils/aiCostAggregator.test.js`: Validates 9 aggregation scenarios including job type breakdown, Gemini model grouping, per-student spend matrix, date range slicing, empty job state handling, and unit economics calculations.
   * `web-app/src/utils/aiCostCsvExporter.test.js`: Validates multi-sheet Excel generation (`exportAiCostToExcel`) with bold styling, multi-section summaries, itemized audit trails, resolved student names, and browser Blob download triggering.
@@ -187,12 +188,12 @@ functions/ai_flows                 |   90.16 |    73.07 |   91.48 |   90.65 | �
 -----------------------------------|---------|----------|---------|---------|----------------------
 web-app (constants)                |   96.72 |    89.80 |  100.00 |   99.04 | 🟢 Exceeds >= 90% Target
 web-app (schemas)                  |  100.00 |    95.23 |  100.00 |  100.00 | 🟢 Complete (100%)
-web-app (utils)                    |   90.05 |    77.50 |   91.83 |   92.08 | 🟢 Exceeds >= 90% Target
+web-app (utils)                    |   90.89 |    79.10 |   93.40 |   92.85 | 🟢 Exceeds >= 90% Target
 web-app (workers)                  |   90.46 |    72.22 |   87.50 |   91.37 | 🟢 Exceeds >= 90% Target
 web-app (components/meetings)      |   88.94 |    71.47 |   87.24 |   91.18 | 🟢 Exceeds >= 90% Target
-web-app (hooks)                    |   83.30 |    67.86 |   82.81 |   85.05 | 🟢 High Functional (>85%)
-web-app (components)               |   75.97 |    66.16 |   74.84 |   77.79 | 🟢 High Functional (~78%)
-web-app (all files)                |   81.05 |    69.43 |   78.95 |   82.95 | 🟢 Solid Baseline (~83%)
+web-app (hooks)                    |   85.12 |    69.45 |   84.38 |   86.80 | 🟢 High Functional (>86%)
+web-app (components)               |   78.40 |    68.10 |   76.95 |   80.42 | 🟢 High Functional (>80%)
+web-app (all files)                |   82.02 |    70.39 |   79.50 |   84.08 | 🟢 Solid Baseline (>84%)
 ===================================================================================================
 ```
 

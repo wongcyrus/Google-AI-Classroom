@@ -247,6 +247,86 @@ describe('Teacher Screen Modals Suite', () => {
       fireEvent.error(img);
       expect(onFrameError).toHaveBeenCalledTimes(1);
     });
+
+    it('supports touch drag-to-pan, class switcher dropdown, refresh statuses, and fullscreen/floating restore buttons', () => {
+      const onSelectClass = vi.fn();
+      const onClose = vi.fn();
+      const { rerender, container } = render(
+        <TeacherScreenViewerModal
+          {...defaultProps}
+          onClose={onClose}
+          classId="CS101"
+          activeClassIds={['CS101', 'CS202']}
+          userClasses={[
+            { id: 'CS101', name: 'Intro to CS' },
+            { id: 'CS202', name: 'Advanced AI' },
+          ]}
+          onSelectClass={onSelectClass}
+          onRefreshFrame={vi.fn()}
+          isRefreshing={true}
+          refreshStatus="idle"
+        />
+      );
+
+      // Class switcher select
+      const classSelect = screen.getByLabelText('Switch Class in Broadcast Viewer');
+      expect(classSelect).toBeInTheDocument();
+      fireEvent.change(classSelect, { target: { value: 'CS202' } });
+      expect(onSelectClass).toHaveBeenCalledWith('CS202');
+
+      // Refreshing state
+      expect(screen.getByRole('button', { name: /Refresh Slide/i })).toHaveTextContent('⏳ Refreshing...');
+
+      // Rerender with up_to_date refreshStatus
+      rerender(
+        <TeacherScreenViewerModal
+          {...defaultProps}
+          onClose={onClose}
+          onRefreshFrame={vi.fn()}
+          isRefreshing={false}
+          refreshStatus="up_to_date"
+        />
+      );
+      expect(screen.getByRole('button', { name: /Refresh Slide/i })).toHaveTextContent('✓ Up to Date');
+
+      // Zoom in and test touch drag-to-pan
+      fireEvent.click(screen.getByRole('button', { name: /Zoom In/i }));
+      const videoBox = container.querySelector('.teacher-stream-video-box');
+      fireEvent.touchStart(videoBox, { touches: [{ clientX: 100, clientY: 100 }] });
+      fireEvent.touchMove(videoBox, { touches: [{ clientX: 140, clientY: 130 }] });
+      fireEvent.touchEnd(videoBox);
+      const frameImg = screen.getByRole('img', { name: /Teacher Live Screen/i });
+      expect(frameImg.style.transform).toContain('translate(40px, 30px)');
+
+      // Test dialog cancel when zoomed in -> resets zoom to 100%
+      const dialogEl = container.querySelector('dialog');
+      fireEvent(dialogEl, new Event('cancel', { cancelable: true }));
+      expect(screen.getByRole('button', { name: /Reset Zoom/i })).toHaveTextContent('100%');
+
+      // Switch to fullscreen, test Escape and cancel, and test Exit Fullscreen button
+      fireEvent.click(screen.getByRole('button', { name: /Max/i }));
+      expect(screen.getByRole('button', { name: /Exit Fullscreen \(Esc\)/i })).toBeInTheDocument();
+      fireEvent(dialogEl, new Event('cancel', { cancelable: true }));
+      expect(screen.getByRole('button', { name: /Standard/i })).toHaveClass('active');
+
+      // Enter fullscreen again and click overlay Exit Fullscreen button
+      fireEvent.click(screen.getByRole('button', { name: /Max/i }));
+      fireEvent.click(screen.getByRole('button', { name: /✕ Exit Fullscreen \(Esc\)/i }));
+      expect(screen.getByRole('button', { name: /Standard/i })).toHaveClass('active');
+
+      // Switch to floating mode and test Restore to Standard View button & Escape key
+      fireEvent.click(screen.getByRole('button', { name: /Float/i }));
+      fireEvent.click(screen.getByRole('button', { name: /⤢ Standard View/i }));
+      expect(screen.getByRole('button', { name: /Standard/i })).toHaveClass('active');
+
+      fireEvent.click(screen.getByRole('button', { name: /Float/i }));
+      fireEvent.keyDown(window, { key: 'Escape' });
+      expect(screen.getByRole('button', { name: /Standard/i })).toHaveClass('active');
+
+      // Dialog cancel in docked mode calls onClose
+      fireEvent(dialogEl, new Event('cancel', { cancelable: true }));
+      expect(onClose).toHaveBeenCalled();
+    });
   });
 
   describe('TeacherScreenBroadcastModal', () => {

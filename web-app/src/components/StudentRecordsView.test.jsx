@@ -54,9 +54,9 @@ vi.mock('firebase/firestore', () => ({
 }));
 
 vi.mock('./VideoPlayerModal', () => ({
-  default: ({ show, onClose, videoUrl }) =>
+  default: ({ show, onClose, videoUrl, hideAudioTrack }) =>
     show ? (
-      <div data-testid="video-player-modal">
+      <div data-testid="video-player-modal" data-hide-audio={String(Boolean(hideAudioTrack))}>
         <span>Video URL: {videoUrl}</span>
         <button onClick={onClose}>Close Player</button>
       </div>
@@ -110,21 +110,67 @@ describe('StudentRecordsView Component', () => {
     email: 'student@vtc.edu.hk',
   };
 
+  let mockLessonsCallable;
+  let mockProjectRecordsCallable;
+  let mockDefaultCallable;
+
   beforeEach(() => {
     vi.clearAllMocks();
 
+    mockLessonsCallable = vi.fn(async ({ classId } = {}) => {
+      if (classId === 'CLASS_A') {
+        return {
+          data: {
+            lessons: [
+              {
+                lessonId: 'lesson_1',
+                classId: 'CLASS_A',
+                startTime: '2026-09-12T09:00:00Z',
+                endTime: '2026-09-12T10:00:00Z',
+                generalSummary: 'Comprehensive introduction to Docker containers.',
+                generalFeedback: 'Class engaged actively in lab tasks.',
+                studentEntry: {
+                  sharedScreenMinutes: 55,
+                  workingMinutes: 48,
+                  attendance: [1, 1, 1, 1, 0, 1],
+                  feedback: 'Active participation throughout the lab session.',
+                },
+              },
+            ],
+          },
+        };
+      }
+      return { data: { lessons: [] } };
+    });
+
+    mockProjectRecordsCallable = vi.fn().mockResolvedValue({
+      data: {
+        myProjectGroup: null,
+        myProjectMeetings: [],
+        myProjectProfile: null,
+      },
+    });
+
+    mockDefaultCallable = vi.fn().mockResolvedValue({ data: {} });
+
+    mockHttpsCallable.mockImplementation((funcs, name) => {
+      if (name === 'getStudentLessons') return (...args) => mockLessonsCallable(...args);
+      if (name === 'getStudentProjectRecords') return (...args) => mockProjectRecordsCallable(...args);
+      return (...args) => mockDefaultCallable(...args);
+    });
+
     // Default mock for getDoc: profile has classes ['CLASS_A']
     mockGetDoc.mockImplementation(async (docRef) => {
-      if (docRef.col === 'studentProfiles' || docRef.id === 'student-test-123') {
+      if (docRef.path === 'studentProfiles/student-test-123') {
         return {
           exists: () => true,
           data: () => ({ classes: ['CLASS_A'] }),
         };
       }
-      if (docRef.col === 'classes' || docRef.id === 'CLASS_A') {
+      if (docRef.path === 'classes/CLASS_A/studentConfig/public') {
         return {
           exists: () => true,
-          id: 'CLASS_A',
+          id: 'public',
           data: () => ({ name: 'Cloud Computing 101', studentRecordingsPolicy: 'always_enabled' }),
         };
       }
@@ -247,30 +293,6 @@ describe('StudentRecordsView Component', () => {
         };
       }
 
-      if (colPath && colPath.includes('lessons')) {
-        return {
-          docs: [
-            {
-              id: 'lesson_1',
-              data: () => ({
-                startTime: '2026-09-12T09:00:00Z',
-                endTime: '2026-09-12T10:00:00Z',
-                generalSummary: 'Comprehensive introduction to Docker containers.',
-                generalFeedback: 'Class engaged actively in lab tasks.',
-                students: {
-                  'student-test-123': {
-                    sharedScreenMinutes: 55,
-                    workingMinutes: 48,
-                    attendance: [1, 1, 1, 1, 0, 1],
-                    feedback: 'Active participation throughout the lab session.',
-                  },
-                },
-              }),
-            },
-          ],
-        };
-      }
-
       return { docs: [] };
     });
   });
@@ -292,7 +314,7 @@ describe('StudentRecordsView Component', () => {
   });
 
   it('renders compiled video recordings tab and triggers video playback modal', async () => {
-    mockHttpsCallable.mockReturnValue(vi.fn().mockResolvedValue({ data: { url: 'https://cdn.signed/video.mp4' } }));
+    mockDefaultCallable = vi.fn().mockResolvedValue({ data: { url: 'https://cdn.signed/video.mp4' } });
 
     render(<StudentRecordsView user={mockUser} />);
 
@@ -435,13 +457,13 @@ describe('StudentRecordsView Component', () => {
 
   it('enforces disabled screen recordings policy and displays security banner and locked buttons', async () => {
     mockGetDoc.mockImplementation(async (docRef) => {
-      if (docRef.col === 'studentProfiles' || docRef.id === 'student-test-123') {
+      if (docRef.path === 'studentProfiles/student-test-123') {
         return { exists: () => true, data: () => ({ classes: ['CLASS_EXAM'] }) };
       }
-      if (docRef.col === 'classes' || docRef.id === 'CLASS_EXAM') {
+      if (docRef.path === 'classes/CLASS_EXAM/studentConfig/public') {
         return {
           exists: () => true,
-          id: 'CLASS_EXAM',
+          id: 'public',
           data: () => ({
             name: 'Midterm Exam Class',
             studentRecordingsPolicy: 'disabled',
@@ -498,13 +520,13 @@ describe('StudentRecordsView Component', () => {
 
   it('defaults to disabled screen recordings policy when class configuration omits studentRecordingsPolicy', async () => {
     mockGetDoc.mockImplementation(async (docRef) => {
-      if (docRef.col === 'studentProfiles' || docRef.id === 'student-test-123') {
+      if (docRef.path === 'studentProfiles/student-test-123') {
         return { exists: () => true, data: () => ({ classes: ['CLASS_UNCONFIGURED'] }) };
       }
-      if (docRef.col === 'classes' || docRef.id === 'CLASS_UNCONFIGURED') {
+      if (docRef.path === 'classes/CLASS_UNCONFIGURED/studentConfig/public') {
         return {
           exists: () => true,
-          id: 'CLASS_UNCONFIGURED',
+          id: 'public',
           data: () => ({
             name: 'Unconfigured Policy Lab',
             // studentRecordingsPolicy omitted to test default
@@ -554,13 +576,13 @@ describe('StudentRecordsView Component', () => {
   it('enforces delayed_release policy when release date is in the future', async () => {
     const futureDate = '2030-01-01T00:00:00Z';
     mockGetDoc.mockImplementation(async (docRef) => {
-      if (docRef.col === 'studentProfiles' || docRef.id === 'student-test-123') {
+      if (docRef.path === 'studentProfiles/student-test-123') {
         return { exists: () => true, data: () => ({ classes: ['CLASS_DELAY'] }) };
       }
-      if (docRef.col === 'classes' || docRef.id === 'CLASS_DELAY') {
+      if (docRef.path === 'classes/CLASS_DELAY/studentConfig/public') {
         return {
           exists: () => true,
-          id: 'CLASS_DELAY',
+          id: 'public',
           data: () => ({
             name: 'Final Project Exam',
             studentRecordingsPolicy: 'delayed_release',
@@ -611,13 +633,13 @@ describe('StudentRecordsView Component', () => {
 
   it('strictly excludes videos from defined exam periods and displays assessment integrity notice', async () => {
     mockGetDoc.mockImplementation(async (docRef) => {
-      if (docRef.col === 'studentProfiles' || docRef.id === 'student-test-123') {
+      if (docRef.path === 'studentProfiles/student-test-123') {
         return { exists: () => true, data: () => ({ classes: ['CLASS_MIXED'] }) };
       }
-      if (docRef.col === 'classes' || docRef.id === 'CLASS_MIXED') {
+      if (docRef.path === 'classes/CLASS_MIXED/studentConfig/public') {
         return {
           exists: () => true,
-          id: 'CLASS_MIXED',
+          id: 'public',
           data: () => ({
             name: 'Hybrid Lab & Exam Class',
             studentRecordingsPolicy: 'always_enabled',
@@ -766,64 +788,56 @@ describe('StudentRecordsView Component', () => {
   it('filters all tabs (videos, tasks, alerts, audio) to the selected lesson and allows viewing all lessons', async () => {
     // Setup two lessons a week apart with records in each
     mockGetDoc.mockImplementation(async (docRef) => {
-      if (docRef.col === 'studentProfiles' || docRef.id === 'student-test-123') {
+      if (docRef.path === 'studentProfiles/student-test-123') {
         return {
           exists: () => true,
           data: () => ({ classes: ['CLASS_FILTER_TEST'] }),
         };
       }
-      if (docRef.col === 'classes' || docRef.id === 'CLASS_FILTER_TEST') {
+      if (docRef.path === 'classes/CLASS_FILTER_TEST/studentConfig/public') {
         return {
           exists: () => true,
-          id: 'CLASS_FILTER_TEST',
+          id: 'public',
           data: () => ({ name: 'Filter Verification Class' }),
         };
       }
       return { exists: () => false };
     });
 
+    mockLessonsCallable = vi.fn().mockResolvedValue({
+      data: {
+        lessons: [
+          {
+            lessonId: 'lesson_sept_08',
+            classId: 'CLASS_FILTER_TEST',
+            startTime: '2026-09-08T09:00:00Z',
+            endTime: '2026-09-08T10:00:00Z',
+            duration: 60,
+            studentEntry: {
+              sharedScreenMinutes: 45,
+              workingMinutes: 40,
+              attendance: [1, 1, 1],
+            },
+          },
+          {
+            lessonId: 'lesson_sept_01',
+            classId: 'CLASS_FILTER_TEST',
+            startTime: '2026-09-01T09:00:00Z',
+            endTime: '2026-09-01T10:00:00Z',
+            duration: 60,
+            studentEntry: {
+              sharedScreenMinutes: 50,
+              workingMinutes: 45,
+              attendance: [1, 1, 1],
+            },
+          },
+        ],
+      },
+    });
+
     mockGetDocs.mockImplementation(async (queryOrCol) => {
       const args = queryOrCol?.args || [];
       const colPath = queryOrCol?.path || (args[0]?.path);
-
-      if (colPath && colPath.includes('lessons')) {
-        return {
-          docs: [
-            {
-              id: 'lesson_sept_08',
-              data: () => ({
-                classId: 'CLASS_FILTER_TEST',
-                startTime: '2026-09-08T09:00:00Z',
-                endTime: '2026-09-08T10:00:00Z',
-                duration: 60,
-                students: {
-                  'student-test-123': {
-                    sharedScreenMinutes: 45,
-                    workingMinutes: 40,
-                    attendance: [1, 1, 1],
-                  },
-                },
-              }),
-            },
-            {
-              id: 'lesson_sept_01',
-              data: () => ({
-                classId: 'CLASS_FILTER_TEST',
-                startTime: '2026-09-01T09:00:00Z',
-                endTime: '2026-09-01T10:00:00Z',
-                duration: 60,
-                students: {
-                  'student-test-123': {
-                    sharedScreenMinutes: 50,
-                    workingMinutes: 45,
-                    attendance: [1, 1, 1],
-                  },
-                },
-              }),
-            },
-          ],
-        };
-      }
 
       if (colPath && colPath.includes('videoJobs')) {
         return {
@@ -996,16 +1010,16 @@ describe('StudentRecordsView Component', () => {
 
   it('generates scheduled lessons from class schedule even when no lesson documents exist in Firestore subcollection', async () => {
     mockGetDoc.mockImplementation(async (docRef) => {
-      if (docRef.col === 'studentProfiles' || docRef.id === 'student-test-123') {
+      if (docRef.path === 'studentProfiles/student-test-123') {
         return {
           exists: () => true,
           data: () => ({ classes: ['CLASS_SCHEDULED'] }),
         };
       }
-      if (docRef.id === 'CLASS_SCHEDULED') {
+      if (docRef.path === 'classes/CLASS_SCHEDULED/studentConfig/public') {
         return {
           exists: () => true,
-          id: 'CLASS_SCHEDULED',
+          id: 'public',
           data: () => ({
             name: 'Daily Schedule Demo',
             schedule: {
@@ -1022,7 +1036,8 @@ describe('StudentRecordsView Component', () => {
       return { exists: () => false };
     });
 
-    // No lesson documents in subcollection
+    // No lesson documents from callable
+    mockLessonsCallable = vi.fn().mockResolvedValue({ data: { lessons: [] } });
     mockGetDocs.mockImplementation(async (queryOrCol) => {
       return { docs: [] };
     });
@@ -1044,16 +1059,16 @@ describe('StudentRecordsView Component', () => {
 
   it('synthesizes discovered lessons for all student screencasts ensuring dropdown shows all 3 lessons when screens have 3 recordings', async () => {
     mockGetDoc.mockImplementation(async (docRef) => {
-      if (docRef.col === 'studentProfiles' || docRef.id === 'student-test-123') {
+      if (docRef.path === 'studentProfiles/student-test-123') {
         return {
           exists: () => true,
           data: () => ({ classes: ['CLASS_3_SCREENS'] }),
         };
       }
-      if (docRef.id === 'CLASS_3_SCREENS') {
+      if (docRef.path === 'classes/CLASS_3_SCREENS/studentConfig/public') {
         return {
           exists: () => true,
-          id: 'CLASS_3_SCREENS',
+          id: 'public',
           data: () => ({
             name: 'Demo Class 3 Screens',
             schedule: null, // No fixed schedule
@@ -1063,7 +1078,25 @@ describe('StudentRecordsView Component', () => {
       return { exists: () => false };
     });
 
-    // Only 1 lesson document in Firestore subcollection (Sept 1)
+    mockLessonsCallable = vi.fn().mockResolvedValue({
+      data: {
+        lessons: [
+          {
+            lessonId: 'lesson_doc_sep1',
+            classId: 'CLASS_3_SCREENS',
+            startTime: '2026-09-01T10:00:00Z',
+            endTime: '2026-09-01T11:00:00Z',
+            studentEntry: {
+              attendance: [1, 1],
+              sharedScreenMinutes: 2,
+              workingMinutes: 2,
+            },
+          },
+        ],
+      },
+    });
+
+    // Only 1 lesson document from backend callable (Sept 1)
     mockGetDocs.mockImplementation(async (queryOrCol) => {
       const args = queryOrCol?.args || [];
       const colPath = queryOrCol?.path || (args[0]?.path);
@@ -1105,27 +1138,6 @@ describe('StudentRecordsView Component', () => {
         };
       }
 
-      if (colPath && colPath.includes('lessons')) {
-        return {
-          docs: [
-            {
-              id: 'lesson_doc_sep1',
-              data: () => ({
-                startTime: '2026-09-01T10:00:00Z',
-                endTime: '2026-09-01T11:00:00Z',
-                students: {
-                  'student-test-123': {
-                    attendance: [1, 1],
-                    sharedScreenMinutes: 2,
-                    workingMinutes: 2,
-                  },
-                },
-              }),
-            },
-          ],
-        };
-      }
-
       return { docs: [] };
     });
 
@@ -1158,47 +1170,37 @@ describe('StudentRecordsView Component', () => {
 
   it('includes lessons even if student has no studentEntry yet without dropping them from the lesson list', async () => {
     mockGetDoc.mockImplementation(async (docRef) => {
-      if (docRef.col === 'studentProfiles' || docRef.id === 'student-test-123') {
+      if (docRef.path === 'studentProfiles/student-test-123') {
         return {
           exists: () => true,
           data: () => ({ classes: ['CLASS_ABSENT'] }),
         };
       }
-      if (docRef.id === 'CLASS_ABSENT') {
+      if (docRef.path === 'classes/CLASS_ABSENT/studentConfig/public') {
         return {
           exists: () => true,
-          id: 'CLASS_ABSENT',
+          id: 'public',
           data: () => ({ name: 'Attendance Test Class' }),
         };
       }
       return { exists: () => false };
     });
 
-    // Lesson doc has other students, but NOT student-test-123
-    mockGetDocs.mockImplementation(async (queryOrCol) => {
-      const args = queryOrCol?.args || [];
-      const colPath = queryOrCol?.path || (args[0]?.path);
-
-      if (colPath && colPath.includes('lessons')) {
-        return {
-          docs: [
-            {
-              id: 'lesson_other_student_only',
-              data: () => ({
-                startTime: '2026-09-02T09:00:00Z',
-                endTime: '2026-09-02T10:00:00Z',
-                students: {
-                  'other-student-999': {
-                    attendance: [1, 1],
-                  },
-                },
-              }),
-            },
-          ],
-        };
-      }
-      return { docs: [] };
+    // Server callable strips other-student-999 and returns studentEntry: null for absent caller
+    mockLessonsCallable = vi.fn().mockResolvedValue({
+      data: {
+        lessons: [
+          {
+            lessonId: 'lesson_other_student_only',
+            classId: 'CLASS_ABSENT',
+            startTime: '2026-09-02T09:00:00Z',
+            endTime: '2026-09-02T10:00:00Z',
+            studentEntry: null,
+          },
+        ],
+      },
     });
+    mockGetDocs.mockImplementation(async () => ({ docs: [] }));
 
     render(<StudentRecordsView user={mockUser} />);
 
@@ -1272,13 +1274,13 @@ describe('StudentRecordsView Component', () => {
 
     it('strictly prevents exam recordings from synthesizing discovered lessons in the dropdown', async () => {
       mockGetDoc.mockImplementation(async (docRef) => {
-        if (docRef.col === 'studentProfiles' || docRef.id === 'student-test-123') {
+        if (docRef.path === 'studentProfiles/student-test-123') {
           return { exists: () => true, data: () => ({ classes: ['CLASS_EXAM_SYNTH'] }) };
         }
-        if (docRef.id === 'CLASS_EXAM_SYNTH') {
+        if (docRef.path === 'classes/CLASS_EXAM_SYNTH/studentConfig/public') {
           return {
             exists: () => true,
-            id: 'CLASS_EXAM_SYNTH',
+            id: 'public',
             data: () => ({
               name: 'Exam Synth Test Class',
               examPeriods: [
@@ -1351,13 +1353,13 @@ describe('StudentRecordsView Component', () => {
 
     it('shields exam speech transcripts and displays confidentiality banner in Tab 5', async () => {
       mockGetDoc.mockImplementation(async (docRef) => {
-        if (docRef.col === 'studentProfiles' || docRef.id === 'student-test-123') {
+        if (docRef.path === 'studentProfiles/student-test-123') {
           return { exists: () => true, data: () => ({ classes: ['CLASS_EXAM_AUDIO'] }) };
         }
-        if (docRef.col === 'classes' || docRef.id === 'CLASS_EXAM_AUDIO') {
+        if (docRef.path === 'classes/CLASS_EXAM_AUDIO/studentConfig/public') {
           return {
             exists: () => true,
-            id: 'CLASS_EXAM_AUDIO',
+            id: 'public',
             data: () => ({
               name: 'Exam Audio Test Class',
               examPeriods: [
@@ -1432,13 +1434,13 @@ describe('StudentRecordsView Component', () => {
 
     it('shields irregularity evidence details during exam sessions in Tab 4', async () => {
       mockGetDoc.mockImplementation(async (docRef) => {
-        if (docRef.col === 'studentProfiles' || docRef.id === 'student-test-123') {
+        if (docRef.path === 'studentProfiles/student-test-123') {
           return { exists: () => true, data: () => ({ classes: ['CLASS_EXAM_IRREG'] }) };
         }
-        if (docRef.col === 'classes' || docRef.id === 'CLASS_EXAM_IRREG') {
+        if (docRef.path === 'classes/CLASS_EXAM_IRREG/studentConfig/public') {
           return {
             exists: () => true,
-            id: 'CLASS_EXAM_IRREG',
+            id: 'public',
             data: () => ({
               name: 'Exam Irregularity Class',
               examPeriods: [
@@ -1504,13 +1506,13 @@ describe('StudentRecordsView Component', () => {
 
     it('aborts getDownloadURL fallback if backend callable denies permission', async () => {
       mockGetDoc.mockImplementation(async (docRef) => {
-        if (docRef.col === 'studentProfiles' || docRef.id === 'student-test-123') {
+        if (docRef.path === 'studentProfiles/student-test-123') {
           return { exists: () => true, data: () => ({ classes: ['CLASS_SEC'] }) };
         }
-        if (docRef.col === 'classes' || docRef.id === 'CLASS_SEC') {
+        if (docRef.path === 'classes/CLASS_SEC/studentConfig/public') {
           return {
             exists: () => true,
-            id: 'CLASS_SEC',
+            id: 'public',
             data: () => ({
               name: 'Security Test Class',
               studentRecordingsPolicy: 'always_enabled'
@@ -1545,11 +1547,9 @@ describe('StudentRecordsView Component', () => {
       });
 
       // Mock callable to reject with permission-denied
-      mockHttpsCallable.mockImplementation(() => {
-        return vi.fn().mockRejectedValue({
-          code: 'permission-denied',
-          message: 'Access denied by instructor exam policy.'
-        });
+      mockDefaultCallable = vi.fn().mockRejectedValue({
+        code: 'permission-denied',
+        message: 'Access denied by instructor exam policy.'
       });
 
       const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
@@ -1662,14 +1662,18 @@ describe('StudentRecordsView Component', () => {
     });
   });
 
-  describe('Audio Playback & Practical Tasks Interactions', () => {
-    it('plays, caches, and stops audio snippets on demand', async () => {
+  describe('Audio Transcripts & Practical Tasks Interactions', () => {
+    it('displays speech transcripts without exposing voice recording playback or download controls to students', async () => {
       mockGetDoc.mockImplementation(async (docRef) => {
-        if (docRef.col === 'studentProfiles' || docRef.id === 'student-test-123') {
+        if (docRef.path === 'studentProfiles/student-test-123') {
           return { exists: () => true, data: () => ({ classes: ['CLASS_A'] }) };
         }
-        if (docRef.col === 'classes' || docRef.id === 'CLASS_A') {
-          return { exists: () => true, id: 'CLASS_A', data: () => ({ name: 'Cloud Computing 101' }) };
+        if (docRef.path === 'classes/CLASS_A/studentConfig/public') {
+          return {
+            exists: () => true,
+            id: 'public',
+            data: () => ({ name: 'Cloud Computing 101', studentRecordingsPolicy: 'always_enabled' }),
+          };
         }
         return { exists: () => false };
       });
@@ -1706,6 +1710,7 @@ describe('StudentRecordsView Component', () => {
                   language: '廣東話',
                   transcript: '請教老師關於K8s Pod網絡問題',
                   audioPath: 'audio/CLASS_A/clip1.webm',
+                  audioUrl: 'https://storage.mock/audio_clip1.webm',
                   timestamp: '2026-09-12T10:20:00Z',
                 }),
               },
@@ -1715,19 +1720,26 @@ describe('StudentRecordsView Component', () => {
         return { docs: [] };
       });
 
-      mockGetDownloadURL.mockResolvedValue('https://storage.mock/audio_clip1.webm');
-
       render(<StudentRecordsView user={mockUser} />);
 
       await waitFor(() => {
         expect(screen.getAllByText(/Cloud Computing 101/i).length).toBeGreaterThan(0);
       });
 
-      // Switch to Audio Recordings tab
+      // Verify VideoPlayerModal receives hideAudioTrack={true} when opened by student
+      const watchBtn = screen.getByRole('button', { name: /▶ Watch/i });
+      fireEvent.click(watchBtn);
+      await waitFor(() => {
+        const modal = screen.getByTestId('video-player-modal');
+        expect(modal).toBeInTheDocument();
+        expect(modal).toHaveAttribute('data-hide-audio', 'true');
+      });
+      fireEvent.click(screen.getByText('Close Player'));
+
+      // Switch to Audio Transcripts tab
       const audioTab = await screen.findByRole('tab', { name: /Audio Transcripts/i });
       fireEvent.click(audioTab);
 
-      // If scope banner is visible, click Show All Lessons
       const showAllBtn = screen.queryByRole('button', { name: /Show All Lessons/i });
       if (showAllBtn) {
         fireEvent.click(showAllBtn);
@@ -1735,253 +1747,27 @@ describe('StudentRecordsView Component', () => {
 
       await waitFor(() => {
         expect(screen.getByText('請教老師關於K8s Pod網絡問題')).toBeInTheDocument();
+        expect(screen.getByText('廣東話')).toBeInTheDocument();
       });
 
-      const playBtn = screen.getByRole('button', { name: /▶ Play Clip/i });
-      fireEvent.click(playBtn);
-
-      await waitFor(() => {
-        expect(mockGetDownloadURL).toHaveBeenCalled();
-        expect(screen.getByRole('button', { name: /⏹ Stop/i })).toBeInTheDocument();
-      });
-
-      // Clicking stop toggles playback off
-      const stopBtn = screen.getByRole('button', { name: /⏹ Stop/i });
-      fireEvent.click(stopBtn);
-
-      await waitFor(() => {
-        expect(screen.getByRole('button', { name: /▶ Play Clip/i })).toBeInTheDocument();
-      });
+      // Students must NOT have voice recording playback or download controls
+      expect(screen.queryByRole('button', { name: /▶ Play Clip/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Play All Clips Sequentially/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Combine Full Lesson Audio/i })).not.toBeInTheDocument();
+      expect(screen.queryByTitle(/Download audio snippet/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/Audio Clip & Actions/i)).not.toBeInTheDocument();
+      expect(document.querySelector('audio')).not.toBeInTheDocument();
     });
 
-    it('downloads individual audio clip snippet', async () => {
+    it('withholds exam audio transcripts during an exam session and shows assessment confidentiality banner', async () => {
       mockGetDoc.mockImplementation(async (docRef) => {
-        if (docRef.col === 'studentProfiles' || docRef.id === 'student-test-123') {
-          return { exists: () => true, data: () => ({ classes: ['CLASS_A'] }) };
-        }
-        if (docRef.col === 'classes' || docRef.id === 'CLASS_A') {
-          return {
-            exists: () => true,
-            id: 'CLASS_A',
-            data: () => ({ name: 'Cloud Computing 101', studentRecordingsPolicy: 'always_enabled' }),
-          };
-        }
-        return { exists: () => false };
-      });
-
-      mockGetDocs.mockImplementation(async (queryOrCol) => {
-        const args = queryOrCol?.args || [];
-        const colPath = queryOrCol?.path || (args[0]?.path);
-        if (colPath && colPath.includes('audio')) {
-          return {
-            docs: [
-              {
-                id: 'audio_dl_1',
-                data: () => ({
-                  classId: 'CLASS_A',
-                  studentUid: 'student-test-123',
-                  language: 'en',
-                  transcript: 'Explaining microservice architecture',
-                  audioPath: 'audio/CLASS_A/clip_dl1.webm',
-                  timestamp: '2026-09-12T10:20:00Z',
-                }),
-              },
-            ],
-          };
-        }
-        return { docs: [] };
-      });
-
-      mockGetDownloadURL.mockResolvedValue('https://storage.mock/clip_dl1.webm');
-
-      const clickSpy = vi.fn();
-      const origCreateElement = document.createElement.bind(document);
-      vi.spyOn(document, 'createElement').mockImplementation((tagName) => {
-        const el = origCreateElement(tagName);
-        if (tagName === 'a') {
-          el.click = clickSpy;
-        }
-        return el;
-      });
-
-      render(<StudentRecordsView user={mockUser} />);
-
-      await waitFor(() => {
-        expect(screen.getAllByText(/Cloud Computing 101/i).length).toBeGreaterThan(0);
-      });
-
-      const audioTab = await screen.findByRole('tab', { name: /Audio Transcripts/i });
-      fireEvent.click(audioTab);
-
-      const dlBtn = await screen.findByTitle(/Download audio snippet/i);
-      fireEvent.click(dlBtn);
-
-      await waitFor(() => {
-        expect(mockGetDownloadURL).toHaveBeenCalled();
-        expect(clickSpy).toHaveBeenCalled();
-      });
-
-      document.createElement.mockRestore();
-    });
-
-    it('plays all audio clips sequentially in playlist mode and auto-advances', async () => {
-      mockGetDoc.mockImplementation(async (docRef) => {
-        if (docRef.col === 'studentProfiles' || docRef.id === 'student-test-123') {
-          return { exists: () => true, data: () => ({ classes: ['CLASS_A'] }) };
-        }
-        if (docRef.col === 'classes' || docRef.id === 'CLASS_A') {
-          return {
-            exists: () => true,
-            id: 'CLASS_A',
-            data: () => ({ name: 'Cloud Computing 101', studentRecordingsPolicy: 'always_enabled' }),
-          };
-        }
-        return { exists: () => false };
-      });
-
-      mockGetDocs.mockImplementation(async (queryOrCol) => {
-        const args = queryOrCol?.args || [];
-        const colPath = queryOrCol?.path || (args[0]?.path);
-        if (colPath && colPath.includes('audio')) {
-          return {
-            docs: [
-              {
-                id: 'audio_seq_1',
-                data: () => ({
-                  classId: 'CLASS_A',
-                  studentUid: 'student-test-123',
-                  transcript: 'First clip',
-                  audioPath: 'audio/CLASS_A/seq1.webm',
-                  timestamp: '2026-09-12T10:20:00Z',
-                }),
-              },
-              {
-                id: 'audio_seq_2',
-                data: () => ({
-                  classId: 'CLASS_A',
-                  studentUid: 'student-test-123',
-                  transcript: 'Second clip',
-                  audioPath: 'audio/CLASS_A/seq2.webm',
-                  timestamp: '2026-09-12T10:25:00Z',
-                }),
-              },
-            ],
-          };
-        }
-        return { docs: [] };
-      });
-
-      mockGetDownloadURL.mockResolvedValue('https://storage.mock/audio.webm');
-
-      render(<StudentRecordsView user={mockUser} />);
-
-      await waitFor(() => {
-        expect(screen.getAllByText(/Cloud Computing 101/i).length).toBeGreaterThan(0);
-      });
-
-      const audioTab = await screen.findByRole('tab', { name: /Audio Transcripts/i });
-      fireEvent.click(audioTab);
-
-      const playAllBtn = await screen.findByRole('button', { name: /▶️ Play All Clips Sequentially/i });
-      fireEvent.click(playAllBtn);
-
-      await waitFor(() => {
-        expect(screen.getByRole('button', { name: /⏹ Stop Playlist/i })).toBeInTheDocument();
-      });
-
-      // Stop playlist
-      fireEvent.click(screen.getByRole('button', { name: /⏹ Stop Playlist/i }));
-      await waitFor(() => {
-        expect(screen.getByRole('button', { name: /▶️ Play All Clips Sequentially/i })).toBeInTheDocument();
-      });
-    });
-
-    it('combines full lesson audio via mergeStudentSessionAudio callable and displays player card', async () => {
-      mockGetDoc.mockImplementation(async (docRef) => {
-        if (docRef.col === 'studentProfiles' || docRef.id === 'student-test-123') {
-          return { exists: () => true, data: () => ({ classes: ['CLASS_A'] }) };
-        }
-        if (docRef.col === 'classes' || docRef.id === 'CLASS_A') {
-          return {
-            exists: () => true,
-            id: 'CLASS_A',
-            data: () => ({ name: 'Cloud Computing 101', studentRecordingsPolicy: 'always_enabled' }),
-          };
-        }
-        return { exists: () => false };
-      });
-
-      mockGetDocs.mockImplementation(async (queryOrCol) => {
-        const args = queryOrCol?.args || [];
-        const colPath = queryOrCol?.path || (args[0]?.path);
-        if (colPath && colPath.includes('audio')) {
-          return {
-            docs: [
-              {
-                id: 'audio_merge_1',
-                data: () => ({
-                  classId: 'CLASS_A',
-                  studentUid: 'student-test-123',
-                  transcript: 'Session snippet',
-                  audioPath: 'audio/CLASS_A/m1.webm',
-                  timestamp: '2026-09-12T10:20:00Z',
-                }),
-              },
-            ],
-          };
-        }
-        return { docs: [] };
-      });
-
-      const mockMergeCallable = vi.fn().mockResolvedValue({
-        data: {
-          status: 'success',
-          audioUrl: 'https://storage.mock/combined_session.m4a',
-          audioPath: 'audio/CLASS_A/combined.m4a',
-          durationSeconds: 120,
-          clipCount: 1,
-        },
-      });
-      mockHttpsCallable.mockImplementation((funcs, name) => {
-        if (name === 'mergeStudentSessionAudio') {
-          return mockMergeCallable;
-        }
-        return vi.fn().mockResolvedValue({ data: {} });
-      });
-
-      render(<StudentRecordsView user={mockUser} />);
-
-      await waitFor(() => {
-        expect(screen.getAllByText(/Cloud Computing 101/i).length).toBeGreaterThan(0);
-      });
-
-      const audioTab = await screen.findByRole('tab', { name: /Audio Transcripts/i });
-      fireEvent.click(audioTab);
-
-      const combineBtn = await screen.findByRole('button', { name: /🎛️ Combine Full Lesson Audio/i });
-      fireEvent.click(combineBtn);
-
-      await waitFor(() => {
-        expect(mockMergeCallable).toHaveBeenCalledWith(
-          expect.objectContaining({
-            classId: 'CLASS_A',
-            studentUid: 'student-test-123',
-          })
-        );
-        expect(screen.getByText(/Full Lesson Audio Combined/i)).toBeInTheDocument();
-        expect(screen.getByText(/Download Full Lesson Audio \(\.m4a\)/i)).toBeInTheDocument();
-      });
-    });
-
-    it('blocks audio playback if the recording took place during an exam session', async () => {
-      mockGetDoc.mockImplementation(async (docRef) => {
-        if (docRef.col === 'studentProfiles' || docRef.id === 'student-test-123') {
+        if (docRef.path === 'studentProfiles/student-test-123') {
           return { exists: () => true, data: () => ({ classes: ['CLASS_EXAM'] }) };
         }
-        if (docRef.col === 'classes' || docRef.id === 'CLASS_EXAM') {
+        if (docRef.path === 'classes/CLASS_EXAM/studentConfig/public') {
           return {
             exists: () => true,
-            id: 'CLASS_EXAM',
+            id: 'public',
             data: () => ({
               name: 'Final Exam Class',
               examPeriods: [{ startDate: '2026-09-12T00:00:00Z', endDate: '2026-09-12T23:59:59Z' }],
@@ -2041,11 +1827,11 @@ describe('StudentRecordsView Component', () => {
             data: () => ({ attemptsCount: 0, status: 'not_started' }),
           };
         }
-        if (docRef.col === 'studentProfiles' || docRef.id === 'student-test-123') {
+        if (docRef.path === 'studentProfiles/student-test-123') {
           return { exists: () => true, data: () => ({ classes: ['CLASS_A'] }) };
         }
-        if (docRef.col === 'classes' || docRef.id === 'CLASS_A') {
-          return { exists: () => true, id: 'CLASS_A', data: () => ({ name: 'Cloud Computing 101' }) };
+        if (docRef.path === 'classes/CLASS_A/studentConfig/public') {
+          return { exists: () => true, id: 'public', data: () => ({ name: 'Cloud Computing 101' }) };
         }
         return { exists: () => false };
       });
@@ -2147,11 +1933,11 @@ describe('StudentRecordsView Component', () => {
             }),
           };
         }
-        if (docRef.col === 'studentProfiles' || docRef.id === 'student-test-123') {
+        if (docRef.path === 'studentProfiles/student-test-123') {
           return { exists: () => true, data: () => ({ classes: ['CLASS_A'] }) };
         }
-        if (docRef.col === 'classes' || docRef.id === 'CLASS_A') {
-          return { exists: () => true, id: 'CLASS_A', data: () => ({ name: 'Cloud Computing 101' }) };
+        if (docRef.path === 'classes/CLASS_A/studentConfig/public') {
+          return { exists: () => true, id: 'public', data: () => ({ name: 'Cloud Computing 101' }) };
         }
         return { exists: () => false };
       });
@@ -2205,13 +1991,13 @@ describe('StudentRecordsView Component', () => {
 
     it('downloads video directly via callable playback url fallback to storage', async () => {
       mockGetDoc.mockImplementation(async (docRef) => {
-        if (docRef.col === 'studentProfiles' || docRef.id === 'student-test-123') {
+        if (docRef.path === 'studentProfiles/student-test-123') {
           return { exists: () => true, data: () => ({ classes: ['CLASS_A'] }) };
         }
-        if (docRef.col === 'classes' || docRef.id === 'CLASS_A') {
+        if (docRef.path === 'classes/CLASS_A/studentConfig/public') {
           return {
             exists: () => true,
-            id: 'CLASS_A',
+            id: 'public',
             data: () => ({ name: 'Cloud Computing 101', studentRecordingsPolicy: 'always_enabled' }),
           };
         }
@@ -2243,10 +2029,8 @@ describe('StudentRecordsView Component', () => {
       });
 
       // Mock callable to resolve valid download URL
-      mockHttpsCallable.mockImplementation(() => {
-        return vi.fn().mockResolvedValue({
-          data: { url: 'https://cdn.example.com/download_recording.mp4' },
-        });
+      mockDefaultCallable = vi.fn().mockResolvedValue({
+        data: { url: 'https://cdn.example.com/download_recording.mp4' },
       });
 
       // Mock DOM element creation and click
@@ -2291,7 +2075,7 @@ describe('StudentRecordsView Component', () => {
             data: () => ({ classes: ['CLASS_LOCKED'] }),
           };
         }
-        if (path.includes('classes/CLASS_LOCKED')) {
+        if (path === 'classes/CLASS_LOCKED/studentConfig/public') {
           return {
             id: 'CLASS_LOCKED',
             exists: () => true,
@@ -2327,7 +2111,7 @@ describe('StudentRecordsView Component', () => {
             data: () => ({ classes: ['CLASS_SHARED'] }),
           };
         }
-        if (path.includes('classes/CLASS_SHARED')) {
+        if (path === 'classes/CLASS_SHARED/studentConfig/public') {
           return {
             id: 'CLASS_SHARED',
             exists: () => true,
@@ -2435,7 +2219,7 @@ describe('StudentRecordsView Component', () => {
             data: () => ({ classes: ['CLASS_DRIVE_CC'] }),
           };
         }
-        if (path.includes('classes/CLASS_DRIVE_CC')) {
+        if (path === 'classes/CLASS_DRIVE_CC/studentConfig/public') {
           return {
             id: 'CLASS_DRIVE_CC',
             exists: () => true,
@@ -2529,7 +2313,7 @@ describe('StudentRecordsView Component', () => {
             data: () => ({ classes: ['CLASS_SCOPED'] }),
           };
         }
-        if (path.includes('classes/CLASS_SCOPED')) {
+        if (path === 'classes/CLASS_SCOPED/studentConfig/public') {
           return {
             id: 'CLASS_SCOPED',
             exists: () => true,
@@ -2627,7 +2411,7 @@ describe('StudentRecordsView Component', () => {
             data: () => ({ classes: ['CLASS_ALWAYS_SHARED'] }),
           };
         }
-        if (path.includes('classes/CLASS_ALWAYS_SHARED')) {
+        if (path === 'classes/CLASS_ALWAYS_SHARED/studentConfig/public') {
           return {
             id: 'CLASS_ALWAYS_SHARED',
             exists: () => true,
@@ -2783,11 +2567,8 @@ describe('StudentRecordsView Component', () => {
 
   describe('Capstone Project Supervision & Meeting Records Tab', () => {
     it('displays empty state when student has no project group assigned', async () => {
-      mockOnSnapshot.mockImplementation((refOrQuery, callback) => {
-        if (typeof callback === 'function') {
-          callback({ docs: [] });
-        }
-        return vi.fn();
+      mockProjectRecordsCallable = vi.fn().mockResolvedValue({
+        data: { myProjectGroup: null, myProjectMeetings: [], myProjectProfile: null },
       });
 
       render(<StudentRecordsView user={mockUser} />);
@@ -2801,113 +2582,85 @@ describe('StudentRecordsView Component', () => {
       expect(screen.getByText(/No Project Group Assigned Yet/i)).toBeInTheDocument();
     });
 
-    it('renders project overview, teammates, late attendance status, and supervisor feedback', async () => {
-      mockOnSnapshot.mockImplementation((refOrQuery, callback) => {
-        const path = refOrQuery?.path || refOrQuery?.args?.[0]?.path || '';
-        if (typeof callback === 'function') {
-          if (path.includes('projectGroups')) {
-            callback({
-              docs: [
+    it('renders project overview, anonymized teammates, late attendance status, and supervisor feedback without PII', async () => {
+      mockProjectRecordsCallable = vi.fn().mockResolvedValue({
+        data: {
+          myProjectGroup: {
+            id: 'grp_10',
+            name: 'Group A10',
+            projectTopic: 'AI Classroom Assistant',
+            supervisorName: 'Dr. Alan Turing',
+            teamSize: 2,
+            members: [
+              { id: 'me', role: 'Leader', isMe: true },
+              { id: 'teammate_2', role: 'Member', isMe: false },
+            ],
+          },
+          myProjectMeetings: [
+            {
+              id: 'mtg_10',
+              groupId: 'grp_10',
+              weekNumber: 10,
+              title: 'Sprint Review & Architecture',
+              meetingDate: '2026-11-01T10:00:00Z',
+              supervisorName: 'Dr. Alan Turing',
+              keyInsights: { overallGroupProgress: 'on_track' },
+              attendanceRecord: [
                 {
-                  id: 'grp_10',
-                  data: () => ({
-                    name: 'Group A10',
-                    projectTopic: 'AI Classroom Assistant',
-                    supervisorName: 'Dr. Alan Turing',
-                    members: [
-                      { name: 'Student Test', email: 'student@vtc.edu.hk', role: 'Leader' },
-                      { name: 'Teammate Bob', email: 'bob@vtc.edu.hk', role: 'Member' },
-                    ],
-                  }),
+                  isMe: true,
+                  status: 'late',
+                  speakingContribution: 'high',
+                  firstHeardSec: 145,
                 },
               ],
-            });
-          } else if (path.includes('projectMeetings')) {
-            callback({
-              docs: [
+              studentContributions: [
                 {
-                  id: 'mtg_10',
-                  data: () => ({
-                    groupId: 'grp_10',
-                    weekNumber: 10,
-                    title: 'Sprint Review & Architecture',
-                    meetingDate: '2026-11-01T10:00:00Z',
-                    supervisorName: 'Dr. Alan Turing',
-                    keyInsights: { overallGroupProgress: 'on_track' },
-                    attendanceRecord: [
-                      {
-                        email: 'student@vtc.edu.hk',
-                        status: 'late',
-                        speakingContribution: 'high',
-                        firstHeardSec: 145,
-                      },
-                    ],
-                    studentContributions: [
-                      {
-                        email: 'student@vtc.edu.hk',
-                        realWorkScore: 9,
-                        logQualityScore: 8,
-                        logQualityAssessment: 'genuine_verified',
-                        supervisorFeedback: 'Great progress on Firebase Genkit integration',
-                        verifiedTasks: ['Implemented auth flow', 'Set up Genkit'],
-                        challengeQuestions: ['How will you handle cold starts?'],
-                        actionItems: ['Write unit tests'],
-                      },
-                    ],
-                  }),
-                },
-                {
-                  id: 'mtg_9',
-                  data: () => ({
-                    groupId: 'grp_10',
-                    weekNumber: 9,
-                    title: 'Requirements Kickoff',
-                    meetingDate: '2026-10-24T10:00:00Z',
-                    attendanceRecord: [
-                      { email: 'student@vtc.edu.hk', status: 'present' },
-                    ],
-                  }),
-                },
-                {
-                  id: 'mtg_8',
-                  data: () => ({
-                    groupId: 'grp_10',
-                    weekNumber: 8,
-                    title: 'Topic Ideation',
-                    meetingDate: '2026-10-17T10:00:00Z',
-                    attendanceRecord: [
-                      { email: 'student@vtc.edu.hk', status: 'absent' },
-                    ],
-                  }),
+                  isMe: true,
+                  realWorkScore: 9,
+                  logQualityScore: 8,
+                  logQualityAssessment: 'genuine_verified',
+                  supervisorFeedback: 'Great progress on Firebase Genkit integration',
+                  verifiedTasks: ['Implemented auth flow', 'Set up Genkit'],
+                  challengeQuestions: ['How will you handle cold starts?'],
+                  actionItems: ['Write unit tests'],
                 },
               ],
-            });
-          } else if (path.includes('projectStudentProfiles')) {
-            callback({
-              docs: [
-                {
-                  id: 'prof_1',
-                  data: () => ({
-                    email: 'student@vtc.edu.hk',
-                    weeklyLogEntries: [
-                      {
-                        weekNumber: 10,
-                        submittedAt: '2026-11-01T09:00:00Z',
-                        qualityScore: 8,
-                        classification: 'genuine_verified',
-                        explanation: 'Solid code snippets and verifiable commit hashes provided.',
-                        doneTasks: 'Configured Firebase Genkit flows',
-                      },
-                    ],
-                  }),
-                },
+            },
+            {
+              id: 'mtg_9',
+              groupId: 'grp_10',
+              weekNumber: 9,
+              title: 'Requirements Kickoff',
+              meetingDate: '2026-10-24T10:00:00Z',
+              attendanceRecord: [
+                { isMe: true, status: 'present' },
               ],
-            });
-          } else {
-            callback({ docs: [] });
-          }
-        }
-        return vi.fn();
+            },
+            {
+              id: 'mtg_8',
+              groupId: 'grp_10',
+              weekNumber: 8,
+              title: 'Topic Ideation',
+              meetingDate: '2026-10-17T10:00:00Z',
+              attendanceRecord: [
+                { isMe: true, status: 'absent' },
+              ],
+            },
+          ],
+          myProjectProfile: {
+            id: 'me',
+            weeklyLogEntries: [
+              {
+                weekNumber: 10,
+                submittedAt: '2026-11-01T09:00:00Z',
+                qualityScore: 8,
+                classification: 'genuine_verified',
+                explanation: 'Solid code snippets and verifiable commit hashes provided.',
+                doneTasks: 'Configured Firebase Genkit flows',
+              },
+            ],
+          },
+        },
       });
 
       render(<StudentRecordsView user={mockUser} />);
@@ -2922,12 +2675,14 @@ describe('StudentRecordsView Component', () => {
       // Switch to Project Meetings tab
       fireEvent.click(screen.getByRole('tab', { name: /Project Meetings/i }));
 
-      // Hero Card details
+      // Hero Card details with caller email/label and anonymized teammate
       expect(screen.getByText(/Group A10/i)).toBeInTheDocument();
       expect(screen.getByText(/AI Classroom Assistant/i)).toBeInTheDocument();
       expect(screen.getAllByText(/Dr\. Alan Turing/i).length).toBeGreaterThanOrEqual(1);
-      expect(screen.getByText(/Student Test/i)).toBeInTheDocument();
-      expect(screen.getByText(/Teammate Bob/i)).toBeInTheDocument();
+      expect(screen.getByText(/student@vtc\.edu\.hk/i)).toBeInTheDocument();
+      expect(screen.getByText(/Teammate #2/i)).toBeInTheDocument();
+      expect(screen.queryByText(/Teammate Bob/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/bob@vtc\.edu\.hk/i)).not.toBeInTheDocument();
 
       // Attendance Summary Stats (1 present + 1 late out of 3 = 67%)
       expect(screen.getByText('67%')).toBeInTheDocument();
@@ -2971,7 +2726,7 @@ describe('StudentRecordsView Component', () => {
         });
       }
       return Promise.resolve({
-        id: 'CLASS_A',
+        id: 'public',
         exists: () => true,
         data: () => ({ name: 'Class A' }),
       });

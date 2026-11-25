@@ -245,7 +245,7 @@ flowchart TD
 When your teacher shares their screen during class, their live slides appear **automatically inside the inline YouTube-style Teacher Live Class Player** on your dashboard, while the `📤 SENDING TO TEACHER` card directly below shows the screen and camera feeds you are sharing.
 
 - **Layout Modes:**
-  - **`⬜ Standard`**: Side-by-side player and sidebar (**Class Properties** first, followed by **Live Lecture Transcript** and **Alerts & Messages**).
+  - **`⬜ Standard`**: Side-by-side player and sidebar (**Class Properties**, followed immediately by **My Recent Messages** and **My Recent Alerts**, with quick tabs `📑 All Panels`, `📋 Class Info`, `💬 Messages`, and `🔔 Alerts`).
   - **`🗖 Max`**: Expands the teacher player to full content width above the sidebar.
   - **`🗗 Smallest`**: Docks the teacher player as a compact floating corner mini-player.
   - **`⛶ Fullscreen`**: Expands the teacher broadcast to fill your screen (click **`✕ Exit Fullscreen`** in the bottom player bar or press `Esc` to exit).
@@ -426,14 +426,14 @@ You have full transparency into your learning progress and attendance records. N
 5. **⚠️ Irregularities (`irregularities`):**
    - Review any proctoring flags logged during class (e.g., look-away alerts, multi-face detections).
 6. **🎙️ Audio Transcripts (`audio`):**
-   - Review speech captured during lessons with language tags and click **`▶ Play Clip`** to review audio recordings.
+   - Review speech-to-text transcripts captured during lessons with timestamps and language tags (voice recording playback and audio downloads are reserved for instructors).
 7. **👥 Project Meetings (`meetings`):**
    - Access consultation dossiers and attendance history for your assigned capstone project group ([`StudentRecordsView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/StudentRecordsView.jsx)).
    - **Attendance Tracking with Late Status:** View status badges for every session (`✅ Present`, `🕒 Late`, `❌ Absent`, `🤫 Silent Present`) and check your overall group meeting attendance rate.
    - **Supervisor Evaluation Metrics:** Inspect supervisor-awarded **Real Work Verified Score (`/10`)** and **Log Quality Score (`/10`)**.
    - **Personalized Feedback:** Review supervisor comments and constructive guidance in a highlighted quote container.
    - **Verification Audit:** Check verified tasks, pre-meeting AI challenge questions, and next week's assigned action items.
-   - **Multimedia Playback:** Listen to the supervisor's mobile room audio recording and watch the presenting student's PC screen demonstration video.
+   - **Multimedia Playback:** Watch demonstration videos and view photo artifacts captured during your consultation.
    - **Weekly Logs Subview:** Switch to the **`📋 Weekly Logs`** sub-tab to inspect your submitted Google Form logs (`Form Responses 2`) for each academic week.
 
 ---

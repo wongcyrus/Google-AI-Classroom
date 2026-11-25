@@ -765,6 +765,32 @@ describe('WebAuthn Passkey Flows Backend', () => {
       mockDocGet.mockResolvedValueOnce({ exists: false });
       const res = await handleGetStudentPasskeyStatus({ studentUid: 'new_student' });
       expect(res.isPaired).toBe(false);
+      expect(res.isExempt).toBe(false);
+    });
+
+    it('returns isExempt true from owner studentProfiles flag or server-side loginPolicy fallback', async () => {
+      mockDocGet
+        .mockResolvedValueOnce({ exists: false })
+        .mockResolvedValueOnce({ exists: true, data: () => ({ passkeyPermanentExempt: true }) });
+      const profileRes = await handleGetStudentPasskeyStatus({ studentUid: 'exempt_uid_1' });
+      expect(profileRes.isPaired).toBe(false);
+      expect(profileRes.isExempt).toBe(true);
+
+      mockDocGet
+        .mockResolvedValueOnce({ exists: false })
+        .mockResolvedValueOnce({ exists: false })
+        .mockResolvedValueOnce({
+          exists: true,
+          data: () => ({
+            passwordWhitelist: ['legacy_exempt@stu.vtc.edu.hk'],
+            passwordWhitelistUids: [],
+          }),
+        });
+      const policyRes = await handleGetStudentPasskeyStatus({
+        studentUid: 'legacy_uid',
+        studentEmail: 'legacy_exempt@stu.vtc.edu.hk',
+      });
+      expect(policyRes.isExempt).toBe(true);
     });
   });
 
@@ -2139,7 +2165,7 @@ describe('WebAuthn Passkey Flows Backend', () => {
       );
     });
 
-    it('updates studentProperties when classId is supplied', async () => {
+    it('updates studentProperties and studentProfiles when classId and studentUid are supplied', async () => {
       const res = await handleToggleStudentPasskeyExemption({
         studentEmail: 'student@stu.vtc.edu.hk',
         studentUid: 'student_123',
@@ -2156,6 +2182,13 @@ describe('WebAuthn Passkey Flows Backend', () => {
             exempt: true,
             updatedBy: 'teacher@vtc.edu.hk',
           }),
+        }),
+        { merge: true }
+      );
+      expect(mockDocSet).toHaveBeenCalledWith(
+        expect.objectContaining({
+          passkeyPermanentExempt: true,
+          passkeyExemptionUpdatedBy: 'teacher@vtc.edu.hk',
         }),
         { merge: true }
       );

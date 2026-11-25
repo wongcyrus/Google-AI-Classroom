@@ -3,7 +3,7 @@ import { getAuth as getAdminAuth } from 'firebase-admin/auth';
 import { getFirestore as getAdminFirestore, FieldValue } from 'firebase-admin/firestore';
 import { initializeApp as initClient } from 'firebase/app';
 import { getAuth as getClientAuth, signInWithEmailAndPassword, signOut } from 'firebase/auth';
-import { getFirestore as getClientFirestore, doc, getDoc, updateDoc, setDoc, deleteDoc } from 'firebase/firestore';
+import { getFirestore as getClientFirestore, collection, doc, getDoc, getDocs, updateDoc, setDoc, deleteDoc } from 'firebase/firestore';
 import { getStorage, ref, uploadBytes, getDownloadURL, getBytes, deleteObject } from 'firebase/storage';
 
 import fs from 'fs';
@@ -151,24 +151,38 @@ async function runSecurityRulesSuite() {
     });
     await adminAuth.setCustomUserClaims(teacherUid, { role: 'teacher' });
 
-    // Setup Class A with Student 1 enrolled
+    // Setup Class A with Student 1 enrolled + non-PII studentConfig/public mirror
     await adminDb.collection('classes').doc(classA).set({
       classId: classA,
       name: 'Security Test Class A',
       teacherEmails: [teacherEmail],
       teachers: [teacherUid],
       students: { [student1Uid]: student1Email },
+      studentEmails: [student1Email],
       createdAt: FieldValue.serverTimestamp()
     });
+    await adminDb.collection('classes').doc(classA).collection('studentConfig').doc('public').set({
+      name: 'Security Test Class A',
+      frameRate: 15,
+      isCapturing: false,
+      examPeriods: [],
+    });
 
-    // Setup Class B with Student 2 enrolled
+    // Setup Class B with Student 2 enrolled + non-PII studentConfig/public mirror
     await adminDb.collection('classes').doc(classB).set({
       classId: classB,
       name: 'Security Test Class B',
       teacherEmails: [teacherEmail],
       teachers: [teacherUid],
       students: { [student2Uid]: student2Email },
+      studentEmails: [student2Email],
       createdAt: FieldValue.serverTimestamp()
+    });
+    await adminDb.collection('classes').doc(classB).collection('studentConfig').doc('public').set({
+      name: 'Security Test Class B',
+      frameRate: 15,
+      isCapturing: false,
+      examPeriods: [],
     });
 
     // Setup Student Profiles
@@ -244,20 +258,40 @@ async function runSecurityRulesSuite() {
       'Student 1 CANNOT write studentDirectory'
     );
 
-    // Class enrollment isolation
-    await expectAllowed(
+    // Class PII & enrollment isolation
+    await expectPermissionDenied(
       getDoc(doc(clientDb, 'classes', classA)),
-      'Student 1 can read enrolled Class A'
+      'Student 1 CANNOT read raw classes/Class A document directly (roster PII protection)'
+    );
+    await expectPermissionDenied(
+      getDocs(collection(clientDb, 'classes')),
+      'Student 1 CANNOT list classes collection directly'
+    );
+    await expectAllowed(
+      getDoc(doc(clientDb, 'classes', classA, 'studentConfig', 'public')),
+      'Student 1 CAN read enrolled Class A non-PII studentConfig/public'
+    );
+    await expectPermissionDenied(
+      getDoc(doc(clientDb, 'classes', classB, 'studentConfig', 'public')),
+      'Student 1 CANNOT read non-enrolled Class B studentConfig/public'
+    );
+    await expectPermissionDenied(
+      setDoc(doc(clientDb, 'classes', classA, 'studentConfig', 'public'), { name: 'Tampered' }),
+      'Student 1 CANNOT write classes/Class A/studentConfig/public'
     );
     await expectPermissionDenied(
       getDoc(doc(clientDb, 'classes', classB)),
       'Student 1 CANNOT read non-enrolled Class B'
     );
 
-    // Tampering prevention
+    // Tampering & self-escalation prevention
     await expectPermissionDenied(
       updateDoc(doc(clientDb, 'classes', classA), { frameRate: 1 }),
       'Student 1 CANNOT tamper with class settings (frameRate)'
+    );
+    await expectPermissionDenied(
+      updateDoc(doc(clientDb, 'studentProfiles', student1Uid), { passkeyPermanentExempt: true }),
+      'Student 1 CANNOT modify own studentProfiles document (passkey exemption self-grant blocked)'
     );
 
     // Audio metadata isolation
@@ -367,18 +401,49 @@ async function runSecurityRulesSuite() {
       startTime: new Date(),
       students: { [student2Uid]: { sharedScreenMinutes: 45 } },
     });
-    await expectAllowed(
+    await expectPermissionDenied(
       getDoc(doc(clientDb, 'classes', classA, 'lessons', lesson1Id)),
-      'Student 1 CAN read lessons in enrolled Class A'
+      'Student 1 CANNOT read raw lessons subcollection in Class A (classmate attendance PII protection)'
     );
     await expectPermissionDenied(
       getDoc(doc(clientDb, 'classes', classB, 'lessons', lesson2Id)),
       'Student 1 CANNOT read lessons in non-enrolled Class B'
     );
 
-    // Bingo records isolation
+    // Capstone project collections isolation (must use scoped getStudentProjectRecords callable)
+    const projGroupId = `grp-${timestamp}`;
+    const projMeetingId = `mtg-${timestamp}`;
+    const projProfileId = `pprof-${timestamp}`;
+    await adminDb.collection('classes').doc(classA).collection('projectGroups').doc(projGroupId).set({
+      name: 'Group Secret Roster',
+      members: [{ email: student1Email, name: 'Student 1' }, { email: student2Email, name: 'Student 2' }],
+    });
+    await adminDb.collection('classes').doc(classA).collection('projectMeetings').doc(projMeetingId).set({
+      groupId: projGroupId,
+      title: 'Meeting with Transcript & Classmate Feedback',
+    });
+    await adminDb.collection('classes').doc(classA).collection('projectStudentProfiles').doc(projProfileId).set({
+      email: student2Email,
+      weeklyLogEntries: [],
+    });
+
+    await expectPermissionDenied(
+      getDoc(doc(clientDb, 'classes', classA, 'projectGroups', projGroupId)),
+      'Student 1 CANNOT read projectGroups directly (teammate PII protection)'
+    );
+    await expectPermissionDenied(
+      getDoc(doc(clientDb, 'classes', classA, 'projectMeetings', projMeetingId)),
+      'Student 1 CANNOT read projectMeetings directly'
+    );
+    await expectPermissionDenied(
+      getDoc(doc(clientDb, 'classes', classA, 'projectStudentProfiles', projProfileId)),
+      'Student 1 CANNOT read projectStudentProfiles directly'
+    );
+
+    // Bingo records isolation (including blocking legacy studentUid == 'all')
     const bingo1Id = `bingo-1-${timestamp}`;
     const bingo2Id = `bingo-2-${timestamp}`;
+    const bingoAllId = `bingo-all-${timestamp}`;
     await adminDb.collection('classes').doc(classA).collection('bingoRecords').doc(bingo1Id).set({
       classId: classA,
       studentUid: student1Uid,
@@ -391,6 +456,12 @@ async function runSecurityRulesSuite() {
       status: 'pending',
       question: 'What is virtualization?',
     });
+    await adminDb.collection('classes').doc(classA).collection('bingoRecords').doc(bingoAllId).set({
+      classId: classA,
+      studentUid: 'all',
+      status: 'active',
+      question: 'QR Bingo Challenge',
+    });
     await expectAllowed(
       getDoc(doc(clientDb, 'classes', classA, 'bingoRecords', bingo1Id)),
       'Student 1 CAN read own bingoRecords in enrolled Class A'
@@ -398,6 +469,10 @@ async function runSecurityRulesSuite() {
     await expectPermissionDenied(
       getDoc(doc(clientDb, 'classes', classA, 'bingoRecords', bingo2Id)),
       'Student 1 CANNOT read Student 2 bingoRecords in Class A'
+    );
+    await expectPermissionDenied(
+      getDoc(doc(clientDb, 'classes', classA, 'bingoRecords', bingoAllId)),
+      'Student 1 CANNOT read shared bingoRecords with studentUid == "all"'
     );
     // Bingo records write protection (Student cannot write/update/delete)
     await expectPermissionDenied(
@@ -537,6 +612,22 @@ async function runSecurityRulesSuite() {
       'Teacher can update class monitoring settings'
     );
     await expectAllowed(
+      getDoc(doc(clientDb, 'classes', classA, 'lessons', lesson1Id)),
+      'Teacher can read lessons in Class A'
+    );
+    await expectAllowed(
+      getDoc(doc(clientDb, 'classes', classA, 'projectGroups', projGroupId)),
+      'Teacher can read projectGroups in Class A'
+    );
+    await expectAllowed(
+      getDoc(doc(clientDb, 'classes', classA, 'projectMeetings', projMeetingId)),
+      'Teacher can read projectMeetings in Class A'
+    );
+    await expectAllowed(
+      getDoc(doc(clientDb, 'classes', classA, 'projectStudentProfiles', projProfileId)),
+      'Teacher can read projectStudentProfiles in Class A'
+    );
+    await expectAllowed(
       getDoc(doc(clientDb, 'classes', classA, 'bingoRecords', bingo1Id)),
       'Teacher can read bingoRecords in Class A'
     );
@@ -568,12 +659,17 @@ async function runSecurityRulesSuite() {
     const pairingTokenId = `test-token-${timestamp}`;
     const auditLogId = `test-audit-${timestamp}`;
 
-    // Admin seeds fixture docs
+    // Admin seeds fixture docs (preserve existing system_config docs for cleanup)
+    const prevLoginPolicySnap = await adminDb.collection('system_config').doc('loginPolicy').get();
     await adminDb.collection('studentPasskeys').doc(passkeyStudent1Id).set({ credentialID: 'cred-1', studentUid: student1Uid });
     await adminDb.collection('loginSessions').doc(loginSessionId).set({ status: 'pending', expiresAtMillis: Date.now() + 90000 });
     await adminDb.collection('passkeyPairingTokens').doc(pairingTokenId).set({ token: 'xyz', studentUid: student1Uid });
     await adminDb.collection('passkeyAuditLogs').doc(auditLogId).set({ action: 'login', studentUid: student1Uid });
     await adminDb.collection('system_config').doc('loginPolicy').set({ passwordWhitelist: [student1Email] });
+    const prevClientControlSnap = await adminDb.collection('system_config').doc('clientControl').get();
+    if (!prevClientControlSnap.exists) {
+      await adminDb.collection('system_config').doc('clientControl').set({ forceReloadBefore: 0 });
+    }
 
     // 1. Teacher permissions
     await expectAllowed(
@@ -587,6 +683,10 @@ async function runSecurityRulesSuite() {
     await expectAllowed(
       getDoc(doc(clientDb, 'passkeyAuditLogs', auditLogId)),
       'Teacher can read passkeyAuditLogs'
+    );
+    await expectAllowed(
+      getDoc(doc(clientDb, 'system_config', 'loginPolicy')),
+      'Teacher can read system_config/loginPolicy'
     );
 
     // 2. Student 1 permissions
@@ -607,9 +707,13 @@ async function runSecurityRulesSuite() {
       getDoc(doc(clientDb, 'passkeyPairingTokens', pairingTokenId)),
       'Student CANNOT read passkeyPairingTokens directly'
     );
-    await expectAllowed(
+    await expectPermissionDenied(
       getDoc(doc(clientDb, 'system_config', 'loginPolicy')),
-      'Student can read system_config/loginPolicy'
+      'Student CANNOT read system_config/loginPolicy (whitelist PII protection)'
+    );
+    await expectAllowed(
+      getDoc(doc(clientDb, 'system_config', 'clientControl')),
+      'Student CAN read system_config/clientControl'
     );
     await expectPermissionDenied(
       setDoc(doc(clientDb, 'system_config', 'loginPolicy'), { passwordWhitelist: [] }),
@@ -627,15 +731,27 @@ async function runSecurityRulesSuite() {
     await signOut(clientAuth);
     await expectAllowed(
       getDoc(doc(clientDb, 'loginSessions', loginSessionId)),
-      'Unauthenticated desktop PC can read loginSessions doc for QR login'
+      'Unauthenticated desktop PC can get single loginSessions doc for QR login'
+    );
+    await expectPermissionDenied(
+      getDocs(collection(clientDb, 'loginSessions')),
+      'Unauthenticated user CANNOT list loginSessions collection (customToken enumeration protection)'
     );
     await expectPermissionDenied(
       setDoc(doc(clientDb, 'loginSessions', loginSessionId), { customToken: 'fake' }),
       'Unauthenticated desktop PC CANNOT write to loginSessions directly'
     );
-    await expectAllowed(
+    await expectPermissionDenied(
       getDoc(doc(clientDb, 'system_config', 'loginPolicy')),
-      'Unauthenticated user can read system_config/loginPolicy'
+      'Unauthenticated user CANNOT read system_config/loginPolicy'
+    );
+    await expectPermissionDenied(
+      getDocs(collection(clientDb, 'system_config')),
+      'Unauthenticated user CANNOT list system_config collection'
+    );
+    await expectAllowed(
+      getDoc(doc(clientDb, 'system_config', 'clientControl')),
+      'Unauthenticated user CAN read system_config/clientControl'
     );
 
     // -------------------------------------------------------------
@@ -935,7 +1051,25 @@ async function runSecurityRulesSuite() {
     // Cleanup Fixture Documents & Users
     // -------------------------------------------------------------
     console.log(`\n🧹 Cleaning up test fixtures...`);
+    if (prevLoginPolicySnap.exists) {
+      await adminDb.collection('system_config').doc('loginPolicy').set(prevLoginPolicySnap.data());
+    } else {
+      await adminDb.collection('system_config').doc('loginPolicy').delete().catch(() => {});
+    }
+    if (!prevClientControlSnap.exists) {
+      await adminDb.collection('system_config').doc('clientControl').delete().catch(() => {});
+    }
+    await adminDb.collection('studentPasskeys').doc(passkeyStudent1Id).delete().catch(() => {});
+    await adminDb.collection('loginSessions').doc(loginSessionId).delete().catch(() => {});
+    await adminDb.collection('passkeyPairingTokens').doc(pairingTokenId).delete().catch(() => {});
+    await adminDb.collection('passkeyAuditLogs').doc(auditLogId).delete().catch(() => {});
     await adminDb.collection('studentDirectory').doc(student1Email).delete().catch(() => {});
+    await adminDb.collection('classes').doc(classA).collection('studentConfig').doc('public').delete().catch(() => {});
+    await adminDb.collection('classes').doc(classB).collection('studentConfig').doc('public').delete().catch(() => {});
+    await adminDb.collection('classes').doc(classA).collection('projectGroups').doc(projGroupId).delete().catch(() => {});
+    await adminDb.collection('classes').doc(classA).collection('projectMeetings').doc(projMeetingId).delete().catch(() => {});
+    await adminDb.collection('classes').doc(classA).collection('projectStudentProfiles').doc(projProfileId).delete().catch(() => {});
+    await adminDb.collection('classes').doc(classA).collection('bingoRecords').doc(bingoAllId).delete().catch(() => {});
     await adminDb.collection('classes').doc(classA).delete();
     await adminDb.collection('classes').doc(classB).delete();
     await adminDb.collection('studentProfiles').doc(student1Uid).delete();

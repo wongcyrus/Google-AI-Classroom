@@ -487,7 +487,9 @@ const MainHeader = ({ onLogout, user, role }) => {
     }
 
     if (classId) {
-      const classRef = doc(db, "classes", classId);
+      const classRef = role === 'teacher'
+        ? doc(db, "classes", classId)
+        : doc(db, "classes", classId, "studentConfig", "public");
       getDoc(classRef).then(docSnap => {
         if (docSnap.exists()) {
           setClassName(docSnap.data().name || classId);
@@ -496,7 +498,7 @@ const MainHeader = ({ onLogout, user, role }) => {
         }
       }).catch(() => setClassName(classId));
     }
-  }, [location.pathname, isClassPage]);
+  }, [location.pathname, isClassPage, role]);
 
 
 

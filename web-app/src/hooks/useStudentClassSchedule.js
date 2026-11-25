@@ -254,7 +254,7 @@ function subscribeStudentScheduleStore(dbInstance, userUid, callback) {
       await Promise.all(
         classIds.map(async (classId) => {
           try {
-            const classRef = doc(dbInstance, 'classes', classId);
+            const classRef = doc(dbInstance, 'classes', classId, 'studentConfig', 'public');
             const classSnap = await getDoc(classRef);
             if (classSnap && typeof classSnap.exists === 'function' && classSnap.exists()) {
               const data = classSnap.data() || {};
@@ -323,7 +323,7 @@ function subscribeStudentScheduleStore(dbInstance, userUid, callback) {
             await Promise.all(
               classIds.map(async (classId) => {
                 try {
-                  const snap = await getDoc(doc(dbInstance, 'classes', classId));
+                  const snap = await getDoc(doc(dbInstance, 'classes', classId, 'studentConfig', 'public'));
                   if (snap && typeof snap.exists === 'function' && snap.exists()) {
                     const data = snap.data() || {};
                     if (data.schedule && JSON.stringify(nextSchedules[classId]) !== JSON.stringify(data.schedule)) {

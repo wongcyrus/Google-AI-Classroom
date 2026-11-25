@@ -1124,6 +1124,272 @@ describe('TeacherScreenBroadcastModal', () => {
     fireEvent.click(pushBtn);
     expect(onPushFrameNow).toHaveBeenCalledTimes(1);
   });
+
+  it('auto-closes modal via onClose when Start Live Stream & Record succeeds, and stays open with error alert if rejected', async () => {
+    const onClose = vi.fn();
+    const notAllowedErr = Object.assign(new Error('Permission denied'), { name: 'NotAllowedError' });
+    const onStartBroadcast = vi
+      .fn()
+      .mockRejectedValueOnce(notAllowedErr)
+      .mockResolvedValueOnce({ id: 'live-stream' });
+
+    render(
+      <TeacherScreenBroadcastModal
+        isOpen={true}
+        onClose={onClose}
+        isBroadcasting={false}
+        initialStep={2}
+        defaultRecordOnStart={true}
+        onStartBroadcast={onStartBroadcast}
+      />
+    );
+
+    const startBtn = screen.getByRole('button', { name: /Start Live Stream and Recording/i });
+
+    // First attempt rejected (e.g. teacher cancelled screen picker) -> keeps modal open with error
+    fireEvent.click(startBtn);
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent(/Screen sharing was cancelled or blocked/i);
+    });
+    expect(onClose).not.toHaveBeenCalled();
+
+    // Second attempt succeeds -> automatically returns teacher to Teacher View via onClose
+    fireEvent.click(startBtn);
+    await waitFor(() => {
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it('provides unmistakable Close & Continue Broadcast and Hide Studio controls during live broadcast without stopping the broadcast', () => {
+    const onClose = vi.fn();
+    const onStopBroadcast = vi.fn();
+
+    render(
+      <TeacherScreenBroadcastModal
+        isOpen={true}
+        onClose={onClose}
+        isBroadcasting={true}
+        onStopBroadcast={onStopBroadcast}
+        viewers={[]}
+      />
+    );
+
+    const continueBtn = screen.getByRole('button', { name: /Close and Continue Broadcast/i });
+    expect(continueBtn).toBeInTheDocument();
+    expect(screen.getByText(/Closing keeps broadcast & recording live/i)).toBeInTheDocument();
+
+    fireEvent.click(continueBtn);
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(onStopBroadcast).not.toHaveBeenCalled();
+
+    const hideHeaderBtn = screen.getByRole('button', { name: /Hide studio and continue broadcast/i });
+    expect(hideHeaderBtn).toBeInTheDocument();
+    fireEvent.click(hideHeaderBtn);
+    expect(onClose).toHaveBeenCalledTimes(2);
+    expect(onStopBroadcast).not.toHaveBeenCalled();
+  });
+
+  it('exercises Step 1 live microphone VU meter via AudioContext, handles missing tracks and mic errors, and cleans up on unmount', async () => {
+    vi.useFakeTimers();
+    const origAudioContext = window.AudioContext;
+    const origMediaDevices = navigator.mediaDevices;
+    const origRaf = window.requestAnimationFrame;
+    const origCaf = window.cancelAnimationFrame;
+
+    try {
+      let rafCallback = null;
+      window.requestAnimationFrame = vi.fn((cb) => {
+        rafCallback = cb;
+        return 101;
+      });
+      window.cancelAnimationFrame = vi.fn();
+
+      const mockClose = vi.fn().mockResolvedValue();
+      const mockResume = vi.fn().mockResolvedValue();
+      class MockAudioContext {
+        constructor() {
+          this.state = 'suspended';
+          this.destination = {};
+          this.resume = mockResume;
+          this.close = mockClose;
+        }
+        createMediaStreamSource() {
+          return { connect: vi.fn() };
+        }
+        createAnalyser() {
+          return {
+            fftSize: 256,
+            frequencyBinCount: 16,
+            connect: vi.fn(),
+            getByteFrequencyData: (arr) => arr.fill(110),
+            getByteTimeDomainData: (arr) => arr.fill(200),
+          };
+        }
+        createGain() {
+          return { gain: { value: 1 }, connect: vi.fn() };
+        }
+      }
+      window.AudioContext = MockAudioContext;
+
+      const stopTrack = vi.fn();
+      navigator.mediaDevices = {
+        enumerateDevices: vi.fn().mockResolvedValue([
+          { kind: 'audioinput', deviceId: 'default', label: '' },
+          { kind: 'audioinput', deviceId: 'mic-2', label: '' },
+        ]),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        getUserMedia: vi.fn().mockResolvedValue({
+          getAudioTracks: () => [{ stop: stopTrack }],
+          getTracks: () => [{ stop: stopTrack }],
+        }),
+      };
+
+      const { unmount } = render(
+        <TeacherScreenBroadcastModal
+          isOpen={true}
+          onClose={vi.fn()}
+          isBroadcasting={false}
+          initialStep={1}
+          selectedMicDeviceId="default"
+        />
+      );
+
+      await vi.waitFor(() => {
+        expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalled();
+        expect(rafCallback).toBeTypeOf('function');
+      });
+
+      // Trigger user interaction listener to resume suspended AudioContext
+      fireEvent.click(window);
+      expect(mockResume).toHaveBeenCalled();
+
+      // Advance system time by 100ms and invoke RAF tick to compute RMS + frequency volume
+      vi.advanceTimersByTime(100);
+      React.act(() => {
+        rafCallback();
+      });
+
+      expect(screen.getByText(/Active:/i)).toBeInTheDocument();
+      unmount();
+      expect(stopTrack).toHaveBeenCalled();
+      expect(mockClose).toHaveBeenCalled();
+
+      // Test when stream has 0 audio tracks
+      navigator.mediaDevices.getUserMedia = vi.fn().mockResolvedValueOnce({
+        getAudioTracks: () => [],
+        getTracks: () => [],
+      });
+      const { unmount: unmountEmpty } = render(
+        <TeacherScreenBroadcastModal
+          isOpen={true}
+          onClose={vi.fn()}
+          isBroadcasting={false}
+          initialStep={1}
+        />
+      );
+      await vi.waitFor(() => {
+        expect(screen.getByText(/Selected microphone has no audio track/i)).toBeInTheDocument();
+      });
+      unmountEmpty();
+
+      // Test when getUserMedia throws an error
+      navigator.mediaDevices.getUserMedia = vi.fn().mockRejectedValueOnce(new Error('Mic hardware busy'));
+      const { unmount: unmountErr } = render(
+        <TeacherScreenBroadcastModal
+          isOpen={true}
+          onClose={vi.fn()}
+          isBroadcasting={false}
+          initialStep={1}
+        />
+      );
+      await vi.waitFor(() => {
+        expect(screen.getByText(/Mic hardware busy/i)).toBeInTheDocument();
+      });
+      unmountErr();
+    } finally {
+      window.AudioContext = origAudioContext;
+      navigator.mediaDevices = origMediaDevices;
+      window.requestAnimationFrame = origRaf;
+      window.cancelAnimationFrame = origCaf;
+      vi.useRealTimers();
+    }
+  });
+
+  it('renders overtime badges, +30m extension button, public access disable, and handover fallback to onSwitchClass', async () => {
+    const onExtendOvertime = vi.fn();
+    const onConfigurePublicAccess = vi.fn();
+    const onSwitchClass = vi.fn();
+    const onClose = vi.fn();
+    const futureOvertime = new Date(Date.now() + 25 * 60 * 1000).toISOString();
+
+    const { rerender } = render(
+      <TeacherScreenBroadcastModal
+        isOpen={true}
+        onClose={onClose}
+        isBroadcasting={false}
+        initialStep={2}
+        classId="CLASS_A"
+        className="Class A"
+        overtimeUntil={futureOvertime}
+        onExtendOvertime={onExtendOvertime}
+        isPublicBroadcast={true}
+        publicPin="1234"
+        onConfigurePublicAccess={onConfigurePublicAccess}
+      />
+    );
+
+    // Overtime badge and +30m button in Setup Wizard
+    expect(screen.getByText(/Overtime until/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '+30m' }));
+    expect(onExtendOvertime).toHaveBeenCalledWith(30);
+
+    // Disable public presentation mode via checkbox and card click
+    const publicCheckbox = screen.getByLabelText(/Enable Public Presentation Mode/i);
+    fireEvent.click(publicCheckbox);
+    expect(onConfigurePublicAccess).toHaveBeenCalledWith({ isPublic: false, publicPin: null });
+
+    // Switch to active broadcast mode with >50 viewers, overtime badge, and handover fallback via onSwitchClass
+    const manyViewers = Array.from({ length: 52 }, (_, idx) => ({
+      studentUid: `u_${idx}`,
+      studentEmail: `student${idx}@school.edu`,
+    }));
+
+    rerender(
+      <TeacherScreenBroadcastModal
+        isOpen={true}
+        onClose={onClose}
+        isBroadcasting={true}
+        classId="CLASS_A"
+        className="Class A"
+        overtimeUntil={futureOvertime}
+        onExtendOvertime={onExtendOvertime}
+        activeLiveClass={{ id: 'CLASS_B', name: 'Class B' }}
+        teacherClasses={[
+          { id: 'CLASS_A', name: 'Class A' },
+          { id: 'CLASS_B', name: 'Class B' },
+        ]}
+        onSwitchClass={onSwitchClass}
+        viewers={manyViewers}
+        screenStream={{ id: 's1' }}
+      />
+    );
+
+    expect(screen.getByText(/\+2 more spectators watching/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '+30m' }));
+    expect(onExtendOvertime).toHaveBeenCalledTimes(2);
+
+    // Trigger loadedmetadata on video preview
+    const videoEl = document.querySelector('video.broadcast-preview-video');
+    if (videoEl) {
+      fireEvent.loadedMetadata(videoEl);
+    }
+
+    // Trigger handover when only onSwitchClass is provided
+    fireEvent.click(screen.getByTestId('handover-broadcast-banner-btn'));
+    expect(onClose).toHaveBeenCalled();
+    expect(onSwitchClass).toHaveBeenCalledWith('CLASS_B');
+  });
 });
 
 

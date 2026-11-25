@@ -28,8 +28,8 @@ This document outlines the automated, schedule-driven logic implemented in the `
 flowchart TD
     subgraph ScheduleEngine [useStudentClassSchedule Hook]
         SP[(studentProfiles/uid)] -->|Enrolled Classes| SL[Student Class List]
-        SL --> FetchSched[Fetch Class Schedules & TimeZones]
-        FetchSched --> Poller[30s Evaluation Interval]
+        SL --> FetchSched[Fetch Non-PII studentConfig/public]
+        FetchSched --> Poller[30s Poll & Evaluation Interval]
         Poller --> TZCheck{Current Time in Class TimeZone?}
         TZCheck -->|Match Found| AutoClass[currentActiveClassId]
         TZCheck -->|No Match| NullClass[null]
@@ -56,7 +56,7 @@ This hook is the brain of the operation and works in three stages:
 
 1.  **Fetch Student's Class List:** The hook subscribes to the logged-in student's profile document at `studentProfiles/{user.uid}`. It maintains a real-time list of all classes the student is enrolled in. When instructors create a school-wide or special class using the **"🎓 Input All Students"** button in Class Management, all system student accounts are populated into the roster; the `onClassUpdate` cloud function automatically syncs the new class into every student's `studentProfiles/{uid}` record, immediately exposing the class to all students without manual enrollment codes.
 
-2.  **Subscribe to Class Schedules & Live States (`onSnapshot`):** Whenever the student's list of classes changes, the hook subscribes in real time (`onSnapshot`) to each corresponding class document (`classes/{classId}`). This captures both the static `schedule` (`timeSlots`, `timeZone`) and live operational signals (`isBroadcasting`, `overtimeUntil`, `isCapturing`, `captureStartedAt`).
+2.  **Fetch & Poll Non-PII Class Configs (`classes/{classId}/studentConfig/public`):** Whenever the student's list of classes changes (via `studentProfiles/{uid}` `onSnapshot`) and on a 30-second shared polling interval, the hook reads each enrolled class's non-PII mirror (`classes/{classId}/studentConfig/public` via `getDoc`) instead of reading raw `classes/{classId}` documents (which contain roster emails/UIDs). `StudentView.jsx` separately subscribes via `onSnapshot` to the active class's `studentConfig/public` for real-time capture, broadcast, exam, and recording settings. This captures both the static `schedule` (`timeSlots`, `timeZone`) and live operational signals (`isBroadcasting`, `overtimeUntil`, `isCapturing`, `captureStartedAt`, `broadcastStartedAt`).
 
 3.  **4-Bucket Priority Evaluation:** Every 30 seconds (and immediately on any Firestore snapshot update), the hook evaluates all enrolled classes into **4 priority buckets**:
     *   **Bucket 1 (`inSlotBroadcastClasses`)**: Currently inside a scheduled `timeSlot` (including 5-minute buffer) **AND** `isBroadcasting === true`.
@@ -249,7 +249,7 @@ To support diverse student environments (e.g., desktops without webcams or micro
 `StudentView.jsx` integrates real-time exam state detection and strict proctoring enforcement:
 
 1. **Dual Exam Detection Triggers**:
-   - **Instructor Live Toggle (`isExamActive`)**: Subscribes to the class document snapshot in Firestore (`classes/{classId}`). When the teacher activates `🔒 Exam Mode: ACTIVE` in `ControlsPanel.jsx`, the student client responds immediately.
+   - **Instructor Live Toggle (`isExamActive`)**: Subscribes to the active class's non-PII config mirror (`classes/{classId}/studentConfig/public`) in Firestore. When the teacher activates `🔒 Exam Mode: ACTIVE` in `ControlsPanel.jsx`, `onClassUpdate` mirrors `isExamActive` to `studentConfig/public` and the student client responds immediately.
    - **Scheduled Exam Window (`examPeriods`)**: Dynamically checks whether the current timestamp falls within any instructor-scheduled `examPeriods` array defined in class settings:
      ```javascript
      const isNowInExamPeriod = useMemo(() => {

@@ -456,7 +456,19 @@ describe('StudentView Component Extended Test Suite', () => {
     expect(screen.getByRole('button', { name: /Start Setup & Readiness Test/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Quick Start \(Screen/i })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /My Records/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/Class Properties/i)).toBeInTheDocument();
+    expect(screen.getByText(/My Recent Messages/i)).toBeInTheDocument();
     expect(screen.getByText(/My Recent Alerts/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Live Lecture Transcript/i)).not.toBeInTheDocument();
+    const classPropsHeading = screen.getByText('Class Properties');
+    const recentMsgsHeading = screen.getByText('My Recent Messages');
+    const recentAlertsHeading = screen.getByText('My Recent Alerts');
+    expect(
+      classPropsHeading.compareDocumentPosition(recentMsgsHeading) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
+    expect(
+      recentMsgsHeading.compareDocumentPosition(recentAlertsHeading) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy();
   });
 
   it('allows opening and closing readiness wizard from setup hero card', async () => {
@@ -1221,8 +1233,9 @@ describe('StudentView Component Extended Test Suite', () => {
 
     render(<StudentView user={mockUser} />);
 
-    // Trigger class snapshot with sensitive student and teacher lists
-    const classSnapshotCb = snapshotCallbacks.find(item => item.ref?.path === 'classes/class1');
+    // Trigger studentConfig/public snapshot and verify raw classes doc is never subscribed
+    expect(snapshotCallbacks.some(item => item.ref?.path === 'classes/class1')).toBe(false);
+    const classSnapshotCb = snapshotCallbacks.find(item => item.ref?.path === 'classes/class1/studentConfig/public');
     expect(classSnapshotCb).toBeDefined();
 
     await act(async () => {

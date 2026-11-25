@@ -43,6 +43,7 @@ const mockOnSnapshot = vi.fn();
 const mockSetDoc = vi.fn().mockResolvedValue(true);
 const mockUpdateDoc = vi.fn().mockResolvedValue(true);
 const mockDeleteDoc = vi.fn().mockResolvedValue(true);
+const mockGetDocs = vi.fn().mockResolvedValue({ docs: [] });
 
 vi.mock('firebase/firestore', () => ({
   getFirestore: vi.fn(() => ({})),
@@ -53,12 +54,26 @@ vi.mock('firebase/firestore', () => ({
     }
     return { path, id: path[path.length - 1] };
   }),
-  query: vi.fn((col, ...clauses) => col),
+  query: vi.fn((col, ..._clauses) => col),
   where: vi.fn(() => ({})),
+  limit: vi.fn(() => ({})),
+  getDocs: (...args) => mockGetDocs(...args),
   onSnapshot: (...args) => mockOnSnapshot(...args),
   setDoc: (...args) => mockSetDoc(...args),
   updateDoc: (...args) => mockUpdateDoc(...args),
   deleteDoc: (...args) => mockDeleteDoc(...args),
+}));
+
+const mockGetDownloadURL = vi.fn().mockResolvedValue('https://storage.example.com/resolved.mp4');
+const mockUploadBytes = vi.fn().mockResolvedValue({});
+const mockUploadBytesResumable = vi.fn();
+
+vi.mock('firebase/storage', () => ({
+  getStorage: vi.fn(() => ({})),
+  ref: vi.fn((_st, path) => ({ path })),
+  getDownloadURL: (...args) => mockGetDownloadURL(...args),
+  uploadBytes: (...args) => mockUploadBytes(...args),
+  uploadBytesResumable: (...args) => mockUploadBytesResumable(...args),
 }));
 
 // Mock Google Drive Hook
@@ -1517,6 +1532,285 @@ describe('Tasks Component Suite', () => {
       expect(screen.getByText(/Post-Class Practical Challenge/i)).toBeInTheDocument();
       expect(screen.getByText(/automatically extracted from your in-class screen recording/i)).toBeInTheDocument();
       expect(screen.queryByRole('button', { name: /Start Task Challenge/i })).not.toBeInTheDocument();
+    });
+
+    it('resolves Cloud Storage demo video URL, captures standalone frames, and handles timer auto-submit and submission failure', async () => {
+      mockGetDownloadURL.mockResolvedValueOnce('https://storage.example.com/demo_clip.mp4');
+      const mockStream = {
+        getTracks: () => [{ stop: vi.fn() }],
+        getVideoTracks: () => [{ stop: vi.fn() }],
+      };
+      global.navigator.mediaDevices = {
+        getDisplayMedia: vi.fn().mockResolvedValue(mockStream),
+      };
+
+      const origCreateElement = document.createElement.bind(document);
+      const createElementSpy = vi.spyOn(document, 'createElement').mockImplementation((tagName, options) => {
+        const el = origCreateElement(tagName, options);
+        if (tagName === 'canvas') {
+          el.getContext = () => ({ drawImage: vi.fn() });
+          el.toBlob = (cb) => cb(new Blob(['jpeg-bytes'], { type: 'image/jpeg' }));
+        }
+        return el;
+      });
+
+      const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
+      const mockOnFinish = vi
+        .fn()
+        .mockRejectedValueOnce(new Error('Network submission timeout'))
+        .mockResolvedValueOnce({ finalScore: 100 });
+
+      // Task with expired attempt (started 60 mins ago, limit 45 mins) to trigger autoSubmitOnExpiry
+      const expiredSubmission = {
+        status: 'in_progress',
+        attemptsCount: 1,
+        activeAttempt: {
+          attemptNumber: 1,
+          startedAt: new Date(Date.now() - 60 * 60 * 1000),
+          status: 'in_progress',
+        },
+      };
+
+      const { unmount } = render(
+        <StudentTaskWorkspaceModal
+          isOpen={true}
+          onClose={vi.fn()}
+          task={{
+            ...mockTask,
+            demoVideoPath: 'classes/c1/demos/lab.mp4',
+          }}
+          submission={expiredSubmission}
+          classId="c1"
+          user={{ uid: 'student_1', email: 's1@vtc.edu.hk' }}
+          onFinishAttempt={mockOnFinish}
+        />
+      );
+
+      // First auto-submit fails and restores active state with alert
+      await waitFor(() => {
+        expect(alertSpy).toHaveBeenCalledWith(expect.stringContaining('Network submission timeout'));
+      });
+
+      // Set video dimensions on preview video element so captureStandaloneFrame executes canvas + uploadBytes + setDoc
+      const videoEl = document.querySelector('video');
+      if (videoEl) {
+        Object.defineProperty(videoEl, 'videoWidth', { value: 1920, configurable: true });
+        Object.defineProperty(videoEl, 'videoHeight', { value: 1080, configurable: true });
+      }
+
+      // Click Finish & Submit manually (succeeds and captures standalone frame)
+      fireEvent.click(screen.getByRole('button', { name: /Finish & Submit/i }));
+      await waitFor(() => {
+        expect(mockUploadBytes).toHaveBeenCalled();
+        expect(mockSetDoc).toHaveBeenCalled();
+        expect(screen.getByText(/Attempt Submitted Successfully!/i)).toBeInTheDocument();
+      });
+
+      unmount();
+      createElementSpy.mockRestore();
+      alertSpy.mockRestore();
+    });
+  });
+
+  describe('Additional Coverage for Tasks Suite', () => {
+    it('loads teacher lectureRecordings in TasksManagementView when availableVideos is empty and handles override not-found fallback', async () => {
+      mockGetDocs.mockResolvedValueOnce({
+        docs: [
+          {
+            id: 'rec_1',
+            data: () => ({
+              title: 'Week 2 Lecture',
+              storagePath: 'classes/c1/recordings/rec1.mp4',
+              startedAt: '2026-10-01T10:00:00Z',
+            }),
+          },
+        ],
+      });
+
+      let tasksCallback;
+      let subsCallback;
+      mockOnSnapshot.mockImplementation((ref, onNext) => {
+        if (ref.path.includes('submissions')) {
+          subsCallback = onNext;
+        } else {
+          tasksCallback = onNext;
+        }
+        return vi.fn();
+      });
+
+      render(
+        <TasksManagementView
+          classId="class_rec_test"
+          enrolledStudents={['alice@vtc.edu.hk']}
+          studentProfiles={{ 'alice@vtc.edu.hk': { uid: 'alice_uid', studentName: 'Alice' } }}
+        />
+      );
+
+      await waitFor(() => {
+        expect(mockGetDocs).toHaveBeenCalled();
+      });
+
+      act(() => {
+        tasksCallback({
+          docs: [
+            {
+              id: 't1',
+              data: () => ({
+                id: 't1',
+                title: 'Lab 1',
+                status: 'published',
+                maxScore: 100,
+                rubricSteps: [{ stepNumber: 1, title: 'S1', points: 100 }],
+              }),
+            },
+          ],
+        });
+      });
+
+      // Enter Grading Matrix
+      fireEvent.click(screen.getByRole('button', { name: /Grading Matrix/i }));
+      if (subsCallback) {
+        act(() => {
+          subsCallback({ docs: [] });
+        });
+      }
+
+      // Override score when submission document does not exist yet (updateDoc rejects with not-found -> falls back to setDoc)
+      mockUpdateDoc.mockRejectedValueOnce({ code: 'not-found', message: 'No document to update' });
+      fireEvent.click(screen.getByTitle(/Override score/i));
+      const scoreInput = screen.getByRole('spinbutton');
+      fireEvent.change(scoreInput, { target: { value: '88' } });
+      fireEvent.click(screen.getByTitle('Save'));
+
+      await waitFor(() => {
+        expect(mockSetDoc).toHaveBeenCalledWith(
+          expect.anything(),
+          expect.objectContaining({
+            studentUid: 'alice_uid',
+            effectiveScore: 88,
+            status: 'evaluated',
+          }),
+          { merge: true }
+        );
+      });
+    });
+
+    it('handles TaskEditorModal video file upload validation, resumable upload progress, and rubric point distribution', async () => {
+      let progressCb, completeCb;
+      mockUploadBytesResumable.mockImplementation(() => ({
+        on: (_evt, onProgress, _onError, onComplete) => {
+          progressCb = onProgress;
+          completeCb = onComplete;
+        },
+      }));
+
+      render(
+        <TaskEditorModal
+          isOpen={true}
+          onClose={vi.fn()}
+          onSave={vi.fn()}
+          classId="class_upload"
+          initialTask={{
+            title: 'Existing Task',
+            maxScore: 100,
+            demoVideoPath: 'classes/class_upload/tasks/demos/existing.mp4',
+            retroactiveConfig: {
+              sessionDate: '2026-10-12',
+              windowType: 'absolute_time',
+              startTime: '2026-10-12T09:00:00Z',
+              endTime: '2026-10-12T10:00:00Z',
+            },
+            rubricSteps: [
+              { stepNumber: 1, title: 'S1', points: 10 },
+              { stepNumber: 2, title: 'S2', points: 20 },
+            ],
+          }}
+        />
+      );
+
+      // Go to Tab 2 (Demo Video) -> should auto-select 'upload' mode from initialTask demoVideoPath
+      fireEvent.click(screen.getByRole('button', { name: /2\. Demo Video & AI/i }));
+      const fileInput = document.querySelector('input[type="file"]');
+
+      // Invalid file type
+      fireEvent.change(fileInput, {
+        target: { files: [new File(['abc'], 'notes.txt', { type: 'text/plain' })] },
+      });
+      expect(screen.getByText(/Please select a valid video file/i)).toBeInTheDocument();
+
+      // Valid video file + upload progress & completion
+      const validVideo = new File(['video-content'], 'demo clip.mp4', { type: 'video/mp4' });
+      fireEvent.change(fileInput, { target: { files: [validVideo] } });
+      fireEvent.click(screen.getByRole('button', { name: /Upload \(/i }));
+
+      act(() => {
+        progressCb?.({ bytesTransferred: 50, totalBytes: 100 });
+      });
+      expect(screen.getByText('50%')).toBeInTheDocument();
+
+      act(() => {
+        completeCb?.();
+      });
+      expect(screen.getByText(/classes\/class_upload\/tasks\/demos\//i)).toBeInTheDocument();
+
+      // Go to Tab 3 (Rubric Milestones) and click Auto-Balance to 100 pts
+      fireEvent.click(screen.getByRole('button', { name: /3\. Rubric Milestones/i }));
+      const balanceBtn = screen.getByRole('button', { name: /Auto-Balance to 100 pts/i });
+      fireEvent.click(balanceBtn);
+      expect(screen.getByText(/Total Rubric Points: 100 \/ 100/i)).toBeInTheDocument();
+    });
+
+    it('executes retroactive slicing inside TaskGradingMatrixView modal and handles StudentTaskFeedbackView locked states', async () => {
+      mockExtractRetroactiveSubmissions.mockResolvedValueOnce({
+        data: { processedCount: 3, absentCount: 1 },
+      });
+
+      render(
+        <TaskGradingMatrixView
+          task={{
+            id: 'task_retro_matrix',
+            title: 'Retro Matrix Task',
+            maxScore: 100,
+            scheduleMode: 'retroactive',
+          }}
+          classId="class_101"
+          submissions={[]}
+          enrolledStudents={['alice@vtc.edu.hk']}
+          onBack={vi.fn()}
+        />
+      );
+
+      fireEvent.click(screen.getByRole('button', { name: /Retroactive Slicing/i }));
+      fireEvent.click(screen.getByRole('button', { name: /Start Slicing & AI Grading/i }));
+
+      await waitFor(() => {
+        expect(
+          screen.getByText(/Extraction complete! Processed 3 student\(s\), 1 absent\./i)
+        ).toBeInTheDocument();
+      });
+
+      // Also test StudentTaskFeedbackView when feedback is not yet released
+      const onBack = vi.fn();
+      render(
+        <StudentTaskFeedbackView
+          task={{
+            title: 'Locked Exam Task',
+            constraints: {
+              attempts: { feedbackRelease: 'manual_by_teacher' },
+            },
+          }}
+          submission={{
+            status: 'evaluated',
+            feedbackReleased: false,
+          }}
+          onBack={onBack}
+        />
+      );
+
+      expect(screen.getByText(/Feedback Pending Release/i)).toBeInTheDocument();
+      expect(screen.getByText(/once released by your instructor/i)).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: /← Back to My Tasks/i }));
+      expect(onBack).toHaveBeenCalled();
     });
   });
 });

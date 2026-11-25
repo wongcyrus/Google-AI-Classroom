@@ -584,7 +584,10 @@ Stores information about each class.
     *   `defaultLectureRecording`: (boolean) Classroom-level recording policy default for teacher screen broadcasts. Defaults to `true` (**Record & Stream by Default**), ensuring that when a teacher opens the screen broadcast studio, HD composite WebM video and pure audio recording to Cloud Storage are automatically pre-armed so lectures are never accidentally forgotten. When toggled to `false` (**Live Stream Only by Default**), the broadcaster initializes in ephemeral zero-storage mode where screen frames are streamed in real-time to student monitors without saving files to Google Cloud Storage.
     *   `purgeScreenshotsAfterVideoCombine`: (boolean) Optional storage optimization policy. Defaults to `false`. When enabled (`true`), routine interval screen capture frames in `screenshots/` are automatically batch purged once their session MP4 time-lapse video has been successfully compiled and verified by `processVideoJob`. Flagged evidence, proctoring violations, and records in `irregularities` are strictly preserved.
 *   **Subcollections**:
-    *   **`lessons`**: Stores aggregated data and AI analysis results for each lesson.
+    *   **`studentConfig`**: Stores the non-PII class configuration mirror synchronized automatically from `classes/{classId}` by `onClassUpdate` (`auth_triggers`) and backfilled by `scripts/backfill-pii-isolation.mjs`.
+        *   **Document ID**: `public` (`classes/{classId}/studentConfig/public`).
+        *   **Security**: Read-only to enrolled students (`isStudentInClass(classId) || isTeacherInClass(classId)`), while raw `classes/{classId}` documents (which contain student/teacher rosters and PII maps) are restricted exclusively to teachers and admins. Student and public client listeners subscribe to `studentConfig/public` instead of `classes/{classId}`.
+    *   **`lessons`**: Stores aggregated data and AI analysis results for each lesson. Read access is restricted to teachers (`isTeacherInClass(classId)`); students retrieve only their own caller-scoped attendance and feedback entries via the `getStudentLessons` callable (`attendance`).
         *   **Document ID**: A hash of the lesson's start and end times.
         *   **Fields**:
             *   `startTime`: (timestamp) The start time of the lesson.
@@ -730,11 +733,11 @@ Stores information about each class.
         *   **Security & Integrity**: Governed by Firestore Security Rules:
             ```javascript
             match /classes/{classId}/bingoRecords/{bingoId} {
-              allow read: if isTeacherInClass(classId) || (isStudentInClass(classId) && (resource.data.studentUid == request.auth.uid || resource.data.studentUid == 'all'));
+              allow read: if isTeacherInClass(classId) || (isStudentInClass(classId) && resource.data.studentUid == request.auth.uid);
               allow write: if isTeacherInClass(classId);
             }
             ```
-            Enrolled students can only read challenges dispatched to themselves or class-wide broadcasts. Students cannot read peers' records and cannot write/tamper directly with records.
+            Enrolled students can only read challenges specifically addressed to their own `request.auth.uid` (legacy `studentUid == 'all'` broadcast docs are denied on Firestore). Students cannot read peers' records and cannot write/tamper directly with records.
     *   **`classes/{classId}/attendanceAdjustments`**: Stores penalty deduction records applied to a student's attendance when they miss consecutive presence checks.
         *   **Document ID**: Auto-generated (`adjustmentId`).
         *   **Fields**:
@@ -893,7 +896,7 @@ Stores information about each class.
                 *   `studentId`: (string, optional) Student ID / cohort tag.
                 *   `role`: (string) Member role within the group (e.g. `'Leader'`, `'Member'`, `'Backend'`, `'Frontend'`, `'UI/UX'`).
             *   `createdAt` / `updatedAt`: (timestamp) Server timestamps.
-        *   **Security Rules**: Enrolled teachers have full read/write access (`isTeacherInClass(classId)`). Enrolled students have read access (`isStudentInClass(classId)`).
+        *   **Security Rules**: Restricted exclusively to enrolled teachers (`allow read, write: if isTeacherInClass(classId);`). Students access only their own anonymized group/meeting summary and their own weekly log profile via the server-side `getStudentProjectRecords` callable (`ai_flows`), preventing classmate name/email/UID exposure.
     *   **`classes/{classId}/projectMeetings`**: Stores weekly or ad-hoc project group consultation records captured via the Single-Device Teacher Mobile Supervision Studio (continuous voice clips `audioClips[]`, zero-pause `0.1s` photo snaps `photos[]`, auto-sliced `720p` mobile camera demo videos `screenClips[]`, and 1-tap speaker voice anchors `voiceAnchors[]`), alongside Two-Stage Gemini 4 Argon / 3.8 Flash multimodal meeting analysis results.
         *   **Document ID**: `meetingId` (string, e.g. `mtg_1791950100000_xy89z`).
         *   **Fields**:
@@ -929,7 +932,7 @@ Stores information about each class.
                 *   `recipients`: (array of strings) Recipient student email addresses.
                 *   `subject`: (string) Email subject line.
                 *   `messageIds`: (array of strings) Message IDs returned by SMTP transport.
-        *   **Security Rules**: Enrolled teachers have full read/write access; enrolled students can read meeting records and append their own uploaded screen clips (`screenClips`) during active sessions.
+        *   **Security Rules**: Restricted exclusively to enrolled teachers (`allow read, write: if isTeacherInClass(classId);`). Students retrieve their caller-scoped meeting attendance, personal scores/feedback, and group progress via `getStudentProjectRecords` (stripped of transcripts, voice anchors, minutes, and peer records).
     *   **`classes/{classId}/projectStudentProfiles`**: Stores longitudinal Individual Student Contribution Profiles and incrementally ingested weekly logs (`Week 1` → `Current`) from the class's public Google Sheet (`classes/{classId}.projectLogSheetUrl`), even when 0 weekly meetings have been recorded.
         *   **Document ID**: `studentEmail` (string, canonical normalized `@stu.vtc.edu.hk` email, e.g. `student01@stu.vtc.edu.hk`).
         *   **Fields**:
@@ -948,7 +951,7 @@ Stores information about each class.
             *   `ingestedWeeklyLogs`: (array of objects) Raw and audited weekly log entries (`weekNumber`, `timestamp`, `isDoingSomething`, `workDone`, `unfinished`, `nextPlan`, `priorWeekPlan`, `qualityStatus`, `qualityScore`, `qualityReason`, `suggestedChallengeQuestions[]`).
             *   `weeklyTimeline`: (array of objects) Per-week merged dossier combining weekly log audits, challenge questions, multi-supervisor meeting attendance (`meetingsCount`, `supervisorsLabel`), and post-meeting `weeklyFeedback`.
             *   `lastSyncedAt` / `updatedAt`: (timestamp) Incremental sync timestamps.
-        *   **Security Rules**: Enrolled teachers have full read/write access (`isTeacherInClass(classId)`). Enrolled students can read their own profile.
+        *   **Security Rules**: Restricted exclusively to enrolled teachers (`allow read, write: if isTeacherInClass(classId);`). Students retrieve only their own `myProjectProfile` via `getStudentProjectRecords`.
     *   **`classes/{classId}/activeMeetingCaptures`** *(Legacy / Deprecated)*: Real-time cross-device signaling documents previously coordinating dual-device live recording between the Supervisor's Mobile Phone and Presenting Student's PC. Superseded by direct teacher mobile 720p video demos and photo artifact capture.
         *   **Document ID**: `studentKey` (string, either `studentUid` or canonical `studentEmail` `@stu.vtc.edu.hk`).
         *   **Fields**: `classId`, `meetingId`, `groupId`, `groupName`, `weekNumber`, `title`, `supervisorUid`, `supervisorEmail`, `supervisorName`, `studentUid`, `studentEmail`, `studentName`, `status` (`'recording'` | `'stopping'`), `studentPcState` (`'awaiting_permission'` | `'recording_screen'` | `'uploading'` | `'completed'`), `startedAt`, `updatedAt`.
@@ -1042,7 +1045,7 @@ Stores temporary (10-minute) cryptographic pairing session tokens generated on t
 System-level login policy document managing global password whitelist bypasses for desktop access and permanent passkey exemptions.
 
 *   **Document ID**: `loginPolicy` (inside `system_config` collection).
-*   **Security**: Read access granted to authenticated users; direct client write access is strictly forbidden (`allow write: if false`). Mutations must be performed by authenticated teachers via backend Cloud Functions (e.g., `toggleStudentPasskeyExemption`).
+*   **Security**: Client read and write access is restricted strictly to verified teachers (`allow read: if isTeacher(); allow write: if false;`) so enrolled students cannot read the institutional email whitelist. Student permanent exemption checks read owner-only `studentProfiles/{uid}.passkeyPermanentExempt` and the `getStudentPasskeyStatus` callable. Mutations are performed by teachers via `toggleStudentPasskeyExemption`.
 *   **Fields**:
     *   `passwordWhitelist`: (array of strings) Institutional email addresses of students permanently exempted from mandatory passkey verification (e.g., students with incompatible smartphone hardware lacking Credential Manager).
     *   `passwordWhitelistUids`: (array of strings) Corresponding Firebase Auth UIDs of whitelisted students.
@@ -1187,11 +1190,12 @@ Stores physical WebAuthn (FIDO2) public key credentials for enrolled students, e
 
 ### `studentProfiles`
 
-Stores the class enrollments for each student. This is a core part of the authorization system.
+Stores the class enrollments and mirrored passkey exemption state for each student. This is a core part of the authorization system (`allow read: if request.auth.uid == studentId || isTeacher(); allow write: if false;`).
 
 *   **Document ID**: `studentUid` (string)
 *   **Fields**:
     *   `classes`: (array) An array of `classId`s that the student is enrolled in.
+    *   `passkeyPermanentExempt`: (boolean, optional) Mirrored from `system_config/loginPolicy` by `toggleStudentPasskeyExemption` / backfill so the client portal can check exemption status without accessing the global email whitelist.
 
 ### `students`
 
@@ -1374,8 +1378,10 @@ To support student transparency and review of academic and invigilation history 
 
 | Collection / Resource | Permission | Rule & Ownership Predicate |
 | :--- | :--- | :--- |
-| **`classes/{classId}/lessons`** | `read` | `isTeacherInClass(classId) || isStudentInClass(classId)` — Enrolled students can read lesson logs; in-memory filtering isolates the calling student's attendance entry (`students[user.uid]`), including deducted minutes. |
-| **`classes/{classId}/bingoRecords`** | `read` | `isTeacherInClass(classId) || (isStudentInClass(classId) && (resource.data.studentUid == request.auth.uid || resource.data.studentUid == 'all'))` — Students can read challenges addressed to them or class broadcasts; peers' records are isolated. Writes strictly restricted to teachers. |
+| **`classes/{classId}/studentConfig/public`** | `read` | `isTeacherInClass(classId) || isStudentInClass(classId)` — Enrolled students read non-PII schedule, capture, subtitle, exam, and recording policy metadata while raw `classes/{classId}` remains teacher-only (`isTeacher() || isTeacherInClass(classId)`). |
+| **`classes/{classId}/lessons`** | `read` (teacher) / callable | Direct Firestore reads restricted to `isTeacherInClass(classId)`. Students fetch only caller-scoped lesson summaries and their own `students[callerUid]` attendance/feedback via the `getStudentLessons` callable. |
+| **`classes/{classId}/projectGroups`, `projectMeetings`, `projectStudentProfiles`** | `read` (teacher) / callable | Direct Firestore reads restricted to `isTeacherInClass(classId)`. Students fetch caller-scoped project data via `getStudentProjectRecords` with teammate names, emails, UIDs, transcripts, and peer records stripped. |
+| **`classes/{classId}/bingoRecords`** | `read` | `isTeacherInClass(classId) || (isStudentInClass(classId) && resource.data.studentUid == request.auth.uid)` — Students can read only challenges addressed specifically to their `request.auth.uid`. Writes strictly restricted to teachers. |
 | **`classes/{classId}/attendanceAdjustments`** | `read` | `isTeacherInClass(classId) || (isStudentInClass(classId) && resource.data.studentUid == request.auth.uid)` — Students can view their own transparent attendance adjustment and strike history. |
 | **`videoJobs`** | `read` | `isTeacher() || (request.auth != null && request.auth.uid == resource.data.studentUid)` — Students can only query and read their own compiled video jobs. |
 | **`aiJobs`** | `read` | `isTeacher() || (request.auth != null && request.auth.uid == resource.data.studentUid)` — Students can only query and read AI analysis feedback jobs assigned to their UID. |

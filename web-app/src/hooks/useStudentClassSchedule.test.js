@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useStudentClassSchedule } from './useStudentClassSchedule';
-import { onSnapshot, getDoc } from 'firebase/firestore';
+import { doc, onSnapshot, getDoc } from 'firebase/firestore';
 
 vi.mock('firebase/firestore', () => ({
   doc: vi.fn(),
@@ -91,6 +91,8 @@ describe('useStudentClassSchedule Hook', () => {
 
     expect(result.current.userClasses).toEqual(['CLASS_A']);
     expect(result.current.currentActiveClassId).toBe('CLASS_A');
+    expect(doc).toHaveBeenCalledWith(expect.anything(), 'classes', 'CLASS_A', 'studentConfig', 'public');
+    expect(doc).not.toHaveBeenCalledWith(expect.anything(), 'classes', 'CLASS_A');
   });
 
   it('handles overnight slots and out-of-range dates', async () => {

@@ -3,6 +3,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const {
   mockDocGet,
   mockDocUpdate,
+  mockSubDocSet,
+  mockSubDocDelete,
   mockBatchSet,
   mockBatchUpdate,
   mockBatchCommit,
@@ -12,6 +14,8 @@ const {
 } = vi.hoisted(() => {
   const mockDocGet = vi.fn();
   const mockDocUpdate = vi.fn().mockResolvedValue();
+  const mockSubDocSet = vi.fn().mockResolvedValue();
+  const mockSubDocDelete = vi.fn().mockResolvedValue();
   const mockBatchSet = vi.fn();
   const mockBatchUpdate = vi.fn();
   const mockBatchCommit = vi.fn().mockResolvedValue();
@@ -23,6 +27,8 @@ const {
   return {
     mockDocGet,
     mockDocUpdate,
+    mockSubDocSet,
+    mockSubDocDelete,
     mockBatchSet,
     mockBatchUpdate,
     mockBatchCommit,
@@ -41,6 +47,8 @@ vi.mock('firebase-admin/firestore', () => {
       doc: vi.fn((subDocId) => ({
         id: subDocId,
         get: mockDocGet,
+        set: (...args) => mockSubDocSet(docId, subCol, subDocId, ...args),
+        delete: (...args) => mockSubDocDelete(docId, subCol, subDocId, ...args),
       })),
     })),
   }));
@@ -527,5 +535,87 @@ describe('onClassUpdate Lifecycle & User Association Trigger', () => {
     // 250 students * 2 ops + 1 class update = 501 ops -> requires >= 2 batch commits at BATCH_LIMIT=400
     expect(mockBatchCommit.mock.calls.length).toBeGreaterThanOrEqual(2);
     expect(mockBatchUpdate).toHaveBeenCalledTimes(1);
+  });
+
+  it('syncs stripped non-PII public config to studentConfig/public without exposing student roster or profiles', async () => {
+    await onClassUpdate({
+      params: { classId: 'CLASS_PUB' },
+      data: {
+        before: { exists: false, data: () => undefined },
+        after: {
+          exists: true,
+          data: () => ({
+            name: 'ITP3901 Object Oriented Programming',
+            isCapturing: true,
+            frameRate: 15,
+            schedule: { timeZone: 'Asia/Hong_Kong', slots: [] },
+            examPeriods: [{ startDate: '2026-12-01', endDate: '2026-12-02' }],
+            studentEmails: ['alice@stu.vtc.edu.hk', 'bob@stu.vtc.edu.hk'],
+            students: { u1: 'alice@stu.vtc.edu.hk', u2: 'bob@stu.vtc.edu.hk' },
+            studentProfiles: { 'alice@stu.vtc.edu.hk': { studentName: 'Alice Chan' } },
+            teacherEmails: ['teacher@vtc.edu.hk'],
+            teachers: { t1: 'teacher@vtc.edu.hk' },
+          }),
+        },
+      },
+    });
+
+    expect(mockSubDocSet).toHaveBeenCalledWith(
+      'CLASS_PUB',
+      'studentConfig',
+      'public',
+      expect.objectContaining({
+        name: 'ITP3901 Object Oriented Programming',
+        isCapturing: true,
+        frameRate: 15,
+        schedule: { timeZone: 'Asia/Hong_Kong', slots: [] },
+        examPeriods: [{ startDate: '2026-12-01', endDate: '2026-12-02' }],
+      })
+    );
+    const writtenPayload = mockSubDocSet.mock.calls[0][3];
+    expect(writtenPayload.studentEmails).toBeUndefined();
+    expect(writtenPayload.students).toBeUndefined();
+    expect(writtenPayload.studentProfiles).toBeUndefined();
+    expect(writtenPayload.teacherEmails).toBeUndefined();
+    expect(writtenPayload.teachers).toBeUndefined();
+
+    // Quota/PII-only change must not redundantly rewrite studentConfig/public
+    mockSubDocSet.mockClear();
+    await onClassUpdate({
+      params: { classId: 'CLASS_PUB' },
+      data: {
+        before: {
+          exists: true,
+          data: () => ({
+            name: 'ITP3901 Object Oriented Programming',
+            isCapturing: true,
+            aiUsedQuota: 10,
+            studentEmails: ['alice@stu.vtc.edu.hk'],
+            teacherEmails: [],
+          }),
+        },
+        after: {
+          exists: true,
+          data: () => ({
+            name: 'ITP3901 Object Oriented Programming',
+            isCapturing: true,
+            aiUsedQuota: 25,
+            studentEmails: ['alice@stu.vtc.edu.hk'],
+            teacherEmails: [],
+          }),
+        },
+      },
+    });
+    expect(mockSubDocSet).not.toHaveBeenCalled();
+
+    // Class deletion removes studentConfig/public
+    await onClassUpdate({
+      params: { classId: 'CLASS_PUB' },
+      data: {
+        before: { exists: true, data: () => ({ studentEmails: [], teacherEmails: [] }) },
+        after: { exists: false, data: () => null },
+      },
+    });
+    expect(mockSubDocDelete).toHaveBeenCalledWith('CLASS_PUB', 'studentConfig', 'public');
   });
 });

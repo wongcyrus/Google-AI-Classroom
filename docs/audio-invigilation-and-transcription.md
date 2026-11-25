@@ -332,9 +332,9 @@ To avoid re-downloading large AI models on every session and to handle wiped/sha
 
 ---
 
-## 11. Student Portal Audio Confidentiality & Inline Playback
+## 11. Student Portal Audio Confidentiality & Transcript-Only View
 
-In `StudentRecordsView.jsx`, audio transcripts and speech recordings are protected under assessment integrity guidelines:
+In `StudentRecordsView.jsx`, audio transcripts and speech recordings are protected under assessment integrity and student privacy guidelines:
 
 1. **Exam Period Speech Withholding**:
    - Audio snippets logged during teacher-defined `examPeriods` or when `isExamActive` is true are filtered out of the student view (`visibleAudio`).
@@ -345,10 +345,9 @@ In `StudentRecordsView.jsx`, audio transcripts and speech recordings are protect
      ```
 2. **Dynamic Tab Badge Accuracy**:
    - The Tab 5 (Audio Transcripts) counter badge dynamically reflects `visibleAudio.length` rather than total raw records.
-3. **Inline On-Demand Audio Snippet Player**:
-   - For regular (non-exam) lessons, each audio snippet provides a **"▶ Play Clip"** button.
-   - Click triggers `handleTogglePlayAudio(audioItem)` to resolve the storage URL on demand (`getDownloadURL(ref(storage, audioPath))`) and mounts a native `<audio controls autoPlay>` player with zero upfront bandwidth consumption.
-   - If an exam snippet is queried directly, playback is blocked immediately with an alert notice.
+3. **Transcript-Only Student View (Voice Recording Playback & Downloads Reserved for Teachers)**:
+   - In the student portal (`StudentRecordsView.jsx`), students view only the **Timestamp**, **Language**, and **Detected Speech Transcript** columns in the `Monitored Audio Transcripts` table; voice recording playback (`▶ Play Clip`, sequential playlist) and audio file downloads (`📥 Download`, `Combine Full Lesson Audio (.m4a)`) are excluded from the student UI.
+   - Similarly, when a student opens a compiled video screencast in `VideoPlayerModal.jsx` from `StudentRecordsView.jsx`, `hideAudioTrack={true}` is passed so the `Student Session Audio Track` player and download link are hidden from students while remaining available to instructors in teacher views.
 
 ---
 

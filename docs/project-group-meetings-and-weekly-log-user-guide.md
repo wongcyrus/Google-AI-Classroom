@@ -387,7 +387,7 @@ Managing project meetings creates three distinct media assets: audio clips, 720p
 
 ## Part 5: Student Portal — "👥 Project Meetings" Tab (`/student/records`)
 
-Students have full transparency into their capstone project consultations, attendance records, supervisor evaluations, and submitted weekly logs directly from the Student Portal ([`StudentRecordsView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/StudentRecordsView.jsx)).
+Students have full transparency into their **own** capstone project consultations, attendance records, supervisor evaluations, and submitted weekly logs directly from the Student Portal ([`StudentRecordsView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/StudentRecordsView.jsx)) via the caller-scoped callable [`getStudentProjectRecords`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/projectMeetingFlows.js). Direct client Firestore reads on `projectGroups`, `projectMeetings`, and `projectStudentProfiles` are teacher-only, and `getStudentProjectRecords` strictly strips classmate names, emails, UIDs (anonymizing peer slots to `teammate_N`), raw multi-speaker transcripts, `voiceAnchors`, `minutesMarkdown`, and other students' evaluations or logs.
 
 ### 5.1 Accessing Project Group Meeting Records
 1. Log in to the Student Portal (`/student`) with your `@stu.vtc.edu.hk` institutional account.
@@ -419,11 +419,11 @@ Selecting any meeting card opens the detailed supervision dossier:
 5. **Next Week Action Items**:
    - Deliverables and tasks assigned for completion before the next consultation.
 
-### 5.4 Multi-Stream Audio & Demonstration Playback
-Under the **Meeting Recordings & Demos** panel:
-- **Room Audio**: Listen to the supervisor's mobile voice recording clips (`audio/webm` or `audio/mp4`) capturing the consultation discussion.
+### 5.4 Demonstration Video & Photo Artifact Playback
+Under the **Meeting Media** bar on each consultation card:
 - **Mobile Video Demos & Screen Clips**: Watch the recorded 720p demonstration videos filmed by your supervisor or historical screencasts of student demonstrations.
 - **Photo Artifacts**: Inspect full-resolution photos of whiteboard diagrams, IoT circuits, or error logs captured during the session.
+- *(Note: Multi-speaker consultation room voice recordings are reserved for supervisors and are not played back or downloaded in the student view.)*
 
 ### 5.5 Google Form Weekly Logs Subview
 Click the sub-tab **`📋 Weekly Logs (Form Responses 2)`** to review your submitted weekly logs:

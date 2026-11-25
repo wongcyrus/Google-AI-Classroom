@@ -33,6 +33,7 @@ describe('broadcastHandover utilities', () => {
       expect(isMediaStreamLive(mockStream, 'audio')).toBe(false);
       expect(isMediaStreamLive(mockStream)).toBe(true);
       expect(isMediaStreamLive(null)).toBe(false);
+      expect(isMediaStreamLive({ getTracks: () => { throw new Error('bad stream'); } })).toBe(false);
     });
   });
 
@@ -171,6 +172,149 @@ describe('broadcastHandover utilities', () => {
       await closeTeacherSystemNotification('teacher-mic-silent-warning');
       expect(closeSpy).toHaveBeenCalled();
 
+      delete window.Notification;
+    });
+
+    it('handles handover chime, AudioContext close timeout, ServiceWorker notifications, and notification onclick callbacks', async () => {
+      vi.useFakeTimers();
+      const closeAudioSpy = vi.fn();
+      class MockAudioContext {
+        constructor() {
+          this.currentTime = 0;
+          this.state = 'running';
+          this.destination = {};
+          this.close = closeAudioSpy;
+        }
+        createOscillator() {
+          return {
+            type: 'sine',
+            frequency: { setValueAtTime: vi.fn() },
+            connect: vi.fn(),
+            start: vi.fn(),
+            stop: vi.fn(),
+          };
+        }
+        createGain() {
+          return {
+            gain: {
+              setValueAtTime: vi.fn(),
+              exponentialRampToValueAtTime: vi.fn(),
+            },
+            connect: vi.fn(),
+          };
+        }
+      }
+      window.AudioContext = MockAudioContext;
+
+      expect(playTeacherAlertChime('handover')).toBe(true);
+      vi.advanceTimersByTime(900);
+      expect(closeAudioSpy).toHaveBeenCalled();
+
+      // Test AudioContext throwing error
+      window.AudioContext = function () {
+        throw new Error('AudioContext blocked');
+      };
+      expect(playTeacherAlertChime('silence')).toBe(false);
+      delete window.AudioContext;
+      vi.useRealTimers();
+
+      // Test Notification permission request + onclick callback + replacing duplicate tag
+      const closeSpy = vi.fn();
+      const focusSpy = vi.spyOn(window, 'focus').mockImplementation(() => {});
+      const createdNotifications = [];
+      class MockNotification {
+        static permission = 'default';
+        static requestPermission = vi.fn().mockImplementation(async () => {
+          MockNotification.permission = 'granted';
+          return 'granted';
+        });
+        constructor(title, options) {
+          this.title = title;
+          this.options = options;
+          this.close = closeSpy;
+          createdNotifications.push(this);
+        }
+      }
+      window.Notification = MockNotification;
+
+      const onClickSpy = vi.fn();
+      await sendTeacherSystemNotification({
+        title: 'First Alert',
+        body: 'Body 1',
+        tag: 'dup-tag',
+        data: { targetClassId: 'C2' },
+        playChime: true,
+        onClick: onClickSpy,
+      });
+      await sendTeacherSystemNotification({
+        title: 'Second Alert',
+        body: 'Body 2',
+        tag: 'dup-tag',
+        data: { targetClassId: 'C2' },
+        onClick: onClickSpy,
+      });
+
+      expect(createdNotifications).toHaveLength(2);
+      expect(closeSpy).toHaveBeenCalledTimes(1); // First notification closed when replaced
+
+      // Trigger onclick on second notification
+      createdNotifications[1].onclick();
+      expect(focusSpy).toHaveBeenCalled();
+      expect(onClickSpy).toHaveBeenCalledWith({ targetClassId: 'C2' });
+
+      // Test ServiceWorker showNotification and getNotifications paths
+      const swShowNotification = vi.fn().mockResolvedValue();
+      const swNotifClose = vi.fn();
+      const swGetNotifications = vi.fn().mockResolvedValue([{ close: swNotifClose }]);
+      const origSw = navigator.serviceWorker;
+      Object.defineProperty(navigator, 'serviceWorker', {
+        configurable: true,
+        value: {
+          ready: Promise.resolve({
+            showNotification: swShowNotification,
+            getNotifications: swGetNotifications,
+          }),
+        },
+      });
+
+      const sentSw = await sendTeacherSystemNotification({
+        title: 'SW Alert',
+        body: 'Via Service Worker',
+        tag: 'sw-tag',
+      });
+      expect(sentSw).toBe(true);
+      expect(swShowNotification).toHaveBeenCalled();
+
+      await closeTeacherSystemNotification('sw-tag');
+      expect(swGetNotifications).toHaveBeenCalledWith({ tag: 'sw-tag' });
+      expect(swNotifClose).toHaveBeenCalled();
+
+      // Test ServiceWorker active.postMessage fallback when showNotification is absent
+      const postMessageSpy = vi.fn();
+      Object.defineProperty(navigator, 'serviceWorker', {
+        configurable: true,
+        value: {
+          ready: Promise.resolve({
+            active: { postMessage: postMessageSpy },
+          }),
+        },
+      });
+      const sentPost = await sendTeacherSystemNotification({
+        title: 'SW PostMessage Alert',
+        body: 'Via postMessage',
+        tag: 'sw-post-tag',
+      });
+      expect(sentPost).toBe(true);
+      expect(postMessageSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'show-notification', title: 'SW PostMessage Alert' })
+      );
+
+      if (origSw !== undefined) {
+        Object.defineProperty(navigator, 'serviceWorker', { configurable: true, value: origSw });
+      } else {
+        delete navigator.serviceWorker;
+      }
+      focusSpy.mockRestore();
       delete window.Notification;
     });
   });

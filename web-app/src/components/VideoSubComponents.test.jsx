@@ -1,11 +1,47 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import VideoTable from './VideoTable';
-import VideoPlayerModal from './VideoPlayerModal';
+import VideoPlayerModal, { formatDuration } from './VideoPlayerModal';
 import VideoPromptSelector from './VideoPromptSelector';
 import AiJobsTable from './AiJobsTable';
 import VideoAnalysisJobsTable from './VideoAnalysisJobsTable';
+import NativeDialog from './NativeDialog';
+import NativeModalDialog from './meetings/NativeModalDialog';
+import TimelineSlider from './TimelineSlider';
+
+const mockGetDocs = vi.fn();
+const mockMergeAudioCallable = vi.fn();
+const mockGetDownloadURL = vi.fn();
+
+vi.mock('firebase/firestore', async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    collection: vi.fn((_db, ...path) => ({ path: path.join('/') })),
+    query: vi.fn((col) => col),
+    where: vi.fn(),
+    limit: vi.fn(),
+    getDocs: (...args) => mockGetDocs(...args),
+  };
+});
+
+vi.mock('firebase/functions', async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    httpsCallable: vi.fn(() => (...args) => mockMergeAudioCallable(...args)),
+  };
+});
+
+vi.mock('firebase/storage', async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    ref: vi.fn((_st, path) => ({ path })),
+    getDownloadURL: (...args) => mockGetDownloadURL(...args),
+  };
+});
 
 vi.mock('../hooks/useVideoPrompts', () => ({
   useVideoPrompts: vi.fn(() => [
@@ -271,6 +307,191 @@ describe('Video & AI Analysis Sub-components', () => {
       const copyBtn = screen.getByRole('button', { name: /Copy Prompt/i });
       fireEvent.click(copyBtn);
       expect(navigator.clipboard.writeText).toHaveBeenCalledWith(mockJob.prompt);
+    });
+  });
+
+  describe('VideoPlayerModal Async Audio Lookup & Merging', () => {
+    it('formats durations properly and resolves combinedAudios or merges raw session audio clips', async () => {
+      expect(formatDuration(0)).toBe('0:00');
+      expect(formatDuration(-5)).toBe('0:00');
+      expect(formatDuration(125)).toBe('2:05');
+
+      // Case 1: combinedAudios has audioPath resolved via getDownloadURL
+      mockGetDocs.mockResolvedValueOnce({
+        empty: false,
+        docs: [
+          {
+            id: 'comb_1',
+            data: () => ({
+              audioPath: 'classes/c1/combined/s1.mp3',
+              durationSeconds: 95,
+              clipCount: 4,
+              createdAt: { _seconds: 1700000100 },
+            }),
+          },
+        ],
+      });
+      mockGetDownloadURL.mockResolvedValueOnce('https://cdn.example.com/combined_s1.mp3');
+
+      const { unmount } = render(
+        <VideoPlayerModal
+          show={true}
+          onClose={vi.fn()}
+          videoUrl="https://cdn.example.com/v1.mp4"
+          classId="c1"
+          video={{
+            id: 'v1',
+            studentUid: 's1',
+            studentEmail: 's1@school.edu',
+            duration: 40,
+            captureInterval: 15,
+            startTime: { _seconds: 1700000000 },
+            endTime: { _seconds: 1700000600 },
+          }}
+        />
+      );
+
+      expect(screen.getByText(/Time-Lapse Screencast:/i)).toBeInTheDocument();
+      await waitFor(() => {
+        expect(screen.getByTestId('student-session-audio-player')).toHaveAttribute(
+          'src',
+          'https://cdn.example.com/combined_s1.mp3'
+        );
+      });
+      expect(screen.getByText('1:35')).toBeInTheDocument();
+      unmount();
+
+      // Case 2: combinedAudios is empty, raw audio clips exist with transcript and trigger mergeStudentSessionAudio
+      mockGetDocs
+        .mockResolvedValueOnce({ empty: true, docs: [] }) // combinedAudios empty
+        .mockResolvedValueOnce({
+          empty: false,
+          docs: [
+            { id: 'raw_1', data: () => ({ transcript: 'Hello teacher' }) },
+            { id: 'raw_2', data: () => ({ transcript: 'Testing Docker container' }) },
+          ],
+        });
+      mockMergeAudioCallable.mockResolvedValueOnce({
+        data: {
+          status: 'success',
+          jobId: 'merged_job_1',
+          audioUrl: 'https://cdn.example.com/merged_session.mp3',
+          durationSeconds: 42,
+          clipCount: 2,
+        },
+      });
+
+      render(
+        <VideoPlayerModal
+          show={true}
+          onClose={vi.fn()}
+          videoUrl="https://cdn.example.com/v2.mp4"
+          classId="c1"
+          video={{
+            id: 'v2',
+            studentUid: 's2',
+            studentEmail: 's2@school.edu',
+          }}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText(/Full session audio track automatically combined/i)).toBeInTheDocument();
+      });
+      expect(screen.getByText(/Hello teacher \.\.\. Testing Docker container/i)).toBeInTheDocument();
+    });
+  });
+
+  describe('NativeDialog, NativeModalDialog & TimelineSlider Components', () => {
+    it('renders TimelineSlider buffered ranges and triggers onChange', () => {
+      const onChange = vi.fn();
+      const { container } = render(
+        <TimelineSlider
+          min={0}
+          max={100}
+          value={25}
+          onChange={onChange}
+          bufferedRanges={[
+            { start: 0, end: 30 },
+            { start: 50, end: 80 },
+          ]}
+        />
+      );
+
+      const bufferedBars = container.querySelectorAll('.timeline-slider-buffered');
+      expect(bufferedBars).toHaveLength(2);
+      const sliderInput = screen.getByRole('slider');
+      fireEvent.change(sliderInput, { target: { value: '40' } });
+      expect(onChange).toHaveBeenCalled();
+    });
+
+    it('handles NativeDialog backdrop click, inside drag guard, and Escape cancel event', () => {
+      const onClose = vi.fn();
+      const { container, rerender } = render(
+        <NativeDialog isOpen={true} onClose={onClose} ariaLabel="Test Native Dialog">
+          <div data-testid="inside-box">Dialog Body</div>
+        </NativeDialog>
+      );
+
+      const dialog = container.querySelector('dialog');
+      expect(dialog).toBeInTheDocument();
+
+      // Pointer down inside, then click on dialog backdrop -> should NOT close (drag-out guard)
+      const inside = screen.getByTestId('inside-box');
+      fireEvent.pointerDown(inside);
+      fireEvent.click(dialog);
+      expect(onClose).not.toHaveBeenCalled();
+
+      // Pointer down directly on dialog backdrop, then click -> should close
+      fireEvent.pointerDown(dialog);
+      fireEvent.click(dialog);
+      expect(onClose).toHaveBeenCalledTimes(1);
+
+      // Cancel event triggers onClose when closeOnEscape is true
+      fireEvent(dialog, new Event('cancel', { cancelable: true }));
+      expect(onClose).toHaveBeenCalledTimes(2);
+
+      // Rerender with isOpen={false}
+      rerender(
+        <NativeDialog isOpen={false} onClose={onClose} ariaLabel="Test Native Dialog">
+          <div>Hidden</div>
+        </NativeDialog>
+      );
+      expect(container.querySelector('dialog')).toBeNull();
+    });
+
+    it('handles NativeModalDialog open/close lifecycle, cancel dismissal, and Safari pointer outside fallback', () => {
+      const onClose = vi.fn();
+      const { container, rerender } = render(
+        <NativeModalDialog open={true} onClose={onClose} canDismiss={false} ariaLabel="Non-dismissible Modal">
+          <div>Modal Content</div>
+        </NativeModalDialog>
+      );
+
+      const dialog = container.querySelector('dialog');
+      expect(dialog).toBeInTheDocument();
+
+      // Cancel when canDismiss=false prevents default and does not call onClose
+      const cancelEvt = new Event('cancel', { cancelable: true });
+      fireEvent(dialog, cancelEvt);
+      expect(onClose).not.toHaveBeenCalled();
+
+      // Rerender with canDismiss=true
+      rerender(
+        <NativeModalDialog open={true} onClose={onClose} canDismiss={true} ariaLabel="Dismissible Modal">
+          <div>Modal Content</div>
+        </NativeModalDialog>
+      );
+
+      const dialog2 = container.querySelector('dialog');
+      dialog2.getBoundingClientRect = () => ({ left: 100, right: 300, top: 100, bottom: 300 });
+      fireEvent.pointerDown(dialog2, { clientX: 20, clientY: 20 });
+      fireEvent.pointerUp(dialog2, { clientX: 25, clientY: 25 });
+      expect(onClose).toHaveBeenCalled();
+
+      // Native close event
+      fireEvent(dialog2, new Event('close'));
+      expect(onClose).toHaveBeenCalledTimes(2);
     });
   });
 });

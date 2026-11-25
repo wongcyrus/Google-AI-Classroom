@@ -243,7 +243,6 @@ describe('useTeacherScreenBroadcast Hook', () => {
         this.url = url;
         this.postMessage = mockPostMessage;
         this.terminate = mockTerminate;
-        // eslint-disable-next-line consistent-this
         workerInstance = this;
       }
     }
@@ -564,6 +563,45 @@ describe('useTeacherScreenBroadcast Hook', () => {
     } finally {
       window.ImageCapture = originalImageCapture;
       vi.useRealTimers();
+    }
+  });
+
+  it('covers canvas toDataURL fallback when toBlob returns null and updates Firestore when setBroadcastResolution is called while active', async () => {
+    const origToBlob = HTMLCanvasElement.prototype.toBlob;
+    HTMLCanvasElement.prototype.toBlob = vi.fn((cb) => cb(null));
+
+    try {
+      const { result } = renderHook(() =>
+        useTeacherScreenBroadcast({
+          classId: 'CLASS_FALLBACK_BLOB',
+          teacherUid: 'teacher_123',
+          teacherEmail: 'teacher@test.com',
+        })
+      );
+
+      await act(async () => {
+        await result.current.startBroadcast({ resolution: '480p', interval: 1500 });
+      });
+
+      expect(result.current.isBroadcasting).toBe(true);
+      expect(HTMLCanvasElement.prototype.toDataURL).toHaveBeenCalled();
+
+      // Dynamically change resolution while broadcasting -> updates session doc and triggers immediate capture
+      await act(async () => {
+        await result.current.setBroadcastResolution('1080p');
+      });
+
+      expect(mockSetDoc).toHaveBeenCalledWith(
+        expect.objectContaining({ path: 'classes/CLASS_FALLBACK_BLOB/screenBroadcast/session' }),
+        expect.objectContaining({ resolution: '1080p' }),
+        { merge: true }
+      );
+
+      await act(async () => {
+        await result.current.stopBroadcast();
+      });
+    } finally {
+      HTMLCanvasElement.prototype.toBlob = origToBlob;
     }
   });
 });

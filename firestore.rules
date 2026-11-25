@@ -106,7 +106,8 @@ service cloud.firestore {
     }
 
     match /studentProfiles/{userId} {
-      allow read, write: if isSignedIn() && request.auth.uid == userId;
+      allow read: if isSignedIn() && request.auth.uid == userId;
+      allow write: if false; // Managed exclusively by Cloud Functions / Admin SDK
     }
 
     match /studentDirectory/{studentEmail} {
@@ -132,13 +133,12 @@ service cloud.firestore {
     }
 
     match /classes/{classId} {
-      allow get: if isTeacherInClassData(resource.data) || isStudentInClassData(resource.data);
+      allow get: if isTeacherInClassData(resource.data);
       allow list: if isAdmin() ||
         (isTeacher() && 'teacherEmails' in resource.data && resource.data.teacherEmails is list &&
           (request.auth.token.get('email', '') in resource.data.teacherEmails ||
            request.auth.token.get('email', '').lower() in resource.data.teacherEmails)) ||
-        isTeacherInClassData(resource.data) ||
-        isStudentInClassData(resource.data);
+        isTeacherInClassData(resource.data);
       allow create: if isTeacher() &&
                       request.resource.data.teacherEmails is list &&
                       request.resource.data.teacherEmails.size() <= 50 &&
@@ -149,6 +149,11 @@ service cloud.firestore {
                       classId.size() >= 3 &&
                       classId.size() <= 128;
       allow update, delete: if isTeacherInClassData(resource.data);
+
+      match /studentConfig/{docId} {
+        allow read: if isTeacherInClass(classId) || isStudentInClass(classId);
+        allow write: if false; // Synced exclusively by Cloud Functions from classes/{classId}
+      }
 
       match /students/{studentId} {
         allow read: if isTeacherInClass(classId);
@@ -221,7 +226,7 @@ service cloud.firestore {
       }
 
       match /lessons/{lessonId} {
-        allow read: if isTeacherInClass(classId) || isStudentInClass(classId);
+        allow read: if isTeacherInClass(classId);
         allow write: if isTeacherInClass(classId);
       }
 
@@ -273,7 +278,7 @@ service cloud.firestore {
       }
 
       match /bingoRecords/{bingoId} {
-        allow read: if isTeacherInClass(classId) || (isStudentInClass(classId) && (resource.data.studentUid == request.auth.uid || resource.data.studentUid == 'all'));
+        allow read: if isTeacherInClass(classId) || (isStudentInClass(classId) && resource.data.studentUid == request.auth.uid);
         allow write: if isTeacherInClass(classId);
       }
 
@@ -314,17 +319,17 @@ service cloud.firestore {
       }
 
       match /projectGroups/{groupId} {
-        allow read: if isTeacherInClass(classId) || isStudentInClass(classId);
+        allow read: if isTeacherInClass(classId);
         allow create, update, delete: if isTeacherInClass(classId);
       }
 
       match /projectStudentProfiles/{studentId} {
-        allow read: if isTeacherInClass(classId) || isStudentInClass(classId);
+        allow read: if isTeacherInClass(classId);
         allow create, update, delete: if isTeacherInClass(classId);
       }
 
       match /projectMeetings/{meetingId} {
-        allow read: if isTeacherInClass(classId) || isStudentInClass(classId);
+        allow read: if isTeacherInClass(classId);
         allow create, delete: if isTeacherInClass(classId);
         allow update: if isTeacherInClass(classId) || (
           isStudentInClass(classId) &&
@@ -555,12 +560,15 @@ service cloud.firestore {
     }
 
     match /system_config/{docId} {
-      allow read: if true;
+      allow get: if docId == 'clientControl' ||
+                    (docId == 'pricing' && isSignedIn()) ||
+                    isTeacher();
+      allow list: if isTeacher();
       allow write: if false; // Only backend functions / admin SDK can write
     }
 
     match /systemConfig/{docId} {
-      allow read: if true;
+      allow read: if isTeacher();
       allow write: if false; // Only backend functions / admin SDK can write
     }
 
@@ -575,7 +583,8 @@ service cloud.firestore {
     }
 
     match /loginSessions/{sessionId} {
-      allow read: if true; // Unauthenticated desktop PC listens during QR login
+      allow get: if true; // Unauthenticated desktop PC listens to its known session ID during QR login
+      allow list: if false; // Prevent session/customToken enumeration
       allow write: if false; // Only backend functions / admin SDK can write
     }
 

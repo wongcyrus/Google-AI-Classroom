@@ -401,7 +401,7 @@ describe('VideoAnalysisJobs Component Full Suite', () => {
 
   it('handles error when lab task prompt generation fails', async () => {
     mockGeneratePromptCallable.mockRejectedValueOnce(new Error('AI generation rate limit'));
-    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const _consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
     render(
       <VideoAnalysisJobs
@@ -663,6 +663,147 @@ describe('VideoAnalysisJobs Component Full Suite', () => {
     expect(screen.getByText('student3@school.edu')).toBeInTheDocument();
     expect(screen.getByText('student4@school.edu')).toBeInTheDocument();
     expect(screen.queryByText('student1@school.edu')).not.toBeInTheDocument();
+  });
+
+  it('handles live onSnapshot updates for active jobs, fallback target videos, multi-batch deletion (>450 sub-jobs), all_videos rerun scope, and video playback errors', async () => {
+    const firestoreMod = await import('firebase/firestore');
+    let liveJobSnapCb = null;
+    firestoreMod.onSnapshot.mockImplementation((_ref, cb) => {
+      liveJobSnapCb = cb;
+      return vi.fn();
+    });
+
+    // Render with a processing job that has no explicit videos array so loadFallbackVideos runs
+    const prevPaginated = mockPaginatedQueryReturn;
+    mockPaginatedQueryReturn = {
+      ...prevPaginated,
+      data: [
+        {
+          id: 'job_live_proc',
+          status: 'processing',
+          classId: 'CLASS_101',
+          startTime: '2026-08-30T00:00:00Z',
+          endTime: '2026-08-30T23:59:59Z',
+          modelUsed: 'gemini-3.8-flash',
+          prompt: 'Analyze all student screens',
+          aiJobIds: ['ai_sub_1'],
+          failedVideos: [{ studentEmail: 'failed_student@school.edu', videoPath: 'gs://bucket/videos/failed1.mp4', error: 'Decode error' }],
+        },
+      ],
+    };
+
+    try {
+      render(
+        <VideoAnalysisJobs
+          classId="CLASS_101"
+          startTime="2026-08-30T00:00:00Z"
+          endTime="2026-08-30T23:59:59Z"
+          filterField="startTime"
+          user={{ uid: 'teacher_1', email: 't@school.edu' }}
+        />
+      );
+
+      // Emit live snapshot update on Level 1 active job listener
+      if (liveJobSnapCb) {
+        act(() => {
+          liveJobSnapCb({
+            id: 'job_live_proc',
+            exists: () => true,
+            data: () => ({
+              status: 'completed',
+              processedCount: 2,
+              totalVideos: 2,
+              aiJobIds: ['ai_sub_1'],
+            }),
+          });
+        });
+      }
+
+      // Click job to enter Level 2 with failedVideos and fallback target videos
+      firestoreMod.getDoc.mockResolvedValueOnce({
+        exists: () => true,
+        id: 'job_live_proc',
+        data: () => ({
+          id: 'job_live_proc',
+          status: 'processing',
+          classId: 'CLASS_101',
+          startTime: '2026-08-30T00:00:00Z',
+          endTime: '2026-08-30T23:59:59Z',
+          modelUsed: 'gemini-3.8-flash',
+          prompt: 'Analyze all student screens',
+          aiJobIds: ['ai_sub_1'],
+          failedVideos: [{ studentEmail: 'failed_student@school.edu', videoPath: 'gs://bucket/videos/failed1.mp4', error: 'Decode error' }],
+        }),
+      });
+
+      await act(async () => {
+        fireEvent.click(screen.getByText('job_live_proc'));
+      });
+
+      await waitFor(() => {
+        expect(screen.getByText('failed_student@school.edu')).toBeInTheDocument();
+      });
+
+      // Test video playback error when getDownloadURL rejects
+      mockGetDownloadURL.mockRejectedValueOnce(new Error('Storage 404'));
+      const playBtns = screen.getAllByRole('button', { name: /▶️/i });
+      await act(async () => {
+        fireEvent.click(playBtns[0]);
+      });
+      expect(window.alert).toHaveBeenCalledWith(expect.stringContaining('Failed to get video for playback'));
+
+      // Test Generate Lab Task Prompt -> launch with rerunScope = 'all_videos'
+      firestoreMod.getDocs.mockResolvedValueOnce({
+        docs: [
+          {
+            data: () => ({
+              videoPath: 'https://storage.googleapis.com/my-bucket/videos/s1.mp4',
+              classId: 'CLASS_101',
+              studentUid: 's1',
+              studentEmail: 'student1@school.edu',
+            }),
+          },
+        ],
+        forEach: () => {},
+      });
+
+      const genBtn = screen.getByRole('button', { name: /✨ Generate Lab Task Prompt/i });
+      await act(async () => {
+        fireEvent.click(genBtn);
+      });
+      await waitFor(() => {
+        expect(screen.getByText(/AI-Generated Lab Task Prompt/i)).toBeInTheDocument();
+      });
+
+      const allVideosRadio = screen.getByRole('radio', { name: /All Videos in Class Time Window/i });
+      fireEvent.click(allVideosRadio);
+
+      const launchBtn = screen.getByRole('button', { name: /🚀 Launch Analysis Job/i });
+      await act(async () => {
+        fireEvent.click(launchBtn);
+      });
+      await waitFor(() => {
+        expect(mockSetDoc).toHaveBeenCalled();
+      });
+
+      // Test multi-batch delete when >450 sub-jobs exist
+      const manySubIds = Array.from({ length: 460 }, (_, idx) => `sub_${idx}`);
+      firestoreMod.getDoc.mockResolvedValueOnce({
+        exists: () => true,
+        id: 'job_live_proc',
+        data: () => ({
+          id: 'job_live_proc',
+          status: 'completed',
+          aiJobIds: manySubIds,
+        }),
+      });
+      await act(async () => {
+        fireEvent.click(screen.getByText(/Delete Job/i));
+      });
+      expect(firestoreMod.writeBatch).toHaveBeenCalled();
+    } finally {
+      mockPaginatedQueryReturn = prevPaginated;
+    }
   });
 });
 

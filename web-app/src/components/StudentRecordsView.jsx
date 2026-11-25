@@ -43,7 +43,7 @@ export const generateStudentMeetingMarkdownMinutes = (m, options = {}) => {
     '## Attendance Record',
   ];
   (m.attendanceRecord || []).forEach((a) => {
-    const rawName = a.name || a.email || 'Student';
+    const rawName = a.name || a.email || (a.isMe ? 'You (Current Student)' : 'Student');
     const safeName = isPrivacy ? maskStudentName(rawName) : rawName;
     lines.push(`- **${safeName}:** ${a.status ? a.status.toUpperCase() : 'ABSENT'}${a.evidence ? ` (${a.evidence})` : ''}`);
   });
@@ -288,77 +288,46 @@ const StudentRecordsView = ({ user }) => {
     };
   }, [selectedClassId, user?.uid]);
 
-  // Subscribe to Capstone Project Groups, Meetings, and Student Profiles
+  // Fetch Capstone Project Groups, Meetings, and Student Profile via server-side PII-stripped callable
   useEffect(() => {
-    if (!selectedClassId || !user?.email) {
+    if (!selectedClassId || !user?.uid) {
       setProjectGroups([]);
       setProjectMeetings([]);
       setProjectStudentProfiles([]);
       return;
     }
 
-    if (typeof onSnapshot !== 'function') return;
-
-    const unsubs = [];
-    try {
-      const grpRef = collection(db, 'classes', selectedClassId, 'projectGroups');
-      const mtgRef = collection(db, 'classes', selectedClassId, 'projectMeetings');
-      const profRef = collection(db, 'classes', selectedClassId, 'projectStudentProfiles');
-
-      unsubs.push(
-        onSnapshot(
-          grpRef,
-          (snap) => {
-            setProjectGroups((snap?.docs || []).map((d) => ({ id: d.id, ...d.data() })));
-          },
-          () => {}
-        )
-      );
-
-      unsubs.push(
-        onSnapshot(
-          mtgRef,
-          (snap) => {
-            setProjectMeetings((snap?.docs || []).map((d) => ({ id: d.id, ...d.data() })));
-          },
-          () => {}
-        )
-      );
-
-      unsubs.push(
-        onSnapshot(
-          profRef,
-          (snap) => {
-            setProjectStudentProfiles((snap?.docs || []).map((d) => ({ id: d.id, ...d.data() })));
-          },
-          () => {}
-        )
-      );
-    } catch {
-      // Ignore if test mocks don't support collection refs
-    }
-
-    return () => {
-      unsubs.forEach((fn) => {
-        if (typeof fn === 'function') fn();
-      });
+    let isCancelled = false;
+    const loadProjectRecords = async () => {
+      try {
+        const getProjectRecordsFn = httpsCallable(functions, 'getStudentProjectRecords');
+        const res = await getProjectRecordsFn?.({ classId: selectedClassId });
+        if (isCancelled) return;
+        const payload = res?.data || {};
+        setProjectGroups(payload.myProjectGroup ? [payload.myProjectGroup] : []);
+        setProjectMeetings(Array.isArray(payload.myProjectMeetings) ? payload.myProjectMeetings : []);
+        setProjectStudentProfiles(payload.myProjectProfile ? [payload.myProjectProfile] : []);
+      } catch (err) {
+        if (!isCancelled) {
+          console.warn('Could not load student project records:', err);
+          setProjectGroups([]);
+          setProjectMeetings([]);
+          setProjectStudentProfiles([]);
+        }
+      }
     };
-  }, [selectedClassId, user?.email]);
+
+    loadProjectRecords();
+    return () => {
+      isCancelled = true;
+    };
+  }, [selectedClassId, user?.uid]);
 
   // Video player modal state
   const [showPlayer, setShowPlayer] = useState(false);
   const [playerVideoUrl, setPlayerVideoUrl] = useState('');
   const [playerLoading, setPlayerLoading] = useState(false);
   const [playingVideoRecord, setPlayingVideoRecord] = useState(null);
-
-  // Audio player state
-  const [playingAudioId, setPlayingAudioId] = useState(null);
-  const [audioUrlMap, setAudioUrlMap] = useState({});
-  const [audioLoadingId, setAudioLoadingId] = useState(null);
-  const [isMergingAudio, setIsMergingAudio] = useState(false);
-  const [mergedAudioResult, setMergedAudioResult] = useState(null);
-  const [isPlayingContinuousAudio, setIsPlayingContinuousAudio] = useState(false);
-  const [downloadingAudioId, setDownloadingAudioId] = useState(null);
 
   // Teacher lecture recordings state
   const [teacherRecordings, setTeacherRecordings] = useState([]);
@@ -440,16 +409,16 @@ const StudentRecordsView = ({ user }) => {
           }
         }
 
-        // Fetch details (name, etc.) for mapped classes
+        // Fetch public non-PII class configuration for mapped classes
         const classIds = Array.from(classMap.keys());
         if (classIds.length > 0) {
           const classDocs = await Promise.all(
-            classIds.map((id) => getDoc(doc(db, 'classes', id)).catch(() => null))
+            classIds.map((id) => getDoc(doc(db, 'classes', id, 'studentConfig', 'public')).catch(() => null))
           );
           if (isCancelled) return;
           classDocs.forEach((cSnap, idx) => {
             if (cSnap && cSnap.exists()) {
-              const docId = cSnap.id || classIds[idx];
+              const docId = classIds[idx] || cSnap.id;
               const data = cSnap.data();
               classMap.set(docId, {
                 id: docId,
@@ -609,7 +578,7 @@ const StudentRecordsView = ({ user }) => {
       });
       setAiJobsFeedback(fetchedAiJobs);
 
-      // 2g. Fetch & Generate Lessons for Enrolled Classes (Scheduled + Subcollection + Discovered)
+      // 2g. Fetch & Generate Lessons for Enrolled Classes (Scheduled + Backend Callable + Discovered)
       let candidateClasses = [...(enrolledClassesRef.current || [])];
       if (candidateClasses.length === 0) {
         try {
@@ -618,18 +587,22 @@ const StudentRecordsView = ({ user }) => {
           if (profileDoc.exists()) {
             const cIds = profileDoc.data().classes || [];
             const fetchedClassDocs = await Promise.all(
-              cIds.map((id) => getDoc(doc(db, 'classes', id)).catch(() => null))
+              cIds.map((id) => getDoc(doc(db, 'classes', id, 'studentConfig', 'public')).catch(() => null))
             );
             if (requestId !== loadRecordsRequestIdRef.current) return;
-            fetchedClassDocs.forEach((cSnap) => {
+            fetchedClassDocs.forEach((cSnap, idx) => {
               if (cSnap && cSnap.exists()) {
+                const docId = cIds[idx] || cSnap.id;
                 const cData = cSnap.data();
                 candidateClasses.push({
-                  id: cSnap.id,
-                  name: cData.name || cSnap.id,
+                  id: docId,
+                  name: cData.name || docId,
                   timeZone: cData.schedule?.timeZone || 'UTC',
                   schedule: cData.schedule || null,
+                  scheduleHistory: Array.isArray(cData.scheduleHistory) ? cData.scheduleHistory : [],
                   examPeriods: cData.examPeriods || [],
+                  studentRecordingsPolicy: cData.studentRecordingsPolicy || 'disabled',
+                  studentRecordingsReleaseDate: cData.studentRecordingsReleaseDate || null,
                   teacherRecordingsPolicy: cData.teacherRecordingsPolicy || (cData.allowShareTeacherRecordings ? 'selective' : 'private'),
                   allowShareTeacherRecordings: Boolean(cData.allowShareTeacherRecordings),
                   isCapturing: Boolean(cData.isCapturing),
@@ -649,14 +622,16 @@ const StudentRecordsView = ({ user }) => {
         const cId = classObj.id;
         const classLessonsMap = new Map();
 
-        // 1. Fetch any explicit lesson documents in classes/{cId}/lessons
+        // 1. Fetch lesson records via caller-scoped Cloud Function (strips classmate attendance/PII)
         try {
-          const lessonsColRef = collection(db, 'classes', cId, 'lessons');
-          const lessonSnaps = await getDocs(lessonsColRef);
+          const getStudentLessonsFn = httpsCallable(functions, 'getStudentLessons');
+          const lessonsRes = await getStudentLessonsFn?.({ classId: cId });
           if (requestId !== loadRecordsRequestIdRef.current) return;
-          (lessonSnaps.docs || []).forEach((lDoc) => {
-            const data = lDoc.data();
-            const studentEntry = data.students?.[uid];
+          const lessonsPayload = Array.isArray(lessonsRes?.data?.lessons) ? lessonsRes.data.lessons : [];
+          lessonsPayload.forEach((data) => {
+            const lessonId = data.lessonId || data.id;
+            if (!lessonId) return;
+            const studentEntry = data.studentEntry || null;
             const startStr = data.startTime?.toDate ? data.startTime.toDate().toISOString() : data.startTime;
             const endStr = data.endTime?.toDate ? data.endTime.toDate().toISOString() : data.endTime;
             const duration = data.duration || computeLessonDuration(startStr, endStr) || (studentEntry?.attendance?.length || 0) || 60;
@@ -681,8 +656,8 @@ const StudentRecordsView = ({ user }) => {
             const sharePercentage = duration > 0 ? Math.min(100, Math.max(0, (sharedMins / duration) * 100)).toFixed(2) : '0.00';
             const aiPercentage = duration > 0 ? Math.min(100, Math.max(0, (workingMins / duration) * 100)).toFixed(2) : '0.00';
 
-            classLessonsMap.set(lDoc.id, {
-              lessonId: lDoc.id,
+            classLessonsMap.set(lessonId, {
+              lessonId,
               classId: cId,
               startTime: startStr,
               endTime: endStr,
@@ -872,9 +847,9 @@ const StudentRecordsView = ({ user }) => {
     return (
       projectGroups.find((g) =>
         (g.members || []).some(
-          (m) => normalizeStudentEmail(m.email) === userEmail || m.uid === user?.uid
+          (m) => m.isMe || normalizeStudentEmail(m.email) === userEmail || (user?.uid && m.uid === user.uid)
         )
-      ) || null
+      ) || projectGroups[0] || null
     );
   }, [projectGroups, userEmail, user?.uid]);
 
@@ -883,10 +858,10 @@ const StudentRecordsView = ({ user }) => {
     const list = projectMeetings.filter((m) => {
       const isGroupMatch = myProjectGroup && m.groupId === myProjectGroup.id;
       const isAttendanceMatch = (m.attendanceRecord || []).some(
-        (a) => normalizeStudentEmail(a.email) === userEmail || a.uid === user?.uid
+        (a) => a.isMe || normalizeStudentEmail(a.email) === userEmail || (user?.uid && a.uid === user.uid)
       );
       const isContributionMatch = (m.studentContributions || []).some(
-        (c) => normalizeStudentEmail(c.email) === userEmail || c.uid === user?.uid
+        (c) => c.isMe || normalizeStudentEmail(c.email) === userEmail || (user?.uid && c.uid === user.uid)
       );
       return isGroupMatch || isAttendanceMatch || isContributionMatch;
     });
@@ -899,9 +874,10 @@ const StudentRecordsView = ({ user }) => {
     return (
       projectStudentProfiles.find(
         (p) =>
+          p.id === 'me' ||
           normalizeStudentEmail(p.email || p.studentEmail || p.id) === userEmail ||
-          p.uid === user?.uid
-      ) || null
+          (user?.uid && p.uid === user.uid)
+      ) || projectStudentProfiles[0] || null
     );
   }, [projectStudentProfiles, userEmail, user?.uid]);
 
@@ -917,7 +893,7 @@ const StudentRecordsView = ({ user }) => {
     let absent = 0;
     myProjectMeetings.forEach((m) => {
       const att = (m.attendanceRecord || []).find(
-        (a) => normalizeStudentEmail(a.email) === userEmail || a.uid === user?.uid
+        (a) => a.isMe || normalizeStudentEmail(a.email) === userEmail || (user?.uid && a.uid === user.uid)
       );
       if (att) {
         if (att.status === 'present') present++;
@@ -1309,136 +1285,6 @@ const StudentRecordsView = ({ user }) => {
     } catch (err) {
       console.error('Error downloading video:', err);
       alert(`Could not initiate download: ${err.message}`);
-    }
-  };
-
-  // On-demand audio snippet playback handler
-  const handleTogglePlayAudio = async (audioItem) => {
-    if (isExamRecord(audioItem, activeClassObj)) {
-      alert('Audio playback is restricted for exam sessions to safeguard assessment materials.');
-      return;
-    }
-
-    if (playingAudioId === audioItem.id) {
-      setPlayingAudioId(null);
-      return;
-    }
-
-    if (audioUrlMap[audioItem.id]) {
-      setPlayingAudioId(audioItem.id);
-      return;
-    }
-
-    try {
-      setAudioLoadingId(audioItem.id);
-      let resolvedUrl = audioItem.audioUrl;
-      if (!resolvedUrl && audioItem.audioPath) {
-        const fileRef = ref(storage, audioItem.audioPath);
-        resolvedUrl = await getDownloadURL(fileRef);
-      }
-      if (resolvedUrl) {
-        setAudioUrlMap((prev) => ({ ...prev, [audioItem.id]: resolvedUrl }));
-        setPlayingAudioId(audioItem.id);
-      } else {
-        alert('No audio file found for this recording.');
-      }
-    } catch (err) {
-      console.error('Error resolving audio URL:', err);
-      alert('Unable to load audio playback snippet.');
-    } finally {
-      setAudioLoadingId(null);
-    }
-  };
-
-  // Individual audio clip download handler
-  const handleDownloadAudioClip = async (audioItem) => {
-    if (isExamRecord(audioItem, activeClassObj)) {
-      alert('Audio download is restricted for exam sessions to safeguard assessment materials.');
-      return;
-    }
-
-    setDownloadingAudioId(audioItem.id);
-    try {
-      let resolvedUrl = audioUrlMap[audioItem.id] || audioItem.audioUrl;
-      if (!resolvedUrl && audioItem.audioPath) {
-        const fileRef = ref(storage, audioItem.audioPath);
-        resolvedUrl = await getDownloadURL(fileRef);
-        setAudioUrlMap((prev) => ({ ...prev, [audioItem.id]: resolvedUrl }));
-      }
-      if (!resolvedUrl) {
-        throw new Error('No audio file found for download.');
-      }
-
-      const a = document.createElement('a');
-      a.href = resolvedUrl;
-      a.download = `speech_${audioItem.id || 'clip'}.webm`;
-      a.target = '_blank';
-      a.rel = 'noopener noreferrer';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-    } catch (err) {
-      console.error('Error downloading audio snippet:', err);
-      alert(`Could not download audio clip: ${err.message}`);
-    } finally {
-      setDownloadingAudioId(null);
-    }
-  };
-
-  // Continuous auto-playlist handler
-  const handleToggleContinuousAudio = async () => {
-    if (isPlayingContinuousAudio) {
-      setIsPlayingContinuousAudio(false);
-      setPlayingAudioId(null);
-      return;
-    }
-    if (visibleAudio.length === 0) return;
-    setIsPlayingContinuousAudio(true);
-    const firstItem = visibleAudio[0];
-    await handleTogglePlayAudio(firstItem);
-  };
-
-  // Handle auto-advancing to next clip when current clip ends
-  const handleAudioClipEnded = async (endedItem) => {
-    if (isPlayingContinuousAudio) {
-      const currentIndex = visibleAudio.findIndex((a) => a.id === endedItem.id);
-      if (currentIndex >= 0 && currentIndex < visibleAudio.length - 1) {
-        const nextItem = visibleAudio[currentIndex + 1];
-        await handleTogglePlayAudio(nextItem);
-        return;
-      }
-      setIsPlayingContinuousAudio(false);
-    }
-    setPlayingAudioId(null);
-  };
-
-  // 1-Click Backend FFmpeg Session Audio Merger
-  const handleMergeStudentSessionAudio = async () => {
-    if (!selectedClassId || !user?.uid) return;
-    setIsMergingAudio(true);
-    try {
-      const mergeFn = httpsCallable(functions, 'mergeStudentSessionAudio');
-      const lessonTime = activeLesson?.startTime || (visibleAudio[0]?.timestamp ? (visibleAudio[0].timestamp.toDate ? visibleAudio[0].timestamp.toDate().toISOString() : new Date(visibleAudio[0].timestamp).toISOString()) : new Date().toISOString());
-      const dateStr = lessonTime.split('T')[0];
-      const result = await mergeFn({
-        classId: selectedClassId,
-        studentUid: user.uid,
-        dateStr: dateStr,
-        lessonId: activeLesson?.lessonId || selectedLessonId || null,
-      });
-
-      if (result?.data?.status === 'success') {
-        setMergedAudioResult(result.data);
-      } else if (result?.data?.status === 'empty') {
-        alert('No audio clips available to merge for this session.');
-      } else {
-        alert(result?.data?.message || 'Could not combine session audio.');
-      }
-    } catch (err) {
-      console.error('Error combining student session audio:', err);
-      alert(`Failed to combine audio session: ${err.message}`);
-    } finally {
-      setIsMergingAudio(false);
     }
   };
 
@@ -3055,96 +2901,6 @@ const StudentRecordsView = ({ user }) => {
             </div>
           )}
 
-          {/* Audio Session Actions Toolbar */}
-          {visibleAudio.length > 0 && (
-            <div className="audio-session-toolbar" style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem', alignItems: 'center', justifyContent: 'space-between', padding: '0.85rem 1rem', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', marginBottom: '1.25rem' }}>
-              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
-                <button
-                  type="button"
-                  className="scope-toggle-btn"
-                  onClick={handleToggleContinuousAudio}
-                  style={{
-                    backgroundColor: isPlayingContinuousAudio ? '#ef4444' : '#2563eb',
-                    color: '#ffffff',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    fontWeight: 600,
-                  }}
-                  title={isPlayingContinuousAudio ? 'Stop continuous playlist' : 'Play all speech snippets sequentially'}
-                >
-                  {isPlayingContinuousAudio ? '⏹ Stop Playlist' : '▶️ Play All Clips Sequentially'}
-                </button>
-
-                <button
-                  type="button"
-                  className="scope-toggle-btn"
-                  onClick={handleMergeStudentSessionAudio}
-                  disabled={isMergingAudio}
-                  style={{
-                    backgroundColor: isMergingAudio ? '#94a3b8' : '#059669',
-                    color: '#ffffff',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    fontWeight: 600,
-                  }}
-                  title="Concatenate all speech snippets into a single chronological .m4a audio track using backend FFmpeg"
-                >
-                  {isMergingAudio ? '⏳ Merging Audio with FFmpeg...' : '🎛️ Combine Full Lesson Audio (.m4a)'}
-                </button>
-              </div>
-
-              <div style={{ fontSize: '0.85rem', color: '#64748b' }}>
-                Total Clips: <strong>{visibleAudio.length}</strong>
-              </div>
-            </div>
-          )}
-
-          {/* Merged Session Audio Result Card */}
-          {mergedAudioResult && mergedAudioResult.audioUrl && (
-            <div
-              className="merged-audio-card"
-              style={{
-                background: '#f0fdf4',
-                border: '1px solid #bbf7d0',
-                borderRadius: '8px',
-                padding: '1rem',
-                marginBottom: '1.25rem',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '0.75rem',
-              }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <span style={{ fontSize: '1.25rem' }}>🎧</span>
-                  <div>
-                    <strong style={{ color: '#166534', fontSize: '0.95rem' }}>Full Lesson Audio Combined</strong>
-                    <div style={{ fontSize: '0.8rem', color: '#15803d' }}>
-                      Merged {mergedAudioResult.clipCount || visibleAudio.length} clips ({formatDuration(mergedAudioResult.durationSeconds || 0)})
-                    </div>
-                  </div>
-                </div>
-                <a
-                  href={mergedAudioResult.audioUrl}
-                  download={`combined_audio_${selectedClassId}_${user?.uid || 'student'}.m4a`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="action-btn-sm action-btn-primary"
-                  style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
-                >
-                  📥 Download Full Lesson Audio (.m4a)
-                </a>
-              </div>
-              <audio
-                controls
-                src={mergedAudioResult.audioUrl}
-                style={{ width: '100%', height: '36px' }}
-              />
-            </div>
-          )}
-
           {visibleAudio.length === 0 ? (
             <div className="empty-state-box">
               <div className="empty-state-icon">🎙️</div>
@@ -3172,7 +2928,6 @@ const StudentRecordsView = ({ user }) => {
                     <th>Timestamp</th>
                     <th>Language</th>
                     <th>Detected Speech Transcript</th>
-                    <th>Audio Clip & Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -3187,48 +2942,6 @@ const StudentRecordsView = ({ user }) => {
                           <blockquote className="transcript-quote">{a.transcript}</blockquote>
                         ) : (
                           <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>[No speech detected in sample]</span>
-                        )}
-                      </td>
-                      <td>
-                        {(a.audioPath || a.audioUrl) ? (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                            <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
-                              <button
-                                type="button"
-                                className="action-btn-small"
-                                onClick={() => handleTogglePlayAudio(a)}
-                                disabled={audioLoadingId === a.id}
-                                style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '4px 8px', fontSize: '0.78rem' }}
-                              >
-                                {audioLoadingId === a.id
-                                  ? '⏳ Loading...'
-                                  : playingAudioId === a.id
-                                  ? '⏹ Stop'
-                                  : '▶ Play Clip'}
-                              </button>
-                              <button
-                                type="button"
-                                className="action-btn-small action-btn-secondary"
-                                onClick={() => handleDownloadAudioClip(a)}
-                                disabled={downloadingAudioId === a.id}
-                                style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '4px 8px', fontSize: '0.78rem' }}
-                                title="Download audio snippet (.webm)"
-                              >
-                                {downloadingAudioId === a.id ? '⏳ Downloading...' : '📥 Download'}
-                              </button>
-                            </div>
-                            {playingAudioId === a.id && audioUrlMap[a.id] && (
-                              <audio
-                                controls
-                                autoPlay
-                                src={audioUrlMap[a.id]}
-                                style={{ height: '30px', width: '200px', marginTop: '4px' }}
-                                onEnded={() => handleAudioClipEnded(a)}
-                              />
-                            )}
-                          </div>
-                        ) : (
-                          <span style={{ color: '#94a3b8', fontSize: '0.75rem' }}>No audio file</span>
                         )}
                       </td>
                     </tr>
@@ -3289,18 +3002,21 @@ const StudentRecordsView = ({ user }) => {
                   </div>
                 </div>
 
-                {/* Teammates Roster */}
+                {/* Team Roster (Teammate identities anonymized to prevent PII exposure) */}
                 {myProjectGroup?.members?.length > 0 && (
                   <div className="project-members-roster-row">
-                    <span className="roster-lbl">👥 Teammates:</span>
+                    <span className="roster-lbl">👥 Group Members ({myProjectGroup.teamSize || myProjectGroup.members.length}):</span>
                     <div className="roster-chips">
                       {myProjectGroup.members.map((m, idx) => {
-                        const isMe = normalizeStudentEmail(m.email) === userEmail || m.uid === user?.uid;
+                        const isMe = Boolean(m.isMe) || normalizeStudentEmail(m.email) === userEmail || (Boolean(user?.uid) && m.uid === user.uid);
+                        const label = isMe
+                          ? (user?.displayName || m.name || userEmail || 'You')
+                          : `Teammate #${idx + 1}`;
                         return (
-                          <span key={m.uid || m.email || idx} className={`member-chip ${isMe ? 'is-me' : ''}`}>
+                          <span key={m.id || m.uid || idx} className={`member-chip ${isMe ? 'is-me' : ''}`}>
                             {m.role === 'Leader' ? '👑 ' : '👤 '}
-                            <strong>{m.name || m.email}</strong>
-                            {isMe ? ' (You)' : ''}
+                            <strong>{label}</strong>
+                            {isMe ? ' (You)' : (m.role ? ` (${m.role})` : '')}
                           </span>
                         );
                       })}
@@ -3337,10 +3053,10 @@ const StudentRecordsView = ({ user }) => {
                   ) : (
                     myProjectMeetings.map((m) => {
                       const myAtt = (m.attendanceRecord || []).find(
-                        (a) => normalizeStudentEmail(a.email) === userEmail || a.uid === user?.uid
+                        (a) => a.isMe || normalizeStudentEmail(a.email) === userEmail || (Boolean(user?.uid) && a.uid === user.uid)
                       );
                       const myContrib = (m.studentContributions || []).find(
-                        (c) => normalizeStudentEmail(c.email) === userEmail || c.uid === user?.uid
+                        (c) => c.isMe || normalizeStudentEmail(c.email) === userEmail || (Boolean(user?.uid) && c.uid === user.uid)
                       );
                       const attStatus = myAtt?.status || 'pending';
 
@@ -3480,17 +3196,9 @@ const StudentRecordsView = ({ user }) => {
                             </div>
                           )}
 
-                          {/* Meeting Media: Audio clips, Screen Recordings & Photo Artifacts */}
-                          {((m.audioClips || []).length > 0 || (m.screenClips || []).length > 0 || (m.photos || []).length > 0) && (
+                          {/* Meeting Media: Screen Recordings & Photo Artifacts (voice recordings hidden from student playback/download) */}
+                          {((m.screenClips || []).length > 0 || (m.photos || []).length > 0) && (
                             <div className="meeting-media-bar">
-                              {(m.audioClips || []).map((ac, acIdx) => (
-                                <div key={ac.id || ac.clipId || acIdx} className="media-chip audio">
-                                  <span>🎙️ {ac.label || `Audio Part ${acIdx + 1}`}</span>
-                                  {ac.downloadUrl && (
-                                    <audio src={ac.downloadUrl} controls preload="none" style={{ height: '28px', maxWidth: '240px' }} />
-                                  )}
-                                </div>
-                              ))}
                               {(m.screenClips || []).map((sc, scIdx) => (
                                 <div key={sc.id || sc.clipId || scIdx} className="media-chip screen">
                                   <span>{sc.type === 'mobile_camera' ? '📹' : '💻'} {sc.label || `Demo Clip ${scIdx + 1}`}</span>
@@ -3631,6 +3339,7 @@ const StudentRecordsView = ({ user }) => {
           videoUrl={playerVideoUrl}
           loading={playerLoading}
           video={playingVideoRecord}
+          hideAudioTrack={true}
         />
       )}
 

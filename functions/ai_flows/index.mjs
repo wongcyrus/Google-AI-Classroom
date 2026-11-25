@@ -317,7 +317,10 @@ export const getStudentPasskeyStatus = onCall(callOptions, async (request) => {
       throw new HttpsError('permission-denied', 'Cannot view another student passkey status.');
     }
   }
-  return await handleGetStudentPasskeyStatus({ studentUid });
+  return await handleGetStudentPasskeyStatus({
+    studentUid,
+    studentEmail: studentUid === request.auth.uid ? (request.auth.token?.email || '') : '',
+  });
 });
 
 export const resetStudentPasskey = onCall(callOptions, async (request) => {
@@ -533,4 +536,6 @@ export {
   batchEmailProjectMeetingReports,
   handleBatchEmailProjectMeetingReports,
   generateMeetingEmailHtml,
+  getStudentProjectRecords,
+  handleGetStudentProjectRecords,
 } from './projectMeetingFlows.js';
