@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import NativeModalDialog from './NativeModalDialog';
+import { useActiveClassroomSession } from '../../utils/clientSessionGuard';
 import { db, storage, functions } from '../../firebase-config';
 import {
   collection,
@@ -534,6 +535,7 @@ export default function ProjectMeetingsView({ classId, classInfo, user, isPrivac
   const [presenterStudentUid, setPresenterStudentUid] = useState('');
   const [forceNewMeetingDoc, setForceNewMeetingDoc] = useState(false);
   const [recordingState, setRecordingState] = useState('idle'); // 'idle' | 'recording' | 'paused' | 'uploading'
+  useActiveClassroomSession(recordingState !== 'idle', 'project-meetings');
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [studioError, setStudioError] = useState('');

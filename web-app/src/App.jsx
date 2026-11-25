@@ -10,6 +10,7 @@ import UnsupportedBrowserNotice from './components/UnsupportedBrowserNotice';
 import { isGoogleChrome, getBrowserName, isMobileDevice, isHandheldPhone } from './utils/browserDetection';
 import { deriveRoleFromEmail } from './utils/domainConfig';
 import { getAccountDisplayLabel, setPrivacyMode } from './utils/studentDisplayUtils';
+import { ACTIVE_SESSION_EVENT, hasActiveClassroomSession } from './utils/clientSessionGuard';
 import './App.css';
 import hkiitLogo from './assets/HKIIT_logo_RGB_horizontal.jpg';
 
@@ -57,45 +58,87 @@ const App = () => {
   const [unsupportedStudentBrowser, setUnsupportedStudentBrowser] = useState(false);
   const [detectedBrowser, setDetectedBrowser] = useState('');
   const [unverifiedUser, setUnverifiedUser] = useState(null);
-  const [staleBuildBanner, setStaleBuildBanner] = useState(false);
-
-  useEffect(() => {
-    if (appCheck) {
-      console.info('[App] App Check state: Active');
-    }
-  }, []);
+  const [staleBuildInfo, setStaleBuildInfo] = useState(null);
+  const pendingIdleReloadRef = useRef(null);
 
   // Global remote client refresh: listens to system_config/clientControl.forceReloadBefore
   useEffect(() => {
     const buildTs = typeof __APP_BUILD_TIMESTAMP__ !== 'undefined' ? Number(__APP_BUILD_TIMESTAMP__) : 0;
     if (!buildTs || !db) return;
 
-    const controlRef = doc(db, 'system_config', 'clientControl');
-    const unsub = onSnapshot(controlRef, (snap) => {
-      if (!snap.exists()) return;
-      const data = snap.data() || {};
-      const forceReloadBefore = Number(data.forceReloadBefore || 0);
-      if (!forceReloadBefore || buildTs >= forceReloadBefore) return;
-
+    const tryAutoReload = (targetTs, reason) => {
       const markerKey = 'client-force-reloaded-for';
-      const markerVal = String(forceReloadBefore);
+      const markerVal = String(targetTs);
       try {
         if (window.sessionStorage.getItem(markerKey) === markerVal) {
-          setStaleBuildBanner(true);
-          return;
+          return false;
         }
         window.sessionStorage.setItem(markerKey, markerVal);
       } catch {
         // Ignore sessionStorage errors in restricted contexts
       }
-
-      console.info(`[App] Remote force-refresh triggered (build ${buildTs} < ${forceReloadBefore}). Reloading...`);
+      console.info(`[App] Remote refresh (${reason}) triggered (build ${buildTs} < ${targetTs}). Reloading...`);
       window.location.reload();
+      return true;
+    };
+
+    const handleSessionChange = (event) => {
+      const isNowActive = Boolean(event?.detail?.active);
+      if (!isNowActive && pendingIdleReloadRef.current) {
+        const targetTs = pendingIdleReloadRef.current;
+        pendingIdleReloadRef.current = null;
+        tryAutoReload(targetTs, 'idle-after-session');
+      }
+    };
+
+    window.addEventListener(ACTIVE_SESSION_EVENT, handleSessionChange);
+
+    const controlRef = doc(db, 'system_config', 'clientControl');
+    const unsub = onSnapshot(controlRef, (snap) => {
+      if (!snap.exists()) {
+        pendingIdleReloadRef.current = null;
+        setStaleBuildInfo(null);
+        return;
+      }
+      const data = snap.data() || {};
+      const forceReloadBefore = Number(data.forceReloadBefore || 0);
+      if (!forceReloadBefore || buildTs >= forceReloadBefore) {
+        pendingIdleReloadRef.current = null;
+        setStaleBuildInfo(null);
+        return;
+      }
+
+      const mode = ['prompt', 'force_idle', 'force_now'].includes(data.mode) ? data.mode : 'prompt';
+      const customMessage = typeof data.message === 'string' ? data.message.trim() : '';
+
+      if (mode === 'force_now') {
+        pendingIdleReloadRef.current = null;
+        if (tryAutoReload(forceReloadBefore, 'force_now')) return;
+      } else if (mode === 'force_idle') {
+        if (!hasActiveClassroomSession()) {
+          pendingIdleReloadRef.current = null;
+          if (tryAutoReload(forceReloadBefore, 'force_idle')) return;
+        } else {
+          pendingIdleReloadRef.current = forceReloadBefore;
+        }
+      } else {
+        pendingIdleReloadRef.current = null;
+      }
+
+      setStaleBuildInfo({
+        forceReloadBefore,
+        mode,
+        message: customMessage,
+        waitingForIdle: mode === 'force_idle' && hasActiveClassroomSession(),
+      });
     }, (err) => {
       console.debug('[App] clientControl listener note:', err?.message || err);
     });
 
-    return () => unsub();
+    return () => {
+      unsub();
+      window.removeEventListener(ACTIVE_SESSION_EVENT, handleSessionChange);
+    };
   }, []);
 
   useEffect(() => {
@@ -168,7 +211,7 @@ const App = () => {
 
   return (
     <Router>
-      {staleBuildBanner && (
+      {staleBuildInfo && (
         <div
           role="status"
           style={{
@@ -180,10 +223,14 @@ const App = () => {
             display: 'flex',
             justifyContent: 'center',
             alignItems: 'center',
+            flexWrap: 'wrap',
             gap: '12px',
           }}
         >
-          <span>🔄 A new version of Classroom Assistant is available.</span>
+          <span>
+            🔄 {staleBuildInfo.message || 'A new version of Classroom Assistant is available.'}
+            {staleBuildInfo.waitingForIdle ? ' (Will auto-refresh after your active session ends)' : ''}
+          </span>
           <button
             type="button"
             onClick={() => window.location.reload()}
@@ -198,6 +245,21 @@ const App = () => {
             }}
           >
             Refresh Now
+          </button>
+          <button
+            type="button"
+            onClick={() => setStaleBuildInfo(null)}
+            style={{
+              background: 'transparent',
+              color: '#dbeafe',
+              border: '1px solid rgba(255,255,255,0.4)',
+              borderRadius: '6px',
+              padding: '4px 10px',
+              fontWeight: 600,
+              cursor: 'pointer',
+            }}
+          >
+            Later
           </button>
         </div>
       )}

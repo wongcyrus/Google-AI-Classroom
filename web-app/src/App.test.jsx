@@ -6,6 +6,7 @@ import { auth, db } from './firebase-config';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { getDoc, onSnapshot } from 'firebase/firestore';
 import * as browserDetection from './utils/browserDetection';
+import { setActiveClassroomSession, clearActiveClassroomSessions } from './utils/clientSessionGuard';
 
 vi.mock('firebase/auth', () => {
   const onAuthStateChanged = vi.fn();
@@ -511,6 +512,82 @@ describe('App & MainHeader Components', () => {
     expect(screen.getByText('Presentation Deck')).toBeInTheDocument();
 
     window.history.pushState({}, 'Dashboard', '/teacher');
+  });
+});
+
+describe('App remote clientControl refresh safety', () => {
+  const originalLocation = window.location;
+  const originalBuildTs = globalThis.__APP_BUILD_TIMESTAMP__;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    clearActiveClassroomSessions();
+    window.sessionStorage.clear();
+    globalThis.__APP_BUILD_TIMESTAMP__ = '1000';
+    delete window.location;
+    window.location = { ...originalLocation, reload: vi.fn(), pathname: '/' };
+    onAuthStateChanged.mockImplementation((authInstance, cb) => {
+      cb(null);
+      return vi.fn();
+    });
+  });
+
+  afterEach(() => {
+    clearActiveClassroomSessions();
+    globalThis.__APP_BUILD_TIMESTAMP__ = originalBuildTs;
+    window.location = originalLocation;
+  });
+
+  it('shows non-blocking banner and never auto-reloads in prompt mode', async () => {
+    onSnapshot.mockImplementation((ref, cb) => {
+      cb({
+        exists: () => true,
+        data: () => ({ forceReloadBefore: 2000, mode: 'prompt', message: 'Class-safe update ready' }),
+      });
+      return vi.fn();
+    });
+
+    render(<App />);
+    expect(await screen.findByText(/Class-safe update ready/i)).toBeInTheDocument();
+    expect(window.location.reload).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: /Later/i }));
+    expect(screen.queryByText(/Class-safe update ready/i)).not.toBeInTheDocument();
+  });
+
+  it('defers reload in force_idle mode while a class session is active, then reloads when idle', async () => {
+    setActiveClassroomSession('student-view', true);
+    onSnapshot.mockImplementation((ref, cb) => {
+      cb({
+        exists: () => true,
+        data: () => ({ forceReloadBefore: 2000, mode: 'force_idle' }),
+      });
+      return vi.fn();
+    });
+
+    render(<App />);
+    expect(await screen.findByText(/Will auto-refresh after your active session ends/i)).toBeInTheDocument();
+    expect(window.location.reload).not.toHaveBeenCalled();
+
+    setActiveClassroomSession('student-view', false);
+    await waitFor(() => {
+      expect(window.location.reload).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it('reloads immediately once in force_now mode', async () => {
+    onSnapshot.mockImplementation((ref, cb) => {
+      cb({
+        exists: () => true,
+        data: () => ({ forceReloadBefore: 2000, mode: 'force_now' }),
+      });
+      return vi.fn();
+    });
+
+    render(<App />);
+    await waitFor(() => {
+      expect(window.location.reload).toHaveBeenCalledTimes(1);
+    });
   });
 });
 

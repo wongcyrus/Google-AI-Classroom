@@ -46,6 +46,7 @@ import {
   sendTeacherSystemNotification,
   closeTeacherSystemNotification,
 } from '../utils/broadcastHandover';
+import { useActiveClassroomSession } from '../utils/clientSessionGuard';
 
 const parseAutoRollConfig = (value) => {
   if (!value || value === 'off') return null;
@@ -141,6 +142,8 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
     startBroadcast: startScreenBroadcast,
     stopBroadcast: stopScreenBroadcast,
   } = useTeacherScreenBroadcast({ classId, teacherUid, teacherEmail });
+
+  useActiveClassroomSession(Boolean(isCapturing || isScreenBroadcasting), 'monitor-view');
 
   const [showSubtitleModal, setShowSubtitleModal] = useState(false);
   const [isSubtitleBroadcastEnabled, setIsSubtitleBroadcastEnabled] = useState(true);

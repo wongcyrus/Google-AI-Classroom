@@ -42,6 +42,7 @@ import {
 } from '../utils/voiceAiPolicy';
 import UnsupportedBrowserNotice from './UnsupportedBrowserNotice';
 import StudentMobileView from './student/StudentMobileView';
+import { useActiveClassroomSession } from '../utils/clientSessionGuard';
 
 import Sidebar from './student/Sidebar';
 
@@ -773,6 +774,7 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
   }, [isClassExamActive, classExamPeriods]);
 
   const isExamActive = Boolean(isExamReadyLocal || myProperties?.examReadiness?.isReady || isNowInExamPeriod);
+  useActiveClassroomSession(Boolean(isSharing || isCapturing || isExamActive), 'student-view');
   const isAudioCaptureActive =
     (isSharing || isWebcamSharing || isScreenSharing) &&
     isAudioUserEnabled &&

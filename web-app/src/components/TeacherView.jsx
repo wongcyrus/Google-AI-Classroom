@@ -1,8 +1,10 @@
 import { useState, useEffect, useMemo } from 'react';
 import { onSnapshot, getDoc, doc } from 'firebase/firestore';
-import { db } from '../firebase-config';
+import { httpsCallable } from 'firebase/functions';
+import { db, functions } from '../firebase-config';
 import { Link, Navigate } from 'react-router-dom';
 import './TeacherView.css';
+import NativeModalDialog from './meetings/NativeModalDialog';
 import { formatBytes, formatAiCost, formatStorageCost } from '../utils/formatters';
 import useCloudPricing from '../hooks/useCloudPricing';
 import { deriveRoleFromEmail } from '../utils/domainConfig';
@@ -26,6 +28,37 @@ const TeacherView = ({ user }) => {
   const [scheduleFilter, setScheduleFilter] = useState('all'); // 'all' (default) | 'today' | 'live'
   const [sortOption, setSortOption] = useState('smart'); // 'smart' | 'name'
   const [currentTime, setCurrentTime] = useState(() => new Date());
+  const [showRefreshModal, setShowRefreshModal] = useState(false);
+  const [refreshMode, setRefreshMode] = useState('prompt'); // 'prompt' | 'force_idle' | 'force_now'
+  const [refreshMessage, setRefreshMessage] = useState('');
+  const [refreshSending, setRefreshSending] = useState(false);
+  const [refreshFeedback, setRefreshFeedback] = useState(null);
+
+  const handleBroadcastClientRefresh = async (e) => {
+    e.preventDefault();
+    if (refreshSending) return;
+    setRefreshSending(true);
+    setRefreshFeedback(null);
+    try {
+      const triggerRefresh = httpsCallable(functions, 'triggerClientRefresh');
+      const res = await triggerRefresh({
+        mode: refreshMode,
+        message: refreshMessage.trim() || undefined,
+      });
+      const data = res?.data || {};
+      setRefreshFeedback({
+        type: 'success',
+        text: `Signal sent (${data.mode || refreshMode}) at ${new Date(data.forceReloadBefore || Date.now()).toLocaleTimeString()}.`,
+      });
+    } catch (err) {
+      setRefreshFeedback({
+        type: 'error',
+        text: err?.message || 'Failed to send client refresh signal.',
+      });
+    } finally {
+      setRefreshSending(false);
+    }
+  };
 
   // Periodically refresh current time every 60s to keep live status accurate
   useEffect(() => {
@@ -253,6 +286,17 @@ const TeacherView = ({ user }) => {
           <p>Welcome back, {user?.email}. Manage your live sessions, analytics, and classroom resources.</p>
         </div>
         <div className="dashboard-hero-actions">
+          <button
+            type="button"
+            className="secondary-btn"
+            onClick={() => {
+              setRefreshFeedback(null);
+              setShowRefreshModal(true);
+            }}
+            title="Notify or refresh connected student and teacher browser tabs"
+          >
+            🔄 Client Update
+          </button>
           <Link to="/class-management" className="create-class-btn">
             <span>+ Create New Class</span>
           </Link>
@@ -631,6 +675,196 @@ const TeacherView = ({ user }) => {
           </button>
         </div>
       )}
+
+      <NativeModalDialog
+        open={showRefreshModal}
+        onClose={() => !refreshSending && setShowRefreshModal(false)}
+        ariaLabelledBy="client-refresh-modal-title"
+        style={{
+          maxWidth: '520px',
+          width: '92vw',
+          borderRadius: '14px',
+          border: '1px solid #cbd5e1',
+          padding: '24px',
+          boxShadow: '0 20px 45px rgba(15, 23, 42, 0.25)',
+        }}
+      >
+        <form onSubmit={handleBroadcastClientRefresh} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <h3 id="client-refresh-modal-title" style={{ margin: 0, fontSize: '1.15rem', color: '#0f172a' }}>
+              🔄 Broadcast Client Update
+            </h3>
+            <button
+              type="button"
+              onClick={() => setShowRefreshModal(false)}
+              disabled={refreshSending}
+              aria-label="Close"
+              style={{
+                background: 'transparent',
+                border: 'none',
+                fontSize: '1.2rem',
+                cursor: 'pointer',
+                color: '#64748b',
+              }}
+            >
+              ✕
+            </button>
+          </div>
+
+          <p style={{ margin: 0, fontSize: '0.88rem', color: '#475569', lineHeight: 1.45 }}>
+            Ask outdated browser tabs to load the latest deployed version without disrupting active classes.
+          </p>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <label
+              style={{
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '10px',
+                padding: '10px 12px',
+                borderRadius: '10px',
+                border: refreshMode === 'prompt' ? '2px solid #2563eb' : '1px solid #e2e8f0',
+                background: refreshMode === 'prompt' ? '#eff6ff' : '#ffffff',
+                cursor: 'pointer',
+              }}
+            >
+              <input
+                type="radio"
+                name="clientRefreshMode"
+                value="prompt"
+                checked={refreshMode === 'prompt'}
+                onChange={() => setRefreshMode('prompt')}
+                style={{ marginTop: '3px' }}
+              />
+              <div>
+                <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#0f172a' }}>
+                  Notify Banner Only (Safe During Class)
+                </div>
+                <div style={{ fontSize: '0.8rem', color: '#475569' }}>
+                  Shows a non-blocking "Refresh Now" banner. Never interrupts sharing, recording, or exams.
+                </div>
+              </div>
+            </label>
+
+            <label
+              style={{
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '10px',
+                padding: '10px 12px',
+                borderRadius: '10px',
+                border: refreshMode === 'force_idle' ? '2px solid #2563eb' : '1px solid #e2e8f0',
+                background: refreshMode === 'force_idle' ? '#eff6ff' : '#ffffff',
+                cursor: 'pointer',
+              }}
+            >
+              <input
+                type="radio"
+                name="clientRefreshMode"
+                value="force_idle"
+                checked={refreshMode === 'force_idle'}
+                onChange={() => setRefreshMode('force_idle')}
+                style={{ marginTop: '3px' }}
+              />
+              <div>
+                <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#0f172a' }}>
+                  Auto-Refresh Idle Tabs Only
+                </div>
+                <div style={{ fontSize: '0.8rem', color: '#475569' }}>
+                  Reloads idle tabs immediately. Active classes/recordings see a banner and wait until the session ends.
+                </div>
+              </div>
+            </label>
+
+            <label
+              style={{
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '10px',
+                padding: '10px 12px',
+                borderRadius: '10px',
+                border: refreshMode === 'force_now' ? '2px solid #dc2626' : '1px solid #e2e8f0',
+                background: refreshMode === 'force_now' ? '#fef2f2' : '#ffffff',
+                cursor: 'pointer',
+              }}
+            >
+              <input
+                type="radio"
+                name="clientRefreshMode"
+                value="force_now"
+                checked={refreshMode === 'force_now'}
+                onChange={() => setRefreshMode('force_now')}
+                style={{ marginTop: '3px' }}
+              />
+              <div>
+                <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#991b1b' }}>
+                  Emergency Force Refresh All Now
+                </div>
+                <div style={{ fontSize: '0.8rem', color: '#7f1d1d' }}>
+                  Immediately reloads every connected tab, even during active classes. Use only for urgent fixes.
+                </div>
+              </div>
+            </label>
+          </div>
+
+          <label style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '0.85rem', fontWeight: 600, color: '#334155' }}>
+            Optional Banner Message
+            <input
+              type="text"
+              maxLength={160}
+              placeholder="e.g., A new Classroom Assistant update is ready."
+              value={refreshMessage}
+              onChange={(e) => setRefreshMessage(e.target.value)}
+              style={{
+                padding: '8px 10px',
+                borderRadius: '8px',
+                border: '1px solid #cbd5e1',
+                fontSize: '0.88rem',
+              }}
+            />
+          </label>
+
+          {refreshFeedback && (
+            <div
+              role="status"
+              style={{
+                padding: '8px 12px',
+                borderRadius: '8px',
+                fontSize: '0.85rem',
+                fontWeight: 600,
+                background: refreshFeedback.type === 'success' ? '#ecfdf5' : '#fef2f2',
+                color: refreshFeedback.type === 'success' ? '#065f46' : '#991b1b',
+                border: `1px solid ${refreshFeedback.type === 'success' ? '#a7f3d0' : '#fecaca'}`,
+              }}
+            >
+              {refreshFeedback.text}
+            </div>
+          )}
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '4px' }}>
+            <button
+              type="button"
+              className="secondary-btn"
+              onClick={() => setShowRefreshModal(false)}
+              disabled={refreshSending}
+            >
+              Close
+            </button>
+            <button
+              type="submit"
+              className="create-class-btn"
+              disabled={refreshSending}
+              style={{
+                border: 'none',
+                cursor: refreshSending ? 'wait' : 'pointer',
+                backgroundColor: refreshMode === 'force_now' ? '#dc2626' : undefined,
+              }}
+            >
+              {refreshSending ? 'Sending...' : 'Send Update Signal'}
+            </button>
+          </div>
+        </form>
+      </NativeModalDialog>
     </div>
   );
 };
