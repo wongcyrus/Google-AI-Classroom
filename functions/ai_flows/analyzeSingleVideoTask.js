@@ -25,13 +25,17 @@ export async function recordTaskResult({ masterJobRef, isSuccess, jobId, video, 
     const data = masterDoc.data() || {};
     const existingAiJobIds = Array.isArray(data.aiJobIds) ? data.aiJobIds : [];
     const completedVideoPaths = Array.isArray(data.completedVideoPaths) ? data.completedVideoPaths : [];
+    const existingFailed = Array.isArray(data.failedVideos) ? data.failedVideos : [];
     const videoKey = video?.videoPath || video?.path || '';
 
-    if (
-      isSuccess &&
-      ((jobId && existingAiJobIds.includes(jobId)) ||
-        (videoKey && completedVideoPaths.includes(videoKey)))
-    ) {
+    const alreadyCompleted =
+      (jobId && existingAiJobIds.includes(jobId)) ||
+      (videoKey && completedVideoPaths.includes(videoKey));
+    const alreadyFailed = Boolean(
+      videoKey && existingFailed.some((f) => (f?.videoPath || f?.path || '') === videoKey)
+    );
+
+    if ((isSuccess && alreadyCompleted) || (!isSuccess && (alreadyFailed || alreadyCompleted))) {
       return;
     }
 

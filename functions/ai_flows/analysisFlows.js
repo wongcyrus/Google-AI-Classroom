@@ -1,5 +1,6 @@
 import './firebase.js';
 import { getFirestore } from 'firebase-admin/firestore';
+import { HttpsError } from 'firebase-functions/v2/https';
 import { ai, vertexAI } from './ai.js';
 import { z } from 'genkit';
 import { AI_TEMPERATURE, AI_TOP_P, AI_MODEL, AI_TRANSCRIBE_MODEL, DEFAULT_SAFETY_SETTINGS } from './config.js';
@@ -8,6 +9,12 @@ import { checkQuota } from './quotaManagement.js';
 import { estimateCost, calculateCost } from './cost.js';
 import { logJob } from './jobLogger.js';
 import { interpolatePromptPlaceholders } from './promptInterpolation.js';
+import {
+  assertTeacherInClass,
+  isAdminCaller,
+  isTeacherInClassData,
+  isStudentInClassData,
+} from './authHelpers.js';
 
 export { interpolatePromptPlaceholders };
 
@@ -128,7 +135,11 @@ export const analyzeImageFlow = ai.defineFlow(
     }),
     outputSchema: z.record(z.string()),
   },
-  async ({ screenshots, prompt, classId, model }) => {
+  async ({ screenshots, prompt, classId, model }, sideChannel) => {
+    const callerAuth = sideChannel?.context?.auth ?? sideChannel?.auth ?? null;
+    if (callerAuth) {
+      await assertTeacherInClass(callerAuth, classId, db);
+    }
     const activeModel = model || AI_MODEL;
     const analysisResults = {};
     for (const [studentUid, { url, email }] of Object.entries(screenshots)) {
@@ -361,7 +372,11 @@ export const analyzeAllImagesFlow = ai.defineFlow(
     }),
     outputSchema: z.string(),
   },
-  async ({ screenshots, prompt, classId, model }) => {
+  async ({ screenshots, prompt, classId, model }, sideChannel) => {
+    const callerAuth = sideChannel?.context?.auth ?? sideChannel?.auth ?? null;
+    if (callerAuth) {
+      await assertTeacherInClass(callerAuth, classId, db);
+    }
     const activeModel = model || AI_MODEL;
     const imageParts = Object.entries(screenshots).flatMap(([studentUid, { url, email }]) => (
       [
@@ -459,12 +474,23 @@ export const analyzeFaceFallbackFlow = ai.defineFlow(
       error: z.string().optional(),
     }),
   },
-  async ({ classId, studentUid, studentEmail, webcamUrl, screenUrl, model }) => {
+  async ({ classId, studentUid, studentEmail, webcamUrl, screenUrl, model }, sideChannel) => {
+    const callerAuth = sideChannel?.context?.auth ?? sideChannel?.auth ?? null;
     const classDoc = await db.collection('classes').doc(classId).get();
     if (!classDoc.exists) {
+      if (callerAuth && !isAdminCaller(callerAuth)) {
+        throw new HttpsError('permission-denied', 'Caller is not authorized for face fallback in this class.');
+      }
       return { faceStatus: 'error', error: `Class ${classId} does not exist.` };
     }
-    const classData = classDoc.data();
+    const classData = classDoc.data() || {};
+    if (callerAuth && !isAdminCaller(callerAuth)) {
+      const authorizedTeacher = isTeacherInClassData(classData, callerAuth);
+      const authorizedSelfStudent = isStudentInClassData(classData, callerAuth) && studentUid === callerAuth.uid;
+      if (!authorizedTeacher && !authorizedSelfStudent) {
+        throw new HttpsError('permission-denied', 'Caller is not authorized for face fallback in this class.');
+      }
+    }
     if (!classData.enableCloudFallback) {
       return {
         faceStatus: 'disabled',
@@ -611,7 +637,17 @@ export const analyzeAudioFlow = ai.defineFlow(
       error: z.string().optional(),
     }),
   },
-  async ({ audioUrl = '', transcript = '', classId, studentUid, studentEmail = '', prompt = '', model, diarization = true }) => {
+  async ({ audioUrl = '', transcript = '', classId, studentUid, studentEmail = '', prompt = '', model, diarization = true }, sideChannel) => {
+    const callerAuth = sideChannel?.context?.auth ?? sideChannel?.auth ?? null;
+    if (callerAuth && !isAdminCaller(callerAuth)) {
+      const classSnap = await db.collection('classes').doc(classId).get();
+      const classData = classSnap?.exists ? (classSnap.data() || {}) : null;
+      const authorizedTeacher = classData && isTeacherInClassData(classData, callerAuth);
+      const authorizedSelfStudent = classData && isStudentInClassData(classData, callerAuth) && studentUid === callerAuth.uid;
+      if (!authorizedTeacher && !authorizedSelfStudent) {
+        throw new HttpsError('permission-denied', 'Caller is not authorized to analyze audio for this student in this class.');
+      }
+    }
     const transcribeModel = model || AI_TRANSCRIBE_MODEL || 'gemini-3.5-transcribe-preview';
     const reasoningModel = AI_MODEL || 'gemini-3.5-flash-lite';
     const suppliedTranscript = transcript.trim();

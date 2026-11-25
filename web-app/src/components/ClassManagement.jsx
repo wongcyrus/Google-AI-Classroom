@@ -1,12 +1,15 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import VideoPromptSelector from './VideoPromptSelector';
 import AudioPromptSelector from './AudioPromptSelector';
 import ImagePromptSelector from './ImagePromptSelector';
 import TranslationPromptSelector from './TranslationPromptSelector';
 import ClassPromptField from './class-management/ClassPromptField';
-import { doc, getDoc, setDoc, updateDoc, onSnapshot, deleteDoc, collection, getDocs, writeBatch } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, onSnapshot, deleteDoc, collection, getDocs, query, where } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { db, auth, functions } from '../firebase-config';
+import { subscribeDocShared } from '../utils/sharedFirestoreListeners';
+import { chunkArray, commitBatchChunks } from '../utils/firestoreBatchUtils';
+import { extractClassStudentEmails, fetchStudentDirectoryByEmails } from '../utils/studentDirectoryUtils';
 import './ClassManagement.css';
 import Modal from './Modal';
 import CustomPropertiesManager from './CustomPropertiesManager';
@@ -280,64 +283,86 @@ const ClassManagement = ({ user, embeddedClassId }) => {
     }
   }, [embeddedClassId]);
 
-  // Load institutional student directory for seamless cross-class profile propagation
+  const teacherEmail = (user?.email || auth.currentUser?.email || '').trim().toLowerCase();
+  const userUid = user?.uid || null;
+  const fetchedDirEmailsRef = useRef(new Set());
+
+  // Load scoped institutional student directory & known tags for teacher's accessible classes
   useEffect(() => {
     let isMounted = true;
     const fetchDirectory = async () => {
       try {
         const dirMap = {};
-        // 1. Query central studentDirectory collection
-        const dirSnap = await getDocs(collection(db, 'studentDirectory'));
-        if (dirSnap && typeof dirSnap.forEach === 'function') {
-          dirSnap.forEach((d) => {
-            const data = d.data() || {};
-            const email = (data.email || d.id || '').trim().toLowerCase();
-            if (email && email.includes('@')) {
-              dirMap[email] = {
-                studentName: data.studentName || '',
-                nickname: data.nickname || '',
-                programme: data.programme || '',
-                studentClass: data.studentClass || '',
-              };
-            }
-          });
-        }
+        const knownTagsSet = new Set();
+        const collectedEmails = new Set();
 
-        // 2. Cross-class aggregation: scan accessible classes to merge student profile information & known tags
-        try {
-          const classesSnap = await getDocs(collection(db, 'classes'));
-          const knownTagsSet = new Set();
-          classesSnap.forEach((d) => {
-            const cData = d.data() || {};
-            if (Array.isArray(cData.tags)) {
-              cData.tags.forEach((t) => {
-                if (typeof t === 'string' && t.trim()) knownTagsSet.add(t.trim());
+        // 1. Scan only teacher's own classes for embedded profiles, emails, & known tags
+        if (teacherEmail) {
+          try {
+            const classesQuery = query(
+              collection(db, 'classes'),
+              where('teacherEmails', 'array-contains', teacherEmail)
+            );
+            const classesSnap = await getDocs(classesQuery);
+            if (classesSnap && typeof classesSnap.forEach === 'function') {
+              classesSnap.forEach((d) => {
+                const cData = d.data() || {};
+                if (Array.isArray(cData.tags)) {
+                  cData.tags.forEach((t) => {
+                    if (typeof t === 'string' && t.trim()) knownTagsSet.add(t.trim());
+                  });
+                }
+                extractClassStudentEmails(cData).forEach((em) => collectedEmails.add(em));
+                if (cData.studentProfiles && typeof cData.studentProfiles === 'object') {
+                  for (const [rawE, prof] of Object.entries(cData.studentProfiles)) {
+                    const normE = rawE.trim().toLowerCase();
+                    if (normE && prof && typeof prof === 'object') {
+                      const curr = dirMap[normE] || {};
+                      dirMap[normE] = {
+                        studentName: curr.studentName || prof.studentName || '',
+                        nickname: curr.nickname || prof.nickname || '',
+                        programme: curr.programme || prof.programme || '',
+                        studentClass: curr.studentClass || prof.studentClass || '',
+                      };
+                    }
+                  }
+                }
               });
             }
-            if (cData.studentProfiles && typeof cData.studentProfiles === 'object') {
-              for (const [rawE, prof] of Object.entries(cData.studentProfiles)) {
-                const normE = rawE.trim().toLowerCase();
-                if (normE && prof && typeof prof === 'object') {
-                  const curr = dirMap[normE] || {};
-                  dirMap[normE] = {
-                    studentName: curr.studentName || prof.studentName || '',
-                    nickname: curr.nickname || prof.nickname || '',
-                    programme: curr.programme || prof.programme || '',
-                    studentClass: curr.studentClass || prof.studentClass || '',
-                  };
-                }
-              }
-            }
-          });
-          if (isMounted) {
-            setAllKnownTags([...knownTagsSet].sort());
+          } catch (classErr) {
+            console.warn('Could not scan teacher classes for student profiles & tags:', classErr);
           }
-        } catch (classErr) {
-          console.warn('Could not scan classes for student profiles & tags:', classErr);
         }
 
         if (isMounted) {
-          setStudentDirectory(dirMap);
+          setAllKnownTags([...knownTagsSet].sort());
+        }
+
+        // 2. Query scoped studentDirectory entries strictly for collected roster emails
+        const emailsToLookup = Array.from(collectedEmails);
+        if (emailsToLookup.length > 0) {
+          try {
+            const scopedDir = await fetchStudentDirectoryByEmails(db, emailsToLookup);
+            emailsToLookup.forEach((em) => fetchedDirEmailsRef.current.add(em));
+            for (const [email, data] of Object.entries(scopedDir || {})) {
+              const normE = (data?.email || email || '').trim().toLowerCase();
+              if (normE && normE.includes('@')) {
+                const existing = dirMap[normE] || {};
+                dirMap[normE] = {
+                  studentName: data.studentName || existing.studentName || '',
+                  nickname: data.nickname || existing.nickname || '',
+                  programme: data.programme || existing.programme || '',
+                  studentClass: data.studentClass || existing.studentClass || '',
+                };
+              }
+            }
+          } catch (dirErr) {
+            console.warn('Could not query scoped studentDirectory:', dirErr);
+          }
+        }
+
+        if (isMounted && Object.keys(dirMap).length > 0) {
+          setStudentDirectory((prev) => ({ ...prev, ...dirMap }));
         }
       } catch (err) {
         console.warn('Could not load studentDirectory (teacher may have limited direct read):', err);
@@ -345,63 +370,157 @@ const ClassManagement = ({ user, embeddedClassId }) => {
     };
     fetchDirectory();
     return () => { isMounted = false; };
-  }, []);
+  }, [teacherEmail]);
+
+  // Incrementally enrich newly typed or uploaded student emails from scoped studentDirectory
+  useEffect(() => {
+    let isMounted = true;
+    const parsedEmails = (studentEmails || '')
+      .split(/[\n,]+/)
+      .map((s) => s.trim().toLowerCase())
+      .filter((e) => /^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/.test(e));
+
+    const missingEmails = [...new Set(parsedEmails)].filter(
+      (email) => !fetchedDirEmailsRef.current.has(email)
+    );
+    if (missingEmails.length === 0) return;
+
+    const timer = setTimeout(async () => {
+      try {
+        const fetched = await fetchStudentDirectoryByEmails(db, missingEmails);
+        missingEmails.forEach((email) => fetchedDirEmailsRef.current.add(email));
+        if (!isMounted || !fetched || Object.keys(fetched).length === 0) return;
+        const normalizedFetched = {};
+        for (const [email, data] of Object.entries(fetched)) {
+          const normE = (data?.email || email || '').trim().toLowerCase();
+          if (normE) {
+            normalizedFetched[normE] = {
+              studentName: data.studentName || '',
+              nickname: data.nickname || '',
+              programme: data.programme || '',
+              studentClass: data.studentClass || '',
+            };
+          }
+        }
+        if (Object.keys(normalizedFetched).length > 0) {
+          setStudentDirectory((prev) => ({ ...prev, ...normalizedFetched }));
+        }
+      } catch (err) {
+        console.warn('Could not enrich student emails from studentDirectory:', err);
+      }
+    }, 50);
+
+    return () => {
+      isMounted = false;
+      clearTimeout(timer);
+    };
+  }, [studentEmails]);
 
   useEffect(() => {
-    if (!user || embeddedClassId) return;
+    if (!userUid || embeddedClassId) return;
 
-    const userProfileRef = doc(db, "teacherProfiles", user.uid);
-    const unsubscribe = onSnapshot(userProfileRef, (profileSnap) => {
-      if (profileSnap.exists()) {
-        const profileData = profileSnap.data();
-        const classIds = profileData.classes || [];
-        const classesData = classIds.map(id => ({ id }));
-        setClasses(classesData);
-      } else {
-        setClasses([]);
-      }
-    });
+    const unsubscribe = subscribeDocShared(
+      db,
+      `teacherProfiles/${userUid}`,
+      (profileSnap) => {
+        if (profileSnap.exists()) {
+          const profileData = profileSnap.data();
+          const classIds = profileData.classes || [];
+          const classesData = classIds.map(id => ({ id }));
+          setClasses(classesData);
+        } else {
+          setClasses([]);
+        }
+      },
+      undefined,
+      () => doc(db, 'teacherProfiles', userUid)
+    );
 
     return () => unsubscribe();
-  }, [user, embeddedClassId]);
+  }, [userUid, embeddedClassId]);
+
+  const rosterEmailsKey = useMemo(() => {
+    const emailSet = new Set();
+    (studentEmails || '')
+      .split(/[\n,]+/)
+      .map((s) => s.trim().toLowerCase())
+      .filter((e) => e.includes('@'))
+      .forEach((e) => emailSet.add(e));
+    if (studentsMap && typeof studentsMap === 'object') {
+      Object.values(studentsMap).forEach((e) => {
+        if (typeof e === 'string' && e.trim()) emailSet.add(e.trim().toLowerCase());
+      });
+    }
+    if (studentProfiles && typeof studentProfiles === 'object') {
+      Object.keys(studentProfiles).forEach((e) => {
+        if (typeof e === 'string' && e.trim()) emailSet.add(e.trim().toLowerCase());
+      });
+    }
+    return Array.from(emailSet).sort().join('|');
+  }, [studentEmails, studentsMap, studentProfiles]);
 
   useEffect(() => {
-    if (!user) return;
-    const unsub = onSnapshot(
-      collection(db, 'studentPasskeys'),
-      (snapshot) => {
-        const map = {};
-        if (snapshot && typeof snapshot.forEach === 'function') {
-          snapshot.forEach((d) => {
-            const data = (typeof d?.data === 'function' ? d.data() : d?.data) || {};
-            const email = (data.studentEmail || data.email || '').toLowerCase();
-            const uid = data.studentUid || data.uid || d?.id;
-            if (email) map[email] = { id: d?.id, ...data };
-            if (uid) map[uid] = { id: d?.id, ...data };
-          });
-        } else if (Array.isArray(snapshot?.docs)) {
-          snapshot.docs.forEach((d) => {
-            const data = (typeof d?.data === 'function' ? d.data() : d?.data) || {};
-            const email = (data.studentEmail || data.email || '').toLowerCase();
-            const uid = data.studentUid || data.uid || d?.id;
-            if (email) map[email] = { id: d?.id, ...data };
-            if (uid) map[uid] = { id: d?.id, ...data };
-          });
+    if (!userUid) return;
+    if (!rosterEmailsKey) {
+      setRegisteredPasskeysMap({});
+      return;
+    }
+
+    const emails = rosterEmailsKey.split('|').filter(Boolean);
+    const chunks = chunkArray(emails, 30);
+    const chunkResults = new Map();
+
+    const rebuildMap = () => {
+      const merged = {};
+      chunkResults.forEach((chunkMap) => {
+        Object.assign(merged, chunkMap);
+      });
+      setRegisteredPasskeysMap(merged);
+    };
+
+    const unsubs = chunks.map((chunk, idx) =>
+      onSnapshot(
+        query(collection(db, 'studentPasskeys'), where('studentEmail', 'in', chunk)),
+        (snapshot) => {
+          const map = {};
+          if (snapshot && typeof snapshot.forEach === 'function') {
+            snapshot.forEach((d) => {
+              const data = (typeof d?.data === 'function' ? d.data() : d?.data) || {};
+              const email = (data.studentEmail || data.email || '').toLowerCase();
+              const uid = data.studentUid || data.uid || d?.id;
+              if (email) map[email] = { id: d?.id, ...data };
+              if (uid) map[uid] = { id: d?.id, ...data };
+            });
+          } else if (Array.isArray(snapshot?.docs)) {
+            snapshot.docs.forEach((d) => {
+              const data = (typeof d?.data === 'function' ? d.data() : d?.data) || {};
+              const email = (data.studentEmail || data.email || '').toLowerCase();
+              const uid = data.studentUid || data.uid || d?.id;
+              if (email) map[email] = { id: d?.id, ...data };
+              if (uid) map[uid] = { id: d?.id, ...data };
+            });
+          }
+          chunkResults.set(idx, map);
+          rebuildMap();
+        },
+        (err) => {
+          console.warn('[ClassManagement] Notice fetching studentPasskeys:', err);
         }
-        setRegisteredPasskeysMap(map);
-      },
-      (err) => {
-        console.warn('[ClassManagement] Notice fetching studentPasskeys:', err);
-      }
+      )
     );
-    return () => unsub();
-  }, [user]);
+    return () => {
+      unsubs.forEach((u) => {
+        if (typeof u === 'function') u();
+      });
+    };
+  }, [userUid, rosterEmailsKey]);
 
   // Real-time listener for system_config/loginPolicy (Password Whitelist / Passkey Exemption)
   useEffect(() => {
-    if (!user) return;
-    const unsub = onSnapshot(
-      doc(db, 'system_config', 'loginPolicy'),
+    if (!userUid) return;
+    const unsub = subscribeDocShared(
+      db,
+      'system_config/loginPolicy',
       (snapshot) => {
         if (snapshot && typeof snapshot.exists === 'function' && snapshot.exists()) {
           const data = snapshot.data() || {};
@@ -414,10 +533,11 @@ const ClassManagement = ({ user, embeddedClassId }) => {
       },
       (err) => {
         console.warn('[ClassManagement] Notice fetching loginPolicy:', err);
-      }
+      },
+      () => doc(db, 'system_config', 'loginPolicy')
     );
     return () => unsub();
-  }, [user]);
+  }, [userUid]);
 
   // Real-time listener for classes/{activeId}/studentProperties (Passkey emergency bypasses)
   useEffect(() => {
@@ -465,9 +585,14 @@ const ClassManagement = ({ user, embeddedClassId }) => {
       const activeId = embeddedClassId || selectedClass;
       if (activeId) {
         const classRef = doc(db, 'classes', activeId);
-        const classSnap = await getDoc(classRef);
+        const aiMetaRef = doc(db, 'classes', activeId, 'metadata', 'ai');
+        const [classSnap, aiMetaSnap] = await Promise.all([
+          getDoc(classRef),
+          getDoc(aiMetaRef).catch(() => null),
+        ]);
         if (classSnap.exists()) {
           const classData = classSnap.data();
+          const aiMetaData = aiMetaSnap && aiMetaSnap.exists() ? aiMetaSnap.data() : null;
           setClassId(activeId);
           setClassName(classData.name || '');
           setClassTags(Array.isArray(classData.tags) ? classData.tags : []);
@@ -488,7 +613,7 @@ const ClassManagement = ({ user, embeddedClassId }) => {
             setAiBudget('25');
             setIsCustomAiBudget(false);
           }
-          setAiUsedQuota(Number(classData.aiUsedQuota) || 0);
+          setAiUsedQuota(Number(aiMetaData?.aiUsedQuota ?? classData.aiUsedQuota) || 0);
           const history = Array.isArray(classData.scheduleHistory) ? classData.scheduleHistory : [];
           setScheduleHistory(history);
           if (classData.schedule) {
@@ -899,17 +1024,35 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           fetchedProfiles = result.data.studentProfiles;
         }
       } catch (fnErr) {
-        console.warn('getAllSystemStudentEmails callable failed, falling back to direct Firestore query:', fnErr);
-        // 2. Client-side fallback: query studentDirectory and classes collections
+        console.warn('getAllSystemStudentEmails callable failed, falling back to teacher-scoped Firestore query:', fnErr);
+        // 2. Client-side fallback: query only this teacher's accessible classes and scoped studentDirectory
         const emailSet = new Set();
-        try {
-          const dirSnap = await getDocs(collection(db, 'studentDirectory'));
-          if (dirSnap && typeof dirSnap.forEach === 'function') {
-            dirSnap.forEach((d) => {
-              const dData = d.data() || {};
-              const em = (dData.email || d.id || '').trim().toLowerCase();
-              if (em && em.includes('@')) {
-                emailSet.add(em);
+        if (teacherEmail) {
+          const classesRef = collection(db, 'classes');
+          const classesSnap = await getDocs(
+            query(classesRef, where('teacherEmails', 'array-contains', teacherEmail))
+          );
+          if (classesSnap && typeof classesSnap.forEach === 'function') {
+            classesSnap.forEach((d) => {
+              const data = d.data();
+              extractClassStudentEmails(data).forEach((em) => emailSet.add(em));
+              if (data.studentProfiles && typeof data.studentProfiles === 'object') {
+                for (const [rawE, prof] of Object.entries(data.studentProfiles)) {
+                  const normE = rawE.trim().toLowerCase();
+                  if (normE && prof && typeof prof === 'object') {
+                    emailSet.add(normE);
+                    if (!fetchedProfiles[normE] || !fetchedProfiles[normE].studentName) {
+                      fetchedProfiles[normE] = prof;
+                    }
+                  }
+                }
+              }
+            });
+          }
+          try {
+            const dirProfiles = await fetchStudentDirectoryByEmails(db, Array.from(emailSet));
+            for (const [em, dData] of Object.entries(dirProfiles || {})) {
+              if (em && !fetchedProfiles[em]) {
                 fetchedProfiles[em] = {
                   studentName: dData.studentName || '',
                   nickname: dData.nickname || '',
@@ -917,40 +1060,9 @@ const ClassManagement = ({ user, embeddedClassId }) => {
                   studentClass: dData.studentClass || '',
                 };
               }
-            });
-          }
-        } catch {}
-
-        const classesRef = collection(db, 'classes');
-        const classesSnap = await getDocs(classesRef);
-        classesSnap.forEach((d) => {
-          const data = d.data();
-          if (Array.isArray(data.studentEmails)) {
-            data.studentEmails.forEach((e) => {
-              if (typeof e === 'string' && e.includes('@')) {
-                emailSet.add(e.trim().toLowerCase());
-              }
-            });
-          }
-          if (data.students && typeof data.students === 'object') {
-            Object.values(data.students).forEach((e) => {
-              if (typeof e === 'string' && e.includes('@')) {
-                emailSet.add(e.trim().toLowerCase());
-              }
-            });
-          }
-          if (data.studentProfiles && typeof data.studentProfiles === 'object') {
-            for (const [rawE, prof] of Object.entries(data.studentProfiles)) {
-              const normE = rawE.trim().toLowerCase();
-              if (normE && prof && typeof prof === 'object') {
-                emailSet.add(normE);
-                if (!fetchedProfiles[normE] || !fetchedProfiles[normE].studentName) {
-                  fetchedProfiles[normE] = prof;
-                }
-              }
             }
-          }
-        });
+          } catch {}
+        }
         fetchedEmails = Array.from(emailSet);
       }
 
@@ -1244,17 +1356,16 @@ const ClassManagement = ({ user, embeddedClassId }) => {
       console.warn('Error recalculating past lessons:', e);
     }
 
-    // Sync all profiles to institutional studentDirectory
+    // Sync all profiles to institutional studentDirectory in chunked batches
     try {
-      const dirBatch = writeBatch(db);
-      let dirCount = 0;
+      const dirOps = [];
       for (const [normEmail, prof] of Object.entries(resolvedStudentProfiles)) {
         if (!normEmail || !prof || typeof prof !== 'object') continue;
         if (!prof.studentName && !prof.nickname && !prof.programme && !prof.studentClass) continue;
-        const dirRef = doc(db, 'studentDirectory', normEmail);
-        dirBatch.set(
-          dirRef,
-          {
+        dirOps.push({
+          type: 'set',
+          ref: doc(db, 'studentDirectory', normEmail),
+          data: {
             email: normEmail,
             studentName: prof.studentName || '',
             nickname: prof.nickname || '',
@@ -1263,12 +1374,11 @@ const ClassManagement = ({ user, embeddedClassId }) => {
             lastUpdatedByClass: targetClassId,
             updatedAt: new Date().toISOString(),
           },
-          { merge: true }
-        );
-        dirCount++;
+          options: { merge: true },
+        });
       }
-      if (dirCount > 0) {
-        await dirBatch.commit();
+      if (dirOps.length > 0) {
+        await commitBatchChunks(db, dirOps);
         setStudentDirectory((prev) => ({ ...prev, ...resolvedStudentProfiles }));
       }
     } catch (dirErr) {
@@ -1547,27 +1657,29 @@ const ClassManagement = ({ user, embeddedClassId }) => {
           setSelectedClass(targetClassId);
         }
 
-        // Sync all profiles to institutional studentDirectory
+        // Sync all profiles to institutional studentDirectory in chunked batches
         try {
-          const dirBatch = writeBatch(db);
-          let dirCount = 0;
+          const dirOps = [];
           for (const [normEmail, prof] of Object.entries(resolvedStudentProfiles)) {
             if (!normEmail || !prof || typeof prof !== 'object') continue;
             if (!prof.studentName && !prof.nickname && !prof.programme && !prof.studentClass) continue;
-            const dirRef = doc(db, 'studentDirectory', normEmail);
-            dirBatch.set(dirRef, {
-              email: normEmail,
-              studentName: prof.studentName || '',
-              nickname: prof.nickname || '',
-              programme: prof.programme || '',
-              studentClass: prof.studentClass || '',
-              lastUpdatedByClass: targetClassId,
-              updatedAt: new Date().toISOString(),
-            }, { merge: true });
-            dirCount++;
+            dirOps.push({
+              type: 'set',
+              ref: doc(db, 'studentDirectory', normEmail),
+              data: {
+                email: normEmail,
+                studentName: prof.studentName || '',
+                nickname: prof.nickname || '',
+                programme: prof.programme || '',
+                studentClass: prof.studentClass || '',
+                lastUpdatedByClass: targetClassId,
+                updatedAt: new Date().toISOString(),
+              },
+              options: { merge: true },
+            });
           }
-          if (dirCount > 0) {
-            await dirBatch.commit();
+          if (dirOps.length > 0) {
+            await commitBatchChunks(db, dirOps);
             setStudentDirectory(prev => ({ ...prev, ...resolvedStudentProfiles }));
           }
         } catch (dirErr) {
@@ -1796,195 +1908,205 @@ const ClassManagement = ({ user, embeddedClassId }) => {
   return (
     <div className="class-management-container">
       {/* Video Prompt Modal */}
-      <Modal show={showPromptModal} onClose={() => setShowPromptModal(false)} title="Select After-Class Video Prompt">
-        <VideoPromptSelector
-          user={user}
-          selectedPrompt={modalPrompt}
-          onSelectPrompt={(p) => {
-            setModalPrompt(p);
-            setModalPromptText(p ? p.promptText : '');
-          }}
-          promptText={modalPromptText}
-          onTextChange={setModalPromptText}
-        />
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1.25rem' }}>
-          <button type="button" className="secondary-btn" onClick={() => { setAfterClassVideoPrompt(null); setShowPromptModal(false); }}>
-            Clear Prompt
-          </button>
-          <button type="button" onClick={handleSetPrompt}>
-            Save Prompt Selection
-          </button>
-        </div>
-      </Modal>
+      {showPromptModal && (
+        <Modal show={showPromptModal} onClose={() => setShowPromptModal(false)} title="Select After-Class Video Prompt">
+          <VideoPromptSelector
+            user={user}
+            selectedPrompt={modalPrompt}
+            onSelectPrompt={(p) => {
+              setModalPrompt(p);
+              setModalPromptText(p ? p.promptText : '');
+            }}
+            promptText={modalPromptText}
+            onTextChange={setModalPromptText}
+          />
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1.25rem' }}>
+            <button type="button" className="secondary-btn" onClick={() => { setAfterClassVideoPrompt(null); setShowPromptModal(false); }}>
+              Clear Prompt
+            </button>
+            <button type="button" onClick={handleSetPrompt}>
+              Save Prompt Selection
+            </button>
+          </div>
+        </Modal>
+      )}
 
       {/* Audio & Voice AI Prompt Modal */}
-      <Modal
-        show={showAudioPromptModal}
-        onClose={() => setShowAudioPromptModal(false)}
-        title={
-          audioPromptModalType === 'live_audio'
-            ? 'Select Live Audio Invigilation Prompt'
-            : audioPromptModalType === 'session_audio'
-              ? 'Select Discussion / Session Audio Summary Prompt'
-              : audioPromptModalType === 'lecture_recording'
-                ? 'Select Lecture Audio Speech-to-Text & Chapters Prompt'
-                : 'Select On-Device Gemma Voice Intent Prompt'
-        }
-      >
-        <AudioPromptSelector
-          user={user}
-          selectedPrompt={modalAudioPrompt}
-          onSelectPrompt={(p) => {
-            setModalAudioPrompt(p);
-            setModalAudioPromptText(p ? p.promptText : '');
-          }}
-          promptText={modalAudioPromptText}
-          onTextChange={setModalAudioPromptText}
-          applyToFilter={
+      {showAudioPromptModal && (
+        <Modal
+          show={showAudioPromptModal}
+          onClose={() => setShowAudioPromptModal(false)}
+          title={
             audioPromptModalType === 'live_audio'
-              ? 'Live Audio Invigilation'
+              ? 'Select Live Audio Invigilation Prompt'
               : audioPromptModalType === 'session_audio'
-                ? 'Session Audio Summary'
+                ? 'Select Discussion / Session Audio Summary Prompt'
                 : audioPromptModalType === 'lecture_recording'
-                  ? 'Lecture STT & Chapters'
-                  : 'On-Device Gemma Voice Intent'
+                  ? 'Select Lecture Audio Speech-to-Text & Chapters Prompt'
+                  : 'Select On-Device Gemma Voice Intent Prompt'
           }
-        />
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1.25rem' }}>
-          <button
-            type="button"
-            className="secondary-btn"
-            onClick={() => {
-              if (audioPromptModalType === 'live_audio') setLiveAudioPrompt(null);
-              else if (audioPromptModalType === 'session_audio') setSessionAudioPrompt(null);
-              else if (audioPromptModalType === 'gemma_intent') setGemmaIntentPrompt(null);
-              else if (audioPromptModalType === 'lecture_recording') {
-                setLectureSttPrompt(DEFAULT_LECTURE_STT_PROMPT);
-                setLectureRecordingPrompt(DEFAULT_LECTURE_STT_PROMPT);
-              }
-              setShowAudioPromptModal(false);
+        >
+          <AudioPromptSelector
+            user={user}
+            selectedPrompt={modalAudioPrompt}
+            onSelectPrompt={(p) => {
+              setModalAudioPrompt(p);
+              setModalAudioPromptText(p ? p.promptText : '');
             }}
-          >
-            {audioPromptModalType === 'lecture_recording' ? 'Reset to Default' : 'Clear Prompt'}
-          </button>
-          <button type="button" onClick={handleSetAudioPrompt}>
-            Save Prompt Selection
-          </button>
-        </div>
-      </Modal>
+            promptText={modalAudioPromptText}
+            onTextChange={setModalAudioPromptText}
+            applyToFilter={
+              audioPromptModalType === 'live_audio'
+                ? 'Live Audio Invigilation'
+                : audioPromptModalType === 'session_audio'
+                  ? 'Session Audio Summary'
+                  : audioPromptModalType === 'lecture_recording'
+                    ? 'Lecture STT & Chapters'
+                    : 'On-Device Gemma Voice Intent'
+            }
+          />
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1.25rem' }}>
+            <button
+              type="button"
+              className="secondary-btn"
+              onClick={() => {
+                if (audioPromptModalType === 'live_audio') setLiveAudioPrompt(null);
+                else if (audioPromptModalType === 'session_audio') setSessionAudioPrompt(null);
+                else if (audioPromptModalType === 'gemma_intent') setGemmaIntentPrompt(null);
+                else if (audioPromptModalType === 'lecture_recording') {
+                  setLectureSttPrompt(DEFAULT_LECTURE_STT_PROMPT);
+                  setLectureRecordingPrompt(DEFAULT_LECTURE_STT_PROMPT);
+                }
+                setShowAudioPromptModal(false);
+              }}
+            >
+              {audioPromptModalType === 'lecture_recording' ? 'Reset to Default' : 'Clear Prompt'}
+            </button>
+            <button type="button" onClick={handleSetAudioPrompt}>
+              Save Prompt Selection
+            </button>
+          </div>
+        </Modal>
+      )}
 
       {/* Lecture Subtitle Translation Prompt Modal */}
-      <Modal
-        show={showTranslationPromptModal}
-        onClose={() => setShowTranslationPromptModal(false)}
-        title="Select Lecture Subtitle Translation Prompt"
-      >
-        <TranslationPromptSelector
-          user={user}
-          selectedPrompt={modalTranslationPrompt}
-          onSelectPrompt={(p) => {
-            setModalTranslationPrompt(p);
-            setModalTranslationPromptText(p ? p.promptText : '');
-          }}
-          promptText={modalTranslationPromptText}
-          onTextChange={setModalTranslationPromptText}
-          applyToFilter="Lecture Subtitle Translation"
-        />
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1.25rem' }}>
-          <button
-            type="button"
-            className="secondary-btn"
-            onClick={() => {
-              setLectureTranslationPrompt(DEFAULT_LECTURE_TRANSLATION_PROMPT);
-              setShowTranslationPromptModal(false);
+      {showTranslationPromptModal && (
+        <Modal
+          show={showTranslationPromptModal}
+          onClose={() => setShowTranslationPromptModal(false)}
+          title="Select Lecture Subtitle Translation Prompt"
+        >
+          <TranslationPromptSelector
+            user={user}
+            selectedPrompt={modalTranslationPrompt}
+            onSelectPrompt={(p) => {
+              setModalTranslationPrompt(p);
+              setModalTranslationPromptText(p ? p.promptText : '');
             }}
-          >
-            Reset to Default
-          </button>
-          <button type="button" onClick={handleSetTranslationPrompt}>
-            Save Prompt Selection
-          </button>
-        </div>
-      </Modal>
+            promptText={modalTranslationPromptText}
+            onTextChange={setModalTranslationPromptText}
+            applyToFilter="Lecture Subtitle Translation"
+          />
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1.25rem' }}>
+            <button
+              type="button"
+              className="secondary-btn"
+              onClick={() => {
+                setLectureTranslationPrompt(DEFAULT_LECTURE_TRANSLATION_PROMPT);
+                setShowTranslationPromptModal(false);
+              }}
+            >
+              Reset to Default
+            </button>
+            <button type="button" onClick={handleSetTranslationPrompt}>
+              Save Prompt Selection
+            </button>
+          </div>
+        </Modal>
+      )}
 
       {/* Live Subtitle & Speech Translation Prompt Modal */}
-      <Modal
-        show={showLiveSubtitlePromptModal}
-        onClose={() => setShowLiveSubtitlePromptModal(false)}
-        title="Select Live Subtitles & Translation Prompt"
-      >
-        <TranslationPromptSelector
-          user={user}
-          selectedPrompt={modalLiveSubtitlePrompt}
-          onSelectPrompt={(p) => {
-            setModalLiveSubtitlePrompt(p);
-            setModalLiveSubtitlePromptText(p ? p.promptText : '');
-          }}
-          promptText={modalLiveSubtitlePromptText}
-          onTextChange={setModalLiveSubtitlePromptText}
-          applyToFilter="Live Subtitles & Translation"
-        />
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1.25rem' }}>
-          <button
-            type="button"
-            className="secondary-btn"
-            onClick={() => {
-              setSubtitlePrompt(DEFAULT_LIVE_SUBTITLE_TRANSLATION_PROMPT);
-              setShowLiveSubtitlePromptModal(false);
+      {showLiveSubtitlePromptModal && (
+        <Modal
+          show={showLiveSubtitlePromptModal}
+          onClose={() => setShowLiveSubtitlePromptModal(false)}
+          title="Select Live Subtitles & Translation Prompt"
+        >
+          <TranslationPromptSelector
+            user={user}
+            selectedPrompt={modalLiveSubtitlePrompt}
+            onSelectPrompt={(p) => {
+              setModalLiveSubtitlePrompt(p);
+              setModalLiveSubtitlePromptText(p ? p.promptText : '');
             }}
-          >
-            Reset to Default
-          </button>
-          <button
-            type="button"
-            className="secondary-btn"
-            onClick={() => {
-              setSubtitlePrompt(null);
-              setShowLiveSubtitlePromptModal(false);
-            }}
-          >
-            Clear Prompt
-          </button>
-          <button type="button" onClick={handleSetLiveSubtitlePrompt}>
-            Save Prompt Selection
-          </button>
-        </div>
-      </Modal>
+            promptText={modalLiveSubtitlePromptText}
+            onTextChange={setModalLiveSubtitlePromptText}
+            applyToFilter="Live Subtitles & Translation"
+          />
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1.25rem' }}>
+            <button
+              type="button"
+              className="secondary-btn"
+              onClick={() => {
+                setSubtitlePrompt(DEFAULT_LIVE_SUBTITLE_TRANSLATION_PROMPT);
+                setShowLiveSubtitlePromptModal(false);
+              }}
+            >
+              Reset to Default
+            </button>
+            <button
+              type="button"
+              className="secondary-btn"
+              onClick={() => {
+                setSubtitlePrompt(null);
+                setShowLiveSubtitlePromptModal(false);
+              }}
+            >
+              Clear Prompt
+            </button>
+            <button type="button" onClick={handleSetLiveSubtitlePrompt}>
+              Save Prompt Selection
+            </button>
+          </div>
+        </Modal>
+      )}
 
       {/* Image & Bingo AI Prompt Modal */}
-      <Modal
-        show={showImagePromptModal}
-        onClose={() => setShowImagePromptModal(false)}
-        title={imagePromptModalType === 'bingo' ? 'Select Bingo Active Presence AI Prompt' : 'Select Live Image & Screen Invigilation Prompt'}
-      >
-        <ImagePromptSelector
-          user={user}
-          applyToFilter={imagePromptModalType === 'bingo' ? 'Classroom Bingo Questions' : 'Per Image'}
-          selectedPrompt={modalImagePrompt}
-          onSelectPrompt={(p) => {
-            setModalImagePrompt(p);
-            setModalImagePromptText(p ? p.promptText : '');
-          }}
-          promptText={modalImagePromptText}
-          onTextChange={setModalImagePromptText}
-        />
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1.25rem' }}>
-          <button
-            type="button"
-            className="secondary-btn"
-            onClick={() => {
-              if (imagePromptModalType === 'bingo') setBingoPrompt(null);
-              else setLiveImagePrompt(null);
-              setShowImagePromptModal(false);
+      {showImagePromptModal && (
+        <Modal
+          show={showImagePromptModal}
+          onClose={() => setShowImagePromptModal(false)}
+          title={imagePromptModalType === 'bingo' ? 'Select Bingo Active Presence AI Prompt' : 'Select Live Image & Screen Invigilation Prompt'}
+        >
+          <ImagePromptSelector
+            user={user}
+            applyToFilter={imagePromptModalType === 'bingo' ? 'Classroom Bingo Questions' : 'Per Image'}
+            selectedPrompt={modalImagePrompt}
+            onSelectPrompt={(p) => {
+              setModalImagePrompt(p);
+              setModalImagePromptText(p ? p.promptText : '');
             }}
-          >
-            Clear Prompt
-          </button>
-          <button type="button" onClick={handleSetImagePrompt}>
-            Save Prompt Selection
-          </button>
-        </div>
-      </Modal>
+            promptText={modalImagePromptText}
+            onTextChange={setModalImagePromptText}
+          />
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem', marginTop: '1.25rem' }}>
+            <button
+              type="button"
+              className="secondary-btn"
+              onClick={() => {
+                if (imagePromptModalType === 'bingo') setBingoPrompt(null);
+                else setLiveImagePrompt(null);
+                setShowImagePromptModal(false);
+              }}
+            >
+              Clear Prompt
+            </button>
+            <button type="button" onClick={handleSetImagePrompt}>
+              Save Prompt Selection
+            </button>
+          </div>
+        </Modal>
+      )}
 
       {!embeddedClassId && (
         <div className="class-management-header">

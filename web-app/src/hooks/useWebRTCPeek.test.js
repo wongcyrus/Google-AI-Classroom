@@ -318,4 +318,92 @@ describe('useWebRTCPeekTeacher and useWebRTCPeekStudent Hooks', () => {
 
     unmount();
   });
+
+  it('deduplicates repeated offered SDP snapshots and processes teacher/student ICE candidates incrementally', async () => {
+    let createdPcCount = 0;
+    function CountingPeerConnection() {
+      createdPcCount += 1;
+      return mockPeerConnection;
+    }
+    global.window.RTCPeerConnection = CountingPeerConnection;
+    global.window.webkitRTCPeerConnection = CountingPeerConnection;
+
+    const { unmount } = renderHook(() =>
+      useWebRTCPeekStudent({
+        classId: 'CLASS_1',
+        studentUid: 'student_123',
+        screenStreamRef: { current: null },
+        webcamStreamRef: { current: null },
+        audioStreamRef: { current: null },
+      })
+    );
+
+    await act(async () => {
+      await snapshotCallback({
+        exists: () => true,
+        data: () => ({
+          status: 'offered',
+          offer: { type: 'offer', sdp: 'v=0-offer-1' },
+          teacherCandidates: [{ candidate: 't-cand-1' }],
+        }),
+      });
+    });
+
+    expect(createdPcCount).toBe(1);
+    expect(mockPeerConnection.setRemoteDescription).toHaveBeenCalledTimes(1);
+    expect(mockPeerConnection.addIceCandidate).toHaveBeenCalledTimes(1);
+
+    // Subsequent snapshot with SAME offer SDP and an additional candidate must NOT recreate RTCPeerConnection
+    await act(async () => {
+      await snapshotCallback({
+        exists: () => true,
+        data: () => ({
+          status: 'offered',
+          offer: { type: 'offer', sdp: 'v=0-offer-1' },
+          teacherCandidates: [{ candidate: 't-cand-1' }, { candidate: 't-cand-2' }],
+        }),
+      });
+    });
+
+    expect(createdPcCount).toBe(1);
+    expect(mockPeerConnection.setRemoteDescription).toHaveBeenCalledTimes(1);
+    expect(mockPeerConnection.addIceCandidate).toHaveBeenCalledTimes(2);
+    unmount();
+
+    // Teacher incremental studentCandidates test
+    mockPeerConnection.addIceCandidate.mockClear();
+    const { result: teacherRes, unmount: unmountTeacher } = renderHook(() =>
+      useWebRTCPeekTeacher({
+        classId: 'CLASS_1',
+        studentUid: 'student_123',
+        teacherUid: 'teacher_abc',
+      })
+    );
+
+    await act(async () => {
+      await teacherRes.current.startPeek();
+    });
+
+    await act(async () => {
+      await snapshotCallback({
+        exists: () => true,
+        data: () => ({
+          answer: { type: 'answer', sdp: 'v=0...' },
+          studentCandidates: [{ candidate: 's-1' }],
+        }),
+      });
+    });
+    expect(mockPeerConnection.addIceCandidate).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await snapshotCallback({
+        exists: () => true,
+        data: () => ({
+          studentCandidates: [{ candidate: 's-1' }, { candidate: 's-2' }],
+        }),
+      });
+    });
+    expect(mockPeerConnection.addIceCandidate).toHaveBeenCalledTimes(2);
+    unmountTeacher();
+  });
 });

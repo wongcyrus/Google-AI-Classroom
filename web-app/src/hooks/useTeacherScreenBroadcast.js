@@ -1,10 +1,77 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { db } from '../firebase-config';
+import { db, storage } from '../firebase-config';
 import { doc, setDoc, onSnapshot, serverTimestamp, collection } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 
 export const BROADCAST_MODES = {
   FRAME: 'frame',
+  STATIC_URL: 'static_url',
 };
+
+const SLIDE_KEEPALIVE_INTERVAL_MS = 5 * 60 * 1000;
+
+function createRandomSlideToken() {
+  if (typeof globalThis !== 'undefined' && globalThis.crypto) {
+    if (typeof globalThis.crypto.randomUUID === 'function') {
+      return globalThis.crypto.randomUUID().replace(/-/g, '').slice(0, 16);
+    }
+    if (typeof globalThis.crypto.getRandomValues === 'function') {
+      const bytes = new Uint8Array(8);
+      globalThis.crypto.getRandomValues(bytes);
+      return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+    }
+  }
+  return `${Math.random().toString(36).slice(2, 10)}${Math.random().toString(36).slice(2, 10)}`.slice(0, 16);
+}
+
+async function encodeCanvasToJpeg(canvas, quality) {
+  const dataUrl = canvas.toDataURL('image/jpeg', quality);
+  if (typeof canvas.toBlob === 'function') {
+    const blob = await new Promise((resolve) => {
+      let settled = false;
+      const timerId = setTimeout(() => {
+        if (!settled) {
+          settled = true;
+          resolve(null);
+        }
+      }, 500);
+      try {
+        canvas.toBlob((result) => {
+          if (!settled) {
+            settled = true;
+            clearTimeout(timerId);
+            resolve(result || null);
+          }
+        }, 'image/jpeg', quality);
+      } catch {
+        if (!settled) {
+          settled = true;
+          clearTimeout(timerId);
+          resolve(null);
+        }
+      }
+    });
+    if (blob) {
+      return { blob, dataUrl };
+    }
+  }
+
+  const base64Part = dataUrl.includes(',') ? dataUrl.split(',')[1] : '';
+  let byteArray;
+  try {
+    const binary = atob(base64Part);
+    byteArray = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) {
+      byteArray[i] = binary.charCodeAt(i);
+    }
+  } catch {
+    byteArray = new Uint8Array(0);
+  }
+  const fallbackBlob = typeof Blob !== 'undefined'
+    ? new Blob([byteArray], { type: 'image/jpeg' })
+    : { size: byteArray.byteLength, type: 'image/jpeg' };
+  return { blob: fallbackBlob, dataUrl };
+}
 
 export const RESOLUTION_PRESETS = {
   '1080p': {
@@ -61,7 +128,7 @@ export default function useTeacherScreenBroadcast({ classId, teacherUid, teacher
   const [isBroadcasting, setIsBroadcasting] = useState(false);
   const [isPublicBroadcast, setIsPublicBroadcast] = useState(false);
   const [publicPin, setPublicPin] = useState(null);
-  const [broadcastMode] = useState(BROADCAST_MODES.FRAME);
+  const [broadcastMode] = useState(BROADCAST_MODES.STATIC_URL);
   const [screenStream, setScreenStream] = useState(null);
   const [lastFrameData, setLastFrameData] = useState(null);
   const [viewers, setViewers] = useState([]);
@@ -102,6 +169,7 @@ export default function useTeacherScreenBroadcast({ classId, teacherUid, teacher
 
   // Frame broadcasting refs
   const frameTimerRef = useRef(null);
+  const keepAliveTimerRef = useRef(null);
   const workerRef = useRef(null);
   const workerBlobUrlRef = useRef(null);
   const wakeLockRef = useRef(null);
@@ -115,6 +183,8 @@ export default function useTeacherScreenBroadcast({ classId, teacherUid, teacher
   const captureAndPublishFrameRef = useRef(null);
   const isLocallyCreatedStreamRef = useRef(false);
   const stopBroadcastRef = useRef(null);
+  const currentSlideStoragePathRef = useRef(null);
+  const uploadedSlidePathsRef = useRef(new Set());
 
   // Load & sync pre-configured public broadcast state and 4-digit PIN from Firestore DB
   // so switching computers (e.g. from office laptop to stage podium PC) keeps the exact same PIN.
@@ -128,6 +198,10 @@ export default function useTeacherScreenBroadcast({ classId, teacherUid, teacher
           const data = snap.data() || {};
           const dbPin = data.publicPin || data.savedPublicPin || null;
           const dbIsPublic = Boolean(data.isPublic || data.savedIsPublic || data.savedPublicPin);
+          if (!isBroadcastingRef.current && data.isBroadcasting && data.frameStoragePath && !currentSlideStoragePathRef.current) {
+            currentSlideStoragePathRef.current = data.frameStoragePath;
+            uploadedSlidePathsRef.current.add(data.frameStoragePath);
+          }
           if (!isBroadcastingRef.current) {
             if (typeof data.isPublic === 'boolean' || typeof data.savedIsPublic === 'boolean' || data.savedPublicPin) {
               setIsPublicBroadcast(dbIsPublic);
@@ -254,10 +328,14 @@ export default function useTeacherScreenBroadcast({ classId, teacherUid, teacher
       workerBlobUrlRef.current = null;
     }
 
-    // 3. Fallback interval cleanup
+    // 3. Fallback interval & keep-alive timer cleanup
     if (frameTimerRef.current) {
       clearInterval(frameTimerRef.current);
       frameTimerRef.current = null;
+    }
+    if (keepAliveTimerRef.current) {
+      clearInterval(keepAliveTimerRef.current);
+      keepAliveTimerRef.current = null;
     }
 
     // 4. Unsubscribe viewers collection listener
@@ -295,33 +373,60 @@ export default function useTeacherScreenBroadcast({ classId, teacherUid, teacher
     frameSeqRef.current = 0;
     isCapturingFrameRef.current = false;
     captureAndPublishFrameRef.current = null;
+    const pathsToDelete = new Set(uploadedSlidePathsRef.current);
+    if (currentSlideStoragePathRef.current) {
+      pathsToDelete.add(currentSlideStoragePathRef.current);
+    }
+    currentSlideStoragePathRef.current = null;
+    uploadedSlidePathsRef.current.clear();
 
-    // 7. Update Firestore session doc and liveFrame doc
+    // 7. Update Firestore session doc, clean up slide(s) in Storage, and clear legacy liveFrame doc in parallel.
+    // Kick off all requests synchronously before awaiting so unmount callers immediately dispatch isBroadcasting: false.
     if (classId) {
       try {
         const sessionDocRef = doc(db, `classes/${classId}/screenBroadcast/session`);
-        await setDoc(sessionDocRef, {
-          isBroadcasting: false,
-          isPublic: false,
-          publicPin: null,
-          teacherUid: teacherUid || null,
-          endedAt: serverTimestamp(),
-        }, { merge: true });
+        const sessionPromise = Promise.resolve(
+          setDoc(sessionDocRef, {
+            isBroadcasting: false,
+            isPublic: false,
+            publicPin: null,
+            frameUrl: null,
+            frameStoragePath: null,
+            frameUpdatedAt: null,
+            teacherUid: teacherUid || null,
+            endedAt: serverTimestamp(),
+          }, { merge: true })
+        );
 
         const liveFrameDocRef = doc(db, `classes/${classId}/screenBroadcast/liveFrame`);
-        await setDoc(liveFrameDocRef, {
-          frameData: null,
-          endedAt: serverTimestamp(),
-        }, { merge: true });
+        const liveFramePromise = Promise.resolve(
+          setDoc(liveFrameDocRef, {
+            frameData: null,
+            endedAt: serverTimestamp(),
+          }, { merge: true })
+        ).catch(() => {});
 
         const classDocRef = doc(db, `classes/${classId}`);
-        await setDoc(classDocRef, {
-          isBroadcasting: false,
-          overtimeUntil: null,
-          broadcastEndedAt: serverTimestamp(),
-        }, { merge: true }).catch(() => {});
+        const classPromise = Promise.resolve(
+          setDoc(classDocRef, {
+            isBroadcasting: false,
+            overtimeUntil: null,
+            broadcastEndedAt: serverTimestamp(),
+          }, { merge: true })
+        ).catch(() => {});
+
+        const deleteSlidePromise =
+          storage && typeof ref === 'function' && typeof deleteObject === 'function' && pathsToDelete.size > 0
+            ? Promise.all(
+                Array.from(pathsToDelete, (path) =>
+                  Promise.resolve(deleteObject(ref(storage, path))).catch(() => {})
+                )
+              )
+            : Promise.resolve();
+
+        await Promise.all([sessionPromise, liveFramePromise, classPromise, deleteSlidePromise]);
       } catch (err) {
-        console.warn('[Teacher Screen Broadcast] Error updating session/liveFrame doc on stop:', err);
+        console.warn('[Teacher Screen Broadcast] Error updating session/storage on stop:', err);
       }
     }
 
@@ -436,11 +541,11 @@ export default function useTeacherScreenBroadcast({ classId, teacherUid, teacher
       lastDiffDataRef.current = null;
       frameStatsRef.current = { emittedFrames: 0, lastEmittedTime: 0, lastFrameSize: 0 };
 
-      // Initialize broadcast session in Firestore
+      // Initialize broadcast session in Firestore (Option B: static Cloud Storage slide URL + timestamp)
       const sessionDocRef = doc(db, `classes/${classId}/screenBroadcast/session`);
       await setDoc(sessionDocRef, {
         isBroadcasting: true,
-        broadcastMode: 'frame',
+        broadcastMode: BROADCAST_MODES.STATIC_URL,
         resolution: activeRes,
         intervalMs: activeInterval,
         isPublic,
@@ -449,6 +554,7 @@ export default function useTeacherScreenBroadcast({ classId, teacherUid, teacher
         teacherUid: teacherUid || null,
         teacherEmail: teacherEmail || null,
         startedAt: serverTimestamp(),
+        lastActiveAt: serverTimestamp(),
         endedAt: null,
       }, { merge: true });
 
@@ -559,11 +665,9 @@ export default function useTeacherScreenBroadcast({ classId, teacherUid, teacher
           }
 
           const now = Date.now();
-          // Heartbeat emission every 2s even if 32x18 thumbnail appears static so terminal text, code edits, and student views never freeze
-          if (!hasChanged && now - frameStatsRef.current.lastEmittedTime > 2000) {
-            hasChanged = true;
-          }
 
+          // Option B: Only upload a new static slide to Cloud Storage when pixels change or force=true.
+          // Do NOT force a 2s static heartbeat write when the slide is unchanged.
           if (hasChanged) {
             // Render to capture canvas dynamically adapting to active resolution preset
             const currentRes = broadcastResolutionRef.current || '720p';
@@ -592,45 +696,78 @@ export default function useTeacherScreenBroadcast({ classId, teacherUid, teacher
 
             captureCtx.drawImage(frameSource, 0, 0, targetWidth, targetHeight);
 
-            // Compress to JPEG using preset quality (sharpness tailored for code, text, and slides)
+            // Compress to JPEG using preset quality and cap below Storage limit (< 2.5 MB for instant slide loads)
             let quality = currentPreset.quality || 0.82;
-            let jpegDataUrl = captureCanvasRef.current.toDataURL('image/jpeg', quality);
+            let { blob: jpegBlob, dataUrl: jpegDataUrl } = await encodeCanvasToJpeg(captureCanvasRef.current, quality);
 
-            // Guard against Firestore 1MB document limit (1,048,576 bytes)
-            // Base64 string length must be < 950,000 to guarantee safe Firestore commit
-            const MAX_FIRESTORE_PAYLOAD_LEN = 950000;
-            if (jpegDataUrl.length > MAX_FIRESTORE_PAYLOAD_LEN) {
-              quality = Math.max(0.60, quality - 0.12);
-              jpegDataUrl = captureCanvasRef.current.toDataURL('image/jpeg', quality);
-              if (jpegDataUrl.length > MAX_FIRESTORE_PAYLOAD_LEN) {
-                const safeCanvas = document.createElement('canvas');
-                safeCanvas.width = Math.round(targetWidth * 0.85);
-                safeCanvas.height = Math.round(targetHeight * 0.85);
-                const safeCtx = safeCanvas.getContext('2d');
-                if (safeCtx) {
-                  safeCtx.imageSmoothingEnabled = true;
-                  safeCtx.imageSmoothingQuality = 'high';
-                  safeCtx.drawImage(captureCanvasRef.current, 0, 0, safeCanvas.width, safeCanvas.height);
-                  jpegDataUrl = safeCanvas.toDataURL('image/jpeg', 0.78);
-                }
-              }
+            const MAX_SLIDE_BYTES = 2500000;
+            if ((jpegBlob?.size || jpegDataUrl.length) > MAX_SLIDE_BYTES) {
+              quality = Math.max(0.65, quality - 0.12);
+              ({ blob: jpegBlob, dataUrl: jpegDataUrl } = await encodeCanvasToJpeg(captureCanvasRef.current, quality));
             }
 
             frameSeqRef.current += 1;
             const seq = frameSeqRef.current;
+            const frameUpdatedAt = now;
+            const slideNonce = createRandomSlideToken();
+            const frameStoragePath = `broadcasts/${classId}/slide_${frameUpdatedAt}_${slideNonce}.jpg`;
+            const prevSlidePath = currentSlideStoragePathRef.current;
+            let versionedUrl = jpegDataUrl;
 
-            const liveFrameDocRef = doc(db, `classes/${classId}/screenBroadcast/liveFrame`);
-            const publishPromise = setDoc(liveFrameDocRef, {
-              frameData: jpegDataUrl,
+            if (storage && typeof ref === 'function' && typeof uploadBytes === 'function') {
+              const slideStorageRef = ref(storage, frameStoragePath);
+              uploadedSlidePathsRef.current.add(frameStoragePath);
+              const uploadPromise = (async () => {
+                await uploadBytes(slideStorageRef, jpegBlob, {
+                  contentType: 'image/jpeg',
+                  cacheControl: 'private, max-age=3600',
+                });
+                if (typeof getDownloadURL === 'function') {
+                  const baseUrl = await getDownloadURL(slideStorageRef);
+                  const sep = baseUrl.includes('?') ? '&' : '?';
+                  return `${baseUrl}${sep}t=${frameUpdatedAt}`;
+                }
+                return jpegDataUrl;
+              })();
+              let uploadTimeoutId = null;
+              const uploadTimeoutPromise = new Promise((_, reject) => {
+                uploadTimeoutId = setTimeout(() => reject(new Error('Slide upload timeout')), 8000);
+              });
+              try {
+                versionedUrl = await Promise.race([uploadPromise, uploadTimeoutPromise]);
+              } finally {
+                if (uploadTimeoutId) clearTimeout(uploadTimeoutId);
+              }
+            }
+
+            // If stopBroadcast() was triggered mid-upload, purge the newly uploaded slide and abort publish
+            if (isStoppingRef.current) {
+              if (storage && typeof ref === 'function' && typeof deleteObject === 'function') {
+                Promise.resolve(deleteObject(ref(storage, frameStoragePath)))
+                  .then(() => {
+                    uploadedSlidePathsRef.current.delete(frameStoragePath);
+                  })
+                  .catch(() => {});
+              }
+              return;
+            }
+
+            const sessionPublishDocRef = doc(db, `classes/${classId}/screenBroadcast/session`);
+            const publishPromise = setDoc(sessionPublishDocRef, {
+              isBroadcasting: true,
+              broadcastMode: BROADCAST_MODES.STATIC_URL,
+              resolution: currentRes,
+              frameUrl: versionedUrl,
+              frameStoragePath,
+              frameUpdatedAt,
               frameSeq: seq,
               width: targetWidth,
               height: targetHeight,
-              resolution: currentRes,
-              timestamp: serverTimestamp(),
-            });
+              lastActiveAt: serverTimestamp(),
+            }, { merge: true });
             let publishTimeoutId = null;
             const timeoutPromise = new Promise((_, reject) => {
-              publishTimeoutId = setTimeout(() => reject(new Error('Live frame publish timeout')), 2500);
+              publishTimeoutId = setTimeout(() => reject(new Error('Slide metadata publish timeout')), 3000);
             });
             try {
               await Promise.race([publishPromise, timeoutPromise]);
@@ -638,13 +775,30 @@ export default function useTeacherScreenBroadcast({ classId, teacherUid, teacher
               if (publishTimeoutId) clearTimeout(publishTimeoutId);
             }
 
-            // Only mark diff data as emitted after Firestore write succeeds
+            currentSlideStoragePathRef.current = frameStoragePath;
+
+            // Expire the previous slide immediately after publishing the replacement URL/token
+            if (
+              prevSlidePath &&
+              prevSlidePath !== frameStoragePath &&
+              storage &&
+              typeof ref === 'function' &&
+              typeof deleteObject === 'function'
+            ) {
+              Promise.resolve(deleteObject(ref(storage, prevSlidePath)))
+                .then(() => {
+                  uploadedSlidePathsRef.current.delete(prevSlidePath);
+                })
+                .catch(() => {});
+            }
+
+            // Only mark diff data as emitted after upload + session publish succeed
             lastDiffDataRef.current = currentDiffData;
 
             const stats = {
               emittedFrames: seq,
               lastEmittedTime: now,
-              lastFrameSize: jpegDataUrl.length,
+              lastFrameSize: jpegBlob?.size || jpegDataUrl.length,
             };
             frameStatsRef.current = stats;
             setFrameStats(stats);
@@ -720,6 +874,14 @@ export default function useTeacherScreenBroadcast({ classId, teacherUid, teacher
         }
       } catch {}
 
+      // Lightweight session keep-alive every 5 min so static slides are not swept during overtime classes
+      if (keepAliveTimerRef.current) clearInterval(keepAliveTimerRef.current);
+      keepAliveTimerRef.current = setInterval(() => {
+        if (!isBroadcastingRef.current || isStoppingRef.current || !classId) return;
+        const keepAliveDocRef = doc(db, `classes/${classId}/screenBroadcast/session`);
+        setDoc(keepAliveDocRef, { lastActiveAt: serverTimestamp() }, { merge: true }).catch(() => {});
+      }, SLIDE_KEEPALIVE_INTERVAL_MS);
+
       setIsBroadcasting(true);
 
       // Listen for student/spectator viewer presence in the collection (coalesced to prevent UI re-render storms during large QR scan waves)
@@ -789,6 +951,12 @@ export default function useTeacherScreenBroadcast({ classId, teacherUid, teacher
     };
   }, []);
 
+  const pushFrameNow = useCallback(async () => {
+    if (captureAndPublishFrameRef.current) {
+      await captureAndPublishFrameRef.current(true);
+    }
+  }, []);
+
   return {
     isBroadcasting,
     isPublicBroadcast,
@@ -806,6 +974,7 @@ export default function useTeacherScreenBroadcast({ classId, teacherUid, teacher
     setBroadcastResolution,
     setBroadcastInterval,
     configurePublicAccess,
+    pushFrameNow,
     startBroadcast,
     stopBroadcast,
   };

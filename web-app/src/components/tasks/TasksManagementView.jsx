@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   getFirestore,
   collection,
@@ -18,13 +18,15 @@ import TaskEditorModal from './TaskEditorModal';
 import TaskGradingMatrixView from './TaskGradingMatrixView';
 import './tasks.css';
 
+const EMPTY_ARRAY = [];
+
 const TasksManagementView = ({
   classId,
   className = '',
   classSchedule,
-  lessons = [],
-  availableVideos = [],
-  enrolledStudents = [],
+  lessons = EMPTY_ARRAY,
+  availableVideos = EMPTY_ARRAY,
+  enrolledStudents = EMPTY_ARRAY,
   studentProfiles = {},
 }) => {
   const [tasks, setTasks] = useState([]);
@@ -34,18 +36,25 @@ const TasksManagementView = ({
   const [selectedTaskForGrading, setSelectedTaskForGrading] = useState(null);
   const [taskSubmissions, setTaskSubmissions] = useState([]);
   const [loadedVideos, setLoadedVideos] = useState([]);
+  const fetchedRecordingsClassRef = useRef(null);
 
-  // Fetch teacher's lecture recordings for this class if availableVideos was not provided or empty
+  // Fetch teacher's lecture recordings for this class at most once per class if availableVideos was not provided or empty
   useEffect(() => {
     if (!classId) return;
     if (availableVideos && availableVideos.length > 0) {
       setLoadedVideos(availableVideos);
       return;
     }
+    if (fetchedRecordingsClassRef.current === classId) {
+      return;
+    }
+    fetchedRecordingsClassRef.current = classId;
 
+    let cancelled = false;
     const recordingsRef = collection(db, 'classes', classId, 'lectureRecordings');
     getDocs(recordingsRef)
       .then((snap) => {
+        if (cancelled || !snap?.docs) return;
         const vids = snap.docs
           .map((docSnap) => {
             const data = docSnap.data();
@@ -70,8 +79,15 @@ const TasksManagementView = ({
         setLoadedVideos(vids);
       })
       .catch((err) => {
+        if (!cancelled) {
+          fetchedRecordingsClassRef.current = null;
+        }
         console.debug('Failed to fetch teacher lecture recordings for task editor:', err);
       });
+
+    return () => {
+      cancelled = true;
+    };
   }, [classId, availableVideos]);
 
   // Subscribe to tasks in the class
@@ -492,21 +508,23 @@ const TasksManagementView = ({
       )}
 
       {/* Editor Modal */}
-      <TaskEditorModal
-        isOpen={isEditorOpen}
-        onClose={() => setIsEditorOpen(false)}
-        onSave={handleSaveTask}
-        initialTask={editingTask}
-        classId={classId}
-        classSchedule={
-          Array.isArray(classSchedule) && classSchedule.length > 0
-            ? classSchedule
-            : lessons && lessons.length > 0
-            ? lessons
-            : classSchedule
-        }
-        availableVideos={loadedVideos.length > 0 ? loadedVideos : availableVideos}
-      />
+      {isEditorOpen && (
+        <TaskEditorModal
+          isOpen={isEditorOpen}
+          onClose={() => setIsEditorOpen(false)}
+          onSave={handleSaveTask}
+          initialTask={editingTask}
+          classId={classId}
+          classSchedule={
+            Array.isArray(classSchedule) && classSchedule.length > 0
+              ? classSchedule
+              : lessons && lessons.length > 0
+              ? lessons
+              : classSchedule
+          }
+          availableVideos={loadedVideos.length > 0 ? loadedVideos : availableVideos}
+        />
+      )}
     </div>
   );
 };

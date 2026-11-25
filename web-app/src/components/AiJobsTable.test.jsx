@@ -1,9 +1,16 @@
 import React from 'react';
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import AiJobsTable from './AiJobsTable';
 
 describe('AiJobsTable Component', () => {
+  beforeEach(() => {
+    window.localStorage.setItem('teacher_privacy_mode', 'false');
+  });
+
+  afterEach(() => {
+    window.localStorage.removeItem('teacher_privacy_mode');
+  });
   const mockAiJobs = [
     {
       id: 'ai_job_1',
@@ -149,5 +156,21 @@ describe('AiJobsTable Component', () => {
     // Click CSV and JSON exports for first job
     fireEvent.click(csvButtons[0]);
     fireEvent.click(jsonButtons[0]);
+  });
+
+  it('masks student identifiers when privacy mode is enabled', () => {
+    window.localStorage.setItem('teacher_privacy_mode', 'true');
+
+    render(
+      <AiJobsTable
+        aiJobs={mockAiJobs.slice(0, 2)}
+        onPlayVideo={vi.fn()}
+        onInspectResult={vi.fn()}
+      />
+    );
+
+    expect(screen.queryByText('student1@school.edu')).not.toBeInTheDocument();
+    expect(screen.queryByText('student2@school.edu')).not.toBeInTheDocument();
+    expect(screen.getAllByText('st***@school.edu')).toHaveLength(2);
   });
 });

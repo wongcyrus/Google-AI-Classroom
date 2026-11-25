@@ -140,6 +140,7 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
     setBroadcastResolution,
     setBroadcastInterval,
     configurePublicAccess,
+    pushFrameNow: pushScreenBroadcastSlide,
     startBroadcast: startScreenBroadcast,
     stopBroadcast: stopScreenBroadcast,
   } = useTeacherScreenBroadcast({ classId, teacherUid, teacherEmail });
@@ -576,6 +577,7 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
   // Auto-consume pending broadcast handover when switching into this class
   useEffect(() => {
     if (!classId) return;
+
     const handover = consumePendingBroadcastHandover(classId);
     if (!handover) return;
 
@@ -673,6 +675,15 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
     className,
   ]);
 
+  const swHandlersRef = useRef({});
+  useEffect(() => {
+    swHandlersRef.current = {
+      isScreenBroadcasting,
+      handleHandoverBroadcastToClass,
+      onSwitchClass,
+    };
+  });
+
   // Listen for Service Worker notification clicks to focus Broadcast Studio or trigger handover
   useEffect(() => {
     if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return undefined;
@@ -688,10 +699,15 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
         payload.tag === 'teacher-next-session-handover' &&
         payload.data?.targetClassId
       ) {
-        if (isScreenBroadcasting) {
-          handleHandoverBroadcastToClass(payload.data.targetClassId, { openStudio: true });
+        const {
+          isScreenBroadcasting: broadcastingNow,
+          handleHandoverBroadcastToClass: handoverFn,
+          onSwitchClass: switchClassFn,
+        } = swHandlersRef.current;
+        if (broadcastingNow) {
+          handoverFn?.(payload.data.targetClassId, { openStudio: true });
         } else {
-          onSwitchClass?.(payload.data.targetClassId);
+          switchClassFn?.(payload.data.targetClassId);
         }
       }
     };
@@ -699,7 +715,7 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
     return () => {
       navigator.serviceWorker.removeEventListener?.('message', handleSwMessage);
     };
-  });
+  }, []);
 
   // Sync broadcast state with ClassHub header launcher
   useEffect(() => {
@@ -745,6 +761,8 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
   const [storageUsageReports, setStorageUsageReports] = useState(0);
   const [aiQuota, setAiQuota] = useState(0);
   const [aiUsedQuota, setAiUsedQuota] = useState(0);
+  const rootAiUsedQuotaRef = useRef(0);
+  const aiMetaUsedQuotaRef = useRef(null);
   const [enableAudioCapture, setEnableAudioCapture] = useState(false);
 
 
@@ -825,6 +843,7 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
 
   const handleSaveAiSettings = async (settings) => {
     if (!classId) return;
+
     try {
       const mode = settings.aiMonitoringMode || 'hybrid';
       const clientAllowed = mode === 'hybrid' || mode === 'client_only';
@@ -989,6 +1008,9 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
   useEffect(() => {
     if (!classId) return;
 
+    rootAiUsedQuotaRef.current = 0;
+    aiMetaUsedQuotaRef.current = null;
+
     let cachedDirProfiles = null;
     let isLoadingDirProfiles = false;
 
@@ -1136,7 +1158,11 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
         }
         setStorageQuota(data.storageQuota || 0);
         setAiQuota(data.aiQuota || 0);
-        setAiUsedQuota(data.aiUsedQuota || 0);
+        const rootUsed = Number(data.aiUsedQuota) || 0;
+        rootAiUsedQuotaRef.current = rootUsed;
+        if (aiMetaUsedQuotaRef.current === null) {
+          setAiUsedQuota(rootUsed);
+        }
       } else {
         setClassList([]);
         setUidToEmailMap(new Map());
@@ -1162,9 +1188,12 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
     const aiMetaRef = doc(db, "classes", classId, "metadata", "ai");
     const unsubscribeAiMeta = onSnapshot(aiMetaRef, (docSnap) => {
       if (docSnap.exists()) {
-        setAiUsedQuota(docSnap.data().aiUsedQuota || 0);
+        const metaUsed = Number(docSnap.data()?.aiUsedQuota) || 0;
+        aiMetaUsedQuotaRef.current = metaUsed;
+        setAiUsedQuota(metaUsed);
       } else {
-        setAiUsedQuota(0);
+        aiMetaUsedQuotaRef.current = null;
+        setAiUsedQuota(rootAiUsedQuotaRef.current);
       }
     });
 
@@ -1277,6 +1306,7 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
 
   const handleResolveBypass = async (requestId, studentUid, studentEmail, approved) => {
     if (!classId) return;
+
     // Optimistic removal from UI
     setPendingBypassRequests((prev) => prev.filter((r) => r.id !== requestId));
     try {
@@ -1505,6 +1535,11 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
     });
   }, [classList, studentStatuses, uidToEmailMap, studentProfiles, now, frameRate, reviewTime, isPrivacyMode]);
 
+  const studentsRef = useRef([]);
+  useEffect(() => {
+    studentsRef.current = students;
+  }, [students]);
+
   // Live screenshot URL resolution with bounded concurrency and in-flight deduplication
   useEffect(() => {
     if (reviewTime || studentStatuses.length === 0 || pausedRef.current) return;
@@ -1719,7 +1754,7 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
       const screenshotsToAnalyze = {};
       let hasNewImages = false;
 
-      for (const student of students) {
+      for (const student of studentsRef.current) {
         // Skip students who are not actively sharing their screen to prevent analyzing stale images and wasting AI tokens
         if (!student.isSharing) {
           lastAllImagesPathsRef.current.delete(student.id);
@@ -1759,7 +1794,7 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
     const intervalId = setInterval(performAllImagesAnalysis, 1000);
 
     return () => clearInterval(intervalId);
-  }, [isCapturing, isAllImagesAnalysisRunning, samplingRate, frameRate, runAllImagesAnalysis, students, editablePromptText, selectedPrompt, selectedAiModel]);
+  }, [isCapturing, isAllImagesAnalysisRunning, samplingRate, frameRate, runAllImagesAnalysis, editablePromptText, selectedPrompt, selectedAiModel]);
 
   const handleSendMessage = async (customText = null) => {
     const textToSend = typeof customText === 'string' ? customText : message;
@@ -1792,6 +1827,7 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
 
   const handleBroadcastPreloadAi = useCallback(async () => {
     if (!classId) return;
+
     try {
       const classRef = doc(db, 'classes', classId);
       await updateDoc(classRef, {
@@ -1804,6 +1840,7 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
 
   const handleToggleExamMode = useCallback(async () => {
     if (!classId) return;
+
     try {
       const classRef = doc(db, 'classes', classId);
       const nextState = !isExamActive;
@@ -1914,6 +1951,7 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
 
   const toggleCapture = useCallback(async () => {
     if (!classId) return;
+
     const newIsCapturing = !isCapturing;
     setIsCapturing(newIsCapturing); // Optimistic update
     try {
@@ -2381,6 +2419,7 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
   const handleAudioCaptureToggle = async (enabled) => {
     setEnableAudioCapture(enabled);
     if (!classId) return;
+
     try {
       const classRef = doc(db, "classes", classId);
       await updateDoc(classRef, { enableAudioCapture: enabled });
@@ -2392,6 +2431,7 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
   const handleCaptureModeChange = async (newMode) => {
     setCaptureMode(newMode);
     if (!classId) return;
+
     try {
       const classRef = doc(db, "classes", classId);
       await updateDoc(classRef, { captureMode: newMode });
@@ -3265,46 +3305,49 @@ const MonitorView = ({ user, classId, className = '', lessons, selectedLesson, s
       </Modal>
 
       {/* Teacher Screen & Voice Broadcast Studio Modal */}
-      <TeacherScreenBroadcastModal
-        isOpen={showBroadcastModal}
-        onClose={() => setShowBroadcastModal(false)}
-        screenStream={broadcastScreenStream}
-        lastFrameData={broadcastLastFrameData}
-        isBroadcasting={isScreenBroadcasting}
-        frameStats={frameStats}
-        viewers={broadcastViewers}
-        onStartBroadcast={handleStartSynchronizedBroadcast}
-        onStopBroadcast={handleStopSynchronizedBroadcast}
-        broadcastResolution={broadcastResolution}
-        broadcastInterval={broadcastInterval}
-        setBroadcastResolution={setBroadcastResolution}
-        setBroadcastInterval={setBroadcastInterval}
-        isSubtitlesEnabled={isSubtitleBroadcastEnabled}
-        setIsSubtitlesEnabled={setIsSubtitleBroadcastEnabled}
-        selectedMicDeviceId={selectedMicDeviceId}
-        onSelectMicDeviceId={handleSelectMicDeviceId}
-        teacherSubtitles={teacherSubtitles}
-        courseContext={classSubjectDomain}
-        subtitlePrompt={classSubtitlePrompt}
-        user={user}
-        onSelectSubtitlePrompt={handleSelectSubtitlePrompt}
-        onSelectCourseContext={handleSelectCourseContext}
-        lectureRecorder={lectureRecorder}
-        defaultRecordOnStart={classDefaultLectureRecording}
-        onOpenRecordings={() => setShowRecordingsModal(true)}
-        classId={classId}
-        className={className}
-        activeLiveClass={activeLiveClass}
-        teacherClasses={teacherClasses}
-        onSwitchClass={onSwitchClass}
-        onHandoverBroadcast={handleHandoverBroadcastToClass}
-        isPublicBroadcast={isPublicBroadcast}
-        publicPin={publicPin}
-        onConfigurePublicAccess={configurePublicAccess}
-        overtimeUntil={classOvertimeUntil}
-        scheduledEndTime={endTime}
-        onExtendOvertime={handleExtendOvertime}
-      />
+      {showBroadcastModal && (
+        <TeacherScreenBroadcastModal
+          isOpen={showBroadcastModal}
+          onClose={() => setShowBroadcastModal(false)}
+          screenStream={broadcastScreenStream}
+          lastFrameData={broadcastLastFrameData}
+          isBroadcasting={isScreenBroadcasting}
+          frameStats={frameStats}
+          viewers={broadcastViewers}
+          onStartBroadcast={handleStartSynchronizedBroadcast}
+          onStopBroadcast={handleStopSynchronizedBroadcast}
+          onPushFrameNow={pushScreenBroadcastSlide}
+          broadcastResolution={broadcastResolution}
+          broadcastInterval={broadcastInterval}
+          setBroadcastResolution={setBroadcastResolution}
+          setBroadcastInterval={setBroadcastInterval}
+          isSubtitlesEnabled={isSubtitleBroadcastEnabled}
+          setIsSubtitlesEnabled={setIsSubtitleBroadcastEnabled}
+          selectedMicDeviceId={selectedMicDeviceId}
+          onSelectMicDeviceId={handleSelectMicDeviceId}
+          teacherSubtitles={teacherSubtitles}
+          courseContext={classSubjectDomain}
+          subtitlePrompt={classSubtitlePrompt}
+          user={user}
+          onSelectSubtitlePrompt={handleSelectSubtitlePrompt}
+          onSelectCourseContext={handleSelectCourseContext}
+          lectureRecorder={lectureRecorder}
+          defaultRecordOnStart={classDefaultLectureRecording}
+          onOpenRecordings={() => setShowRecordingsModal(true)}
+          classId={classId}
+          className={className}
+          activeLiveClass={activeLiveClass}
+          teacherClasses={teacherClasses}
+          onSwitchClass={onSwitchClass}
+          onHandoverBroadcast={handleHandoverBroadcastToClass}
+          isPublicBroadcast={isPublicBroadcast}
+          publicPin={publicPin}
+          onConfigurePublicAccess={configurePublicAccess}
+          overtimeUntil={classOvertimeUntil}
+          scheduledEndTime={endTime}
+          onExtendOvertime={handleExtendOvertime}
+        />
+      )}
 
       {/* Teacher Lecture Recordings & YouTube CC Modal */}
       {showRecordingsModal && (

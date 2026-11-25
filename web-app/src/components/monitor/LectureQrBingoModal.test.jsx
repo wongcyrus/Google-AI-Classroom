@@ -89,7 +89,8 @@ describe('LectureQrBingoModal Component', () => {
     expect(screen.getByAltText('Lecture Hall Dynamic Attendance QR Code')).toBeInTheDocument();
     expect(screen.getByText(/Anti-Spoofing Token/i)).toBeInTheDocument();
     expect(screen.getByTestId('lecture-rotation-select')).toHaveValue('15');
-    expect(screen.getByText('student1')).toBeInTheDocument();
+    expect(screen.getByText('st***')).toBeInTheDocument();
+    expect(screen.queryByText('student1@vtc.edu.hk')).not.toBeInTheDocument();
     expect(screen.getByText('⚡ 1.8s')).toBeInTheDocument();
   });
 

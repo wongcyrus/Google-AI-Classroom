@@ -3,7 +3,9 @@ import { getFirestore, FieldPath } from 'firebase-admin/firestore';
 import { CORS_ORIGINS, FUNCTION_REGION } from './config.js';
 import { generateWithResilience } from './analysisFlows.js';
 import { logJob } from './jobLogger.js';
-import { calculateCost } from './cost.js';
+import { calculateCost, estimateCost } from './cost.js';
+import { checkQuota } from './quotaManagement.js';
+import { assertTeacherInClass, isTeacherRoleCaller } from './authHelpers.js';
 
 const db = getFirestore();
 
@@ -33,6 +35,11 @@ export const generateLabTaskPrompt = onCall(
 
     const jobData = jobDoc.data();
     const classId = jobData.classId || 'unknown_class';
+    if (classId && classId !== 'unknown_class') {
+      await assertTeacherInClass(request.auth, classId, db);
+    } else if (!isTeacherRoleCaller(request.auth)) {
+      throw new HttpsError('permission-denied', 'Only teachers assigned to this class can generate lab prompts.');
+    }
     const aiJobIds = jobData.aiJobIds || [];
 
     let completedJobs = [];
@@ -121,6 +128,23 @@ The generated prompt MUST strictly follow this Markdown structure:
 Return ONLY the clean Markdown prompt text. Do not wrap in markdown code fence blocks (\`\`\`markdown).`;
 
     const preferredModel = model || 'gemini-3.8-flash';
+    if (classId && classId !== 'unknown_class') {
+      const estCost = estimateCost(metaPrompt, [], preferredModel);
+      const hasQuota = await checkQuota(classId, estCost);
+      if (!hasQuota) {
+        await logJob({
+          classId,
+          jobType: 'generateLabTaskPrompt',
+          status: 'blocked-by-quota',
+          promptText: metaPrompt.slice(0, 500),
+          mediaPaths: [],
+          cost: 0,
+          modelUsed: preferredModel,
+          masterJobId: jobId,
+        }).catch(() => {});
+        throw new HttpsError('resource-exhausted', `Monthly AI quota exceeded for class ${classId}.`);
+      }
+    }
     const generateConfig = {
       prompt: [{ text: metaPrompt }],
       config: {

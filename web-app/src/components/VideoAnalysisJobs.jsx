@@ -33,6 +33,7 @@ const VideoAnalysisJobs = ({ classId, startTime, endTime, filterField, user }) =
   const [liveJobOverrides, setLiveJobOverrides] = useState({});
   const [studentProfiles, setStudentProfiles] = useState({});
   const loadedAiJobIdsKeyRef = useRef('');
+  const inFlightAiJobIdsKeyRef = useRef('');
 
   useEffect(() => {
     if (!classId) return;
@@ -104,6 +105,7 @@ const VideoAnalysisJobs = ({ classId, startTime, endTime, filterField, user }) =
     setAiJobs([]);
     setFallbackTargetVideos([]);
     loadedAiJobIdsKeyRef.current = '';
+    inFlightAiJobIdsKeyRef.current = '';
   }, [classId, startTime, endTime, filterField]);
 
   const displayedAnalysisJobs = useMemo(() => {
@@ -114,6 +116,13 @@ const VideoAnalysisJobs = ({ classId, startTime, endTime, filterField, user }) =
   }, [videoAnalysisJobs, liveJobOverrides]);
 
   const fetchAiJobs = useCallback(async (aiJobIds, { silent = false } = {}) => {
+    const key = Array.isArray(aiJobIds) && aiJobIds.length > 0 ? [...aiJobIds].sort().join(',') : '';
+    if (silent && key && inFlightAiJobIdsKeyRef.current === key) {
+      return;
+    }
+    if (key) {
+      inFlightAiJobIdsKeyRef.current = key;
+    }
     if (!silent) {
       setAiJobsLoading(true);
       setAiJobs([]);
@@ -159,7 +168,7 @@ const VideoAnalysisJobs = ({ classId, startTime, endTime, filterField, user }) =
       }
 
       setAiJobs(dedupedJobs);
-      loadedAiJobIdsKeyRef.current = [...aiJobIds].sort().join(',');
+      loadedAiJobIdsKeyRef.current = key;
 
     } catch (error) {
       console.error("Error fetching AI jobs:", error);
@@ -167,48 +176,73 @@ const VideoAnalysisJobs = ({ classId, startTime, endTime, filterField, user }) =
         alert("Failed to fetch AI jobs for the selected analysis job.");
       }
     } finally {
+      if (inFlightAiJobIdsKeyRef.current === key) {
+        inFlightAiJobIdsKeyRef.current = '';
+      }
       if (!silent) {
         setAiJobsLoading(false);
       }
     }
   }, []);
 
-  // Real-time subscription for active jobs in Level 1 directory table
+  const activeJobIds = useMemo(() => {
+    if (!Array.isArray(videoAnalysisJobs) || videoAnalysisJobs.length === 0) return [];
+    return videoAnalysisJobs
+      .filter(job => {
+        const currentStatus = liveJobOverrides[job.id]?.status || job.status;
+        return currentStatus === 'processing' || currentStatus === 'pending' || currentStatus === 'running';
+      })
+      .map(job => job.id)
+      .sort();
+  }, [videoAnalysisJobs, liveJobOverrides]);
+  const activeJobIdsKey = activeJobIds.join(',');
+
+  // Real-time subscription for active jobs in Level 1 directory table (keyed by activeJobIdsKey to avoid churn)
   useEffect(() => {
     const onSnapshotFn = getOnSnapshot();
-    if (!onSnapshotFn || !Array.isArray(videoAnalysisJobs) || videoAnalysisJobs.length === 0) {
+    const ids = activeJobIdsKey ? activeJobIdsKey.split(',').filter(Boolean) : [];
+    if (!onSnapshotFn || ids.length === 0) {
       return undefined;
     }
 
-    const activeJobs = videoAnalysisJobs.filter(job => {
-      const currentStatus = liveJobOverrides[job.id]?.status || job.status;
-      return currentStatus === 'processing' || currentStatus === 'pending' || currentStatus === 'running';
-    });
-
-    if (activeJobs.length === 0) return undefined;
-
-    const unsubscribers = activeJobs.map(job => {
-      const jobRef = doc(db, 'videoAnalysisJobs', job.id);
-      return onSnapshotFn(
+    let cancelled = false;
+    const unsubscribers = [];
+    ids.forEach(jobId => {
+      const jobRef = doc(db, 'videoAnalysisJobs', jobId);
+      let unsub = null;
+      let stopped = false;
+      unsub = onSnapshotFn(
         jobRef,
         (docSnap) => {
+          if (cancelled) return;
           if (docSnap && typeof docSnap.exists === 'function' && docSnap.exists()) {
             const freshData = { id: docSnap.id, ...docSnap.data() };
             setLiveJobOverrides(prev => ({ ...prev, [docSnap.id]: freshData }));
+            const status = freshData.status;
+            if (status && status !== 'processing' && status !== 'pending' && status !== 'running') {
+              stopped = true;
+              if (typeof unsub === 'function') unsub();
+            }
           }
         },
         (err) => {
-          console.warn(`Live listener error for videoAnalysisJob ${job.id}:`, err);
+          console.warn(`Live listener error for videoAnalysisJob ${jobId}:`, err);
         }
       );
+      if (stopped && typeof unsub === 'function') {
+        unsub();
+      } else if (typeof unsub === 'function') {
+        unsubscribers.push(unsub);
+      }
     });
 
     return () => {
+      cancelled = true;
       unsubscribers.forEach(unsub => {
         if (typeof unsub === 'function') unsub();
       });
     };
-  }, [videoAnalysisJobs, liveJobOverrides]);
+  }, [activeJobIdsKey]);
 
   // Real-time subscription for the currently selected job in Level 2 detail view
   useEffect(() => {
@@ -369,22 +403,28 @@ const VideoAnalysisJobs = ({ classId, startTime, endTime, filterField, user }) =
     }
 
     try {
-      const batch = writeBatch(db);
+      const subJobIds = Array.isArray(aiJobIds) ? aiJobIds : [];
+      const BATCH_LIMIT = 450;
 
+      const firstBatch = writeBatch(db);
       const analysisJobRef = doc(db, 'videoAnalysisJobs', jobId);
-      batch.update(analysisJobRef, { deleted: true });
+      firstBatch.update(analysisJobRef, { deleted: true });
 
-      if (aiJobIds && aiJobIds.length > 0) {
-        for (let i = 0; i < aiJobIds.length; i += 500) {
-          const chunk = aiJobIds.slice(i, i + 500);
-          chunk.forEach(aiJobId => {
-            const aiJobRef = doc(db, 'aiJobs', aiJobId);
-            batch.update(aiJobRef, { deleted: true });
-          });
-        }
+      const firstChunk = subJobIds.slice(0, BATCH_LIMIT - 1);
+      firstChunk.forEach(aiJobId => {
+        const aiJobRef = doc(db, 'aiJobs', aiJobId);
+        firstBatch.update(aiJobRef, { deleted: true });
+      });
+      await firstBatch.commit();
+
+      for (let i = BATCH_LIMIT - 1; i < subJobIds.length; i += BATCH_LIMIT) {
+        const chunkBatch = writeBatch(db);
+        subJobIds.slice(i, i + BATCH_LIMIT).forEach(aiJobId => {
+          const aiJobRef = doc(db, 'aiJobs', aiJobId);
+          chunkBatch.update(aiJobRef, { deleted: true });
+        });
+        await chunkBatch.commit();
       }
-
-      await batch.commit();
 
       alert(`Successfully deleted analysis job ${jobId} and marked ${aiJobIds?.length || 0} AI sub-jobs as deleted.`);
 

@@ -188,5 +188,30 @@ describe('Video Analysis Cloud Tasks Architecture', () => {
       expect(capturedUpdate.status).toBeUndefined(); // Still in processing
       expect(capturedUpdate.finishedAt).toBeUndefined();
     });
+
+    it('is idempotent on duplicate failure retries for the same videoPath', async () => {
+      mockTransactionGet.mockResolvedValue({
+        exists: true,
+        data: () => ({
+          totalVideos: 2,
+          processedCount: 1,
+          successCount: 0,
+          failureCount: 1,
+          aiJobIds: [],
+          failedVideos: [{ studentUid: 's1', videoPath: 'v1.mp4', error: 'Timeout' }],
+        }),
+      });
+
+      const mockMasterJobRef = { id: 'master-job-dup-fail' };
+      await recordTaskResult({
+        masterJobRef: mockMasterJobRef,
+        isSuccess: false,
+        jobId: null,
+        video: { studentUid: 's1', studentEmail: 's1@school.edu', videoPath: 'v1.mp4' },
+        error: 'Timeout',
+      });
+
+      expect(mockTransactionUpdate).not.toHaveBeenCalled();
+    });
   });
 });

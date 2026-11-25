@@ -45,6 +45,15 @@ const {
       limit: vi.fn().mockReturnThis(),
     })),
     batch: vi.fn(() => mockBatch),
+    runTransaction: vi.fn(async (cb) => {
+      const tx = {
+        get: vi.fn((refOrQuery) => refOrQuery.get()),
+        set: vi.fn((ref, data, opts) => ref.set(data, opts)),
+        update: vi.fn((ref, data) => ref.update(data)),
+        delete: vi.fn((ref) => ref.delete?.()),
+      };
+      return cb(tx);
+    }),
   };
 
   return {
@@ -66,11 +75,28 @@ const { mockTaskQueueEnqueue, mockTaskQueue } = vi.hoisted(() => {
   return { mockTaskQueueEnqueue, mockTaskQueue };
 });
 
+const { mockStorageDownload, mockStorageFile, mockStorageBucket } = vi.hoisted(() => {
+  const mockStorageDownload = vi.fn().mockResolvedValue([Buffer.from('mockjpegbytes')]);
+  const mockStorageFile = vi.fn(() => ({
+    download: mockStorageDownload,
+  }));
+  const mockStorageBucket = {
+    file: mockStorageFile,
+  };
+  return { mockStorageDownload, mockStorageFile, mockStorageBucket };
+});
+
 vi.mock('firebase-admin/firestore', () => ({
   getFirestore: () => mockFirestore,
   FieldValue: {
     serverTimestamp: () => 'SERVER_TIMESTAMP',
   },
+}));
+
+vi.mock('firebase-admin/storage', () => ({
+  getStorage: () => ({
+    bucket: () => mockStorageBucket,
+  }),
 }));
 
 vi.mock('firebase-admin/functions', () => ({
@@ -105,6 +131,7 @@ import { generateWithResilience } from './analysisFlows.js';
 describe('bingoFlows', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockStorageDownload.mockResolvedValue([Buffer.from('mockjpegbytes')]);
   });
 
   describe('generateBingoQuestionBank', () => {
@@ -450,6 +477,47 @@ describe('bingoFlows', () => {
           scheduleDelaySeconds: 300, // 5 minutes = 300 seconds
         })
       );
+    });
+
+    it('rejects submission when bingo record belongs to a different studentUid', async () => {
+      mockDocGet.mockImplementation(() => Promise.resolve({
+        exists: true,
+        data: () => ({
+          studentUid: 'student_owner',
+          result: 'pending',
+          correctIndex: 0,
+        }),
+      }));
+
+      await expect(
+        submitBingoResponse({
+          classId: 'class_1',
+          studentUid: 'student_attacker',
+          bingoId: 'bingo_123',
+          selectedIndex: 0,
+        })
+      ).rejects.toThrow(/Permission denied/);
+    });
+
+    it('returns idempotently when bingo record is already submitted', async () => {
+      mockDocGet.mockImplementation(() => Promise.resolve({
+        exists: true,
+        data: () => ({
+          studentUid: 'student_1',
+          result: 'passed',
+          correctIndex: 1,
+        }),
+      }));
+
+      const res = await submitBingoResponse({
+        classId: 'class_1',
+        studentUid: 'student_1',
+        bingoId: 'bingo_done',
+        selectedIndex: 1,
+      });
+
+      expect(res).toEqual({ success: true, alreadySubmitted: true, result: 'passed' });
+      expect(mockDocUpdate).not.toHaveBeenCalled();
     });
   });
 
@@ -940,6 +1008,13 @@ describe('bingoFlows', () => {
       // Outside scheduled slot, inactive
       const afterSlot = new Date('2026-09-14T10:05:00Z');
       expect(isClassSessionActive(classDataCase3, afterSlot)).toBe(false);
+
+      // Outside scheduled slot, active when overtimeUntil is in the future
+      const classDataOvertime = {
+        ...classDataCase3,
+        overtimeUntil: { toMillis: () => afterSlot.getTime() + 10 * 60 * 1000 },
+      };
+      expect(isClassSessionActive(classDataOvertime, afterSlot)).toBe(true);
     });
 
     it('uses batched writes when creating challenges for multiple students in large class', async () => {
@@ -1272,6 +1347,57 @@ describe('bingoFlows', () => {
       expect(callPrompt[0].text).not.toContain('Recent Instructor Spoken Commentary:');
     });
 
+    it('downloads broadcast slide from Storage frameStoragePath when liveFrame document is absent (Option B)', async () => {
+      generateWithResilience.mockResolvedValueOnce({
+        response: {
+          output: {
+            question: 'Which Kubernetes resource manages Pods automatically?',
+            options: ['Deployment', 'ConfigMap', 'Secret', 'Service'],
+            correctIndex: 0,
+            observedEvidence: 'Slide shows Deployment YAML diagram',
+          },
+        },
+      });
+
+      mockDocGet.mockImplementation((path) => {
+        if (path === 'classes/CLASS_OPT_B') {
+          return Promise.resolve({
+            exists: true,
+            data: () => ({ students: { stu_1: 'stu_1@school.edu' } }),
+          });
+        }
+        if (path === 'classes/CLASS_OPT_B/screenBroadcast/liveFrame') {
+          return Promise.resolve({ exists: false });
+        }
+        if (path === 'classes/CLASS_OPT_B/screenBroadcast/session') {
+          return Promise.resolve({
+            exists: true,
+            data: () => ({
+              isBroadcasting: true,
+              broadcastMode: 'static_url',
+              frameStoragePath: 'broadcasts/CLASS_OPT_B/slide.jpg',
+              frameUrl: 'https://firebasestorage.googleapis.com/v0/b/test/o/broadcasts%2FCLASS_OPT_B%2Fslide.jpg?t=170000',
+            }),
+          });
+        }
+        return Promise.resolve({ exists: false });
+      });
+
+      const q = await resolveBingoQuestion({
+        classId: 'CLASS_OPT_B',
+        studentUid: 'stu_1',
+        questionSource: 'teacher_screen',
+      });
+
+      expect(mockStorageFile).toHaveBeenCalledWith('broadcasts/CLASS_OPT_B/slide.jpg');
+      expect(mockStorageDownload).toHaveBeenCalled();
+      expect(q).toBeDefined();
+      expect(q.questionSource).toBe('teacher_screen');
+      expect(q.question).toBe('Which Kubernetes resource manages Pods automatically?');
+      const mediaArg = generateWithResilience.mock.calls[0][0].prompt[1].media;
+      expect(mediaArg.url).toMatch(/^data:image\/jpeg;base64,/);
+    });
+
     it('injects anti-duplication rules into prompt and retries when duplicate question is generated', async () => {
       // First attempt returns duplicate, second attempt returns distinct question
       generateWithResilience
@@ -1547,6 +1673,27 @@ describe('bingoFlows', () => {
 
     it('throws error when classId is missing', async () => {
       await expect(cancelActiveBingo({})).rejects.toThrow('classId is required');
+    });
+
+    it('chunks batch commits at 450 operations when cancelling >450 records', async () => {
+      const manyStudentDocs = Array.from({ length: 460 }, (_, idx) => ({
+        id: `stu_${idx}`,
+        ref: { id: `stu_${idx}` },
+        data: () => ({
+          activeBingo: { id: `b_${idx}`, status: 'pending' },
+        }),
+      }));
+
+      mockCollectionGet.mockImplementation((collPath) => {
+        if (collPath === 'classes/c_large/studentProperties') {
+          return Promise.resolve({ docs: manyStudentDocs });
+        }
+        return Promise.resolve({ docs: [] });
+      });
+
+      const res = await cancelActiveBingo({ classId: 'c_large' });
+      expect(res.cancelledStudentsCount).toBe(460);
+      expect(mockBatch.commit).toHaveBeenCalledTimes(2);
     });
   });
 

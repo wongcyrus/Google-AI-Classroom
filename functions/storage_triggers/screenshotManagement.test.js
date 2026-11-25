@@ -80,6 +80,14 @@ describe('purgeClassTelemetryData', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockDoc.collection.mockReturnValue(mockCollection);
+    mockDoc.get.mockResolvedValue({
+      exists: true,
+      data: () => ({
+        ownerUid: 'teacher1',
+        teachers: { teacher1: true },
+        teacherEmails: ['teacher@school.edu'],
+      }),
+    });
   });
 
   it('rejects unauthenticated requests', async () => {
@@ -100,15 +108,27 @@ describe('purgeClassTelemetryData', () => {
     ).rejects.toThrow('The function must be called with classId, startDate, and endDate.');
   });
 
-  it('rejects student callers who are not teachers of the class', async () => {
+  it('rejects student callers and unrelated teachers who are not assigned to the class', async () => {
     mockDoc.get.mockResolvedValueOnce({
       exists: true,
-      data: () => ({ teacherEmails: ['teacher@school.edu'], teachers: { teacher1: true } }),
+      data: () => ({ ownerUid: 'teacher1', teacherEmails: ['teacher@school.edu'], teachers: { teacher1: true } }),
     });
 
     await expect(
       purgeClassTelemetryData({
         auth: { uid: 'student123', token: { role: 'student', email: 'student@school.edu' } },
+        data: { classId: 'CLASS_1', startDate: '2026-08-01', endDate: '2026-08-02' },
+      })
+    ).rejects.toThrow('Only teachers assigned to this class can purge session telemetry data.');
+
+    mockDoc.get.mockResolvedValueOnce({
+      exists: true,
+      data: () => ({ ownerUid: 'teacher1', teacherEmails: ['teacher@school.edu'], teachers: { teacher1: true } }),
+    });
+
+    await expect(
+      purgeClassTelemetryData({
+        auth: { uid: 'other_teacher', token: { role: 'teacher', email: 'other@school.edu' } },
         data: { classId: 'CLASS_1', startDate: '2026-08-01', endDate: '2026-08-02' },
       })
     ).rejects.toThrow('Only teachers assigned to this class can purge session telemetry data.');

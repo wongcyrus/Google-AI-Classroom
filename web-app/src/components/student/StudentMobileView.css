@@ -356,6 +356,24 @@
   justify-content: center;
 }
 
+.mobile-refresh-btn.has-update {
+  background: rgba(217, 119, 6, 0.92);
+  border-color: #fbbf24;
+  color: #ffffff;
+}
+
+.mobile-refresh-btn.up-to-date {
+  background: rgba(5, 150, 105, 0.88);
+  border-color: #34d399;
+}
+
+@media (pointer: coarse) {
+  .mobile-overlay-btn {
+    min-block-size: 44px;
+    min-inline-size: 44px;
+  }
+}
+
 /* ==========================================================================
    5. Floating Overlapping CC Card (Mode: 'overlay')
    ========================================================================== */

@@ -266,8 +266,9 @@ describe('getStudentVideoPlaybackUrl Logic', () => {
       ).rejects.toThrow(/Screen recordings for exam or test periods are confidential/);
     });
 
-    it('allows teacher to access exam recording with override privilege', async () => {
+    it('allows teacher assigned to class to access exam recording with override privilege', async () => {
       const db = createMockDb({
+        classData: { ownerUid: 'teacher-1', teachers: { 'teacher-1': true }, studentRecordingsPolicy: 'disabled' },
         jobData: {
           studentUid: 'student-1',
           classId: 'CLASS-1',
@@ -285,6 +286,24 @@ describe('getStudentVideoPlaybackUrl Logic', () => {
       expect(result.url).toBe('https://signed-url.example.com/video.mp4');
       expect(result.videoPath).toBe('videos/exam.mp4');
       expect(result.duration).toBe(120);
+    });
+
+    it('rejects a teacher from another class who is not assigned to this class', async () => {
+      const db = createMockDb({
+        classData: { ownerUid: 'teacher-1', teachers: { 'teacher-1': true }, teacherEmails: ['owner@vtc.edu.hk'] },
+        jobData: {
+          studentUid: 'student-1',
+          classId: 'CLASS-1',
+          videoPath: 'videos/student-1.mp4',
+        },
+      });
+      const storage = createMockStorage();
+      await expect(
+        executeGetStudentVideoPlaybackUrl(
+          { auth: { uid: 'other-teacher', token: { role: 'teacher', email: 'other@vtc.edu.hk' } }, data: { jobId: 'job-1' } },
+          { db, storage }
+        )
+      ).rejects.toThrow(/You do not have permission/);
     });
 
     it('throws failed-precondition error when videoPath is missing on job document', async () => {

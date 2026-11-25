@@ -2,37 +2,75 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && request.auth.token.get('role', '') == 'admin';
+    }
+
     function isTeacher() {
-      return request.auth != null && (
+      return isSignedIn() && (
         request.auth.token.get('role', '') == 'teacher' ||
+        isAdmin() ||
         (request.auth.token.get('email', '') != '' &&
-         request.auth.token.get('email', '').matches('.*@vtc\\.edu\\.hk') &&
-         !request.auth.token.get('email', '').matches('.*@stu\\.vtc\\.edu\\.hk'))
+         request.auth.token.get('email', '').lower().matches('.*@vtc\\.edu\\.hk') &&
+         !request.auth.token.get('email', '').lower().matches('.*@stu\\.vtc\\.edu\\.hk'))
       );
+    }
+
+    function isTeacherInClassData(classData) {
+      let userEmail = isSignedIn() ? request.auth.token.get('email', '') : '';
+      let userEmailLower = userEmail != '' ? userEmail.lower() : '';
+      let isTeacherByEmail = userEmail != '' && (
+        ('teacherEmails' in classData && classData.teacherEmails is list &&
+          (userEmail in classData.teacherEmails || userEmailLower in classData.teacherEmails)) ||
+        ('teacherEmail' in classData && classData.teacherEmail is string &&
+          (classData.teacherEmail == userEmail || classData.teacherEmail.lower() == userEmailLower))
+      );
+      let isTeacherByUid = isSignedIn() && (
+        ('teachers' in classData && (classData.teachers is map || classData.teachers is list) &&
+          request.auth.uid in classData.teachers) ||
+        ('teacherUid' in classData && classData.teacherUid is string && classData.teacherUid == request.auth.uid) ||
+        ('ownerUid' in classData && classData.ownerUid is string && classData.ownerUid == request.auth.uid) ||
+        ('createdBy' in classData && classData.createdBy is string && classData.createdBy == request.auth.uid)
+      );
+      return isAdmin() || isTeacherByEmail || isTeacherByUid;
     }
 
     function isTeacherInClass(classId) {
-      let classData = get(/databases/$(database)/documents/classes/$(classId)).data;
-      let userEmail = request.auth != null ? request.auth.token.get('email', '') : '';
-      let isTeacherByEmail = userEmail != '' && (
-        (classData.get('teacherEmails', null) != null && userEmail in classData.get('teacherEmails', [])) ||
-        classData.get('teacherEmail', '') == userEmail
+      return isSignedIn() && (
+        isAdmin() || (
+          classId is string &&
+          classId != '' &&
+          exists(/databases/$(database)/documents/classes/$(classId)) &&
+          isTeacherInClassData(get(/databases/$(database)/documents/classes/$(classId)).data)
+        )
       );
-      let isTeacherByUid = request.auth != null && (
-        (classData.get('teachers', null) != null && request.auth.uid in classData.get('teachers', {})) ||
-        classData.get('teacherUid', '') == request.auth.uid ||
-        classData.get('ownerUid', '') == request.auth.uid
-      );
-      return isTeacherByEmail || isTeacherByUid;
+    }
+
+    function isStudentInClassData(classData) {
+      let userEmail = isSignedIn() ? request.auth.token.get('email', '') : '';
+      let userEmailLower = userEmail != '' ? userEmail.lower() : '';
+      let isStudentByEmail = userEmail != '' &&
+        'studentEmails' in classData &&
+        classData.studentEmails is list &&
+        (userEmail in classData.studentEmails || userEmailLower in classData.studentEmails);
+      let isStudentByUid = isSignedIn() &&
+        'students' in classData &&
+        (classData.students is map || classData.students is list) &&
+        request.auth.uid in classData.students;
+      return isStudentByEmail || isStudentByUid;
     }
 
     function isStudentInClass(classId) {
-      let classData = get(/databases/$(database)/documents/classes/$(classId)).data;
-      let userEmail = request.auth != null ? request.auth.token.get('email', '') : '';
-      let isStudentByEmail = userEmail != '' && classData.get('studentEmails', null) != null && userEmail in classData.get('studentEmails', []);
-      let isStudentByUid = request.auth != null && classData.get('students', null) != null && request.auth.uid in classData.get('students', {});
-      return isStudentByEmail || isStudentByUid;
+      return isSignedIn() &&
+        classId is string &&
+        classId != '' &&
+        exists(/databases/$(database)/documents/classes/$(classId)) &&
+        isStudentInClassData(get(/databases/$(database)/documents/classes/$(classId)).data);
     }
 
     function isPublicBroadcastActive(classId) {
@@ -45,8 +83,30 @@ service cloud.firestore {
       );
     }
 
+    function isNotificationRecipient() {
+      let userEmail = isSignedIn() ? request.auth.token.get('email', '') : '';
+      return isSignedIn() && (
+        resource.data.userId == request.auth.uid ||
+        (userEmail != '' && (
+          resource.data.userId == userEmail ||
+          resource.data.userId == userEmail.lower()
+        ))
+      );
+    }
+
+    function isAudioOwner() {
+      let userEmail = isSignedIn() ? request.auth.token.get('email', '') : '';
+      return isSignedIn() && (
+        resource.data.studentUid == request.auth.uid ||
+        (userEmail != '' && (
+          resource.data.studentEmail == userEmail ||
+          resource.data.studentEmail == userEmail.lower()
+        ))
+      );
+    }
+
     match /studentProfiles/{userId} {
-      allow read, write: if request.auth.uid == userId;
+      allow read, write: if isSignedIn() && request.auth.uid == userId;
     }
 
     match /studentDirectory/{studentEmail} {
@@ -54,71 +114,96 @@ service cloud.firestore {
     }
 
     match /teacherProfiles/{userId} {
-      allow read: if request.auth.uid == userId;
+      allow read: if isSignedIn() && request.auth.uid == userId;
       allow write: if false; // Managed by a backend function
     }
 
     match /students/{studentUid} {
-      allow read: if isTeacher();
+      allow read: if isTeacher() || (isSignedIn() && request.auth.uid == studentUid);
 
       match /classes/{classId} {
-        allow delete: if isTeacher();
+        allow delete: if isTeacherInClass(classId) || isTeacher();
       }
 
       match /messages/{messageId} {
         allow create: if isTeacher();
-        allow read: if request.auth.uid == studentUid;
+        allow read: if isSignedIn() && request.auth.uid == studentUid;
       }
     }
 
     match /classes/{classId} {
-      allow read: if isTeacher() || isStudentInClass(classId);
-      allow create: if request.resource.data.teacherEmails is list &&
-                      request.auth.token.email in request.resource.data.teacherEmails &&
-                      classId.size() >= 3;
-      allow update: if isTeacher() || isTeacherInClass(classId);
-      allow delete: if isTeacher();
+      allow get: if isTeacherInClassData(resource.data) || isStudentInClassData(resource.data);
+      allow list: if isAdmin() ||
+        (isTeacher() && 'teacherEmails' in resource.data && resource.data.teacherEmails is list &&
+          (request.auth.token.get('email', '') in resource.data.teacherEmails ||
+           request.auth.token.get('email', '').lower() in resource.data.teacherEmails)) ||
+        isTeacherInClassData(resource.data) ||
+        isStudentInClassData(resource.data);
+      allow create: if isTeacher() &&
+                      request.resource.data.teacherEmails is list &&
+                      request.resource.data.teacherEmails.size() <= 50 &&
+                      request.auth.token.get('email', '') != '' &&
+                      (request.auth.token.email in request.resource.data.teacherEmails ||
+                       request.auth.token.email.lower() in request.resource.data.teacherEmails) &&
+                      classId is string &&
+                      classId.size() >= 3 &&
+                      classId.size() <= 128;
+      allow update, delete: if isTeacherInClassData(resource.data);
 
       match /students/{studentId} {
         allow read: if isTeacherInClass(classId);
       }
 
       match /messages/{messageId} {
-        allow create: if isTeacher();
+        allow create: if isTeacherInClass(classId);
         allow read: if isTeacherInClass(classId) || isStudentInClass(classId);
       }
 
       match /status/{studentUid} {
-        allow read: if isTeacher() || (isStudentInClass(classId) && request.auth.uid == studentUid);
-        allow create, write: if isStudentInClass(classId) && request.auth.uid == studentUid;
+        allow read: if isTeacherInClass(classId) || (isStudentInClass(classId) && request.auth.uid == studentUid);
+        allow create, update: if (isStudentInClass(classId) || isTeacherInClass(classId)) && request.auth.uid == studentUid;
+        allow delete: if isTeacherInClass(classId);
       }
 
       match /metadata/{docId} {
-        allow read: if isTeacher();
+        allow read: if isTeacherInClass(classId);
         allow write: if false; // Only backend functions can write
       }
+
       match /studentProperties/{studentId} {
-        allow read, write: if isTeacherInClass(classId) || (request.auth != null && request.auth.uid == studentId);
+        allow read: if isTeacherInClass(classId) || (isStudentInClass(classId) && request.auth.uid == studentId);
+        allow create: if isTeacherInClass(classId) || (
+          isStudentInClass(classId) &&
+          request.auth.uid == studentId &&
+          request.resource.data.keys().hasOnly(['activeBingo', 'examReadiness'])
+        );
+        allow update: if isTeacherInClass(classId) || (
+          isStudentInClass(classId) &&
+          request.auth.uid == studentId &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['activeBingo', 'examReadiness'])
+        );
+        allow delete: if isTeacherInClass(classId);
       }
+
       match /classProperties/{docId} {
         allow read: if isTeacherInClass(classId) || isStudentInClass(classId);
         allow write: if isTeacherInClass(classId);
       }
 
       match /livePeeks/{studentUid} {
-        allow read, write: if isTeacher() || (isStudentInClass(classId) && request.auth.uid == studentUid);
+        allow read, write: if isTeacherInClass(classId) || (isStudentInClass(classId) && request.auth.uid == studentUid);
       }
 
       match /screenBroadcast/{docId} {
-        allow read: if isPublicBroadcastActive(classId) || isTeacher() || isTeacherInClass(classId) || isStudentInClass(classId);
-        allow write: if isTeacher() || isTeacherInClass(classId);
+        allow read: if isPublicBroadcastActive(classId) || isTeacherInClass(classId) || isStudentInClass(classId);
+        allow write: if isTeacherInClass(classId);
       }
 
       match /screenBroadcastViewers/{studentUid} {
-        allow read: if isTeacher() || isTeacherInClass(classId) || (request.auth != null && request.auth.uid == studentUid);
+        allow read: if isTeacherInClass(classId) || (isSignedIn() && request.auth.uid == studentUid);
         allow create, update: if (
-            request.auth != null && request.auth.uid == studentUid &&
-            (isTeacher() || isTeacherInClass(classId) || isStudentInClass(classId))
+            isSignedIn() && request.auth.uid == studentUid &&
+            (isTeacherInClass(classId) || isStudentInClass(classId))
           ) || (
             isPublicBroadcastActive(classId) &&
             request.resource.data.get('pin', '') != '' && (
@@ -126,13 +211,13 @@ service cloud.firestore {
               request.resource.data.get('pin', '') == get(/databases/$(database)/documents/classes/$(classId)/screenBroadcast/session).data.get('savedPublicPin', '')
             )
           );
-        allow delete: if (request.auth != null && (request.auth.uid == studentUid || isTeacher() || isTeacherInClass(classId))) ||
+        allow delete: if (isSignedIn() && (request.auth.uid == studentUid || isTeacherInClass(classId))) ||
                          (resource != null && resource.data.get('isAnonymousSpectator', false) == true);
       }
 
       match /liveSubtitles/{docId} {
-        allow read: if isPublicBroadcastActive(classId) || isTeacher() || isTeacherInClass(classId) || isStudentInClass(classId);
-        allow write: if isTeacher() || isTeacherInClass(classId);
+        allow read: if isPublicBroadcastActive(classId) || isTeacherInClass(classId) || isStudentInClass(classId);
+        allow write: if isTeacherInClass(classId);
       }
 
       match /lessons/{lessonId} {
@@ -146,8 +231,8 @@ service cloud.firestore {
       }
 
       match /lectureRecordings/{sessionId} {
-        allow read: if isTeacherInClass(classId) || 
-          (isStudentInClass(classId) && 
+        allow read: if isTeacherInClass(classId) ||
+          (isStudentInClass(classId) &&
            resource.data.get('isExamPeriod', false) == false &&
            resource.data.get('isExam', false) == false &&
            (
@@ -161,24 +246,29 @@ service cloud.firestore {
              )
            )
           );
-        allow create, update, delete: if isTeacherInClass(classId) || isTeacher();
+        allow create, update, delete: if isTeacherInClass(classId);
       }
 
       match /combinedAudios/{audioId} {
-        allow read: if request.auth != null;
-        allow create, update, delete: if isTeacherInClass(classId) || isTeacher();
+        allow read: if isTeacherInClass(classId) || (isStudentInClass(classId) && resource.data.studentUid == request.auth.uid);
+        allow create, update, delete: if isTeacherInClass(classId);
       }
 
       match /audio/{audioId} {
-        allow read: if request.auth != null;
-        allow create: if request.auth.uid == request.resource.data.studentUid && isStudentInClass(classId);
-        allow update, delete: if isTeacherInClass(classId) || isTeacher();
+        allow read: if isTeacherInClass(classId) || (isStudentInClass(classId) && resource.data.studentUid == request.auth.uid);
+        allow create: if isSignedIn() && request.auth.uid == request.resource.data.studentUid && isStudentInClass(classId);
+        allow update, delete: if isTeacherInClass(classId);
       }
 
       match /irregularities/{irregularityId} {
-        allow read: if isTeacherInClass(classId) || (request.auth != null && request.auth.uid == resource.data.studentUid);
-        allow create: if isTeacherInClass(classId) || (request.auth != null && request.auth.uid == request.resource.data.studentUid && isStudentInClass(classId));
-        allow update: if isTeacherInClass(classId) || (request.auth != null && request.auth.uid == resource.data.studentUid && isStudentInClass(classId));
+        allow read: if isTeacherInClass(classId) || (isSignedIn() && request.auth.uid == resource.data.studentUid);
+        allow create: if isTeacherInClass(classId) || (isSignedIn() && request.auth.uid == request.resource.data.studentUid && isStudentInClass(classId));
+        allow update: if isTeacherInClass(classId) || (
+          isSignedIn() &&
+          request.auth.uid == resource.data.studentUid &&
+          isStudentInClass(classId) &&
+          request.resource.data.studentUid == resource.data.studentUid
+        );
         allow delete: if isTeacherInClass(classId);
       }
 
@@ -188,7 +278,7 @@ service cloud.firestore {
       }
 
       match /passkeyBypassRequests/{requestId} {
-        allow read: if isTeacherInClass(classId) || (request.auth != null && (request.auth.uid == resource.data.studentUid || resource.data.studentEmail == request.auth.token.email));
+        allow read: if isTeacherInClass(classId) || (isSignedIn() && (request.auth.uid == resource.data.studentUid || resource.data.studentEmail == request.auth.token.get('email', '')));
         allow write: if isTeacherInClass(classId);
       }
 
@@ -208,35 +298,35 @@ service cloud.firestore {
 
       match /tasks/{taskId} {
         allow read: if isTeacherInClass(classId) || isStudentInClass(classId);
-        allow create, update, delete: if isTeacherInClass(classId) || isTeacher();
+        allow create, update, delete: if isTeacherInClass(classId);
 
         match /submissions/{studentUid} {
-          allow read: if isTeacherInClass(classId) || (request.auth != null && request.auth.uid == studentUid);
-          allow create, update: if isTeacherInClass(classId) || (request.auth != null && request.auth.uid == studentUid && isStudentInClass(classId));
-          allow delete: if isTeacherInClass(classId) || isTeacher();
+          allow read: if isTeacherInClass(classId) || (isSignedIn() && request.auth.uid == studentUid);
+          allow create, update: if isTeacherInClass(classId) || (isSignedIn() && request.auth.uid == studentUid && isStudentInClass(classId));
+          allow delete: if isTeacherInClass(classId);
 
           match /attempts/{attemptId} {
-            allow read: if isTeacherInClass(classId) || (request.auth != null && request.auth.uid == studentUid);
-            allow create, update: if isTeacherInClass(classId) || (request.auth != null && request.auth.uid == studentUid && isStudentInClass(classId));
-            allow delete: if isTeacherInClass(classId) || isTeacher();
+            allow read: if isTeacherInClass(classId) || (isSignedIn() && request.auth.uid == studentUid);
+            allow create, update: if isTeacherInClass(classId) || (isSignedIn() && request.auth.uid == studentUid && isStudentInClass(classId));
+            allow delete: if isTeacherInClass(classId);
           }
         }
       }
 
       match /projectGroups/{groupId} {
-        allow read: if isTeacherInClass(classId) || isTeacher() || isStudentInClass(classId);
-        allow create, update, delete: if isTeacherInClass(classId) || isTeacher();
+        allow read: if isTeacherInClass(classId) || isStudentInClass(classId);
+        allow create, update, delete: if isTeacherInClass(classId);
       }
 
       match /projectStudentProfiles/{studentId} {
-        allow read: if isTeacherInClass(classId) || isTeacher() || isStudentInClass(classId);
-        allow create, update, delete: if isTeacherInClass(classId) || isTeacher();
+        allow read: if isTeacherInClass(classId) || isStudentInClass(classId);
+        allow create, update, delete: if isTeacherInClass(classId);
       }
 
       match /projectMeetings/{meetingId} {
-        allow read: if isTeacherInClass(classId) || isTeacher() || isStudentInClass(classId);
-        allow create, delete: if isTeacherInClass(classId) || isTeacher();
-        allow update: if isTeacherInClass(classId) || isTeacher() || (
+        allow read: if isTeacherInClass(classId) || isStudentInClass(classId);
+        allow create, delete: if isTeacherInClass(classId);
+        allow update: if isTeacherInClass(classId) || (
           isStudentInClass(classId) &&
           request.auth != null &&
           request.resource.data.diff(resource.data).affectedKeys().hasOnly([
@@ -252,9 +342,9 @@ service cloud.firestore {
       }
 
       match /activeMeetingCaptures/{studentUid} {
-        allow read: if isTeacherInClass(classId) || isTeacher() || (isStudentInClass(classId) && request.auth != null && request.auth.uid == studentUid);
-        allow create, delete: if isTeacherInClass(classId) || isTeacher();
-        allow update: if isTeacherInClass(classId) || isTeacher() || (
+        allow read: if isTeacherInClass(classId) || (isStudentInClass(classId) && request.auth != null && request.auth.uid == studentUid);
+        allow create, delete: if isTeacherInClass(classId);
+        allow update: if isTeacherInClass(classId) || (
           isStudentInClass(classId) &&
           request.auth != null &&
           request.auth.uid == studentUid &&
@@ -270,101 +360,173 @@ service cloud.firestore {
     }
 
     match /screenshots/{screenshotId} {
-        allow read: if isTeacher();
-        allow create: if request.auth.uid == request.resource.data.studentUid && 
-                         isStudentInClass(request.resource.data.classId);
-        allow delete: if isTeacher();
+      allow get: if isTeacherInClass(resource.data.get('classId', '')) || (isSignedIn() && resource.data.studentUid == request.auth.uid);
+      allow list: if isTeacher() || (isSignedIn() && resource.data.studentUid == request.auth.uid);
+      allow create: if isSignedIn() &&
+                       request.resource.data.keys().size() <= 30 &&
+                       request.resource.data.studentUid is string &&
+                       request.resource.data.classId is string &&
+                       request.auth.uid == request.resource.data.studentUid &&
+                       (isStudentInClass(request.resource.data.classId) || isTeacherInClass(request.resource.data.classId));
+      allow delete: if isTeacherInClass(resource.data.get('classId', ''));
     }
 
     match /audio/{audioId} {
-        allow read: if request.auth != null;
-        allow create: if request.auth.uid == request.resource.data.studentUid && 
-                         isStudentInClass(request.resource.data.classId);
-        allow update: if isTeacher() || (request.auth != null && request.auth.uid == resource.data.studentUid && isStudentInClass(resource.data.classId));
-        allow delete: if isTeacher() || ('classId' in resource.data && isTeacherInClass(resource.data.classId));
+      allow get: if isTeacherInClass(resource.data.get('classId', '')) || isAudioOwner();
+      allow list: if isTeacher() || isAudioOwner();
+      allow create: if isSignedIn() &&
+                       request.resource.data.keys().size() <= 35 &&
+                       request.resource.data.studentUid is string &&
+                       request.resource.data.classId is string &&
+                       request.auth.uid == request.resource.data.studentUid &&
+                       isStudentInClass(request.resource.data.classId);
+      allow update: if isTeacherInClass(resource.data.get('classId', '')) || (
+        isSignedIn() &&
+        request.auth.uid == resource.data.studentUid &&
+        isStudentInClass(resource.data.get('classId', '')) &&
+        request.resource.data.studentUid == resource.data.studentUid &&
+        request.resource.data.classId == resource.data.classId
+      );
+      allow delete: if 'classId' in resource.data && isTeacherInClass(resource.data.classId);
     }
 
     match /prompts/{promptId} {
-      allow read: if isTeacher() || (request.auth != null && resource.data.get('accessLevel', '') == 'public');
+      allow read: if isTeacher() || (isSignedIn() && resource.data.get('accessLevel', '') == 'public');
 
       // Teachers can create private, shared, or public prompts, as long as they are the owner
       // Public system templates can ONLY be seeded/created via Admin SDK / backend
-      allow create: if isTeacher() && 
-                       request.resource.data.owner == request.auth.uid && 
+      allow create: if isTeacher() &&
+                       request.resource.data.owner == request.auth.uid &&
                        (!('isSystem' in request.resource.data) || request.resource.data.isSystem == false) &&
                        request.resource.data.accessLevel in ['private', 'shared', 'public'];
 
       // Teachers can update their own prompts (private, shared, or public),
       // or shared prompts if their UID is in sharedWith.
       // System templates (owner == 'system' or isSystem == true or no owner) are strictly immutable to all teachers.
-      allow update: if isTeacher() && 
-                       resource.data.owner != 'system' && 
-                       resource.data.owner != '' && 
-                       ('owner' in resource.data) && 
-                       (!('isSystem' in resource.data) || resource.data.isSystem == false) && 
-                       (!('isSystem' in request.resource.data) || request.resource.data.isSystem == false) && 
-                       request.resource.data.owner == resource.data.owner && 
-                       (resource.data.owner == request.auth.uid || 
+      allow update: if isTeacher() &&
+                       resource.data.owner != 'system' &&
+                       resource.data.owner != '' &&
+                       ('owner' in resource.data) &&
+                       (!('isSystem' in resource.data) || resource.data.isSystem == false) &&
+                       (!('isSystem' in request.resource.data) || request.resource.data.isSystem == false) &&
+                       request.resource.data.owner == resource.data.owner &&
+                       (resource.data.owner == request.auth.uid ||
                         (resource.data.accessLevel == 'shared' && request.auth.uid in resource.data.sharedWith));
 
       // Only the prompt owner can delete their prompt. System templates cannot be deleted by teachers.
-      allow delete: if isTeacher() && 
-                       resource.data.owner != 'system' && 
-                       resource.data.owner != '' && 
-                       ('owner' in resource.data) && 
-                       (!('isSystem' in resource.data) || resource.data.isSystem == false) && 
+      allow delete: if isTeacher() &&
+                       resource.data.owner != 'system' &&
+                       resource.data.owner != '' &&
+                       ('owner' in resource.data) &&
+                       (!('isSystem' in resource.data) || resource.data.isSystem == false) &&
                        resource.data.owner == request.auth.uid;
     }
 
     match /irregularities/{irregularityId} {
-      allow read: if isTeacher() || (request.auth != null && request.auth.uid == resource.data.studentUid);
-      allow create: if isTeacher() || (request.auth != null && request.auth.uid == request.resource.data.studentUid && isStudentInClass(request.resource.data.classId));
-      allow update: if isTeacher() || (request.auth != null && request.auth.uid == resource.data.studentUid && isStudentInClass(resource.data.classId));
-      allow delete: if isTeacher();
+      allow get: if isTeacherInClass(resource.data.get('classId', '')) || (isSignedIn() && resource.data.studentUid == request.auth.uid);
+      allow list: if isTeacher() || (isSignedIn() && resource.data.studentUid == request.auth.uid);
+      allow create: if isTeacherInClass(request.resource.data.get('classId', '')) || (
+        isSignedIn() &&
+        request.resource.data.keys().size() <= 35 &&
+        request.resource.data.studentUid is string &&
+        request.resource.data.classId is string &&
+        request.auth.uid == request.resource.data.studentUid &&
+        isStudentInClass(request.resource.data.classId)
+      );
+      allow update: if isTeacherInClass(resource.data.get('classId', '')) || (
+        isSignedIn() &&
+        request.auth.uid == resource.data.studentUid &&
+        isStudentInClass(resource.data.get('classId', '')) &&
+        request.resource.data.studentUid == resource.data.studentUid &&
+        request.resource.data.classId == resource.data.classId
+      );
+      allow delete: if isTeacherInClass(resource.data.get('classId', ''));
     }
 
     match /progress/{progressId} {
-      allow read: if isTeacher() || (request.auth != null && request.auth.uid == resource.data.studentUid);
-      allow create: if isTeacher();
+      allow get: if isTeacherInClass(resource.data.get('classId', '')) || (isSignedIn() && request.auth.uid == resource.data.studentUid);
+      allow list: if isTeacher() || (isSignedIn() && request.auth.uid == resource.data.studentUid);
+      allow create: if isTeacherInClass(request.resource.data.get('classId', ''));
     }
 
     match /performanceMetrics/{metricId} {
-      allow read: if isTeacher() || (request.auth != null && request.auth.uid == resource.data.studentUid);
+      allow get: if isTeacherInClass(resource.data.get('classId', '')) || (isSignedIn() && request.auth.uid == resource.data.studentUid);
+      allow list: if isTeacher() || (isSignedIn() && request.auth.uid == resource.data.studentUid);
     }
 
     match /videoJobs/{jobId} {
-      allow create: if isTeacher() || (request.auth != null && request.auth.uid == request.resource.data.studentUid && request.resource.data.isTaskSubmission == true);
-      allow read: if isTeacher() || (request.auth != null && request.auth.uid == resource.data.studentUid);
-      allow delete: if isTeacher();
+      allow create: if isTeacherInClass(request.resource.data.get('classId', '')) ||
+                       (isSignedIn() &&
+                        request.resource.data.keys().size() <= 30 &&
+                        request.resource.data.studentUid is string &&
+                        request.resource.data.classId is string &&
+                        request.auth.uid == request.resource.data.studentUid &&
+                        request.resource.data.isTaskSubmission == true &&
+                        isStudentInClass(request.resource.data.classId));
+      allow get: if isTeacherInClass(resource.data.get('classId', '')) || (isSignedIn() && resource.data.studentUid == request.auth.uid);
+      allow list: if isTeacher() || (isSignedIn() && resource.data.studentUid == request.auth.uid);
+      allow update: if isTeacherInClass(resource.data.get('classId', '')) &&
+                       request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                         'driveFileId',
+                         'driveWebViewLink',
+                         'driveEmbedUrl',
+                         'driveFolderPath',
+                         'driveBackedUpAt',
+                         'driveBackedUpBy',
+                         'updatedAt'
+                       ]);
+      allow delete: if isTeacherInClass(resource.data.get('classId', ''));
     }
 
     match /zipJobs/{jobId} {
-      allow create: if isTeacher();
-      allow read: if isTeacher();
-      allow delete: if isTeacher();
+      allow create: if isTeacherInClass(request.resource.data.get('classId', '')) &&
+                       request.resource.data.requester == request.auth.uid;
+      allow get: if isTeacherInClass(resource.data.get('classId', ''));
+      allow list: if isTeacher();
+      allow delete: if isTeacherInClass(resource.data.get('classId', ''));
     }
 
     match /videoAnalysisJobs/{jobId} {
-      allow create: if isTeacher() && request.resource.data.requester == request.auth.uid;
-      allow read, update: if isTeacher();
+      allow create: if isTeacherInClass(request.resource.data.get('classId', '')) &&
+                       request.resource.data.requester == request.auth.uid;
+      allow get: if isTeacherInClass(resource.data.get('classId', ''));
+      allow list: if isTeacher();
+      allow update: if isTeacherInClass(resource.data.get('classId', '')) &&
+                       request.resource.data.diff(resource.data).affectedKeys().hasOnly(['deleted', 'updatedAt']);
     }
 
     match /aiJobs/{jobId} {
-      allow read: if isTeacher() || (request.auth != null && request.auth.uid == resource.data.studentUid);
-      allow create, update: if isTeacher();
+      allow get: if isTeacherInClass(resource.data.get('classId', '')) || (isSignedIn() && request.auth.uid == resource.data.studentUid);
+      allow list: if isTeacher() || (isSignedIn() && request.auth.uid == resource.data.studentUid);
+      allow create: if false; // Created strictly by Cloud Functions
+      allow update: if isTeacherInClass(resource.data.get('classId', '')) &&
+                       request.resource.data.diff(resource.data).affectedKeys().hasOnly(['deleted']) &&
+                       request.resource.data.deleted == true;
+      allow delete: if false;
     }
 
     match /reportJobs/{jobId} {
-      allow create: if isTeacher() && request.resource.data.requesterUid == request.auth.uid;
-      allow read, update, delete: if isTeacher() && resource.data.requesterUid == request.auth.uid;
+      allow create: if isTeacherInClass(request.resource.data.get('classId', '')) &&
+                       request.resource.data.requesterUid == request.auth.uid;
+      allow get, update, delete: if isTeacherInClass(resource.data.get('classId', '')) &&
+                                    resource.data.requesterUid == request.auth.uid;
+      allow list: if isTeacher() && resource.data.requesterUid == request.auth.uid;
     }
 
     match /lectureMergeJobs/{jobId} {
-      allow create, read, update, delete: if isTeacher();
+      allow create: if isTeacherInClass(request.resource.data.get('classId', '')) &&
+                       (request.resource.data.get('requesterUid', null) == null ||
+                        request.resource.data.requesterUid == request.auth.uid);
+      allow get, update, delete: if isTeacherInClass(resource.data.get('classId', ''));
+      allow list: if isTeacher();
     }
 
     match /mails/{mailId} {
-      allow read, update: if isTeacher() && request.auth.token.email == resource.data.to;
+      allow read, update: if isTeacher() &&
+                             request.auth.token.get('email', '') != '' &&
+                             resource.data.to is string &&
+                             (request.auth.token.email == resource.data.to ||
+                              request.auth.token.email.lower() == resource.data.to.lower());
     }
 
     match /teachers/{teacherId} {
@@ -372,42 +534,55 @@ service cloud.firestore {
 
       match /messages/{messageId} {
         allow read: if isTeacher() && request.auth.uid == teacherId;
-        allow create: if isTeacher(); 
+        allow create, update, delete: if false; // Written exclusively by backend Cloud Functions
       }
     }
 
     match /notifications/{notificationId} {
-      // Users can read and update (to mark as read) their own notifications.
-      allow read, update: if request.auth != null && request.auth.uid == resource.data.userId;
+      // Users can read and mark as read their own notifications.
+      allow read: if isNotificationRecipient();
+      allow update: if isNotificationRecipient() &&
+                       request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
       // Creation is handled by backend functions, so client-side creation is disallowed.
-      allow create: if false;
+      allow create, delete: if false;
     }
+
     match /propertyUploadJobs/{jobId} {
-      allow read, create: if isTeacher();
+      allow get: if isTeacherInClass(resource.data.get('classId', ''));
+      allow list: if isTeacher();
+      allow create: if isTeacherInClass(request.resource.data.get('classId', '')) &&
+                       request.resource.data.requesterUid == request.auth.uid;
     }
+
     match /system_config/{docId} {
       allow read: if true;
       allow write: if false; // Only backend functions / admin SDK can write
     }
+
     match /systemConfig/{docId} {
       allow read: if true;
       allow write: if false; // Only backend functions / admin SDK can write
     }
+
     match /users/{userId} {
-      allow read: if isTeacher() || (request.auth != null && request.auth.uid == userId);
+      allow read: if isTeacher() || (isSignedIn() && request.auth.uid == userId);
       allow write: if false; // Only backend functions / admin SDK can write
     }
+
     match /studentPasskeys/{studentUid} {
-      allow read: if isTeacher() || (request.auth != null && request.auth.uid == studentUid);
+      allow read: if isTeacher() || (isSignedIn() && request.auth.uid == studentUid);
       allow write: if false; // Only backend functions / admin SDK can write
     }
+
     match /loginSessions/{sessionId} {
       allow read: if true; // Unauthenticated desktop PC listens during QR login
       allow write: if false; // Only backend functions / admin SDK can write
     }
+
     match /passkeyPairingTokens/{tokenId} {
       allow read, write: if false; // Managed exclusively by Cloud Functions backend
     }
+
     match /passkeyAuditLogs/{logId} {
       allow read: if isTeacher();
       allow write: if false; // Only backend functions / admin SDK can write

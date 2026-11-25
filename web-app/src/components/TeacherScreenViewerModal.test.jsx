@@ -224,6 +224,29 @@ describe('Teacher Screen Modals Suite', () => {
       const overlay = container.querySelector('.live-subtitle-container.docked');
       expect(overlay).toBeInTheDocument();
     });
+
+    it('renders Refresh Slide button with New indicator and invokes onRefreshFrame when clicked', () => {
+      const onRefreshFrame = vi.fn();
+      const onFrameError = vi.fn();
+      render(
+        <TeacherScreenViewerModal
+          {...defaultProps}
+          onRefreshFrame={onRefreshFrame}
+          onFrameError={onFrameError}
+          hasNewFrame={true}
+          frameUpdatedAt={1700000000000}
+        />
+      );
+
+      const refreshBtn = screen.getByRole('button', { name: /Refresh Slide \(New slide available\)/i });
+      expect(refreshBtn).toHaveTextContent('🔄 Refresh Slide • New!');
+      fireEvent.click(refreshBtn);
+      expect(onRefreshFrame).toHaveBeenCalledTimes(1);
+
+      const img = screen.getByAltText('Teacher Live Screen');
+      fireEvent.error(img);
+      expect(onFrameError).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe('TeacherScreenBroadcastModal', () => {
@@ -245,8 +268,7 @@ describe('Teacher Screen Modals Suite', () => {
 
       expect(screen.getByText(/Live Class Screen Broadcast/i)).toBeInTheDocument();
       expect(screen.getByText(/2 Students Watching/i)).toBeInTheDocument();
-      expect(screen.getByText('student1@school.edu')).toBeInTheDocument();
-      expect(screen.getByText('student2@school.edu')).toBeInTheDocument();
+      expect(screen.getAllByText('st***@school.edu')).toHaveLength(2);
       expect(screen.getByText(/Classroom Frame Stream/i)).toBeInTheDocument();
       expect(screen.getByText(/50\+ Students \(Unlimited\)/i)).toBeInTheDocument();
       expect(screen.getByText('42')).toBeInTheDocument();

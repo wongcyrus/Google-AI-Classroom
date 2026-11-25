@@ -100,6 +100,18 @@ describe('mergeLectureRecordings Cloud Function', () => {
     ).rejects.toThrow(/Only teachers of this class can merge lecture recordings/);
   });
 
+  it('throws permission-denied for another teacher not assigned to this class', async () => {
+    const db = createMockDb({
+      classData: { ownerUid: 'teacher-1', teachers: { 'teacher-1': 'teacher@vtc.edu.hk' }, teacherEmails: ['teacher@vtc.edu.hk'] },
+    });
+    await expect(
+      executeMergeLectureRecordings(
+        { classId: 'CLASS-1', auth: { uid: 'other-teacher', token: { role: 'teacher', email: 'other@vtc.edu.hk' } } },
+        { db }
+      )
+    ).rejects.toThrow(/Only teachers of this class can merge lecture recordings/);
+  });
+
   it('returns insufficient_clips if 0 valid clips exist to merge', async () => {
     const db = createMockDb({
       recordings: [],

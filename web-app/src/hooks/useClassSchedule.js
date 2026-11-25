@@ -134,7 +134,13 @@ export const useClassSchedule = (classId) => {
         }
 
         try {
-          const statusSnap = await getDocs(collection(db, 'classes', targetClassId, 'status'));
+          const statusSnap = await getDocs(
+            query(
+              collection(db, 'classes', targetClassId, 'status'),
+              orderBy('timestamp', 'desc'),
+              limit(1)
+            )
+          );
           let latestTs = null;
           const docs = statusSnap?.docs || (statusSnap?.forEach ? statusSnap : []);
           docs.forEach(d => {

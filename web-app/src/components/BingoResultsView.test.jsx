@@ -30,6 +30,8 @@ vi.mock('firebase/firestore', () => ({
     path: pathSegments.join('/'),
     id: pathSegments[pathSegments.length - 1],
   })),
+  query: vi.fn((colRef) => colRef),
+  where: vi.fn(),
   doc: vi.fn((db, col, id) => ({ path: `${col}/${id}`, id })),
   getDoc: vi.fn().mockResolvedValue({ exists: () => false }),
   getDocs: vi.fn().mockResolvedValue({ forEach: vi.fn() }),

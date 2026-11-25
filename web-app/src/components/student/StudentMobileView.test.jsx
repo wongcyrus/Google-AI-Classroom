@@ -168,6 +168,18 @@ describe('StudentMobileView Component', () => {
     expect(zoomBtn).toHaveTextContent('🔍 2x Zoom');
     fireEvent.click(zoomBtn);
     expect(screen.getByRole('button', { name: /toggle zoom/i })).toHaveTextContent('🔍 Normal');
+
+    // Manual Refresh button in overlay bar
+    const refreshFn = vi.fn();
+    mockBroadcastReturn = {
+      ...mockBroadcastReturn,
+      hasNewFrame: true,
+      refreshFrame: refreshFn,
+    };
+    rerender(<StudentMobileView user={mockUser} onSwitchToDesktop={mockSwitchDesktop} />);
+    const refreshBtn = screen.getByRole('button', { name: /Refresh Slide \(New slide available\)/i });
+    fireEvent.click(refreshBtn);
+    expect(refreshFn).toHaveBeenCalledTimes(1);
   });
 
   it('renders Feature 2: live subtitles, teacher translated languages, font size, and earphone TTS', () => {

@@ -1,5 +1,31 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+const { mockClassGet } = vi.hoisted(() => ({
+  mockClassGet: vi.fn(),
+}));
+
+vi.mock('firebase-admin/firestore', () => ({
+  getFirestore: () => ({
+    doc: vi.fn((path) => {
+      if (path?.endsWith('/metadata/ai')) {
+        return { get: vi.fn().mockResolvedValue({ exists: false }), set: vi.fn().mockResolvedValue(true) };
+      }
+      return { get: mockClassGet, set: vi.fn().mockResolvedValue(true) };
+    }),
+    collection: vi.fn(() => ({
+      doc: vi.fn(() => ({
+        get: mockClassGet,
+        collection: vi.fn(() => ({
+          doc: vi.fn(() => ({
+            get: vi.fn().mockResolvedValue({ exists: false }),
+            set: vi.fn().mockResolvedValue(true),
+          })),
+        })),
+      })),
+    })),
+  }),
+}));
+
 vi.mock('firebase-admin/storage', () => ({
   getStorage: () => ({
     bucket: () => ({
@@ -22,6 +48,10 @@ import { handleExtractTaskDemoSteps } from './extractTaskDemoSteps.js';
 describe('extractTaskDemoSteps', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockClassGet.mockResolvedValue({
+      exists: true,
+      data: () => ({ ownerUid: 'teacher_1' }),
+    });
   });
 
   it('throws invalid-argument when classId is missing', async () => {
@@ -163,6 +193,17 @@ describe('extractTaskDemoSteps', () => {
     });
 
     expect(res.title).toBe('Auth Task');
+
+    mockClassGet.mockResolvedValueOnce({
+      exists: true,
+      data: () => ({ ownerUid: 'other_teacher' }),
+    });
+    await expect(
+      runFn({
+        auth: { uid: 'intruder_teacher', token: { role: 'teacher' } },
+        data: { classId: 'c1', demoVideoPath: 'demo.mp4' },
+      })
+    ).rejects.toThrow(/Only teachers assigned to this class/);
   });
 
   it('supports YouTube URLs directly and passes url to generation', async () => {

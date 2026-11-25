@@ -239,5 +239,40 @@ describe('useClassSchedule Hook & generateLessons Engine', () => {
       expect(result.current.selectedLesson).toBe('2026-08-01T09:00:00.000Z');
     });
   });
+
+  it('bounds status fallback query with orderBy and limit(1) when videoJobs is empty', async () => {
+    const { orderBy, limit } = await import('firebase/firestore');
+
+    mockGetDoc.mockResolvedValueOnce({
+      exists: () => true,
+      data: () => ({
+        schedule: {
+          startDate: '2026-08-01',
+          endDate: '2026-08-01',
+          timeZone: 'UTC',
+          timeSlots: [
+            { days: ['Sat'], startTime: '09:00', endTime: '11:00' },
+          ],
+        },
+      }),
+    });
+
+    mockGetDocs
+      .mockResolvedValueOnce({ empty: true, docs: [] }) // videoJobs
+      .mockResolvedValueOnce({ empty: true, docs: [] }) // aiJobs
+      .mockResolvedValueOnce({
+        empty: false,
+        docs: [{ data: () => ({ timestamp: { toDate: () => new Date('2026-08-01T10:00:00.000Z') } }) }],
+      }); // status
+
+    const { result } = renderHook(() => useClassSchedule('CLASS_STATUS_BOUNDED'));
+
+    await waitFor(() => {
+      expect(result.current.lessons.length).toBe(1);
+    });
+
+    expect(orderBy).toHaveBeenCalledWith('timestamp', 'desc');
+    expect(limit).toHaveBeenCalledWith(1);
+  });
 });
 

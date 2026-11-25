@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { db } from '../firebase-config';
 import { doc, getDoc, collection, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
 import './SharedViews.css';
@@ -12,6 +12,7 @@ const ProgressView = ({ classId, startTime, endTime }) => {
   // --- Logic for Summary View ---
   const [students, setStudents] = useState([]);
   const [studentProfiles, setStudentProfiles] = useState({});
+  const studentProfilesRef = useRef({});
   const [loadingStudents, setLoadingStudents] = useState(true);
   const [summaryPage, setSummaryPage] = useState(1);
   const itemsPerPage = 10;
@@ -34,6 +35,7 @@ const ProgressView = ({ classId, startTime, endTime }) => {
           const classData = classSnap.data();
           const studentMap = classData.students || {};
           const profiles = classData.studentProfiles || {};
+          studentProfilesRef.current = profiles;
           setStudentProfiles(profiles);
           const studentList = Object.entries(studentMap).map(([uid, email]) => {
             const prof = getStudentProfile(email, profiles);
@@ -67,6 +69,7 @@ const ProgressView = ({ classId, startTime, endTime }) => {
 
   // 3. Fetch latest progress for paginated students
   useEffect(() => {
+    let isCancelled = false;
     const fetchLatestProgress = async () => {
       if (paginatedStudents.length === 0) {
         setLatestProgress([]);
@@ -89,15 +92,17 @@ const ProgressView = ({ classId, startTime, endTime }) => {
         });
 
         const snapshots = await Promise.all(progressPromises);
+        if (isCancelled) return;
+        const activeProfiles = studentProfilesRef.current || {};
         const progressData = snapshots.map((snapshot, index) => {
           const student = paginatedStudents[index];
-          const prof = getStudentProfile(student.email, studentProfiles);
-          const displayName = getStudentDisplayName(student.email, studentProfiles);
+          const prof = getStudentProfile(student.email, activeProfiles);
+          const displayName = getStudentDisplayName(student.email, activeProfiles);
           if (snapshot && !snapshot.empty && snapshot.docs && snapshot.docs[0]) {
-            const doc = snapshot.docs[0];
-            const data = doc.data ? (doc.data() || {}) : {};
+            const docSnap = snapshot.docs[0];
+            const data = docSnap.data ? (docSnap.data() || {}) : {};
             return {
-              id: doc.id,
+              id: docSnap.id,
               ...data,
               studentEmail: data.studentEmail || student.email,
               displayName,
@@ -119,13 +124,16 @@ const ProgressView = ({ classId, startTime, endTime }) => {
         setLatestProgress(progressData);
       } catch (error) {
         console.error("Error fetching latest progress:", error);
-        setLatestProgress([]);
+        if (!isCancelled) setLatestProgress([]);
       }
-      setLoadingProgress(false);
+      if (!isCancelled) setLoadingProgress(false);
     };
 
     fetchLatestProgress();
-  }, [paginatedStudents, classId, startTime, endTime, studentProfiles]);
+    return () => {
+      isCancelled = true;
+    };
+  }, [paginatedStudents, classId, startTime, endTime]);
 
 
   // --- Logic for Detail View ---

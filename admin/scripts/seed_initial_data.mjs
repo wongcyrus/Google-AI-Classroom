@@ -23,16 +23,37 @@ const db = getFirestore(app);
 
 const defaultPasswordEnv = process.env.DEMO_PASSWORD || 'IT114115';
 
-async function getOrCreateUser(email, role, displayName, defaultPassword = defaultPasswordEnv, forcePasswordUpdate = false) {
+async function getOrCreateUser(
+  email,
+  role,
+  displayName,
+  defaultPassword = defaultPasswordEnv,
+  forcePasswordUpdate = false,
+  preserveExistingProfile = false
+) {
   try {
     const existing = await auth.getUserByEmail(email);
-    console.log(`ℹ️ User ${email} exists (UID: ${existing.uid}). Updating claims...`);
-    await auth.setCustomUserClaims(existing.uid, { role });
-    const updatePayload = { emailVerified: true, displayName };
+    const hasExpectedRole = existing.customClaims?.role === role;
+    const updatePayload = {};
+    if (!existing.emailVerified) {
+      updatePayload.emailVerified = true;
+    }
+    if (displayName && (!preserveExistingProfile || !existing.displayName) && existing.displayName !== displayName) {
+      updatePayload.displayName = displayName;
+    }
     if (forcePasswordUpdate && defaultPassword) {
       updatePayload.password = defaultPassword;
     }
-    await auth.updateUser(existing.uid, updatePayload);
+
+    if (!hasExpectedRole || Object.keys(updatePayload).length > 0) {
+      console.log(`ℹ️ User ${email} exists (UID: ${existing.uid}). Syncing auth metadata...`);
+      if (!hasExpectedRole) {
+        await auth.setCustomUserClaims(existing.uid, { role });
+      }
+      if (Object.keys(updatePayload).length > 0) {
+        await auth.updateUser(existing.uid, updatePayload);
+      }
+    }
     return existing;
   } catch (err) {
     if (err.code === 'auth/user-not-found') {
@@ -157,6 +178,8 @@ async function main() {
   console.log(`==========================================================`);
 
   const isDev = projectId.includes('dev');
+  const isDevOrTest = projectId.includes('dev') || projectId.includes('test');
+  const shouldSyncDemoPasswords = isDevOrTest || Boolean(process.env.DEMO_PASSWORD);
   const demoTeachers = [
     { email: 'teacher1@vtc.edu.hk', displayName: 'Teacher 1 (Lead Instructor)' },
     { email: 'teacher2@vtc.edu.hk', displayName: 'Teacher 2 (Co-Instructor)' },
@@ -219,7 +242,8 @@ async function main() {
       'teacher',
       t.displayName || t.email.split('@')[0],
       t.password || defaultPasswordEnv,
-      true
+      shouldSyncDemoPasswords,
+      !isDevOrTest
     );
     teacherMap[tUser.uid] = t.email;
   }
@@ -229,7 +253,14 @@ async function main() {
   const studentUsers = [];
   for (const s of demoStudents) {
     const displayName = s.studentName || s.nickname || s.email.split('@')[0];
-    const sUser = await getOrCreateUser(s.email, 'student', displayName, defaultPasswordEnv, true);
+    const sUser = await getOrCreateUser(
+      s.email,
+      'student',
+      displayName,
+      defaultPasswordEnv,
+      shouldSyncDemoPasswords,
+      !isDevOrTest
+    );
     studentMap[sUser.uid] = s.email;
     studentProfilesMap[s.email.toLowerCase()] = {
       studentName: s.studentName,
@@ -316,14 +347,19 @@ async function main() {
   console.log(`✅ Demo class '${classId}' configured with co-teaching (teacher1 & teacher2) and 5 students (student1..5 with nicknames & profiles).`);
 
   // Global Login Policy (Whitelist demo students in dev/test so desktop password login works without mobile gate)
-  const isDevOrTest = projectId.includes('dev') || projectId.includes('test');
   const whitelist = isDevOrTest ? demoStudentEmails : [];
-  await db.collection('system_config').doc('loginPolicy').set({
-    passwordWhitelist: whitelist,
-    updatedAt: FieldValue.serverTimestamp(),
-    description: 'Allows listed emails to log in directly with password on desktop without mandatory mobile passkey gate'
-  }, { merge: true });
-  console.log(`✅ Global Login Policy initialized (passwordWhitelist: ${JSON.stringify(whitelist)}).`);
+  const loginPolicyRef = db.collection('system_config').doc('loginPolicy');
+  const existingPolicySnap = !isDevOrTest ? await loginPolicyRef.get() : null;
+  if (isDevOrTest || !existingPolicySnap?.exists) {
+    await loginPolicyRef.set({
+      passwordWhitelist: whitelist,
+      updatedAt: FieldValue.serverTimestamp(),
+      description: 'Allows listed emails to log in directly with password on desktop without mandatory mobile passkey gate'
+    }, { merge: true });
+    console.log(`✅ Global Login Policy initialized (passwordWhitelist: ${JSON.stringify(whitelist)}).`);
+  } else {
+    console.log('ℹ️ Global Login Policy already configured in non-dev project; skipping overwrite.');
+  }
 
   console.log(`==========================================================`);
   console.log(`🎉 Demo Data Seeding Complete!`);

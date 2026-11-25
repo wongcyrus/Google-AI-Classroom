@@ -104,15 +104,39 @@ describe('retryVideoAnalysisJob (functions/ai_flows/retryVideoAnalysisJob.js)', 
     ).rejects.toThrow(/not found/);
   });
 
+  it('rejects non-teacher or unassigned teacher for the class', async () => {
+    mockDoc.get
+      .mockResolvedValueOnce({
+        exists: true,
+        data: () => ({
+          classId: 'CLASS_A',
+          failedVideos: [{ studentUid: 's1', videoPath: 'videos/CLASS_A/s1/v.mp4' }],
+        }),
+      })
+      .mockResolvedValueOnce({
+        exists: true,
+        data: () => ({ ownerUid: 'real_teacher' }),
+      });
+
+    await expect(
+      retryVideoAnalysisJob({ auth: { uid: 'other_teacher', token: { role: 'teacher' } }, data: { jobId: 'job_1' } })
+    ).rejects.toThrow(/Only teachers assigned to this class/);
+  });
+
   it('rejects with failed-precondition if no failed videos exist anywhere', async () => {
     // 1. Master job doc exists with no failed videos
-    mockDoc.get.mockResolvedValueOnce({
-      exists: true,
-      data: () => ({
-        classId: 'CLASS_A',
-        failedVideos: [],
-      }),
-    });
+    mockDoc.get
+      .mockResolvedValueOnce({
+        exists: true,
+        data: () => ({
+          classId: 'CLASS_A',
+          failedVideos: [],
+        }),
+      })
+      .mockResolvedValueOnce({
+        exists: true,
+        data: () => ({ ownerUid: 'user_1' }),
+      });
 
     // 2. aiJobs query returns empty
     mockCollection.get.mockResolvedValueOnce({
@@ -148,6 +172,7 @@ describe('retryVideoAnalysisJob (functions/ai_flows/retryVideoAnalysisJob.js)', 
       .mockResolvedValueOnce({
         exists: true,
         data: () => ({
+          ownerUid: 'user_teacher',
           aiModel: 'gemini-3.5-flash-lite',
           schedule: { timeZone: 'Asia/Taipei' },
         }),
@@ -198,9 +223,10 @@ describe('retryVideoAnalysisJob (functions/ai_flows/retryVideoAnalysisJob.js)', 
           endTime: { toDate: () => new Date('2026-08-01T09:00:00Z') },
         }),
       })
-      // 2. Class doc (not found)
+      // 2. Class doc
       .mockResolvedValueOnce({
-        exists: false,
+        exists: true,
+        data: () => ({ ownerUid: 'teacher_1' }),
       });
 
     // aiJobs query returning failed job
@@ -227,16 +253,20 @@ describe('retryVideoAnalysisJob (functions/ai_flows/retryVideoAnalysisJob.js)', 
   });
 
   it('handles enqueuing failure and marks job status as failed', async () => {
-    mockDoc.get.mockResolvedValueOnce({
-      exists: true,
-      data: () => ({
-        classId: 'CLASS_ERR',
-        failedVideos: [{ studentUid: 's1', videoPath: 'videos/CLASS_ERR/s1/vid.mp4' }],
-      }),
-    });
+    mockDoc.get
+      .mockResolvedValueOnce({
+        exists: true,
+        data: () => ({
+          classId: 'CLASS_ERR',
+          failedVideos: [{ studentUid: 's1', videoPath: 'videos/CLASS_ERR/s1/vid.mp4' }],
+        }),
+      })
+      .mockResolvedValueOnce({
+        exists: true,
+        data: () => ({ ownerUid: 'teacher_1' }),
+      });
 
-    // Class doc get throws
-    mockDoc.get.mockRejectedValueOnce(new Error('Cloud Tasks rate limited'));
+    mockEnqueue.mockRejectedValueOnce(new Error('Cloud Tasks rate limited'));
 
     await expect(
       retryVideoAnalysisJob({

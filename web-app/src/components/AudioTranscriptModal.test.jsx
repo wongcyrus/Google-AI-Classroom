@@ -1,9 +1,17 @@
 import React from 'react';
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
 import AudioTranscriptModal from './AudioTranscriptModal';
 
 describe('AudioTranscriptModal Component', () => {
+  beforeEach(() => {
+    localStorage.setItem('teacher_privacy_mode', 'false');
+  });
+
+  afterEach(() => {
+    localStorage.removeItem('teacher_privacy_mode');
+  });
+
   const mockTranscriptSegments = [
     {
       id: 'turn_1',

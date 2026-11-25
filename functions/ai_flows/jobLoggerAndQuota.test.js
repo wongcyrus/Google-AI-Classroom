@@ -127,7 +127,7 @@ describe('jobLogger and quotaManagement Unit Tests', () => {
       expect(mockCollection).not.toHaveBeenCalled();
     });
 
-    it('increments aiUsedQuota on both class document and metadata/ai document', async () => {
+    it('increments aiUsedQuota on metadata/ai document only (avoids root class doc write storm)', async () => {
       const mockSetClass = vi.fn().mockResolvedValue();
       const mockSetMeta = vi.fn().mockResolvedValue();
 
@@ -145,10 +145,7 @@ describe('jobLogger and quotaManagement Unit Tests', () => {
         { aiUsedQuota: { increment: 0.25 } },
         { merge: true }
       );
-      expect(mockSetClass).toHaveBeenCalledWith(
-        { aiUsedQuota: { increment: 0.25 } },
-        { merge: true }
-      );
+      expect(mockSetClass).not.toHaveBeenCalled();
     });
   });
 });

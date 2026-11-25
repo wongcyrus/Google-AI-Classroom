@@ -42,7 +42,7 @@ const ClassView = ({ user }) => {
   const isLiveMode = mainTab === 'monitor' || mainTab === 'messages';
 
   const [classInfo, setClassInfo] = useState(null);
-  const [teacherClasses, setTeacherClasses] = useState([]);
+  const [rawTeacherClasses, setRawTeacherClasses] = useState([]);
   const [currentTime, setCurrentTime] = useState(() => new Date());
   const [dismissedLiveClassId, setDismissedLiveClassId] = useState(null);
   const [filterField, setFilterField] = useState('startTime');
@@ -88,10 +88,12 @@ const ClassView = ({ user }) => {
     }
   }, []);
 
+  const userUid = user?.uid || null;
+
   // Dedicated listener for OS notifications
   useEffect(() => {
-    if (!user || !user.uid) return;
-    const messagesRef = collection(db, "teachers", user.uid, "messages");
+    if (!userUid) return;
+    const messagesRef = collection(db, "teachers", userUid, "messages");
     const q = query(messagesRef, where("timestamp", ">", new Date(Date.now() - 15000)));
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
       querySnapshot.docChanges().forEach((change) => {
@@ -104,7 +106,7 @@ const ClassView = ({ user }) => {
       });
     });
     return () => unsubscribe();
-  }, [user, classId]);
+  }, [userUid, classId]);
 
   // Fetch current class details
   useEffect(() => {
@@ -120,30 +122,48 @@ const ClassView = ({ user }) => {
     return () => unsubscribe();
   }, [classId]);
 
-  // Fetch teacher's enrolled classes for the quick switcher
+  // Fetch teacher's enrolled classes once per user session (schedule status is recomputed via useMemo on 30s ticks)
   useEffect(() => {
-    if (!user) return;
-    const profileRef = doc(db, 'teacherProfiles', user.uid);
+    if (!userUid) {
+      setRawTeacherClasses([]);
+      return;
+    }
+    let isCancelled = false;
+    const profileRef = doc(db, 'teacherProfiles', userUid);
     getDoc(profileRef).then(async (snap) => {
+      if (isCancelled) return;
       if (snap.exists()) {
         const classIds = [...new Set(snap.data().classes || [])];
         const snaps = await Promise.all(classIds.map(id => getDoc(doc(db, 'classes', id))));
+        if (isCancelled) return;
         const list = snaps.map(s => {
           const cData = s.data() || {};
-          const status = getClassScheduleStatus({ id: s.id, ...cData }, currentTime);
           return {
             id: s.id,
             name: cData.name || s.id,
             schedule: cData.schedule,
             scheduleHistory: cData.scheduleHistory,
-            _scheduleStatus: status,
           };
         });
-        list.sort((a, b) => compareClassesBySchedule(a, b, currentTime));
-        setTeacherClasses(list);
+        setRawTeacherClasses(list);
+      } else {
+        setRawTeacherClasses([]);
       }
     }).catch(err => console.error('Error fetching teacher classes:', err));
-  }, [user, currentTime]);
+    return () => {
+      isCancelled = true;
+    };
+  }, [userUid]);
+
+  const teacherClasses = useMemo(() => {
+    if (!rawTeacherClasses.length) return [];
+    const enriched = rawTeacherClasses.map((c) => ({
+      ...c,
+      _scheduleStatus: getClassScheduleStatus(c, currentTime),
+    }));
+    enriched.sort((a, b) => compareClassesBySchedule(a, b, currentTime));
+    return enriched;
+  }, [rawTeacherClasses, currentTime]);
 
   // Alert when another enrolled class is actively Live Now or starting within 10 minutes
   // (including when the current class is in overtime so back-to-back teachers can 1-click handover)
@@ -227,9 +247,13 @@ const ClassView = ({ user }) => {
     }
   };
 
+  const broadcastStateRef = useRef(broadcastState);
+  broadcastStateRef.current = broadcastState;
+  const isBroadcastingActive = Boolean(broadcastState?.isBroadcasting);
+
   // Out-of-tab OS Desktop Notification when a back-to-back next class becomes Live while broadcasting
   useEffect(() => {
-    if (!broadcastState?.isBroadcasting || !liveClassWarning) return;
+    if (!isBroadcastingActive || !liveClassWarning) return;
     if (liveClassWarning._scheduleStatus?.tier !== 1) return;
     if (notifiedHandoverClassIdRef.current === liveClassWarning.id) return;
 
@@ -250,14 +274,15 @@ const ClassView = ({ user }) => {
         targetClassId: liveClassWarning.id,
       },
       onClick: () => {
-        if (typeof broadcastState?.handoverBroadcast === 'function') {
-          broadcastState.handoverBroadcast(liveClassWarning.id, { openStudio: true });
+        const latestBroadcast = broadcastStateRef.current;
+        if (typeof latestBroadcast?.handoverBroadcast === 'function') {
+          latestBroadcast.handoverBroadcast(liveClassWarning.id, { openStudio: true });
         } else {
           handleSwitchToClass(liveClassWarning.id);
         }
       },
     });
-  }, [broadcastState, liveClassWarning, classInfo?.name, classId, isAutoHandoverEnabled]);
+  }, [isBroadcastingActive, liveClassWarning, classInfo?.name, classId, isAutoHandoverEnabled]);
 
   // Hands-free 30-second Auto-Handover Countdown when next scheduled class is Live Now
   useEffect(() => {

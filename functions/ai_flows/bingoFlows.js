@@ -7,7 +7,8 @@ import { z } from 'genkit';
 import { AI_MODEL, FUNCTION_REGION } from './config.js';
 import { generateWithResilience } from './analysisFlows.js';
 import { logJob } from './jobLogger.js';
-import { calculateCost } from './cost.js';
+import { calculateCost, estimateCost } from './cost.js';
+import { checkQuota } from './quotaManagement.js';
 
 const db = getFirestore();
 
@@ -29,6 +30,24 @@ Topic / Lesson Material: "${topic}".
 Generate exactly ${safeCount} multiple-choice questions testing immediate comprehension.
 Each question MUST have exactly 4 options and a correctIndex (0, 1, 2, or 3).
 Keep questions concise, practical, and unambiguous.`;
+  }
+
+  if (classId) {
+    const estimatedCost = estimateCost(prompt, [], targetModel);
+    const hasQuota = await checkQuota(classId, estimatedCost);
+    if (!hasQuota) {
+      await logJob({
+        classId,
+        jobType: 'generateBingoQuestionBank',
+        status: 'blocked-by-quota',
+        promptText: prompt.slice(0, 2000),
+        mediaPaths: [],
+        cost: 0,
+        modelUsed: targetModel,
+        errorDetails: 'Class AI quota exceeded.',
+      }).catch(() => {});
+      throw new Error('Insufficient class AI quota.');
+    }
   }
 
   const { response, modelUsed } = await generateWithResilience({
@@ -231,7 +250,27 @@ export async function resolveBingoQuestion({
     try {
       const liveFrameDoc = await db.doc(`classes/${classId}/screenBroadcast/liveFrame`).get();
       const liveFrameData = liveFrameDoc.exists ? liveFrameDoc.data() : null;
-      const frameUrl = liveFrameData?.frameData;
+      let frameUrl = liveFrameData?.frameData;
+
+      // Option B fallback: read static slide from Cloud Storage referenced by screenBroadcast/session
+      if (!frameUrl || typeof frameUrl !== 'string' || !frameUrl.startsWith('data:image')) {
+        const sessionDoc = await db.doc(`classes/${classId}/screenBroadcast/session`).get();
+        const sessionData = sessionDoc.exists ? sessionDoc.data() : null;
+        if (sessionData?.isBroadcasting) {
+          if (sessionData.frameStoragePath) {
+            try {
+              const [fileBuffer] = await getStorage().bucket().file(sessionData.frameStoragePath).download();
+              if (fileBuffer && fileBuffer.length > 0) {
+                frameUrl = `data:image/jpeg;base64,${fileBuffer.toString('base64')}`;
+              }
+            } catch (storageErr) {
+              console.warn(`[resolveBingoQuestion] Could not download broadcast slide from ${sessionData.frameStoragePath}:`, storageErr);
+            }
+          } else if (sessionData.frameUrl && typeof sessionData.frameUrl === 'string' && sessionData.frameUrl.startsWith('data:image')) {
+            frameUrl = sessionData.frameUrl;
+          }
+        }
+      }
 
       if (frameUrl && typeof frameUrl === 'string' && frameUrl.startsWith('data:image')) {
         // Fetch recent teacher live subtitles / speech captions if available
@@ -317,6 +356,29 @@ You MUST NOT repeat or rephrase any of the above questions.
 You MUST choose a completely DIFFERENT detail, spoken concept, code line, toolbar item, question angle, or UI element that was NOT covered above.`
           : '';
 
+        const redactedMediaPath = frameUrl.startsWith('data:') ? '[redacted-inline-image]' : frameUrl;
+        if (classId) {
+          const estCost = estimateCost(
+            promptText + dedupInstruction,
+            [{ media: { url: frameUrl, contentType: 'image/jpeg' } }],
+            AI_MODEL
+          );
+          const hasQuota = await checkQuota(classId, estCost);
+          if (!hasQuota) {
+            await logJob({
+              classId,
+              jobType: 'generateBingoQuestion',
+              status: 'blocked-by-quota',
+              promptText,
+              mediaPaths: [redactedMediaPath],
+              cost: 0,
+              modelUsed: AI_MODEL,
+              errorDetails: 'Class AI quota exceeded.',
+            }).catch(() => {});
+            return null;
+          }
+        }
+
         let candidateOutput = null;
         let lastUsedModel = AI_MODEL;
         let lastUsage = {};
@@ -365,7 +427,7 @@ You MUST choose a completely DIFFERENT detail, spoken concept, code line, toolba
                 jobType: 'generateBingoQuestion',
                 status: 'completed',
                 promptText: promptText,
-                mediaPaths: [frameUrl],
+                mediaPaths: [redactedMediaPath],
                 usage: {
                   inputTokens: lastUsage.inputTokens ?? lastUsage.promptTokenCount ?? 0,
                   outputTokens: lastUsage.outputTokens ?? lastUsage.candidatesTokenCount ?? 0,
@@ -478,6 +540,30 @@ Formulate a 4-option multiple choice question testing immediate awareness of the
 ONE option MUST be the true visible detail.
 THREE options MUST be plausible distractors.`;
 
+        const redactedMediaPath = screenshotUrl.startsWith('data:') ? '[redacted-inline-image]' : screenshotUrl;
+        if (classId) {
+          const estCost = estimateCost(
+            promptText,
+            [{ media: { url: screenshotUrl, contentType: 'image/jpeg' } }],
+            AI_MODEL
+          );
+          const hasQuota = await checkQuota(classId, estCost);
+          if (!hasQuota) {
+            await logJob({
+              classId,
+              studentUid,
+              jobType: 'generateBingoQuestion',
+              status: 'blocked-by-quota',
+              promptText,
+              mediaPaths: [redactedMediaPath],
+              cost: 0,
+              modelUsed: AI_MODEL,
+              errorDetails: 'Class AI quota exceeded.',
+            }).catch(() => {});
+            return null;
+          }
+        }
+
         const prompt = [
           { text: promptText },
           { media: { url: screenshotUrl, contentType: 'image/jpeg' } },
@@ -506,7 +592,7 @@ THREE options MUST be plausible distractors.`;
                 jobType: 'generateBingoQuestion',
                 status: 'completed',
                 promptText,
-                mediaPaths: [screenshotUrl],
+                mediaPaths: [redactedMediaPath],
                 usage: {
                   inputTokens: usage.inputTokens ?? usage.promptTokenCount ?? 0,
                   outputTokens: usage.outputTokens ?? usage.candidatesTokenCount ?? 0,
@@ -799,294 +885,336 @@ export async function submitBingoResponse({
   }
 
   const bingoDocRef = db.doc(`classes/${classId}/bingoRecords/${bingoId}`);
-  const bingoDoc = await bingoDocRef.get();
+  const classDocRef = db.doc(`classes/${classId}`);
+  const studentPropsRef = db.doc(`classes/${classId}/studentProperties/${studentUid}`);
 
-  if (!bingoDoc.exists) {
-    throw new Error(`Bingo record ${bingoId} not found`);
-  }
+  const txOutcome = await db.runTransaction(async (tx) => {
+    const bingoDoc = await tx.get(bingoDocRef);
+    if (!bingoDoc.exists) {
+      throw new Error(`Bingo record ${bingoId} not found`);
+    }
 
-  const record = bingoDoc.data();
-  if (record.result !== 'pending') {
-    return { success: true, alreadySubmitted: true, result: record.result };
-  }
+    const record = bingoDoc.data();
+    if (record.studentUid && record.studentUid !== studentUid) {
+      throw new Error('Permission denied: cannot submit another student\'s Bingo challenge.');
+    }
 
-  const isTimeout = selectedIndex === null || selectedIndex === undefined;
-  if (record.questionSource === 'mobile_passkey' && !isTimeout) {
-    throw new Error('Mobile passkey attendance challenges must be verified using biometric passkey authentication.');
-  }
-  const isCorrect = !isTimeout && Number(selectedIndex) === record.correctIndex;
-  
-  let result = 'failed_incorrect';
-  if (isCorrect) {
-    result = 'passed';
-  } else if (isTimeout) {
-    result = 'missed_timeout';
-  }
+    if (record.result !== 'pending') {
+      return { earlyReturn: { success: true, alreadySubmitted: true, result: record.result } };
+    }
 
-  const selectedOptionText = !isTimeout && Array.isArray(record.options)
-    ? record.options[Number(selectedIndex)] || null
-    : null;
+    const isTimeout = selectedIndex === null || selectedIndex === undefined;
+    if (record.questionSource === 'mobile_passkey' && !isTimeout) {
+      throw new Error('Mobile passkey attendance challenges must be verified using biometric passkey authentication.');
+    }
 
-  const actualLatency = responseTimeSec !== null
-    ? Math.max(0.1, Number(responseTimeSec))
-    : (isTimeout ? record.timeLimitSeconds : null);
+    const isCorrect = !isTimeout && Number(selectedIndex) === record.correctIndex;
+    let result = 'failed_incorrect';
+    if (isCorrect) {
+      result = 'passed';
+    } else if (isTimeout) {
+      result = 'missed_timeout';
+    }
 
-  const classDoc = await db.doc(`classes/${classId}`).get();
-  const classData = classDoc.exists ? (classDoc.data() || {}) : {};
-  const retryDelayMinutes = Math.min(15, Math.max(1, Number(classData.bingoRetryDelayMinutes) || 3));
-  const retryDelaySeconds = retryDelayMinutes * 60;
+    const selectedOptionText = !isTimeout && Array.isArray(record.options)
+      ? record.options[Number(selectedIndex)] || null
+      : null;
 
-  // Query all submissions for this round to compute live rank & leaderboard
-  const issuedAtMillis = record.issuedAtMillis;
-  let roundRecords = [];
-  try {
-    if (issuedAtMillis) {
-      const snap = await db.collection(`classes/${classId}/bingoRecords`)
-        .where('issuedAtMillis', '==', issuedAtMillis)
-        .get();
-      if (snap && typeof snap.forEach === 'function') {
-        snap.forEach((d) => {
-          if (d && typeof d.data === 'function') {
-            roundRecords.push({ id: d.id, ...d.data() });
-          }
-        });
+    const actualLatency = responseTimeSec !== null
+      ? Math.max(0.1, Number(responseTimeSec))
+      : (isTimeout ? record.timeLimitSeconds : null);
+
+    const issuedAtMillis = record.issuedAtMillis;
+    const roundId = record.roundId || (issuedAtMillis ? `round_${issuedAtMillis}` : null);
+    const roundRef = roundId ? db.doc(`classes/${classId}/bingoRounds/${roundId}`) : null;
+    const currentStrike = Number(record.strikeNumber) || 1;
+    const priorRef = (result === 'missed_timeout' && currentStrike >= 2 && record.priorBingoId)
+      ? db.doc(`classes/${classId}/bingoRecords/${record.priorBingoId}`)
+      : null;
+
+    const [classDoc, studentPropsDoc, roundDoc, priorDoc] = await Promise.all([
+      tx.get(classDocRef),
+      tx.get(studentPropsRef),
+      roundRef ? tx.get(roundRef) : Promise.resolve(null),
+      priorRef ? tx.get(priorRef) : Promise.resolve(null),
+    ]);
+
+    const classData = classDoc?.exists ? (classDoc.data() || {}) : {};
+    const retryDelayMinutes = Math.min(15, Math.max(1, Number(classData.bingoRetryDelayMinutes) || 3));
+    const retryDelaySeconds = retryDelayMinutes * 60;
+
+    // Use compact O(1) round leaderboard doc if already seeded; fallback to bounded round query on first write
+    const roundData = roundDoc?.exists ? (roundDoc.data() || {}) : null;
+    let roundRecords = [];
+    if (Array.isArray(roundData?.entries)) {
+      roundRecords = roundData.entries.map((e) => ({ ...e }));
+    } else if (issuedAtMillis) {
+      try {
+        const q = db.collection(`classes/${classId}/bingoRecords`)
+          .where('issuedAtMillis', '==', issuedAtMillis);
+        const snap = typeof tx.get === 'function' ? await tx.get(q) : await q.get();
+        if (snap && typeof snap.forEach === 'function') {
+          snap.forEach((d) => {
+            if (d && typeof d.data === 'function') {
+              const rd = d.data() || {};
+              roundRecords.push({
+                id: d.id,
+                studentUid: rd.studentUid,
+                studentEmail: rd.studentEmail || '',
+                result: rd.result || 'pending',
+                responseTimeSec: rd.responseTimeSec ?? null,
+              });
+            }
+          });
+        }
+      } catch (err) {
+        console.warn('[submitBingoResponse] Error querying round records for ranking:', err);
       }
     }
-  } catch (err) {
-    console.warn('[submitBingoResponse] Error querying round records for ranking:', err);
-  }
 
-  // Ensure current record is reflected in the round list with latest values
-  const currentRecordData = {
-    ...record,
-    id: bingoId,
-    studentUid,
-    studentEmail: record.studentEmail || '',
-    result,
-    responseTimeSec: actualLatency,
-    isCorrect,
-  };
-  const myRecordIdx = roundRecords.findIndex((r) => r.id === bingoId);
-  if (myRecordIdx >= 0) {
-    roundRecords[myRecordIdx] = currentRecordData;
-  } else {
-    roundRecords.push(currentRecordData);
-  }
-
-  // Split into categories to compute fair ranking:
-  // 1. Correct answers (passed), sorted by lowest latency first
-  // 2. Incorrect answers (failed_incorrect), sorted by latency
-  // 3. Timed-out answers (missed_timeout)
-  // 4. Pending answers
-  const passedList = roundRecords
-    .filter((r) => r.result === 'passed')
-    .sort((a, b) => Number(a.responseTimeSec ?? 999) - Number(b.responseTimeSec ?? 999));
-  const incorrectList = roundRecords
-    .filter((r) => r.result === 'failed_incorrect')
-    .sort((a, b) => Number(a.responseTimeSec ?? 999) - Number(b.responseTimeSec ?? 999));
-  const timeoutList = roundRecords
-    .filter((r) => r.result === 'missed_timeout')
-    .sort((a, b) => Number(a.responseTimeSec ?? 999) - Number(b.responseTimeSec ?? 999));
-  const pendingList = roundRecords.filter((r) => r.result === 'pending');
-
-  const fullRankedList = [...passedList, ...incorrectList, ...timeoutList, ...pendingList];
-  const myRankIndex = fullRankedList.findIndex((r) => r.studentUid === studentUid);
-  const currentRank = myRankIndex >= 0 ? myRankIndex + 1 : roundRecords.length;
-  const totalStudentsInRound = roundRecords.length || Object.keys(classData.students || {}).length || 1;
-
-  // Build top 5 podium leaderboard for this round
-  const topLeaderboard = fullRankedList.slice(0, 5).map((r, idx) => ({
-    rank: idx + 1,
-    studentUid: r.studentUid,
-    studentEmail: r.studentEmail || '',
-    result: r.result,
-    responseTimeSec: r.responseTimeSec !== null && r.responseTimeSec !== undefined ? Number(Number(r.responseTimeSec).toFixed(2)) : null,
-  }));
-
-  // Scoring Rule calculation
-  const scoringRule = classData.bingoScoringRule || {
-    enabled: true,
-    baseCorrectPoints: 100,
-    speedBonusMaxPoints: 50,
-    rankBonus: { 1: 50, 2: 30, 3: 20 },
-    incorrectDeduction: 0,
-  };
-
-  let pointsAwarded = 0;
-  if (isCorrect) {
-    const base = Number(scoringRule.baseCorrectPoints ?? 100);
-    const maxSpeed = Number(scoringRule.speedBonusMaxPoints ?? 50);
-    const timeLimit = Number(record.timeLimitSeconds || 30);
-    const timeRatioRemaining = Math.max(0, Math.min(1, (timeLimit - actualLatency) / timeLimit));
-    const speedBonus = Math.round(maxSpeed * timeRatioRemaining);
-
-    const rankBonusMap = scoringRule.rankBonus || { 1: 50, 2: 30, 3: 20 };
-    const rankBonus = Number(rankBonusMap[currentRank] || rankBonusMap[String(currentRank)] || 0);
-
-    pointsAwarded = base + speedBonus + rankBonus;
-  } else if (result === 'failed_incorrect') {
-    pointsAwarded = -Math.abs(Number(scoringRule.incorrectDeduction || 0));
-  } else {
-    pointsAwarded = 0;
-  }
-
-  // 1. Update the permanent bingoRecord
-  await bingoDocRef.update({
-    selectedIndex: isTimeout ? null : Number(selectedIndex),
-    selectedOptionText,
-    result,
-    responseTimeSec: actualLatency,
-    windowFocused: Boolean(windowFocused),
-    answeredAt: FieldValue.serverTimestamp(),
-    rank: currentRank,
-    totalStudents: totalStudentsInRound,
-    pointsAwarded,
-    roundId: record.roundId || (issuedAtMillis ? `round_${issuedAtMillis}` : null),
-  });
-
-  // 2. Update student properties status and stats
-  const studentPropsRef = db.doc(`classes/${classId}/studentProperties/${studentUid}`);
-  const studentPropsDoc = await studentPropsRef.get();
-  const prevStats = studentPropsDoc.exists ? (studentPropsDoc.data()?.bingoStats || {}) : {};
-
-  const prevTotalPoints = Number(prevStats.totalPoints || 0);
-  const prevTotalLatency = Number(prevStats.totalLatency || 0);
-  const prevLatencyCount = Number(prevStats.latencyCount || 0);
-  const newLatencyCount = prevLatencyCount + 1;
-  const newTotalLatency = prevTotalLatency + actualLatency;
-  const avgLatency = Number((newTotalLatency / newLatencyCount).toFixed(2));
-  const bestRank = Math.min(Number(prevStats.bestRank || 9999), currentRank);
-
-  const newStats = {
-    total: (prevStats.total || 0) + 1,
-    passed: (prevStats.passed || 0) + (result === 'passed' ? 1 : 0),
-    failed: (prevStats.failed || 0) + (result !== 'passed' ? 1 : 0),
-    lastResult: result,
-    totalPoints: prevTotalPoints + pointsAwarded,
-    averageResponseTimeSec: avgLatency,
-    totalLatency: newTotalLatency,
-    latencyCount: newLatencyCount,
-    bestRank: bestRank === 9999 ? currentRank : bestRank,
-  };
-
-  const existingActiveBingo = (studentPropsDoc.exists && studentPropsDoc.data()?.activeBingo) || {};
-
-  const updatePayload = {
-    activeBingo: {
-      ...existingActiveBingo,
-      status: result,
-      result: result,
+    const currentEntry = {
+      id: bingoId,
+      studentUid,
+      studentEmail: record.studentEmail || '',
+      result,
       responseTimeSec: actualLatency,
+    };
+    const myRecordIdx = roundRecords.findIndex((r) => r.id === bingoId);
+    if (myRecordIdx >= 0) {
+      roundRecords[myRecordIdx] = currentEntry;
+    } else {
+      roundRecords.push(currentEntry);
+    }
+
+    const passedList = roundRecords
+      .filter((r) => r.result === 'passed')
+      .sort((a, b) => Number(a.responseTimeSec ?? 999) - Number(b.responseTimeSec ?? 999));
+    const incorrectList = roundRecords
+      .filter((r) => r.result === 'failed_incorrect')
+      .sort((a, b) => Number(a.responseTimeSec ?? 999) - Number(b.responseTimeSec ?? 999));
+    const timeoutList = roundRecords
+      .filter((r) => r.result === 'missed_timeout')
+      .sort((a, b) => Number(a.responseTimeSec ?? 999) - Number(b.responseTimeSec ?? 999));
+    const pendingList = roundRecords.filter((r) => r.result === 'pending');
+
+    const fullRankedList = [...passedList, ...incorrectList, ...timeoutList, ...pendingList];
+    const myRankIndex = fullRankedList.findIndex((r) => r.studentUid === studentUid);
+    const currentRank = myRankIndex >= 0 ? myRankIndex + 1 : roundRecords.length;
+    const totalStudentsInRound = roundRecords.length || Object.keys(classData.students || {}).length || 1;
+
+    const topLeaderboard = fullRankedList.slice(0, 5).map((r, idx) => ({
+      rank: idx + 1,
+      studentUid: r.studentUid,
+      studentEmail: r.studentEmail || '',
+      result: r.result,
+      responseTimeSec: r.responseTimeSec !== null && r.responseTimeSec !== undefined ? Number(Number(r.responseTimeSec).toFixed(2)) : null,
+    }));
+
+    const scoringRule = classData.bingoScoringRule || {
+      enabled: true,
+      baseCorrectPoints: 100,
+      speedBonusMaxPoints: 50,
+      rankBonus: { 1: 50, 2: 30, 3: 20 },
+      incorrectDeduction: 0,
+    };
+
+    let pointsAwarded = 0;
+    if (isCorrect) {
+      const base = Number(scoringRule.baseCorrectPoints ?? 100);
+      const maxSpeed = Number(scoringRule.speedBonusMaxPoints ?? 50);
+      const timeLimit = Number(record.timeLimitSeconds || 30);
+      const timeRatioRemaining = Math.max(0, Math.min(1, (timeLimit - actualLatency) / timeLimit));
+      const speedBonus = Math.round(maxSpeed * timeRatioRemaining);
+
+      const rankBonusMap = scoringRule.rankBonus || { 1: 50, 2: 30, 3: 20 };
+      const rankBonus = Number(rankBonusMap[currentRank] || rankBonusMap[String(currentRank)] || 0);
+
+      pointsAwarded = base + speedBonus + rankBonus;
+    } else if (result === 'failed_incorrect') {
+      pointsAwarded = -Math.abs(Number(scoringRule.incorrectDeduction || 0));
+    }
+
+    const prevStats = studentPropsDoc?.exists ? (studentPropsDoc.data()?.bingoStats || {}) : {};
+    const prevTotalPoints = Number(prevStats.totalPoints || 0);
+    const prevTotalLatency = Number(prevStats.totalLatency || 0);
+    const prevLatencyCount = Number(prevStats.latencyCount || 0);
+    const newLatencyCount = prevLatencyCount + 1;
+    const newTotalLatency = prevTotalLatency + actualLatency;
+    const avgLatency = Number((newTotalLatency / newLatencyCount).toFixed(2));
+    const bestRank = Math.min(Number(prevStats.bestRank || 9999), currentRank);
+
+    const newStats = {
+      total: (prevStats.total || 0) + 1,
+      passed: (prevStats.passed || 0) + (result === 'passed' ? 1 : 0),
+      failed: (prevStats.failed || 0) + (result !== 'passed' ? 1 : 0),
+      lastResult: result,
+      totalPoints: prevTotalPoints + pointsAwarded,
+      averageResponseTimeSec: avgLatency,
+      totalLatency: newTotalLatency,
+      latencyCount: newLatencyCount,
+      bestRank: bestRank === 9999 ? currentRank : bestRank,
+    };
+
+    const existingActiveBingo = (studentPropsDoc?.exists && studentPropsDoc.data()?.activeBingo) || {};
+
+    const updatePayload = {
+      activeBingo: {
+        ...existingActiveBingo,
+        status: result,
+        result,
+        responseTimeSec: actualLatency,
+        rank: currentRank,
+        totalStudents: totalStudentsInRound,
+        pointsAwarded,
+        leaderboard: topLeaderboard,
+      },
+      bingoStats: newStats,
+    };
+
+    let sideEffect = null;
+    if (result === 'passed') {
+      updatePayload.strikeNumber = 0;
+      updatePayload.pendingRetryBingo = false;
+    } else if (result === 'failed_incorrect') {
+      updatePayload.lastInattentiveAt = FieldValue.serverTimestamp();
+    } else if (result === 'missed_timeout') {
+      if (currentStrike === 1) {
+        updatePayload.pendingRetryBingo = true;
+        updatePayload.retryBingoScheduledAtMillis = Date.now() + (retryDelaySeconds * 1000);
+        updatePayload.priorMissedBingoId = bingoId;
+        updatePayload.retryDelayMinutes = retryDelayMinutes;
+        sideEffect = {
+          type: 'strike1',
+          retryDelaySeconds,
+          retryDelayMinutes,
+          timeLimitSeconds: record.timeLimitSeconds,
+          question: record.question,
+        };
+      } else if (currentStrike >= 2) {
+        updatePayload.pendingRetryBingo = false;
+        const priorBingoId = record.priorBingoId;
+        let startMillis = record.issuedAtMillis - (retryDelaySeconds * 1000);
+        if (priorDoc?.exists && priorDoc.data()?.issuedAtMillis) {
+          startMillis = priorDoc.data().issuedAtMillis;
+        }
+        const endMillis = Date.now();
+        const deductedMinutes = Math.max(1, Math.round((endMillis - startMillis) / 60000));
+        sideEffect = {
+          type: 'strike2',
+          priorBingoId,
+          startMillis,
+          endMillis,
+          deductedMinutes,
+        };
+      }
+    }
+
+    // All reads completed — execute transactional writes
+    tx.update(bingoDocRef, {
+      selectedIndex: isTimeout ? null : Number(selectedIndex),
+      selectedOptionText,
+      result,
+      responseTimeSec: actualLatency,
+      windowFocused: Boolean(windowFocused),
+      answeredAt: FieldValue.serverTimestamp(),
       rank: currentRank,
       totalStudents: totalStudentsInRound,
       pointsAwarded,
-      leaderboard: topLeaderboard,
-    },
-    bingoStats: newStats,
-  };
+      roundId,
+    });
 
-  // 3. Handle Two-Strike Attendance Protocol & Irregularities
-  if (result === 'passed') {
-    // Clear any pending strikes upon success
-    updatePayload.strikeNumber = 0;
-    updatePayload.pendingRetryBingo = false;
-  } else if (result === 'failed_incorrect') {
-    // Student was present at desk, answered wrong. Do NOT dock attendance.
-    updatePayload.lastInattentiveAt = FieldValue.serverTimestamp();
-  } else if (result === 'missed_timeout') {
-    // Student completely missed/ignored the 45s timer
-    const currentStrike = Number(record.strikeNumber) || 1;
-
-    if (currentStrike === 1) {
-      // Strike 1: Schedule follow-up retry in configured delayMinutes (default: 3 mins)
-      updatePayload.pendingRetryBingo = true;
-      updatePayload.retryBingoScheduledAtMillis = Date.now() + (retryDelaySeconds * 1000);
-      updatePayload.priorMissedBingoId = bingoId;
-      updatePayload.retryDelayMinutes = retryDelayMinutes;
-
-      // Enqueue to Google Cloud Tasks for serverless event-driven execution
-      await enqueueBingoRetryTask({
-        classId,
-        studentUid,
-        priorBingoId: bingoId,
-        delaySeconds: retryDelaySeconds,
-      });
-
-      // Log Strike 1 proctoring irregularity
-      await db.collection(`classes/${classId}/irregularities`).add({
-        classId,
-        studentUid,
-        type: 'bingo',
-        riskLevel: 'medium',
-        title: 'Bingo Check Missed (Strike 1)',
-        description: `Student failed to respond to active presence check within ${record.timeLimitSeconds}s. Follow-up verification scheduled in ${retryDelayMinutes}m.`,
-        bingoId,
-        question: record.question,
-        timestamp: FieldValue.serverTimestamp(),
-      });
-    } else if (currentStrike >= 2) {
-      // Strike 2 Confirmed Absence! Apply attendance deduction!
-      updatePayload.pendingRetryBingo = false;
-      const priorBingoId = record.priorBingoId;
-      let startMillis = record.issuedAtMillis - (retryDelaySeconds * 1000);
-
-      if (priorBingoId) {
-        const priorDoc = await db.doc(`classes/${classId}/bingoRecords/${priorBingoId}`).get();
-        if (priorDoc.exists && priorDoc.data()?.issuedAtMillis) {
-          startMillis = priorDoc.data().issuedAtMillis;
-        }
-      }
-
-      const endMillis = Date.now();
-      const deductedMinutes = Math.max(1, Math.round((endMillis - startMillis) / 60000));
-
-      // Record attendance adjustment
-      await db.collection(`classes/${classId}/attendanceAdjustments`).add({
-        classId,
-        studentUid,
-        startTime: new Date(startMillis),
-        endTime: new Date(endMillis),
-        startMillis,
-        endMillis,
-        deductedMinutes,
-        voidedMinutesCount: deductedMinutes,
-        reason: `Missed 2 consecutive Bingo checks (AFK/Decoy)`,
-        check1Id: priorBingoId || 'strike_1',
-        check2Id: bingoId,
-        strike1BingoId: priorBingoId || 'strike_1',
-        strike2BingoId: bingoId,
-        createdAt: FieldValue.serverTimestamp(),
-        appliedAt: FieldValue.serverTimestamp(),
-      });
-
-      // Log high-risk confirmed irregularity
-      await db.collection(`classes/${classId}/irregularities`).add({
-        classId,
-        studentUid,
-        type: 'bingo',
-        riskLevel: 'high',
-        title: '⚠️ Confirmed Absence: Missed Consecutive Bingo Checks (Attendance Deducted)',
-        description: `Student failed 2 consecutive Bingo presence checks. Deducted ${deductedMinutes} minutes of unverified attendance.`,
-        bingoId,
-        priorBingoId,
-        deductedMinutes,
-        timestamp: FieldValue.serverTimestamp(),
-      });
+    if (roundRef) {
+      tx.set(roundRef, {
+        issuedAtMillis: issuedAtMillis || null,
+        entries: roundRecords,
+        updatedAtMillis: Date.now(),
+      }, { merge: true });
     }
+
+    tx.set(studentPropsRef, updatePayload, { merge: true });
+
+    return {
+      earlyReturn: null,
+      result,
+      isCorrect,
+      correctIndex: record.correctIndex,
+      actualLatency,
+      currentRank,
+      totalStudentsInRound,
+      pointsAwarded,
+      topLeaderboard,
+      sideEffect,
+    };
+  });
+
+  if (txOutcome.earlyReturn) {
+    return txOutcome.earlyReturn;
   }
 
-  await studentPropsRef.set(updatePayload, { merge: true });
+  if (txOutcome.sideEffect?.type === 'strike1') {
+    const { retryDelaySeconds, retryDelayMinutes, timeLimitSeconds, question } = txOutcome.sideEffect;
+    await enqueueBingoRetryTask({
+      classId,
+      studentUid,
+      priorBingoId: bingoId,
+      delaySeconds: retryDelaySeconds,
+    });
+
+    await db.collection(`classes/${classId}/irregularities`).add({
+      classId,
+      studentUid,
+      type: 'bingo',
+      riskLevel: 'medium',
+      title: 'Bingo Check Missed (Strike 1)',
+      description: `Student failed to respond to active presence check within ${timeLimitSeconds}s. Follow-up verification scheduled in ${retryDelayMinutes}m.`,
+      bingoId,
+      question,
+      timestamp: FieldValue.serverTimestamp(),
+    });
+  } else if (txOutcome.sideEffect?.type === 'strike2') {
+    const { priorBingoId, startMillis, endMillis, deductedMinutes } = txOutcome.sideEffect;
+    await db.collection(`classes/${classId}/attendanceAdjustments`).add({
+      classId,
+      studentUid,
+      startTime: new Date(startMillis),
+      endTime: new Date(endMillis),
+      startMillis,
+      endMillis,
+      deductedMinutes,
+      voidedMinutesCount: deductedMinutes,
+      reason: `Missed 2 consecutive Bingo checks (AFK/Decoy)`,
+      check1Id: priorBingoId || 'strike_1',
+      check2Id: bingoId,
+      strike1BingoId: priorBingoId || 'strike_1',
+      strike2BingoId: bingoId,
+      createdAt: FieldValue.serverTimestamp(),
+      appliedAt: FieldValue.serverTimestamp(),
+    });
+
+    await db.collection(`classes/${classId}/irregularities`).add({
+      classId,
+      studentUid,
+      type: 'bingo',
+      riskLevel: 'high',
+      title: '⚠️ Confirmed Absence: Missed Consecutive Bingo Checks (Attendance Deducted)',
+      description: `Student failed 2 consecutive Bingo presence checks. Deducted ${deductedMinutes} minutes of unverified attendance.`,
+      bingoId,
+      priorBingoId,
+      deductedMinutes,
+      timestamp: FieldValue.serverTimestamp(),
+    });
+  }
 
   return {
     success: true,
-    result,
-    isCorrect,
-    correctIndex: record.correctIndex,
-    responseTimeSec: actualLatency,
-    rank: currentRank,
-    totalStudents: totalStudentsInRound,
-    pointsAwarded,
-    leaderboard: topLeaderboard,
+    result: txOutcome.result,
+    isCorrect: txOutcome.isCorrect,
+    correctIndex: txOutcome.correctIndex,
+    responseTimeSec: txOutcome.actualLatency,
+    rank: txOutcome.currentRank,
+    totalStudents: txOutcome.totalStudentsInRound,
+    pointsAwarded: txOutcome.pointsAwarded,
+    leaderboard: txOutcome.topLeaderboard,
   };
 }
 
@@ -1270,15 +1398,22 @@ export function isClassSessionActive(classData, now = new Date()) {
   if (!classData) return false;
 
   const { schedule, captureStartedAt, isCapturing } = classData;
+  const hasActiveOvertime = () => {
+    if (!classData.overtimeUntil) return false;
+    const overtimeMs = typeof classData.overtimeUntil?.toMillis === 'function'
+      ? classData.overtimeUntil.toMillis()
+      : new Date(classData.overtimeUntil).getTime();
+    return !Number.isNaN(overtimeMs) && now.getTime() <= overtimeMs;
+  };
 
-  // Case 1: Scheduled class (session active within scheduled start and end time)
+  // Case 1: Scheduled class (session active within scheduled start and end time, or overtime override)
   if (schedule && schedule.timeZone && Array.isArray(schedule.timeSlots) && schedule.timeSlots.length > 0) {
     try {
       const { localTime, localDay, localDate } = getLocalTimeAndDay(now, schedule.timeZone);
 
       if (schedule.startDate && schedule.endDate) {
         if (localDate < schedule.startDate || localDate > schedule.endDate) {
-          return false;
+          return hasActiveOvertime();
         }
       }
 
@@ -1290,10 +1425,10 @@ export function isClassSessionActive(classData, now = new Date()) {
         return localTime >= slot.startTime && localTime <= slot.endTime;
       });
 
-      return Boolean(activeSlot);
+      return Boolean(activeSlot) || hasActiveOvertime();
     } catch (scheduleErr) {
       console.warn('[isClassInActiveTime] Error evaluating class schedule:', scheduleErr);
-      return false;
+      return hasActiveOvertime();
     }
   }
 
@@ -1449,8 +1584,19 @@ export async function cancelActiveBingo({ classId }) {
 
   // 1. Find all studentProperties in class that have activeBingo.status === 'pending' or pendingRetryBingo === true
   const studentPropsSnap = await db.collection(`classes/${classId}/studentProperties`).get();
-  const batch = db.batch();
+  const batches = [];
+  let batch = db.batch();
   let opsCount = 0;
+
+  const queueUpdate = (ref, updates) => {
+    batch.update(ref, updates);
+    opsCount++;
+    if (opsCount >= 450) {
+      batches.push(batch.commit());
+      batch = db.batch();
+      opsCount = 0;
+    }
+  };
 
   for (const doc of studentPropsSnap.docs) {
     const data = doc.data() || {};
@@ -1468,8 +1614,7 @@ export async function cancelActiveBingo({ classId }) {
         updates.pendingRetryBingo = false;
         updates.retryCancelledReason = 'teacher_cancelled';
       }
-      batch.update(doc.ref, updates);
-      opsCount++;
+      queueUpdate(doc.ref, updates);
     }
   }
 
@@ -1480,16 +1625,16 @@ export async function cancelActiveBingo({ classId }) {
     .get();
 
   for (const jobDoc of jobsSnap.docs) {
-    batch.update(jobDoc.ref, {
+    queueUpdate(jobDoc.ref, {
       status: 'cancelled',
       completedAt: FieldValue.serverTimestamp(),
     });
-    opsCount++;
   }
 
   if (opsCount > 0) {
-    await batch.commit();
+    batches.push(batch.commit());
   }
+  await Promise.all(batches);
 
   console.log(`[cancelActiveBingo] Successfully cancelled active Bingo for ${cancelledStudentsCount} students in class ${classId}`);
   return { success: true, cancelledStudentsCount };

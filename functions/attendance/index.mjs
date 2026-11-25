@@ -31,6 +31,10 @@ export const getAttendanceData = onCall({
   memory: '512MiB',
   timeoutSeconds: 300,
 }, async (request) => {
+  if (!request?.auth?.uid && request?.auth?.token?.role !== 'admin') {
+    throw new HttpsError('unauthenticated', 'User must be authenticated.');
+  }
+
   const { classId, startTime, endTime } = request.data || {};
 
   if (!classId || !startTime || !endTime) {
@@ -44,7 +48,30 @@ export const getAttendanceData = onCall({
     throw new HttpsError('not-found', `Class with ID ${classId} not found.`);
   }
 
-  const classData = classSnap.data();
+  const classData = classSnap.data() || {};
+  const isAdminCaller = request.auth?.token?.role === 'admin';
+  const callerUid = request.auth?.uid;
+  const callerEmail = (request.auth?.token?.email || '').trim().toLowerCase();
+  const isClassTeacher = isAdminCaller ||
+    Boolean(
+      callerUid && (
+        classData.ownerUid === callerUid ||
+        classData.teacherUid === callerUid ||
+        classData.createdBy === callerUid ||
+        (classData.teachers && typeof classData.teachers === 'object' && classData.teachers[callerUid])
+      )
+    ) ||
+    Boolean(
+      callerEmail && (
+        (classData.teacherEmail && String(classData.teacherEmail).trim().toLowerCase() === callerEmail) ||
+        (Array.isArray(classData.teacherEmails) && classData.teacherEmails.some(e => typeof e === 'string' && e.trim().toLowerCase() === callerEmail))
+      )
+    );
+
+  if (!isClassTeacher) {
+    throw new HttpsError('permission-denied', 'Only teachers assigned to this class can access attendance data.');
+  }
+
   const classCaptureInterval = classData.frameRate ? Number(classData.frameRate) : 15;
   const studentsMap = classData.students || {};
   const studentList = Object.entries(studentsMap).map(([uid, email]) => ({
@@ -160,12 +187,16 @@ export const getAttendanceData = onCall({
       console.warn('[getAttendanceData] Could not read existing lesson doc:', err);
     }
 
-    // 2. Fetch completed student video jobs for this lesson timeframe
+    // 2. Fetch completed student video jobs for this lesson timeframe (bounded by +/- 30 min window)
     const videoJobsMap = new Map();
     try {
+      const videoWindowStart = new Date(lessonStartTime.getTime() - 30 * 60 * 1000);
+      const videoWindowEnd = new Date(lessonStartTime.getTime() + 30 * 60 * 1000);
       const videoJobsSnap = await db.collection('videoJobs')
         .where('classId', '==', classId)
         .where('status', '==', 'completed')
+        .where('startTime', '>=', videoWindowStart)
+        .where('startTime', '<=', videoWindowEnd)
         .get();
 
       if (videoJobsSnap && typeof videoJobsSnap.forEach === 'function') {
@@ -247,10 +278,13 @@ export const getAttendanceData = onCall({
     });
   }
 
-  // Query Bingo challenge records to overlay distinct presence & accuracy statuses:
+  // Query Bingo challenge records within lesson window to overlay distinct presence & accuracy statuses:
   // 3 = Bingo Correct (Emerald Green), 4 = Bingo Incorrect (Amber Yellow), 2 = Bingo Timeout (Bright Orange)
   try {
-    const bingoRecordsSnap = await db.collection(`classes/${classId}/bingoRecords`).get();
+    const bingoRecordsSnap = await db.collection(`classes/${classId}/bingoRecords`)
+      .where('issuedAtMillis', '>=', lessonStartTime.getTime())
+      .where('issuedAtMillis', '<=', lessonEndTime.getTime())
+      .get();
     if (bingoRecordsSnap && typeof bingoRecordsSnap.forEach === 'function') {
       bingoRecordsSnap.forEach(doc => {
         const bData = doc.data ? doc.data() : null;
@@ -288,9 +322,11 @@ export const getAttendanceData = onCall({
     console.warn('[getAttendanceData] Error querying bingoRecords for attendance overlay:', bingoErr);
   }
 
-  // Apply Bingo attendance adjustments (deduct unverified AFK minutes)
+  // Apply Bingo attendance adjustments (deduct unverified AFK minutes) bounded to lesson window
   try {
+    const adjLowerBound = new Date(lessonStartTime.getTime() - 24 * 60 * 60 * 1000);
     const adjustmentsSnap = await db.collection(`classes/${classId}/attendanceAdjustments`)
+      .where('startTime', '>=', adjLowerBound)
       .where('startTime', '<=', lessonEndTime)
       .get();
 

@@ -314,5 +314,35 @@ describe('User Management Logic (functions/auth_triggers/userManagement.js)', ()
       expect(result.studentProfiles['bob@stu.vtc.edu.hk'].studentName).toBe('Bob Builder');
       expect(result.studentProfiles['alice@stu.vtc.edu.hk'].studentName).toBe('Alice Wong');
     });
+
+    it('uses Firestore select() field projection when available and supports teacherScoped filtering', async () => {
+      const adminReq = {
+        auth: {
+          token: { email: 'admin@vtc.edu.hk', role: 'admin' },
+        },
+        data: { teacherScoped: true },
+      };
+
+      const selectCalls = [];
+      const mockDb = {
+        collection: (colName) => ({
+          select: (...fields) => {
+            selectCalls.push({ colName, fields });
+            return {
+              get: async () => [],
+            };
+          },
+        }),
+      };
+
+      const res = await handleGetAllSystemStudentEmailsLogic(adminReq, {
+        adminAuth: { listUsers: vi.fn().mockResolvedValue({ users: [], pageToken: undefined }) },
+        db: mockDb,
+      });
+
+      expect(res.total).toBe(0);
+      expect(selectCalls.some((c) => c.colName === 'classes' && c.fields.includes('studentEmails'))).toBe(true);
+      expect(selectCalls.some((c) => c.colName === 'studentDirectory' && c.fields.includes('studentName'))).toBe(true);
+    });
   });
 });

@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import NativeDialog from '../NativeDialog';
 import QRCode from 'qrcode';
 import { httpsCallable } from 'firebase/functions';
-import { doc, onSnapshot } from 'firebase/firestore';
+import { doc } from 'firebase/firestore';
+import { subscribeDocShared } from '../../utils/sharedFirestoreListeners';
 import { startRegistration, browserSupportsWebAuthn } from '@simplewebauthn/browser';
 import { isHandheldPhone, isAndroidDevice, isIOSDevice, getBrowserName } from '../../utils/browserDetection';
 import { normalizePasskeyError } from '../../utils/passkeyErrorUtils';
@@ -27,8 +28,11 @@ const PasskeyPairModal = ({ show, onClose, user, classId }) => {
   const [qrTimeLeftSec, setQrTimeLeftSec] = useState(0);
   const isMobile = isHandheldPhone();
 
+  const isInitPairingRef = useRef(false);
+
   const initPairing = async () => {
-    if (!user?.uid || isMobile) return;
+    if (!user?.uid || isMobile || isInitPairingRef.current) return;
+    isInitPairingRef.current = true;
     setLoading(true);
     setError('');
     try {
@@ -41,9 +45,11 @@ const PasskeyPairModal = ({ show, onClose, user, classId }) => {
       }
 
       setPairingToken(tokenId);
-      const expMillis = expiresAtMillis || (Date.now() + 5 * 60 * 1000);
+      const serverRemainingMs = expiresAtMillis ? expiresAtMillis - Date.now() : 5 * 60 * 1000;
+      const effectiveTtlMs = Math.max(30000, Number.isFinite(serverRemainingMs) ? serverRemainingMs : 5 * 60 * 1000);
+      const expMillis = Date.now() + effectiveTtlMs;
       setQrExpiresAtMillis(expMillis);
-      setQrTimeLeftSec(Math.max(0, Math.round((expMillis - Date.now()) / 1000)));
+      setQrTimeLeftSec(Math.max(0, Math.round(effectiveTtlMs / 1000)));
 
       const pairingUrl = `${window.location.origin}/pair-phone?token=${tokenId}`;
       const dataUrl = await QRCode.toDataURL(pairingUrl, {
@@ -60,6 +66,7 @@ const PasskeyPairModal = ({ show, onClose, user, classId }) => {
       console.error('[PasskeyPairModal] Error generating QR:', err);
       setError(err.message || 'Failed to initialize phone pairing.');
     } finally {
+      isInitPairingRef.current = false;
       setLoading(false);
     }
   };
@@ -76,16 +83,24 @@ const PasskeyPairModal = ({ show, onClose, user, classId }) => {
       initPairing();
     }
 
-    // 2. Real-time listener for pairing status
-    const unsubscribe = onSnapshot(doc(db, `studentPasskeys/${user.uid}`), (snapshot) => {
-      if (snapshot.exists()) {
-        const data = snapshot.data();
-        if (data?.credentialID || data?.deviceModel) {
-          setIsPaired(true);
-          setPairedDevice(data.deviceModel || 'Mobile Device');
+    // 2. Real-time listener for pairing status (shared across mounted passkey consumers)
+    const unsubscribe = subscribeDocShared(
+      db,
+      `studentPasskeys/${user.uid}`,
+      (snapshot) => {
+        if (snapshot.exists()) {
+          const data = snapshot.data();
+          if (data?.credentialID || data?.deviceModel) {
+            setIsPaired(true);
+            setPairedDevice(data.deviceModel || 'Mobile Device');
+          }
         }
-      }
-    });
+      },
+      (err) => {
+        console.warn('[PasskeyPairModal] Passkey listener warning:', err);
+      },
+      () => doc(db, `studentPasskeys/${user.uid}`)
+    );
 
     return () => {
       unsubscribe();
@@ -94,7 +109,7 @@ const PasskeyPairModal = ({ show, onClose, user, classId }) => {
 
   // Pairing QR countdown and auto-refresh interval
   useEffect(() => {
-    if (!show || !qrExpiresAtMillis || isMobile || isPaired) return;
+    if (!show || !qrExpiresAtMillis || isMobile || isPaired || error) return;
 
     const interval = setInterval(() => {
       const now = Date.now();
@@ -108,7 +123,7 @@ const PasskeyPairModal = ({ show, onClose, user, classId }) => {
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [show, qrExpiresAtMillis, isMobile, isPaired]);
+  }, [show, qrExpiresAtMillis, isMobile, isPaired, error]);
 
   // Direct In-Place Registration on Mobile Phone
   const handleRegisterDirectly = async () => {

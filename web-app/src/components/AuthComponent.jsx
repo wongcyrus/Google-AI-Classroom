@@ -45,6 +45,7 @@ const AuthComponent = ({ unverifiedUser }) => {
   const sessionSecretRef = useRef('');
   const sessionIdRef = useRef('');
   const intervalIndexRef = useRef(0);
+  const isInitiatingQrRef = useRef(false);
 
   const isChrome = isGoogleChrome();
   const detectedBrowser = getBrowserName();
@@ -217,7 +218,8 @@ const AuthComponent = ({ unverifiedUser }) => {
   };
 
   const initiateQrSession = async () => {
-    if (!functions) return;
+    if (!functions || isInitiatingQrRef.current) return;
+    isInitiatingQrRef.current = true;
     setQrLoading(true);
     setQrError('');
     setQrStatus('waiting');
@@ -233,8 +235,9 @@ const AuthComponent = ({ unverifiedUser }) => {
       sessionIdRef.current = sessionId;
       setQrSessionSecret(sessionSecret || '');
       sessionSecretRef.current = sessionSecret || '';
-      const expMillis = expiresAtMillis || (Date.now() + 90000);
-      setQrExpiresAtMillis(expMillis);
+      const serverRemainingMs = expiresAtMillis ? expiresAtMillis - Date.now() : 90000;
+      const effectiveTtlMs = Math.max(15000, Number.isFinite(serverRemainingMs) ? serverRemainingMs : 90000);
+      setQrExpiresAtMillis(Date.now() + effectiveTtlMs);
 
       const intervalMs = DEFAULT_DESKTOP_QR_ROTATION_INTERVAL_SEC * 1000;
       const initialInterval = Math.floor(Date.now() / intervalMs);
@@ -257,6 +260,7 @@ const AuthComponent = ({ unverifiedUser }) => {
       setQrError(err.message || 'Failed to initialize QR code.');
       setQrStatus('error');
     } finally {
+      isInitiatingQrRef.current = false;
       setQrLoading(false);
     }
   };
@@ -264,22 +268,30 @@ const AuthComponent = ({ unverifiedUser }) => {
   useEffect(() => {
     if (!qrSessionId || activeTab !== 'qr' || !db) return;
 
-    const unsub = onSnapshot(doc(db, `loginSessions/${qrSessionId}`), async (snap) => {
-      if (!snap.exists()) return;
-      const data = snap.data();
-      if (data.status === 'authorized' && data.customToken) {
-        setQrStatus('authorized');
-        setMessage('Mobile passkey verified! Signing in to lab PC...');
-        try {
-          await signInWithCustomToken(auth, data.customToken);
-        } catch (signInErr) {
-          console.error('[AuthComponent] Custom token sign-in error:', signInErr);
-          setError('Failed to authenticate with token. Please try again.');
+    const unsub = onSnapshot(
+      doc(db, `loginSessions/${qrSessionId}`),
+      async (snap) => {
+        if (!snap.exists()) return;
+        const data = snap.data();
+        if (data.status === 'authorized' && data.customToken) {
+          setQrStatus('authorized');
+          setMessage('Mobile passkey verified! Signing in to lab PC...');
+          try {
+            await signInWithCustomToken(auth, data.customToken);
+          } catch (signInErr) {
+            console.error('[AuthComponent] Custom token sign-in error:', signInErr);
+            setError('Failed to authenticate with token. Please try again.');
+          }
+        } else if (data.status === 'expired') {
+          setQrStatus('expired');
         }
-      } else if (data.status === 'expired') {
-        setQrStatus('expired');
+      },
+      (err) => {
+        console.warn('[AuthComponent] QR session snapshot error:', err);
+        setQrError('Could not monitor QR session status. Click Retry to generate a new QR code.');
+        setQrStatus('error');
       }
-    });
+    );
 
     return () => unsub();
   }, [qrSessionId, activeTab]);
@@ -300,8 +312,9 @@ const AuthComponent = ({ unverifiedUser }) => {
       setQrRotationProgress(progressPercent);
       setQrRotationSecsLeft(rotationSecs);
 
-      // Check overall session expiry: seamlessly re-initiate session so desktop QR never stops rotating
+      // Check overall session expiry: seamlessly re-initiate session once without overlapping ticks
       if (qrExpiresAtMillis && now >= qrExpiresAtMillis) {
+        clearInterval(loop);
         initiateQrSession();
         return;
       }
@@ -327,12 +340,12 @@ const AuthComponent = ({ unverifiedUser }) => {
     return () => clearInterval(loop);
   }, [activeTab, qrStatus, qrSessionId, qrExpiresAtMillis]);
 
-  // Auto-initiate QR session on Desktop when activeTab is 'qr'
+  // Auto-initiate QR session on Desktop when activeTab is 'qr' (do not loop if errored/expired)
   useEffect(() => {
-    if (!isMobile && activeTab === 'qr' && !qrSessionId && !qrLoading) {
+    if (!isMobile && activeTab === 'qr' && !qrSessionId && !qrLoading && qrStatus !== 'error' && qrStatus !== 'expired') {
       initiateQrSession();
     }
-  }, [isMobile, activeTab, qrSessionId, qrLoading]);
+  }, [isMobile, activeTab, qrSessionId, qrLoading, qrStatus]);
 
   return (
     <div className="auth-container">
@@ -352,7 +365,7 @@ const AuthComponent = ({ unverifiedUser }) => {
               className={`auth-tab-btn ${activeTab === 'qr' ? 'active' : ''}`}
               onClick={() => {
                 setActiveTab('qr');
-                if (!qrSessionId || qrStatus === 'expired') {
+                if (!qrSessionId || qrStatus === 'expired' || qrStatus === 'error') {
                   initiateQrSession();
                 }
               }}

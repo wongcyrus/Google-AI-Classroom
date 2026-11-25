@@ -1,5 +1,5 @@
 import React from 'react';
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import VideoTable from './VideoTable';
 import VideoPlayerModal from './VideoPlayerModal';
@@ -15,6 +15,10 @@ vi.mock('../hooks/useVideoPrompts', () => ({
 }));
 
 describe('Video & AI Analysis Sub-components', () => {
+  beforeEach(() => {
+    localStorage.setItem('teacher_privacy_mode', 'false');
+  });
+
   describe('VideoTable Component', () => {
     const mockVideos = [
       {

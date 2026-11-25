@@ -545,6 +545,74 @@ describe('Analysis Flows End-to-End Orchestration', () => {
     generateSpy.mockRestore();
     logJobSpy.mockRestore();
   });
+
+  it('enforces per-class caller membership when Genkit sideChannel auth context is supplied', async () => {
+    const { analyzeImageFlow, analyzeAllImagesFlow, analyzeFaceFallbackFlow, analyzeAudioFlow } = await import('./analysisFlows.js');
+    const { getFirestore } = await import('firebase-admin/firestore');
+    const db = getFirestore();
+
+    const mockClassSnap = {
+      exists: true,
+      data: () => ({
+        ownerUid: 'teacher_owner',
+        students: { stu_1: 'stu1@school.edu' },
+        enableCloudFallback: false,
+      }),
+    };
+
+    const colSpy = vi.spyOn(db, 'collection').mockImplementation((name) => {
+      if (name === 'classes') {
+        return {
+          doc: () => ({
+            get: vi.fn().mockResolvedValue(mockClassSnap),
+          }),
+        };
+      }
+      return { doc: () => ({ get: vi.fn().mockResolvedValue({ exists: false }) }) };
+    });
+
+    const docSpy = vi.spyOn(db, 'doc').mockImplementation((path) => {
+      if (path === 'classes/c1') {
+        return { get: vi.fn().mockResolvedValue(mockClassSnap) };
+      }
+      return { get: vi.fn().mockResolvedValue({ exists: false }) };
+    });
+
+    const otherTeacherSideChannel = { context: { auth: { uid: 'other_teacher', token: { role: 'teacher' } } } };
+    const studentSideChannel = { context: { auth: { uid: 'stu_1', token: { role: 'student' } } } };
+
+    await expect(
+      analyzeImageFlow({ screenshots: {}, prompt: 'p', classId: 'c1' }, otherTeacherSideChannel)
+    ).rejects.toThrow(/Only teachers assigned to this class/);
+
+    await expect(
+      analyzeAllImagesFlow({ screenshots: {}, prompt: 'p', classId: 'c1' }, otherTeacherSideChannel)
+    ).rejects.toThrow(/Only teachers assigned to this class/);
+
+    await expect(
+      analyzeFaceFallbackFlow(
+        { classId: 'c1', studentUid: 'stu_2', studentEmail: 's2@school.edu', webcamUrl: 'https://storage/f.jpg' },
+        studentSideChannel
+      )
+    ).rejects.toThrow(/not authorized/);
+
+    await expect(
+      analyzeAudioFlow(
+        { classId: 'c1', studentUid: 'stu_2', transcript: 'test' },
+        studentSideChannel
+      )
+    ).rejects.toThrow(/not authorized/);
+
+    // Enrolled student accessing own face fallback succeeds (hits disabled check cleanly)
+    const selfFace = await analyzeFaceFallbackFlow(
+      { classId: 'c1', studentUid: 'stu_1', studentEmail: 'stu1@school.edu', webcamUrl: 'https://storage/f.jpg' },
+      studentSideChannel
+    );
+    expect(selfFace.faceStatus).toBe('disabled');
+
+    colSpy.mockRestore();
+    docSpy.mockRestore();
+  });
 });
 
 

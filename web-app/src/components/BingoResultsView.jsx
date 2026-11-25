@@ -1,11 +1,12 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import NativeDialog from './NativeDialog';
-import { collection, onSnapshot, doc, getDoc, getDocs } from 'firebase/firestore';
+import { collection, onSnapshot, doc, getDoc, query, where } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../firebase-config';
 import { exportToExcel } from '../utils/exportUtils';
 import { getStudentDisplayName, getStudentProfile, maskStudentEmail, maskStudentName, isPrivacyModeActive } from '../utils/studentDisplayUtils';
 import { extractClassStudentEmails, fetchStudentDirectoryByEmails } from '../utils/studentDirectoryUtils';
+import { chunkArray } from '../utils/firestoreBatchUtils';
 import './BingoResultsView.css';
 
 /**
@@ -146,27 +147,49 @@ export default function BingoResultsView({
   }, [matchedLesson, endTime]);
 
   const [studentProfiles, setStudentProfiles] = useState(externalProfiles || {});
+  const externalProfilesRef = useRef(externalProfiles);
+  externalProfilesRef.current = externalProfiles;
+  const baseClassProfilesRef = useRef({});
 
   useEffect(() => {
     if (!classId) return;
+    let isCancelled = false;
     const fetchProfiles = async () => {
       try {
         const classRef = doc(db, 'classes', classId);
         const classSnap = await getDoc(classRef);
+        if (isCancelled) return;
         const classData = classSnap.exists() ? (classSnap.data() || {}) : {};
         const baseProfiles = classData.studentProfiles || {};
         try {
           const dirProfiles = await fetchStudentDirectoryByEmails(db, extractClassStudentEmails(classData));
-          setStudentProfiles({ ...dirProfiles, ...baseProfiles, ...(externalProfiles || {}) });
+          if (isCancelled) return;
+          baseClassProfilesRef.current = { ...dirProfiles, ...baseProfiles };
+          setStudentProfiles({ ...baseClassProfilesRef.current, ...(externalProfilesRef.current || {}) });
         } catch {
-          setStudentProfiles({ ...baseProfiles, ...(externalProfiles || {}) });
+          if (isCancelled) return;
+          baseClassProfilesRef.current = { ...baseProfiles };
+          setStudentProfiles({ ...baseClassProfilesRef.current, ...(externalProfilesRef.current || {}) });
         }
       } catch (err) {
         console.warn('Could not load studentProfiles for Bingo:', err);
       }
     };
     fetchProfiles();
-  }, [classId, externalProfiles]);
+    return () => {
+      isCancelled = true;
+    };
+  }, [classId]);
+
+  useEffect(() => {
+    if (externalProfiles && Object.keys(externalProfiles).length > 0) {
+      setStudentProfiles((prev) => ({
+        ...baseClassProfilesRef.current,
+        ...prev,
+        ...externalProfiles,
+      }));
+    }
+  }, [externalProfiles]);
 
   // Real-time Firestore subscription to classes/{classId}/bingoRecords
   useEffect(() => {
@@ -205,36 +228,100 @@ export default function BingoResultsView({
     return () => unsubscribe();
   }, [classId]);
 
-  useEffect(() => {
-    const unsub = onSnapshot(
-      collection(db, 'studentPasskeys'),
-      (snapshot) => {
-        const map = {};
-        if (snapshot && typeof snapshot.forEach === 'function') {
-          snapshot.forEach((d) => {
-            const data = (typeof d?.data === 'function' ? d.data() : d?.data) || {};
-            const email = (data.studentEmail || data.email || '').toLowerCase();
-            const uid = data.studentUid || data.uid || d?.id;
-            if (email) map[email] = { id: d?.id, ...data };
-            if (uid) map[uid] = { id: d?.id, ...data };
-          });
-        } else if (Array.isArray(snapshot?.docs)) {
-          snapshot.docs.forEach((d) => {
-            const data = (typeof d?.data === 'function' ? d.data() : d?.data) || {};
-            const email = (data.studentEmail || data.email || '').toLowerCase();
-            const uid = data.studentUid || data.uid || d?.id;
-            if (email) map[email] = { id: d?.id, ...data };
-            if (uid) map[uid] = { id: d?.id, ...data };
-          });
-        }
-        setRegisteredPasskeysMap(map);
-      },
-      (err) => {
-        console.warn('[BingoResultsView] Notice fetching studentPasskeys:', err);
+  const scopedPasskeyEmailsKey = useMemo(() => {
+    const emailSet = new Set();
+    records.forEach((r) => {
+      if (typeof r?.studentEmail === 'string' && r.studentEmail.includes('@')) {
+        emailSet.add(r.studentEmail.trim().toLowerCase());
       }
+    });
+    (studentStatuses || []).forEach((st) => {
+      const em = st?.email || st?.studentEmail;
+      if (typeof em === 'string' && em.includes('@')) {
+        emailSet.add(em.trim().toLowerCase());
+      }
+    });
+    (classList || []).forEach((item) => {
+      if (typeof item === 'string' && item.includes('@')) {
+        emailSet.add(item.trim().toLowerCase());
+      } else if (item && typeof item === 'object') {
+        const em = item.email || item.studentEmail;
+        if (typeof em === 'string' && em.includes('@')) {
+          emailSet.add(em.trim().toLowerCase());
+        }
+      }
+    });
+    if (uidToEmailMap && typeof uidToEmailMap === 'object') {
+      Object.values(uidToEmailMap).forEach((em) => {
+        if (typeof em === 'string' && em.includes('@')) {
+          emailSet.add(em.trim().toLowerCase());
+        }
+      });
+    }
+    if (studentProfiles && typeof studentProfiles === 'object') {
+      Object.keys(studentProfiles).forEach((em) => {
+        if (typeof em === 'string' && em.includes('@')) {
+          emailSet.add(em.trim().toLowerCase());
+        }
+      });
+    }
+    return Array.from(emailSet).sort().join('|');
+  }, [records, studentStatuses, classList, uidToEmailMap, studentProfiles]);
+
+  useEffect(() => {
+    if (!scopedPasskeyEmailsKey) {
+      setRegisteredPasskeysMap({});
+      return;
+    }
+
+    const emails = scopedPasskeyEmailsKey.split('|').filter(Boolean);
+    const chunks = chunkArray(emails, 30);
+    const chunkResults = new Map();
+
+    const rebuildMap = () => {
+      const merged = {};
+      chunkResults.forEach((chunkMap) => {
+        Object.assign(merged, chunkMap);
+      });
+      setRegisteredPasskeysMap(merged);
+    };
+
+    const unsubs = chunks.map((chunk, idx) =>
+      onSnapshot(
+        query(collection(db, 'studentPasskeys'), where('studentEmail', 'in', chunk)),
+        (snapshot) => {
+          const map = {};
+          if (snapshot && typeof snapshot.forEach === 'function') {
+            snapshot.forEach((d) => {
+              const data = (typeof d?.data === 'function' ? d.data() : d?.data) || {};
+              const email = (data.studentEmail || data.email || '').toLowerCase();
+              const uid = data.studentUid || data.uid || d?.id;
+              if (email) map[email] = { id: d?.id, ...data };
+              if (uid) map[uid] = { id: d?.id, ...data };
+            });
+          } else if (Array.isArray(snapshot?.docs)) {
+            snapshot.docs.forEach((d) => {
+              const data = (typeof d?.data === 'function' ? d.data() : d?.data) || {};
+              const email = (data.studentEmail || data.email || '').toLowerCase();
+              const uid = data.studentUid || data.uid || d?.id;
+              if (email) map[email] = { id: d?.id, ...data };
+              if (uid) map[uid] = { id: d?.id, ...data };
+            });
+          }
+          chunkResults.set(idx, map);
+          rebuildMap();
+        },
+        (err) => {
+          console.warn('[BingoResultsView] Notice fetching studentPasskeys:', err);
+        }
+      )
     );
-    return () => unsub();
-  }, []);
+    return () => {
+      unsubs.forEach((u) => {
+        if (typeof u === 'function') u();
+      });
+    };
+  }, [scopedPasskeyEmailsKey]);
 
   // Filter raw records by the active lesson time window (with 15 min grace padding for early/late checks)
   const lessonFilteredRecords = useMemo(() => {

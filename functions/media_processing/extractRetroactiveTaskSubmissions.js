@@ -184,7 +184,8 @@ export async function sliceStudentClassVideo({
       updatedAt: new Date()
     }, { merge: true });
 
-    // 7. Write videoJobs document with transition from pending -> completed to fire triggerAutomaticAnalysis
+    // 7. Write videoJobs document with transition from awaiting_eval -> completed to fire triggerAutomaticAnalysis
+    //    (Using 'awaiting_eval' avoids racing with processVideoJob onDocumentCreated which triggers on status === 'pending')
     const taskJobId = `retro_${taskId}_${studentUid}_att${attemptNumber}`;
     const taskJobRef = firestore.collection('videoJobs').doc(taskJobId);
 
@@ -199,7 +200,7 @@ export async function sliceStudentClassVideo({
       slicedFromClassVideo: true,
       isRetroactive: true,
       sourceJobId: sourceJob.id,
-      status: 'pending',
+      status: 'awaiting_eval',
       videoPath: destinationPath,
       duration: clipDuration,
       size: clipSize,
@@ -229,6 +230,35 @@ export async function sliceStudentClassVideo({
   }
 }
 
+function isClassTeacherOrAdmin(classData, auth) {
+  if (!auth) return false;
+  if (auth.token?.role === 'admin') return true;
+  if (!classData || typeof classData !== 'object') return false;
+  const callerUid = auth.uid;
+  const callerEmail = (auth.token?.email || '').trim().toLowerCase();
+  if (
+    callerUid && (
+      classData.ownerUid === callerUid ||
+      classData.teacherUid === callerUid ||
+      classData.createdBy === callerUid ||
+      Boolean(classData.teachers && typeof classData.teachers === 'object' && classData.teachers[callerUid])
+    )
+  ) {
+    return true;
+  }
+  if (callerEmail) {
+    if (classData.teacherEmail && String(classData.teacherEmail).trim().toLowerCase() === callerEmail) {
+      return true;
+    }
+    if (Array.isArray(classData.teacherEmails)) {
+      return classData.teacherEmails.some(
+        (e) => typeof e === 'string' && e.trim().toLowerCase() === callerEmail
+      );
+    }
+  }
+  return false;
+}
+
 /**
  * Evaluates candidate videoJobs and extracts retroactive task submissions for students.
  */
@@ -251,6 +281,10 @@ export async function executeExtractRetroactiveTaskSubmissions({
   const firestore = dbInstance || getDb();
   const storageBucket = bucketInstance || getStorageBucket();
 
+  if (!auth || (!auth.uid && auth.token?.role !== 'admin')) {
+    throw new HttpsError('unauthenticated', 'User must be authenticated.');
+  }
+
   if (!classId || !taskId) {
     throw new HttpsError('invalid-argument', 'Missing required parameters: classId, taskId');
   }
@@ -261,6 +295,10 @@ export async function executeExtractRetroactiveTaskSubmissions({
     throw new HttpsError('not-found', `Class ${classId} not found.`);
   }
   const classData = classDoc.data() || {};
+
+  if (!isClassTeacherOrAdmin(classData, auth)) {
+    throw new HttpsError('permission-denied', 'Only teachers assigned to this class can extract retroactive task submissions.');
+  }
 
   const taskDoc = await firestore.collection('classes').doc(classId).collection('tasks').doc(taskId).get();
   if (!taskDoc.exists) {
@@ -450,27 +488,13 @@ export const extractRetroactiveTaskSubmissions = onCall(
     timeoutSeconds: 540,
   },
   async (request) => {
-    if (!request.auth) {
+    if (!request?.auth?.uid && request?.auth?.token?.role !== 'admin') {
       throw new HttpsError('unauthenticated', 'User must be authenticated.');
     }
 
     const { classId, taskId, ...options } = request.data || {};
     if (!classId || !taskId) {
       throw new HttpsError('invalid-argument', 'Missing classId or taskId.');
-    }
-
-    // Role check: verify caller is teacher or admin
-    const callerUid = request.auth.uid;
-    const callerEmail = request.auth.token?.email;
-    const isTeacher = request.auth.token?.role === 'teacher' ||
-      (callerEmail && callerEmail.endsWith('@vtc.edu.hk'));
-
-    if (!isTeacher) {
-      // Check if caller is listed in teacherProfiles
-      const teacherProfileDoc = await getDb().collection('teacherProfiles').doc(callerUid).get();
-      if (!teacherProfileDoc.exists) {
-        throw new HttpsError('permission-denied', 'Only teachers can extract retroactive task submissions.');
-      }
     }
 
     return executeExtractRetroactiveTaskSubmissions({

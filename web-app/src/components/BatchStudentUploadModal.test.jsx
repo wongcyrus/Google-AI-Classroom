@@ -1,10 +1,18 @@
 import React from 'react';
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import BatchStudentUploadModal from './BatchStudentUploadModal';
 import { exportStudentRosterExcel } from '../utils/studentDisplayUtils';
 
 describe('BatchStudentUploadModal', () => {
+  beforeEach(() => {
+    localStorage.setItem('teacher_privacy_mode', 'false');
+  });
+
+  afterEach(() => {
+    localStorage.removeItem('teacher_privacy_mode');
+  });
+
   it('does not render when isOpen is false', () => {
     const { container } = render(
       <BatchStudentUploadModal isOpen={false} onClose={() => {}} onApply={() => {}} />

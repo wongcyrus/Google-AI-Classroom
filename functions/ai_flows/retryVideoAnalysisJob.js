@@ -6,6 +6,7 @@ import { getFunctions } from 'firebase-admin/functions';
 import { CORS_ORIGINS, FUNCTION_REGION } from './config.js';
 import { formatInTimeZone } from 'date-fns-tz';
 import { resolveVideoDetails } from './processVideoAnalysisJob.js';
+import { isAdminCaller, isTeacherInClassData } from './authHelpers.js';
 
 const db = getFirestore();
 const storage = getStorage();
@@ -41,7 +42,16 @@ export const retryVideoAnalysisJob = onCall({ region: FUNCTION_REGION, cors: COR
         throw new HttpsError('not-found', `Job with ID ${jobId} not found.`);
     }
 
-    const jobData = jobDoc.data();
+    const jobData = jobDoc.data() || {};
+    const classRef = jobData.classId ? db.collection('classes').doc(jobData.classId) : null;
+    const classDoc = classRef ? await classRef.get() : null;
+    const classData = classDoc?.exists ? (classDoc.data() || {}) : {};
+    if (!isAdminCaller(request.auth)) {
+        if (!jobData.classId || !classDoc?.exists || !isTeacherInClassData(classData, request.auth)) {
+            throw new HttpsError('permission-denied', 'Only teachers assigned to this class can retry video analysis jobs.');
+        }
+    }
+
     const bucketName = storage.bucket().name;
     const rawFailed = jobData.failedVideos || [];
     let videosToAnalyze = rawFailed.map(v => {
@@ -101,6 +111,13 @@ export const retryVideoAnalysisJob = onCall({ region: FUNCTION_REGION, cors: COR
             .filter(v => v.videoPath && !completedPaths.has(v.videoPath));
     }
 
+    const seenVideoPaths = new Set();
+    videosToAnalyze = videosToAnalyze.filter((v) => {
+        if (!v?.videoPath || seenVideoPaths.has(v.videoPath)) return false;
+        seenVideoPaths.add(v.videoPath);
+        return true;
+    });
+
     if (videosToAnalyze.length === 0) {
         throw new HttpsError('failed-precondition', 'Could not find any failed videos to retry for this job.');
     }
@@ -124,9 +141,6 @@ export const retryVideoAnalysisJob = onCall({ region: FUNCTION_REGION, cors: COR
     });
 
     try {
-        const classRef = db.collection('classes').doc(jobData.classId);
-        const classDoc = await classRef.get();
-        const classData = classDoc.exists ? classDoc.data() : {};
         const modelToUse = jobData.model || classData.aiModel || 'gemini-3.5-flash-lite';
         const timezone = classData.schedule?.timeZone || 'UTC';
         const startDate = jobData.startTime ? formatInTimeZone(jobData.startTime.toDate(), timezone, "yyyy-MM-dd'T'HH:mm:ssXXX") : 'N/A';

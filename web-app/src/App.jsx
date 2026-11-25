@@ -3,6 +3,7 @@ import { auth, db, appCheck } from './firebase-config';
 import { onAuthStateChanged, onIdTokenChanged, signOut } from 'firebase/auth';
 import { doc, getDoc, onSnapshot } from "firebase/firestore";
 import { BrowserRouter as Router, Routes, Route, Navigate, NavLink, Link, useLocation, useParams } from 'react-router-dom';
+import { subscribeDocShared } from './utils/sharedFirestoreListeners';
 
 import ChangePasswordModal from './components/ChangePasswordModal';
 import PasskeyPairModal from './components/passkey/PasskeyPairModal';
@@ -425,22 +426,28 @@ const MainHeader = ({ onLogout, user, role }) => {
 
   useEffect(() => {
     if (!user?.uid) return;
-    const unsub = onSnapshot(doc(db, 'studentPasskeys', user.uid), (snap) => {
-      try {
-        if (snap && typeof snap.exists === 'function' && snap.exists()) {
-          const data = typeof snap.data === 'function' ? snap.data() : snap;
-          if (data?.credentialID || data?.deviceModel) {
-            setPairedDevice(data.deviceModel || 'Mobile Device');
+    const unsub = subscribeDocShared(
+      db,
+      ['studentPasskeys', user.uid],
+      (snap) => {
+        try {
+          if (snap && typeof snap.exists === 'function' && snap.exists()) {
+            const data = typeof snap.data === 'function' ? snap.data() : snap;
+            if (data?.credentialID || data?.deviceModel) {
+              setPairedDevice(data.deviceModel || 'Mobile Device');
+            } else {
+              setPairedDevice(null);
+            }
           } else {
             setPairedDevice(null);
           }
-        } else {
+        } catch {
           setPairedDevice(null);
         }
-      } catch {
-        setPairedDevice(null);
-      }
-    }, (err) => console.error('[MainHeader] Passkey listener error:', err));
+      },
+      (err) => console.error('[MainHeader] Passkey listener error:', err),
+      () => doc(db, 'studentPasskeys', user.uid)
+    );
     return () => unsub();
   }, [user?.uid]);
 

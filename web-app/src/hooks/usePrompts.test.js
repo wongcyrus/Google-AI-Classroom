@@ -162,4 +162,41 @@ describe('usePrompts Hook', () => {
     expect(result.current.prompts.map((p) => p.name)).toContain('Bingo Question Bank Generator');
     expect(result.current.prompts.map((p) => p.name)).toContain('Bingo Teacher Screen Attention Question Generator');
   });
+
+  it('shares underlying prompt listeners across multiple concurrent usePrompts hooks for the same user', () => {
+    auth.currentUser = { uid: 'teacher_shared_prompts' };
+
+    const sharedUnsubs = [vi.fn(), vi.fn(), vi.fn()];
+    const callbacks = [];
+    onSnapshot.mockImplementation((_q, cb) => {
+      callbacks.push(cb);
+      return sharedUnsubs[callbacks.length - 1] || vi.fn();
+    });
+
+    const hookA = renderHook(() => usePrompts('Per Image'));
+    const hookB = renderHook(() => usePrompts('Classroom Bingo Questions'));
+
+    // Only 1 set of 3 queries (public, owned, shared) instead of 6
+    expect(onSnapshot).toHaveBeenCalledTimes(3);
+
+    act(() => {
+      callbacks[0]({
+        docs: [
+          { id: 'p_img', data: () => ({ name: 'Image Check', category: 'images', applyTo: ['Per Image'], accessLevel: 'public' }) },
+          { id: 'p_bingo', data: () => ({ name: 'Bingo Check', category: 'images', applyTo: ['Classroom Bingo Questions'], accessLevel: 'public' }) },
+        ],
+      });
+    });
+
+    expect(hookA.result.current.prompts.map((p) => p.id)).toEqual(['p_img']);
+    expect(hookB.result.current.prompts.map((p) => p.id)).toContain('p_bingo');
+
+    // Unmounting hookA must NOT tear down shared listeners while hookB is still mounted
+    hookA.unmount();
+    expect(sharedUnsubs[0]).not.toHaveBeenCalled();
+
+    // Unmounting hookB brings ref-count to 0 -> unsubscribes all 3 queries
+    hookB.unmount();
+    sharedUnsubs.forEach((fn) => expect(fn).toHaveBeenCalledTimes(1));
+  });
 });

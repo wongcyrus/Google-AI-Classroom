@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import useTeacherScreenBroadcast from './useTeacherScreenBroadcast';
-import useTeacherScreenBroadcastStudent from './useTeacherScreenBroadcastStudent';
 
 vi.mock('../firebase-config', () => ({
   db: {},
+  storage: {},
 }));
 
 let docListeners = new Map();
@@ -12,6 +12,18 @@ let collectionListeners = new Map();
 
 const mockSetDoc = vi.fn(() => Promise.resolve());
 const mockDeleteDoc = vi.fn(() => Promise.resolve());
+const mockUploadBytes = vi.fn(() => Promise.resolve({ ref: { fullPath: 'broadcasts/CLASS_TEST/slide.jpg' } }));
+const mockGetDownloadURL = vi.fn((storageRef) =>
+  Promise.resolve(`https://firebasestorage.googleapis.com/v0/b/mock/o/${encodeURIComponent(storageRef.path)}?alt=media&token=tok123`)
+);
+const mockDeleteObject = vi.fn(() => Promise.resolve());
+
+vi.mock('firebase/storage', () => ({
+  ref: vi.fn((storage, path) => ({ path })),
+  uploadBytes: (...args) => mockUploadBytes(...args),
+  getDownloadURL: (...args) => mockGetDownloadURL(...args),
+  deleteObject: (...args) => mockDeleteObject(...args),
+}));
 
 vi.mock('firebase/firestore', () => ({
   doc: vi.fn((db, path) => ({ path, isCollection: false })),
@@ -62,6 +74,9 @@ describe('useTeacherScreenBroadcast Hook', () => {
       getImageData: vi.fn().mockReturnValue({ data: new Uint8ClampedArray(32 * 18 * 4) }),
     });
     HTMLCanvasElement.prototype.toDataURL = vi.fn().mockReturnValue('data:image/jpeg;base64,mockframe123');
+    HTMLCanvasElement.prototype.toBlob = vi.fn((cb) => {
+      cb(new Blob(['mockjpeg123'], { type: 'image/jpeg' }));
+    });
     HTMLMediaElement.prototype.play = vi.fn().mockResolvedValue();
     HTMLMediaElement.prototype.pause = vi.fn();
     Object.defineProperty(HTMLVideoElement.prototype, 'videoWidth', { value: 1280, configurable: true });
@@ -72,7 +87,7 @@ describe('useTeacherScreenBroadcast Hook', () => {
     };
   });
 
-  it('teacher initiates broadcast, captures clamped media, and writes session and liveFrame docs', async () => {
+  it('teacher initiates broadcast, uploads static JPEG to Storage, writes timestamped frameUrl to session (no liveFrame writes), and cleans up Storage on stop', async () => {
     const { result } = renderHook(() =>
       useTeacherScreenBroadcast({
         classId: 'CLASS_TEST',
@@ -88,7 +103,7 @@ describe('useTeacherScreenBroadcast Hook', () => {
     });
 
     expect(result.current.isBroadcasting).toBe(true);
-    expect(result.current.broadcastMode).toBe('frame');
+    expect(result.current.broadcastMode).toBe('static_url');
 
     expect(navigator.mediaDevices.getDisplayMedia).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -100,16 +115,32 @@ describe('useTeacherScreenBroadcast Hook', () => {
       })
     );
 
+    expect(mockUploadBytes).toHaveBeenCalledWith(
+      expect.objectContaining({ path: expect.stringMatching(/^broadcasts\/CLASS_TEST\/slide_\d+_[a-z0-9]{16}\.jpg$/) }),
+      expect.anything(),
+      expect.objectContaining({ contentType: 'image/jpeg', cacheControl: 'private, max-age=3600' })
+    );
+
+    const firstUploadPath = mockUploadBytes.mock.calls[0][0].path;
+
     expect(mockSetDoc).toHaveBeenCalledWith(
       expect.objectContaining({ path: 'classes/CLASS_TEST/screenBroadcast/session' }),
-      expect.objectContaining({ isBroadcasting: true, broadcastMode: 'frame', resolution: '720p', teacherUid: 'teacher_123' }),
+      expect.objectContaining({
+        isBroadcasting: true,
+        broadcastMode: 'static_url',
+        resolution: '720p',
+        frameStoragePath: firstUploadPath,
+        frameUrl: expect.stringMatching(/^https:\/\/firebasestorage\.googleapis\.com\/.*&t=\d+$/),
+        frameUpdatedAt: expect.any(Number),
+      }),
       { merge: true }
     );
 
-    expect(mockSetDoc).toHaveBeenCalledWith(
-      expect.objectContaining({ path: 'classes/CLASS_TEST/screenBroadcast/liveFrame' }),
-      expect.objectContaining({ frameData: 'data:image/jpeg;base64,mockframe123', resolution: '720p' })
+    // Ensure Base64 frames are NOT written to screenBroadcast/liveFrame during broadcast
+    const liveFrameWritesWhileActive = mockSetDoc.mock.calls.filter(
+      ([docRef, payload]) => docRef.path === 'classes/CLASS_TEST/screenBroadcast/liveFrame' && payload?.frameData
     );
+    expect(liveFrameWritesWhileActive).toHaveLength(0);
 
     // Simulate student joining collection listener
     const colCb = collectionListeners.get('classes/CLASS_TEST/screenBroadcastViewers');
@@ -134,23 +165,25 @@ describe('useTeacherScreenBroadcast Hook', () => {
     expect(result.current.viewers[0].studentUid).toBe('student_456');
     expect(result.current.viewers[0].connectionState).toBe('connected');
 
-    // Stop broadcast
+    // Stop broadcast deletes Storage slide and clears session frame fields
     await act(async () => {
       await result.current.stopBroadcast();
     });
 
     expect(result.current.isBroadcasting).toBe(false);
     expect(result.current.viewers).toHaveLength(0);
-
-    expect(mockSetDoc).toHaveBeenCalledWith(
-      expect.objectContaining({ path: 'classes/CLASS_TEST/screenBroadcast/session' }),
-      expect.objectContaining({ isBroadcasting: false }),
-      { merge: true }
+    expect(mockDeleteObject).toHaveBeenCalledWith(
+      expect.objectContaining({ path: firstUploadPath })
     );
 
     expect(mockSetDoc).toHaveBeenCalledWith(
-      expect.objectContaining({ path: 'classes/CLASS_TEST/screenBroadcast/liveFrame' }),
-      expect.objectContaining({ frameData: null }),
+      expect.objectContaining({ path: 'classes/CLASS_TEST/screenBroadcast/session' }),
+      expect.objectContaining({
+        isBroadcasting: false,
+        frameUrl: null,
+        frameStoragePath: null,
+        frameUpdatedAt: null,
+      }),
       { merge: true }
     );
   });
@@ -189,7 +222,7 @@ describe('useTeacherScreenBroadcast Hook', () => {
 
     expect(result.current.isBroadcasting).toBe(true);
 
-    act(() => {
+    await act(async () => {
       unmount();
     });
 
@@ -456,7 +489,7 @@ describe('useTeacherScreenBroadcast Hook', () => {
     expect(secondPcResult.current.publicPin).toBe('7744');
   });
 
-  it('recovers when ImageCapture.grabFrame() hangs and continues emitting frames on 2s heartbeat', async () => {
+  it('skips redundant uploads on static slides (no 2s heartbeat) while still recovering grabFrame hangs and supporting pushFrameNow', async () => {
     vi.useFakeTimers();
     let grabCallCount = 0;
     class HangingImageCapture {
@@ -492,16 +525,42 @@ describe('useTeacherScreenBroadcast Hook', () => {
       expect(result.current.isBroadcasting).toBe(true);
       expect(result.current.frameStats.emittedFrames).toBe(1);
 
-      // Advance 3s to trigger second tick where grabFrame() hangs -> 1s timeout falls back to offscreenVideo and emits frame #2 via 2s heartbeat
+      // Advance 10s on static slide: grabFrame timeout recovers to offscreenVideo check,
+      // pixel delta is 0 -> ZERO extra uploads should occur
       await act(async () => {
-        await vi.advanceTimersByTimeAsync(4500);
+        await vi.advanceTimersByTimeAsync(10000);
       });
 
-      expect(result.current.frameStats.emittedFrames).toBeGreaterThanOrEqual(2);
+      expect(result.current.frameStats.emittedFrames).toBe(1);
+      expect(mockUploadBytes).toHaveBeenCalledTimes(1);
+
+      // Manual pushFrameNow() forces a fresh slide upload immediately (advance fake clock past 1s grabFrame timeout)
+      await act(async () => {
+        const pushPromise = result.current.pushFrameNow();
+        await vi.advanceTimersByTimeAsync(1500);
+        await pushPromise;
+      });
+
+      expect(result.current.frameStats.emittedFrames).toBe(2);
+      expect(mockUploadBytes).toHaveBeenCalledTimes(2);
+
+      const firstSlidePath = mockUploadBytes.mock.calls[0][0].path;
+      const secondSlidePath = mockUploadBytes.mock.calls[1][0].path;
+      expect(firstSlidePath).toMatch(/^broadcasts\/CLASS_HANG_TEST\/slide_\d+_[a-z0-9]{16}\.jpg$/);
+      expect(secondSlidePath).toMatch(/^broadcasts\/CLASS_HANG_TEST\/slide_\d+_[a-z0-9]{16}\.jpg$/);
+      expect(secondSlidePath).not.toBe(firstSlidePath);
+      // Pushing Slide 2 immediately expires Slide 1 from Storage
+      expect(mockDeleteObject).toHaveBeenCalledWith(
+        expect.objectContaining({ path: firstSlidePath })
+      );
 
       await act(async () => {
         await result.current.stopBroadcast();
       });
+
+      expect(mockDeleteObject).toHaveBeenCalledWith(
+        expect.objectContaining({ path: secondSlidePath })
+      );
     } finally {
       window.ImageCapture = originalImageCapture;
       vi.useRealTimers();

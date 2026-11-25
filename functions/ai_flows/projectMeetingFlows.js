@@ -11,8 +11,10 @@ import {
   DEFAULT_SAFETY_SETTINGS,
 } from './config.js';
 import { generateWithResilience } from './analysisFlows.js';
-import { calculateCost } from './cost.js';
+import { calculateCost, estimateCost } from './cost.js';
 import { logJob } from './jobLogger.js';
+import { checkQuota } from './quotaManagement.js';
+import { isAdminCaller, isTeacherInClassData } from './authHelpers.js';
 
 const db = getFirestore();
 const storage = getStorage();
@@ -390,6 +392,23 @@ Respond strictly with valid JSON matching this structure:
   ]
 }`;
 
+  const estCost = estimateCost(prompt, [], reasoningModel);
+  const hasQuota = await checkQuota(classId, estCost);
+  if (!hasQuota) {
+    await logJob({
+      classId,
+      studentUid: auth?.uid || 'teacher',
+      studentEmail: auth?.token?.email || '',
+      jobType: 'prepareProjectLogQuestions',
+      status: 'blocked-by-quota',
+      promptText: prompt.slice(0, 500),
+      mediaPaths: [],
+      cost: 0,
+      modelUsed: reasoningModel,
+    }).catch(() => {});
+    throw new HttpsError('resource-exhausted', `Monthly AI quota exceeded for class ${classId}.`);
+  }
+
   const { response, modelUsed } = await generateWithResilience(
     {
       prompt: [{ text: prompt }],
@@ -591,6 +610,30 @@ export async function handleAnalyzeProjectMeeting({
     );
   }
 
+  const transcribeModel = AI_TRANSCRIBE_MODEL || 'gemini-3.5-transcribe-preview';
+  const reasoningModel = preferredModel || meetingData.aiModel || DEFAULT_LECTURE_AI_MODEL || 'gemini-3.8-flash';
+  const mediaPlaceholders = [
+    ...rawClips,
+    ...(Array.isArray(meetingData.photos) ? meetingData.photos : []),
+    ...(Array.isArray(meetingData.screenClips) ? meetingData.screenClips : []),
+  ].map(() => ({}));
+  const estCost = estimateCost(DEFAULT_PROJECT_MEETING_PROMPT, mediaPlaceholders, reasoningModel);
+  const hasQuota = await checkQuota(classId, estCost);
+  if (!hasQuota) {
+    await logJob({
+      classId,
+      studentUid: auth?.uid || meetingData.supervisorUid || 'teacher',
+      studentEmail: auth?.token?.email || meetingData.supervisorEmail || '',
+      jobType: 'analyzeProjectMeeting',
+      status: 'blocked-by-quota',
+      promptText: 'analyzeProjectMeeting',
+      mediaPaths: rawClips.map((c) => c.storagePath).filter(Boolean),
+      cost: 0,
+      modelUsed: reasoningModel,
+    }).catch(() => {});
+    throw new HttpsError('resource-exhausted', `Monthly AI quota exceeded for class ${classId}.`);
+  }
+
   await meetingRef.update({
     status: 'analyzing',
     analysisStartedAt: FieldValue.serverTimestamp(),
@@ -600,9 +643,6 @@ export async function handleAnalyzeProjectMeeting({
     process.env.STORAGE_BUCKET_NAME ||
     storage.app?.options?.storageBucket ||
     `${db.projectId || 'it114115-dev-2026'}.firebasestorage.app`;
-
-  const transcribeModel = AI_TRANSCRIBE_MODEL || 'gemini-3.5-transcribe-preview';
-  const reasoningModel = preferredModel || meetingData.aiModel || DEFAULT_LECTURE_AI_MODEL || 'gemini-3.8-flash';
 
   let totalCost = 0;
   let totalInputTokens = 0;
@@ -1246,21 +1286,12 @@ export const analyzeProjectMeeting = onCall(
       projectTopic,
       weekNumber,
     } = request.data || {};
-    let isAuthorized = request.auth.token?.role === 'teacher' || request.auth.token?.role === 'admin';
+    let isAuthorized = isAdminCaller(request.auth);
 
     if (!isAuthorized && classId) {
       const classSnap = await db.doc(`classes/${classId}`).get();
-      if (classSnap.exists) {
-        const cData = classSnap.data() || {};
-        const userEmail = (request.auth.token?.email || '').toLowerCase();
-        if (
-          (Array.isArray(cData.teacherEmails) && cData.teacherEmails.map((e) => e.toLowerCase()).includes(userEmail)) ||
-          (cData.teachers && cData.teachers[request.auth.uid]) ||
-          cData.ownerUid === request.auth.uid ||
-          cData.teacherUid === request.auth.uid
-        ) {
-          isAuthorized = true;
-        }
+      if (classSnap.exists && isTeacherInClassData(classSnap.data() || {}, request.auth)) {
+        isAuthorized = true;
       }
     }
 
@@ -1621,21 +1652,12 @@ export const emailProjectMeetingReport = onCall(
     }
 
     const { classId, meetingId, studentUids, sendToAllTeammates, portalUrl, customNote } = request.data || {};
-    let isAuthorized = request.auth.token?.role === 'teacher' || request.auth.token?.role === 'admin';
+    let isAuthorized = isAdminCaller(request.auth);
 
     if (!isAuthorized && classId) {
       const classSnap = await db.doc(`classes/${classId}`).get();
-      if (classSnap.exists) {
-        const cData = classSnap.data() || {};
-        const userEmail = (request.auth.token?.email || '').toLowerCase();
-        if (
-          (Array.isArray(cData.teacherEmails) && cData.teacherEmails.map((e) => e.toLowerCase()).includes(userEmail)) ||
-          (cData.teachers && cData.teachers[request.auth.uid]) ||
-          cData.ownerUid === request.auth.uid ||
-          cData.teacherUid === request.auth.uid
-        ) {
-          isAuthorized = true;
-        }
+      if (classSnap.exists && isTeacherInClassData(classSnap.data() || {}, request.auth)) {
+        isAuthorized = true;
       }
     }
 
@@ -1756,21 +1778,12 @@ export const batchEmailProjectMeetingReports = onCall(
     }
 
     const { classId, weekNumber, meetingIds, customNote, onlyAnalyzed, portalUrl } = request.data || {};
-    let isAuthorized = request.auth.token?.role === 'teacher' || request.auth.token?.role === 'admin';
+    let isAuthorized = isAdminCaller(request.auth);
 
     if (!isAuthorized && classId) {
       const classSnap = await db.doc(`classes/${classId}`).get();
-      if (classSnap.exists) {
-        const cData = classSnap.data() || {};
-        const userEmail = (request.auth.token?.email || '').toLowerCase();
-        if (
-          (Array.isArray(cData.teacherEmails) && cData.teacherEmails.map((e) => e.toLowerCase()).includes(userEmail)) ||
-          (cData.teachers && cData.teachers[request.auth.uid]) ||
-          cData.ownerUid === request.auth.uid ||
-          cData.teacherUid === request.auth.uid
-        ) {
-          isAuthorized = true;
-        }
+      if (classSnap.exists && isTeacherInClassData(classSnap.data() || {}, request.auth)) {
+        isAuthorized = true;
       }
     }
 

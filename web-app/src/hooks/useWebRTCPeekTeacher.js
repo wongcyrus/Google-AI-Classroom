@@ -163,6 +163,7 @@ export default function useWebRTCPeekTeacher({ classId, studentUid, teacherUid }
 
       // Listen for student's answer & ICE candidates
       let hasSetRemote = false;
+      let processedStudentCandCount = 0;
       const unsubscribe = onSnapshot(peekDocRef, async (snapshot) => {
         if (!snapshot.exists()) return;
         const data = snapshot.data();
@@ -177,14 +178,18 @@ export default function useWebRTCPeekTeacher({ classId, studentUid, teacherUid }
           await pc.setRemoteDescription(remoteDesc);
         }
 
-        if (data.studentCandidates && Array.isArray(data.studentCandidates)) {
-          for (const cand of data.studentCandidates) {
+        if (data.studentCandidates && Array.isArray(data.studentCandidates) && pc.signalingState !== 'closed') {
+          if (data.studentCandidates.length < processedStudentCandCount) {
+            processedStudentCandCount = 0;
+          }
+          for (let i = processedStudentCandCount; i < data.studentCandidates.length; i += 1) {
             try {
-              await pc.addIceCandidate(new RTCIceCandidate(cand));
+              await pc.addIceCandidate(new RTCIceCandidate(data.studentCandidates[i]));
             } catch {
               // Ignore duplicate/invalid candidate
             }
           }
+          processedStudentCandCount = data.studentCandidates.length;
         }
 
         if (data.status === 'rejected' || data.status === 'closed') {

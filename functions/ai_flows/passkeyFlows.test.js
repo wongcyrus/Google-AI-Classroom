@@ -36,12 +36,22 @@ const {
 
   const mockFirestore = {
     doc: vi.fn((path) => ({
+      id: (path || '').split('/').pop() || 'generated_doc_id',
       get: () => mockDocGet(path),
       set: mockDocSet,
       update: mockDocUpdate,
       delete: mockDocDelete,
     })),
     collection: vi.fn(() => mockCollection),
+    runTransaction: vi.fn(async (cb) => {
+      const tx = {
+        get: vi.fn((ref) => ref.get()),
+        set: vi.fn((ref, data, opts) => (opts !== undefined ? ref.set(data, opts) : ref.set(data))),
+        update: vi.fn((ref, data) => ref.update(data)),
+        delete: vi.fn((ref) => ref.delete?.()),
+      };
+      return cb(tx);
+    }),
   };
 
   return {
@@ -520,6 +530,17 @@ describe('WebAuthn Passkey Flows Backend', () => {
           credentialID: 'hardware-cred-abc',
           credentialPublicKey: Buffer.from(new Uint8Array([1, 2, 3, 4])).toString('base64'),
           counter: 0,
+        }),
+      });
+
+      // 3. Transaction re-read of bingo doc
+      mockDocGet.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({
+          studentUid: 'student_1',
+          result: 'pending',
+          passkeyChallenge: 'mock-auth-challenge',
+          issuedAtMillis: Date.now() - 2500,
         }),
       });
 
@@ -1783,6 +1804,21 @@ describe('WebAuthn Passkey Flows Backend', () => {
           ],
         });
 
+        // 4. Transaction re-read of session doc
+        mockDocGet.mockResolvedValueOnce({
+          exists: true,
+          data: () => ({
+            id: 'bingo_lecture_1',
+            roundId: 'round_lecture_1',
+            sessionSecret: secret,
+            issuedAtMillis: now - 3000,
+            expiresAtMillis: now + 60000,
+            question: 'Lecture Hall Biometric Passkey Check-In',
+            options: ['Biometric QR Check-In Verified'],
+            responses: {},
+          }),
+        });
+
         const res = await handleVerifyLecturePasskeyAuth({
           classId: 'class_it101',
           bingoId: 'bingo_lecture_1',
@@ -2005,6 +2041,20 @@ describe('WebAuthn Passkey Flows Backend', () => {
               credentialPublicKey: Buffer.from('pk').toString('base64'),
             }),
           }],
+        });
+
+        // Transaction re-read showing stu_1 already checked in
+        mockDocGet.mockResolvedValueOnce({
+          exists: true,
+          data: () => ({
+            id: 'b1',
+            status: 'active',
+            sessionSecret: secret,
+            expiresAtMillis: now + 60000,
+            responses: {
+              stu_1: { responseTimeSec: 2.5, pointsAwarded: 10 },
+            },
+          }),
         });
 
         verifyAuthenticationResponse.mockResolvedValueOnce({
@@ -2261,6 +2311,11 @@ describe('WebAuthn Passkey Flows Backend', () => {
             credentialPublicKey: Buffer.from('pk').toString('base64'),
           }),
         }],
+      });
+
+      mockDocGet.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({ id: 'b1', status: 'active', sessionSecret: secret, expiresAtMillis: now + 60000, responses: {} }),
       });
 
       verifyAuthenticationResponse.mockResolvedValueOnce({

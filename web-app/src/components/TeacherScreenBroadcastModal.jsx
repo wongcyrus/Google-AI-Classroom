@@ -68,6 +68,7 @@ export default function TeacherScreenBroadcastModal({
   viewers = [],
   onStartBroadcast = null,
   onStopBroadcast = null,
+  onPushFrameNow = null,
   broadcastResolution = '720p',
   broadcastInterval = 3000,
   setBroadcastResolution = null,
@@ -245,8 +246,12 @@ export default function TeacherScreenBroadcastModal({
   const [micVolume, setMicVolume] = useState(0);
   const [micTestError, setMicTestError] = useState(null);
 
-  // Local fallback for prompts
-  const fetchedPrompts = useTranslationPrompts(user || auth?.currentUser, 'Live Subtitles & Translation');
+  // Local fallback for prompts (skip Firestore subscription when modal is closed or prompts provided)
+  const fetchedPrompts = useTranslationPrompts(
+    user || auth?.currentUser,
+    'Live Subtitles & Translation',
+    { enabled: Boolean(isOpen && !availablePrompts) }
+  );
   const promptsList = availablePrompts || fetchedPrompts || [];
   const effectiveSubtitlePrompt = subtitlePrompt || DEFAULT_LIVE_SUBTITLE_TRANSLATION_PROMPT;
   const selectedSubtitlePromptId = useMemo(() => {
@@ -1863,8 +1868,8 @@ export default function TeacherScreenBroadcastModal({
               </div>
               <div className="stat-row">
                 <span className="stat-label">Delivery:</span>
-                <span className="stat-value font-bold" style={{ color: '#059669' }}>
-                  Classroom Frame Stream
+                <span className="stat-value font-bold" style={{ color: '#059669' }} title="Students see On/Off status and click Refresh when ready (0 repeat traffic)">
+                  Classroom Frame Stream (Static CDN)
                 </span>
               </div>
               <div className="stat-row">
@@ -1875,6 +1880,28 @@ export default function TeacherScreenBroadcastModal({
                 <div className="stat-row">
                   <span className="stat-label">Frames Published:</span>
                   <span className="stat-value">{frameStats.emittedFrames}</span>
+                </div>
+              )}
+              {onPushFrameNow && (
+                <div className="stat-row" style={{ marginTop: '6px' }}>
+                  <button
+                    type="button"
+                    onClick={() => onPushFrameNow()}
+                    style={{
+                      width: '100%',
+                      fontSize: '0.78rem',
+                      padding: '5px 10px',
+                      borderRadius: '6px',
+                      border: '1px solid #2563eb',
+                      background: '#eff6ff',
+                      color: '#1d4ed8',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                    }}
+                    title="Immediately capture and push current slide to Cloud Storage for students to refresh"
+                  >
+                    📸 Push Slide Now
+                  </button>
                 </div>
               )}
 

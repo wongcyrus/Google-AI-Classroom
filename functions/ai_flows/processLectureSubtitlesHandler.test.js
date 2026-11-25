@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const {
   mockDocGet,
+  mockClassDocGet,
+  mockMetaDocGet,
   mockDocUpdate,
   mockDocSet,
   mockDocRef,
@@ -21,17 +23,48 @@ const {
   mockLogJob,
 } = vi.hoisted(() => {
   const mockDocGet = vi.fn();
+  const mockClassDocGet = vi.fn();
+  const mockMetaDocGet = vi.fn();
   const mockDocUpdate = vi.fn();
   const mockDocSet = vi.fn().mockResolvedValue();
-  const mockDocRef = vi.fn(() => ({
-    get: mockDocGet,
-    update: mockDocUpdate,
-    set: mockDocSet,
-  }));
+  const mockDocRef = vi.fn((path = '') => {
+    const strPath = String(path || '');
+    if (strPath.endsWith('/metadata/ai')) {
+      return {
+        get: mockMetaDocGet,
+        update: mockDocUpdate,
+        set: mockDocSet,
+      };
+    }
+    if (/^classes\/[^/]+$/.test(strPath)) {
+      return {
+        get: mockClassDocGet,
+        update: mockDocUpdate,
+        set: mockDocSet,
+        collection: () => ({
+          doc: () => ({
+            get: mockMetaDocGet,
+            update: mockDocUpdate,
+            set: mockDocSet,
+          }),
+        }),
+      };
+    }
+    return {
+      get: mockDocGet,
+      update: mockDocUpdate,
+      set: mockDocSet,
+    };
+  });
   const mockCollectionGet = vi.fn();
-  const mockCollectionRef = vi.fn(() => ({
+  const mockCollectionRef = vi.fn((colName = '') => ({
     get: mockCollectionGet,
-    doc: mockDocRef,
+    doc: vi.fn((docId = '') => {
+      if (colName === 'classes') {
+        return mockDocRef(`classes/${docId}`);
+      }
+      return mockDocRef(`${colName}/${docId}`);
+    }),
   }));
   const mockSave = vi.fn().mockResolvedValue();
   const mockDownload = vi.fn().mockResolvedValue();
@@ -60,6 +93,8 @@ const {
 
   return {
     mockDocGet,
+    mockClassDocGet,
+    mockMetaDocGet,
     mockDocUpdate,
     mockDocSet,
     mockDocRef,
@@ -120,6 +155,7 @@ vi.mock('./jobLogger.js', () => ({
 
 vi.mock('./cost.js', () => ({
   calculateCost: vi.fn(() => 0.042),
+  estimateCost: vi.fn(() => 0.01),
 }));
 
 import {
@@ -128,16 +164,39 @@ import {
   handleReconcileLectureRecordings,
 } from './processLectureSubtitles.js';
 
+const teacherAuth = { uid: 'teacher_1', token: { email: 'teacher_1@vtc.edu.hk', role: 'teacher' } };
+
 describe('processLectureSubtitles Callable Cloud Function Handler', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockClassDocGet.mockResolvedValue({
+      exists: true,
+      data: () => ({ ownerUid: 'teacher_1', isLectureSubtitlesEnabled: true, aiQuota: 100 }),
+    });
+    mockMetaDocGet.mockResolvedValue({
+      exists: true,
+      data: () => ({ aiUsedQuota: 0 }),
+    });
+  });
+
+  it('rejects unauthenticated callers and teachers from other classes', async () => {
+    await expect(
+      processLectureSubtitles({ auth: null, data: { classId: 'c1', sessionId: 's1' } })
+    ).rejects.toMatchObject({ code: 'unauthenticated' });
+
+    await expect(
+      processLectureSubtitles({
+        auth: { uid: 'other_teacher', token: { role: 'teacher', email: 'other@vtc.edu.hk' } },
+        data: { classId: 'c1', sessionId: 's1' },
+      })
+    ).rejects.toMatchObject({ code: 'permission-denied' });
   });
 
   it('throws invalid-argument error if classId or sessionId is missing', async () => {
-    await expect(processLectureSubtitles({ data: { sessionId: 's1' } })).rejects.toMatchObject({
+    await expect(processLectureSubtitles({ auth: teacherAuth, data: { sessionId: 's1' } })).rejects.toMatchObject({
       code: 'invalid-argument',
     });
-    await expect(processLectureSubtitles({ data: { classId: 'c1' } })).rejects.toMatchObject({
+    await expect(processLectureSubtitles({ auth: teacherAuth, data: { classId: 'c1' } })).rejects.toMatchObject({
       code: 'invalid-argument',
     });
   });
@@ -146,7 +205,7 @@ describe('processLectureSubtitles Callable Cloud Function Handler', () => {
     mockDocGet.mockResolvedValueOnce({ exists: false });
 
     await expect(
-      processLectureSubtitles({ data: { classId: 'c1', sessionId: 's1' } })
+      processLectureSubtitles({ auth: teacherAuth, data: { classId: 'c1', sessionId: 's1' } })
     ).rejects.toMatchObject({
       code: 'not-found',
     });
@@ -159,7 +218,7 @@ describe('processLectureSubtitles Callable Cloud Function Handler', () => {
     });
 
     await expect(
-      processLectureSubtitles({ data: { classId: 'c1', sessionId: 's1' } })
+      processLectureSubtitles({ auth: teacherAuth, data: { classId: 'c1', sessionId: 's1' } })
     ).rejects.toMatchObject({
       code: 'invalid-argument',
     });
@@ -199,6 +258,7 @@ describe('processLectureSubtitles Callable Cloud Function Handler', () => {
     mockGenerateWithResilience.mockResolvedValueOnce(mockAiResponse);
 
     const result = await processLectureSubtitles({
+      auth: teacherAuth,
       data: {
         classId: 'c1',
         sessionId: 's1',
@@ -264,6 +324,7 @@ describe('processLectureSubtitles Callable Cloud Function Handler', () => {
     mockGenerateWithResilience.mockResolvedValueOnce(mockAiResponse);
 
     const result = await processLectureSubtitles({
+      auth: teacherAuth,
       data: {
         classId: 'c1',
         sessionId: 's1',
@@ -309,6 +370,7 @@ describe('processLectureSubtitles Callable Cloud Function Handler', () => {
 
     await expect(
       processLectureSubtitles({
+        auth: teacherAuth,
         data: {
           classId: 'c1',
           sessionId: 's1',
@@ -381,6 +443,7 @@ describe('processLectureSubtitles Callable Cloud Function Handler', () => {
     mockGenerateWithResilience.mockResolvedValueOnce(mockAiResponse);
 
     const result = await processLectureSubtitles({
+      auth: teacherAuth,
       data: {
         classId: 'c1',
         sessionId: 's1',
@@ -466,6 +529,7 @@ describe('processLectureSubtitles Callable Cloud Function Handler', () => {
       .mockResolvedValueOnce(mockTranslationResponse);
 
     const result = await processLectureSubtitles({
+      auth: teacherAuth,
       data: {
         classId: 'c1',
         sessionId: 's1',
@@ -539,6 +603,7 @@ describe('processLectureSubtitles Callable Cloud Function Handler', () => {
       .mockResolvedValueOnce(mockChapterResponse);
 
     const result = await processLectureSubtitles({
+      auth: teacherAuth,
       data: {
         classId: 'c1',
         sessionId: 's1',
@@ -570,14 +635,16 @@ describe('processLectureSubtitles Callable Cloud Function Handler', () => {
     });
 
     // 2. Class doc with subtitles disabled
-    mockDocGet.mockResolvedValueOnce({
+    mockClassDocGet.mockResolvedValue({
       exists: true,
       data: () => ({
+        ownerUid: 'teacher_1',
         isLectureSubtitlesEnabled: false,
       }),
     });
 
     const result = await processLectureSubtitles({
+      auth: teacherAuth,
       data: {
         classId: 'c1',
         sessionId: 's1',
@@ -606,9 +673,9 @@ describe('processLectureSubtitles Callable Cloud Function Handler', () => {
     });
 
     // 2. Class doc
-    mockDocGet.mockResolvedValueOnce({
+    mockClassDocGet.mockResolvedValue({
       exists: true,
-      data: () => ({ isLectureSubtitlesEnabled: true }),
+      data: () => ({ ownerUid: 'teacher_1', isLectureSubtitlesEnabled: true, aiQuota: 100 }),
     });
 
     // 3. sttPrompt doc
@@ -638,6 +705,7 @@ describe('processLectureSubtitles Callable Cloud Function Handler', () => {
     });
 
     const result = await processLectureSubtitles({
+      auth: teacherAuth,
       data: {
         classId: 'c1',
         sessionId: 's1',
@@ -656,12 +724,48 @@ describe('processLectureSubtitles Callable Cloud Function Handler', () => {
       })
     );
   });
+
+  it('blocks subtitle generation when class AI quota is exhausted', async () => {
+    mockDocGet.mockResolvedValueOnce({
+      exists: true,
+      data: () => ({
+        title: 'Quota Exceeded Lecture',
+        storagePath: 'recordings/c1/s1/lecture.webm',
+      }),
+    });
+    mockClassDocGet.mockResolvedValue({
+      exists: true,
+      data: () => ({ ownerUid: 'teacher_1', isLectureSubtitlesEnabled: true, aiQuota: 5 }),
+    });
+    mockMetaDocGet.mockResolvedValue({
+      exists: true,
+      data: () => ({ aiUsedQuota: 5 }),
+    });
+
+    await expect(
+      processLectureSubtitles({
+        auth: teacherAuth,
+        data: { classId: 'c1', sessionId: 's1' },
+      })
+    ).rejects.toMatchObject({ code: 'resource-exhausted' });
+    expect(mockLogJob).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'blocked-by-quota', jobType: 'lectureSubtitles' })
+    );
+  });
 });
 
 
 describe('handleReconcileLectureRecordings Function Handler', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockClassDocGet.mockResolvedValue({
+      exists: true,
+      data: () => ({ ownerUid: 'teacher_1', isLectureSubtitlesEnabled: true, aiQuota: 100 }),
+    });
+    mockMetaDocGet.mockResolvedValue({
+      exists: true,
+      data: () => ({ aiUsedQuota: 0 }),
+    });
   });
 
   it('throws invalid-argument if classId is missing', async () => {
@@ -721,6 +825,16 @@ describe('handleReconcileLectureRecordings Function Handler', () => {
         fileSize: 52428800,
       })
     );
+    expect(mockDocSet).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'pending',
+        classId: 'c1',
+        sessionId: 'rec_candidate_1',
+        source: 'reconcile',
+      }),
+      { merge: true }
+    );
+    expect(mockGenerateWithResilience).not.toHaveBeenCalled();
   });
 
   it('handleReconcileLectureRecordings generates download tokens for video and audio when missing', async () => {

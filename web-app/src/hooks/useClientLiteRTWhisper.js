@@ -389,6 +389,8 @@ export function useClientLiteRTWhisper({
     let isStopped = false;
     let debounceTimer = null;
     let lastDispatchedText = '';
+    let lastStatusWriteAt = 0;
+    let lastStatusTranscript = '';
 
     const startRecognitionSafe = (rec, track) => {
       try {
@@ -481,7 +483,12 @@ export function useClientLiteRTWhisper({
 
         const currentClassId = classIdRef.current;
         const currentStudentUid = studentUidRef.current;
-        if (currentClassId && currentStudentUid) {
+        const shouldWriteStatus =
+          Boolean(finalText) ||
+          (transcript !== lastStatusTranscript && timestamp - lastStatusWriteAt >= 3000);
+        if (currentClassId && currentStudentUid && shouldWriteStatus) {
+          lastStatusWriteAt = timestamp;
+          lastStatusTranscript = transcript;
           const statusDocRef = doc(db, 'classes', currentClassId, 'status', currentStudentUid);
           setDoc(statusDocRef, {
             liveTranscript: transcript,

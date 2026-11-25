@@ -53,6 +53,10 @@ export default function ExamReadinessWizard({
   const playbackAudioUrlRef = useRef(null);
   const speechRecognitionRef = useRef(null);
   const acquiredMicIdRef = useRef('');
+  const onSelectMicDeviceRef = useRef(onSelectMicDevice);
+  useEffect(() => {
+    onSelectMicDeviceRef.current = onSelectMicDevice;
+  }, [onSelectMicDevice]);
 
   // --- Step 2: Camera & Pose Calibration ---
   const [videoDevices, setVideoDevices] = useState([]);
@@ -68,6 +72,10 @@ export default function ExamReadinessWizard({
   const acquiredCamIdRef = useRef('');
   const cameraRetryTickRef = useRef(0);
   const isManualCameraSelectionRef = useRef(false);
+  const onSelectCameraDeviceRef = useRef(onSelectCameraDevice);
+  useEffect(() => {
+    onSelectCameraDeviceRef.current = onSelectCameraDevice;
+  }, [onSelectCameraDevice]);
 
   // --- Step 3: Screen Share Check ---
   const [isScreenVerified, setIsScreenVerified] = useState(false);
@@ -228,7 +236,7 @@ export default function ExamReadinessWizard({
           setSelectedMic(actualMicId);
         }
         if (effectiveMicId) {
-          onSelectMicDevice?.(effectiveMicId);
+          onSelectMicDeviceRef.current?.(effectiveMicId);
         }
         loadDevices();
 
@@ -631,7 +639,7 @@ export default function ExamReadinessWizard({
           setSelectedCamera(actualCamId);
         }
         if (effectiveCamId) {
-          onSelectCameraDevice?.(effectiveCamId);
+          onSelectCameraDeviceRef.current?.(effectiveCamId);
         }
 
         if (cameraVideoRef.current) {
@@ -681,7 +689,7 @@ export default function ExamReadinessWizard({
       abortSignal.aborted = true;
       // Note: do not stop camera stream here if advancing to step 3 so it can be handed off
     };
-  }, [isOpen, step, selectedCamera, cameraRetryTick, loadDevices, onSelectCameraDevice]);
+  }, [isOpen, step, selectedCamera, cameraRetryTick, loadDevices]);
 
   // Calibrate neutral gaze & face position
   const handleCalibrateFace = () => {

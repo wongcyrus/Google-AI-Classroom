@@ -8,6 +8,7 @@ describe("JobResultModal", () => {
   let originalRevokeObjectURL;
 
   beforeEach(() => {
+    localStorage.setItem('teacher_privacy_mode', 'false');
     originalCreateObjectURL = window.URL.createObjectURL;
     originalRevokeObjectURL = window.URL.revokeObjectURL;
     window.URL.createObjectURL = vi.fn().mockReturnValue("blob:mock-url");
@@ -20,6 +21,7 @@ describe("JobResultModal", () => {
   });
 
   afterEach(() => {
+    localStorage.removeItem('teacher_privacy_mode');
     vi.useRealTimers();
     window.URL.createObjectURL = originalCreateObjectURL;
     window.URL.revokeObjectURL = originalRevokeObjectURL;

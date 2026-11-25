@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import ClassView from './ClassView';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 
@@ -586,6 +586,57 @@ describe('ClassView Component Full Suite', () => {
     fireEvent.click(privacyBtn);
     expect(privacyBtn).toHaveTextContent('Privacy: ON');
     expect(localStorage.getItem('teacher_privacy_mode')).toBe('true');
+  });
+
+  it('re-sorts class switcher schedule on 30-second tick without re-fetching Firestore class docs', async () => {
+    vi.useFakeTimers();
+    try {
+      const { getDoc, onSnapshot } = await import('firebase/firestore');
+
+      getDoc.mockImplementation(async (ref) => {
+        if (ref?.path?.includes('teacherProfiles')) {
+          return {
+            exists: () => true,
+            data: () => ({ classes: ['CLASS-101', 'CLASS-202'] }),
+          };
+        }
+        return {
+          id: ref?.path?.includes('CLASS-101') ? 'CLASS-101' : 'CLASS-202',
+          exists: () => true,
+          data: () => ({ name: 'Sample Class' }),
+        };
+      });
+
+      render(
+        <MemoryRouter initialEntries={['/class/CLASS-101?tab=monitor']}>
+          <Routes>
+            <Route path="/class/:classId" element={<ClassView user={mockUser} />} />
+          </Routes>
+        </MemoryRouter>
+      );
+
+      // Flush initial async effects cleanly under fake timers
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(getDoc).toHaveBeenCalled();
+
+      const initialGetDocCalls = getDoc.mock.calls.length;
+      const initialSnapshotCalls = onSnapshot.mock.calls.length;
+
+      // Advance past a 30s clock tick
+      await act(async () => {
+        vi.advanceTimersByTime(35000);
+        await Promise.resolve();
+      });
+
+      expect(getDoc.mock.calls.length).toBe(initialGetDocCalls);
+      expect(onSnapshot.mock.calls.length).toBe(initialSnapshotCalls);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

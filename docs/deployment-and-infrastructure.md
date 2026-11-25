@@ -83,11 +83,12 @@ To provision a brand-new GCP/Firebase project from scratch with all APIs, databa
    - Sets `firebase use <PROJECT_ID>`.
 3. **Application & Functions Deployment (`deploy.sh`)**:
    - Builds frontend React application.
+   - Ensures `service-<PROJECT_NUMBER>@gcp-sa-firebasestorage.iam.gserviceaccount.com` holds `roles/firebaserules.firestoreServiceAgent` when `storage.rules` uses cross-service `firestore.get`/`firestore.exists` lookups.
    - Deploys Firestore and Storage security rules and composite indexes.
-   - Deploys all 14 Cloud Functions across the 7 isolated codebases with automatic Day-0 failure recovery.
+   - Deploys all Cloud Functions across the 7 isolated codebases with automatic Day-0 failure recovery.
    - Releases static assets to Firebase Hosting.
 4. **Initial Data Seeding (`admin/scripts/seed_initial_data.mjs`)**:
-   - Provisions verified demo accounts.
+   - Provisions verified demo accounts (preserving existing passwords, profiles, matching claims, and `system_config/loginPolicy` on non-dev/production projects).
    - Configures `IT114115-Demo` class with 24/7 schedule.
    - Seeds all AI prompts.
 

@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { getAuth } from 'firebase-admin/auth';
 import { onSchedule } from 'firebase-functions/v2/scheduler';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
@@ -170,63 +171,82 @@ export const handleAutomaticCapture = onSchedule(scheduleOptions, async () => {
       return; // Skip if no valid schedule
     }
 
-    const { localTime, localDay } = getLocalTimeInfo(now, schedule.timeZone);
+    const { localTime, localDay, localDate } = getLocalTimeInfo(now, schedule.timeZone);
+    const isWithinDates = !schedule.startDate || !schedule.endDate || !localDate || (localDate >= schedule.startDate && localDate <= schedule.endDate);
     let matchedSlotStop = false;
 
-    schedule.timeSlots.forEach(slot => {
-      if (!slot.days || !slot.days.includes(localDay)) {
-        return; // Not scheduled for today
-      }
-
-      if (isStartTime) {
-        // Check if a class should start in 5 minutes
-        const targetStart = new Date(now.getTime() + 5 * 60 * 1000);
-        const { localTime: targetLocalTime } = getLocalTimeInfo(targetStart, schedule.timeZone);
-
-        if (slot.startTime === targetLocalTime && !classData.isCapturing) {
-          logger.info(`Starting capture for class ${classId} at ${localTime} (${schedule.timeZone})`);
-          promises.push(doc.ref.update({ isCapturing: true, captureStartedAt: FieldValue.serverTimestamp() }));
+    if (isWithinDates) {
+      schedule.timeSlots.forEach(slot => {
+        if (!slot.days?.includes(localDay)) {
+          return; // Not scheduled for today
         }
-      } else if (isStopTime) {
-        // Check if a class should have ended 5 minutes ago
-        const targetEnd = new Date(now.getTime() - 5 * 60 * 1000);
-        const { localTime: targetLocalTime } = getLocalTimeInfo(targetEnd, schedule.timeZone);
 
-        if (slot.endTime === targetLocalTime && classData.isCapturing) {
-          matchedSlotStop = true;
-          const stopCheckPromise = (async () => {
-            // Do NOT auto-stop capture if teacher extended overtime or is actively broadcasting screen
-            if (classData.overtimeUntil) {
-              const overtimeMs = parsePeriodDateMs(classData.overtimeUntil, schedule.timeZone);
-              if (!isNaN(overtimeMs) && overtimeMs > now.getTime()) {
-                logger.info(`Skipping auto-stop for class ${classId}: overtime active until ${new Date(overtimeMs).toISOString()}`);
-                return;
-              }
-            }
-            try {
-              const sessionSnap = await db.doc(`classes/${classId}/screenBroadcast/session`).get();
-              const sessionData = sessionSnap?.exists ? (sessionSnap.data() || {}) : {};
-              if (sessionData.isBroadcasting === true && (sessionData.startedAt || sessionData.broadcastMode)) {
-                logger.info(`Skipping auto-stop for class ${classId}: teacher screen broadcast is still active in overtime.`);
-                return;
-              }
-            } catch (err) {
-              logger.warn(`Could not check broadcast session for class ${classId} during auto-stop:`, err);
-            }
+        if (isStartTime) {
+          // Check if a class should start in 5 minutes
+          const targetStart = new Date(now.getTime() + 5 * 60 * 1000);
+          const { localTime: targetLocalTime } = getLocalTimeInfo(targetStart, schedule.timeZone);
 
-            logger.info(`Stopping capture for class ${classId} at ${localTime} (${schedule.timeZone})`);
-            await doc.ref.update({ isCapturing: false, captureStartedAt: null });
-          })();
-          promises.push(stopCheckPromise);
+          if (slot.startTime === targetLocalTime && !classData.isCapturing) {
+            logger.info(`Starting capture for class ${classId} at ${localTime} (${schedule.timeZone})`);
+            promises.push(doc.ref.update({ isCapturing: true, captureStartedAt: FieldValue.serverTimestamp() }));
+          }
+        } else if (isStopTime) {
+          // Check if a class should have ended 5 minutes ago
+          const targetEnd = new Date(now.getTime() - 5 * 60 * 1000);
+          const { localTime: targetLocalTime } = getLocalTimeInfo(targetEnd, schedule.timeZone);
+
+          if (slot.endTime === targetLocalTime && classData.isCapturing) {
+            matchedSlotStop = true;
+            const stopCheckPromise = (async () => {
+              // Do NOT auto-stop capture if teacher extended overtime or is actively broadcasting screen
+              if (classData.overtimeUntil) {
+                const overtimeMs = parsePeriodDateMs(classData.overtimeUntil, schedule.timeZone);
+                if (!isNaN(overtimeMs) && overtimeMs > now.getTime()) {
+                  logger.info(`Skipping auto-stop for class ${classId}: overtime active until ${new Date(overtimeMs).toISOString()}`);
+                  return;
+                }
+              }
+              try {
+                const sessionSnap = await db.doc(`classes/${classId}/screenBroadcast/session`).get();
+                const sessionData = sessionSnap?.exists ? (sessionSnap.data() || {}) : {};
+                if (sessionData.isBroadcasting === true && (sessionData.startedAt || sessionData.broadcastMode)) {
+                  logger.info(`Skipping auto-stop for class ${classId}: teacher screen broadcast is still active in overtime.`);
+                  return;
+                }
+              } catch (err) {
+                logger.warn(`Could not check broadcast session for class ${classId} during auto-stop:`, err);
+              }
+
+              logger.info(`Stopping capture for class ${classId} at ${localTime} (${schedule.timeZone})`);
+              await doc.ref.update({ isCapturing: false, captureStartedAt: null });
+            })();
+            promises.push(stopCheckPromise);
+          }
         }
-      }
-    });
+      });
+    }
 
     // Sweep stale post-overtime capture or zombie broadcast flags on classes that are no longer in an active session
     if (isStopTime && !matchedSlotStop && (classData.isCapturing || classData.isBroadcasting)) {
       if (!isClassSessionActive(classData, now)) {
         const staleSweepPromise = (async () => {
           try {
+            const sessionSnap = await db.doc(`classes/${classId}/screenBroadcast/session`).get();
+            const sessionData = sessionSnap?.exists ? (sessionSnap.data() || {}) : {};
+            const activityTs = sessionData.lastActiveAt || sessionData.startedAt;
+            const frameUpdatedMs = typeof sessionData.frameUpdatedAt === 'number' ? sessionData.frameUpdatedAt : 0;
+            const activityMs = activityTs
+              ? (typeof activityTs.toMillis === 'function' ? activityTs.toMillis() : new Date(activityTs).getTime())
+              : 0;
+            const recentSessionMs = Math.max(
+              !isNaN(activityMs) ? activityMs : 0,
+              !isNaN(frameUpdatedMs) ? frameUpdatedMs : 0
+            );
+            if (sessionData.isBroadcasting && recentSessionMs > 0 && now.getTime() - recentSessionMs < 15 * 60 * 1000) {
+              logger.info(`Skipping stale sweep for class ${classId}: broadcast session active recently.`);
+              return;
+            }
+
             const frameSnap = await db.doc(`classes/${classId}/screenBroadcast/liveFrame`).get();
             const frameData = frameSnap?.exists ? (frameSnap.data() || {}) : {};
             const frameTs = frameData.timestamp;
@@ -238,7 +258,7 @@ export const handleAutomaticCapture = onSchedule(scheduleOptions, async () => {
               return;
             }
           } catch (err) {
-            logger.warn(`Could not check liveFrame for class ${classId} during stale sweep:`, err);
+            logger.warn(`Could not check broadcast session or liveFrame for class ${classId} during stale sweep:`, err);
           }
 
           logger.info(`Sweeping expired overtime/zombie capture & broadcast state for class ${classId}`);
@@ -302,17 +322,20 @@ export const handlePostLessonMediaConsolidation = onSchedule(videoCombinationOpt
     let hasRecentlyEndedSlot = false;
     if (classData.automaticCombine !== false && schedule?.timeZone && Array.isArray(schedule.timeSlots)) {
       const { timeZone } = schedule;
-      const { localDay } = getLocalTimeInfo(now, timeZone);
-      const todayStr = format(now, 'yyyy-MM-dd', { timeZone });
-      const thirtyMinutesAgo = new Date(now.getTime() - 30 * 60 * 1000);
-      const offset = format(now, 'XXX', { timeZone });
+      const { localDay, localDate } = getLocalTimeInfo(now, timeZone);
+      const isWithinDates = !schedule.startDate || !schedule.endDate || !localDate || (localDate >= schedule.startDate && localDate <= schedule.endDate);
+      if (isWithinDates) {
+        const todayStr = format(now, 'yyyy-MM-dd', { timeZone });
+        const thirtyMinutesAgo = new Date(now.getTime() - 30 * 60 * 1000);
+        const offset = format(now, 'XXX', { timeZone });
 
-      for (const slot of schedule.timeSlots) {
-        if (!slot.days?.includes(localDay)) continue;
-        const lessonEndDateTimeInZone = new Date(`${todayStr}T${slot.endTime}:00${offset}`);
-        if (lessonEndDateTimeInZone > thirtyMinutesAgo && lessonEndDateTimeInZone <= now) {
-          hasRecentlyEndedSlot = true;
-          break;
+        for (const slot of schedule.timeSlots) {
+          if (!slot.days?.includes(localDay)) continue;
+          const lessonEndDateTimeInZone = new Date(`${todayStr}T${slot.endTime}:00${offset}`);
+          if (lessonEndDateTimeInZone > thirtyMinutesAgo && lessonEndDateTimeInZone <= now) {
+            hasRecentlyEndedSlot = true;
+            break;
+          }
         }
       }
     }
@@ -343,7 +366,7 @@ export const handlePostLessonMediaConsolidation = onSchedule(videoCombinationOpt
       logger.info(`Checking student screen video jobs for class '${classId}'. Current time in ${timeZone}: ${localDay} ${localTime}.`);
 
       for (const slot of schedule.timeSlots) {
-        if (!slot.days.includes(localDay)) {
+        if (!slot.days?.includes(localDay)) {
           continue; // Not scheduled for today
         }
 
@@ -368,61 +391,92 @@ export const handlePostLessonMediaConsolidation = onSchedule(videoCombinationOpt
 
           logger.info(`Found recently ended lesson slot for class '${classId}' (ends at ${slot.endTime}, isExam=${isExamSession}). Triggering student video combination.`);
 
-          if (!notificationsToCreate.has(classId)) {
-            notificationsToCreate.set(classId, teacherUids || []);
-          }
+          const videoJobsRef = db.collection('videoJobs');
+          const slotCheckAndCreatePromise = (async () => {
+            const existingStudentUids = new Set();
+            let slotHasOpaqueDocs = false;
 
-          for (const studentUid of studentUids) {
-            const videoJobsRef = db.collection('videoJobs');
-            const q = videoJobsRef
-              .where('classId', '==', classId)
-              .where('studentUid', '==', studentUid)
-              .where('startTime', '==', lessonStartDateTimeInZone)
-              .where('endTime', '==', lessonEndDateTimeInZone);
+            try {
+              const existingSlotJobs = await videoJobsRef
+                .where('classId', '==', classId)
+                .where('startTime', '==', lessonStartDateTimeInZone)
+                .where('endTime', '==', lessonEndDateTimeInZone)
+                .get();
 
-            const jobPromise = q.get().then(async (existingJobs) => {
-              if (existingJobs.empty) {
-                try {
-                  const userRecord = await adminAuth.getUser(studentUid);
-                  const studentEmail = userRecord.email;
-
-                  if (!studentEmail) {
-                    logger.error(`Student with UID ${studentUid} has no email. Cannot create video job.`);
-                    return;
+              if (existingSlotJobs && !existingSlotJobs.empty && Array.isArray(existingSlotJobs.docs)) {
+                for (const jDoc of existingSlotJobs.docs) {
+                  if (typeof jDoc.data === 'function') {
+                    const existingUid = jDoc.data()?.studentUid;
+                    if (existingUid) existingStudentUids.add(existingUid);
+                  } else {
+                    slotHasOpaqueDocs = true;
                   }
-
-                  const videoRetentionDays = classData.videoRetentionDays || classData.retentionDays || 90;
-                  const videoExpireAt = new Date(Date.now() + videoRetentionDays * 24 * 60 * 60 * 1000);
-
-                  const newDocRef = videoJobsRef.doc();
-                  logger.info(`Creating video job for student ${studentEmail} (${studentUid}) in class ${classId} (isExam=${isExamSession})`);
-                  return newDocRef.set({
-                    jobId: newDocRef.id,
-                    classId: classId,
-                    studentUid: studentUid,
-                    studentEmail: studentEmail,
-                    startTime: lessonStartDateTimeInZone,
-                    endTime: lessonEndDateTimeInZone,
-                    status: 'pending',
-                    captureInterval: classData.sessionFrameRate || classData.frameRate || 15,
-                    isExam: isExamSession,
-                    createdAt: FieldValue.serverTimestamp(),
-                    expireAt: videoExpireAt,
-                  });
-                } catch (e) {
-                  logger.error(`Failed to get user record for UID ${studentUid}`, e);
                 }
-              } else {
-                logger.info(`Video job already exists for student ${studentUid} in class ${classId}, skipping.`);
               }
-            });
-            jobCreationPromises.push(jobPromise);
-          }
+            } catch (slotErr) {
+              logger.warn(`Error querying existing videoJobs for class '${classId}':`, slotErr);
+            }
+
+            if (slotHasOpaqueDocs) {
+              logger.info(`Video jobs already exist for slot in class ${classId}, skipping batch creation.`);
+              return;
+            }
+
+            const videoRetentionDays = classData.videoRetentionDays ?? classData.retentionDays ?? 90;
+            const videoExpireAt = new Date(Date.now() + videoRetentionDays * 24 * 60 * 60 * 1000);
+
+            await Promise.all(studentUids.map(async (studentUid) => {
+              if (existingStudentUids.has(studentUid)) {
+                logger.info(`Video job already exists for student ${studentUid} in class ${classId}, skipping.`);
+                return;
+              }
+              try {
+                const rawStudentEntry = students?.[studentUid];
+                let studentEmail = '';
+                if (typeof rawStudentEntry === 'string') {
+                  studentEmail = rawStudentEntry.replace(/\s/g, '').toLowerCase();
+                } else if (rawStudentEntry && typeof rawStudentEntry === 'object' && typeof rawStudentEntry.email === 'string') {
+                  studentEmail = rawStudentEntry.email.replace(/\s/g, '').toLowerCase();
+                }
+
+                if (!studentEmail || !studentEmail.includes('@')) {
+                  const userRecord = await adminAuth.getUser(studentUid);
+                  studentEmail = userRecord?.email || '';
+                }
+
+                if (!studentEmail) {
+                  logger.error(`Student with UID ${studentUid} has no email. Cannot create video job.`);
+                  return;
+                }
+
+                const newDocRef = videoJobsRef.doc();
+                logger.info(`Creating video job for student ${studentEmail} (${studentUid}) in class ${classId} (isExam=${isExamSession})`);
+                await newDocRef.set({
+                  jobId: newDocRef.id,
+                  classId: classId,
+                  studentUid: studentUid,
+                  studentEmail: studentEmail,
+                  startTime: lessonStartDateTimeInZone,
+                  endTime: lessonEndDateTimeInZone,
+                  status: 'pending',
+                  captureInterval: classData.sessionFrameRate || classData.frameRate || 15,
+                  isExam: isExamSession,
+                  createdAt: FieldValue.serverTimestamp(),
+                  expireAt: videoExpireAt,
+                });
+                if (teacherUids?.length > 0 && !notificationsToCreate.has(classId)) {
+                  notificationsToCreate.set(classId, teacherUids);
+                }
+              } catch (e) {
+                logger.error(`Failed to create video job for UID ${studentUid}`, e);
+              }
+            }));
+          })();
+          jobCreationPromises.push(slotCheckAndCreatePromise);
 
           // 1b. Automatically freeze attendance snapshot into lessons/{lessonId} immediately post-lesson
           const attendanceSnapshotPromise = (async () => {
             try {
-              const crypto = await import('crypto');
               const lessonStartTimeISO = lessonStartDateTimeInZone.toISOString();
               const lessonEndTimeISO = lessonEndDateTimeInZone.toISOString();
               const lessonId = crypto.createHash('sha256').update(`${lessonStartTimeISO}-${lessonEndTimeISO}`).digest('hex');
@@ -444,7 +498,7 @@ export const handlePostLessonMediaConsolidation = onSchedule(videoCombinationOpt
               if (shotsSnap && typeof shotsSnap.forEach === 'function') {
                 shotsSnap.forEach(sDoc => {
                   const sData = sDoc.data ? sDoc.data() : null;
-                  if (!sData) return;
+                  if (!sData || sData.deleted === true) return;
                   const sUid = sData.studentUid || sData.userId || sData.uid;
                   if (!sUid) return;
                   if (!studentMinutesMap[sUid]) {
@@ -553,7 +607,7 @@ export const handlePostLessonMediaConsolidation = onSchedule(videoCombinationOpt
           const ninetyMinutesAgo = new Date(now.getTime() - 90 * 60 * 1000);
 
           for (const slot of timeSlots) {
-            if (!slot.days.includes(localDay)) continue;
+            if (!slot.days?.includes(localDay)) continue;
             const offset = format(now, 'XXX', { timeZone });
             const sStart = new Date(`${todayStr}T${slot.startTime}:00${offset}`);
             const sEnd = new Date(`${todayStr}T${slot.endTime}:00${offset}`);
@@ -603,26 +657,49 @@ export const handlePostLessonMediaConsolidation = onSchedule(videoCombinationOpt
             const existingJobData = existingMergeJob.exists ? existingMergeJob.data() : null;
             const existingIds = new Set(existingJobData?.recordingIds || []);
             const hasNewItems = itemsToConsolidate.some((item) => !existingIds.has(item.id));
+            const existingStatus = existingJobData?.status;
+            const retryCount = Number(existingJobData?.autoRetryCount || 0);
+            const canRetryFailed = existingStatus === 'failed' && retryCount < 1;
 
-            if (!existingMergeJob.exists || existingJobData?.status === 'failed' || (hasNewItems && existingJobData?.status === 'completed')) {
-              const effectiveJobId = (!existingMergeJob.exists || existingJobData?.status !== 'completed')
-                ? mergeJobId
-                : `${mergeJobId}_recombine_${Date.now()}`;
+            if (!existingMergeJob.exists || canRetryFailed || (hasNewItems && existingStatus === 'completed')) {
+              const sortedIds = itemsToConsolidate.map((c) => c.id).sort();
+              const recombineHash = crypto.createHash('sha256').update(sortedIds.join('|')).digest('hex').slice(0, 12);
+              const isRecombine = Boolean(existingMergeJob.exists && existingStatus === 'completed' && hasNewItems);
+              const effectiveJobId = isRecombine
+                ? `${mergeJobId}_recombine_${recombineHash}`
+                : mergeJobId;
 
-              const targetDocRef = (!existingMergeJob.exists || existingJobData?.status !== 'completed')
-                ? mergeJobRef
-                : db.collection('lectureMergeJobs').doc(effectiveJobId);
+              const targetDocRef = isRecombine
+                ? db.collection('lectureMergeJobs').doc(effectiveJobId)
+                : mergeJobRef;
 
-              logger.info(`Creating consolidated lesson merge job '${effectiveJobId}' for ${itemsToConsolidate.length} items (${slotCombined.length} previous combined, ${slotClips.length} segments) in class ${classId}`);
-              await targetDocRef.set({
-                jobId: effectiveJobId,
-                classId,
-                recordingIds: itemsToConsolidate.map((c) => c.id),
-                sessionGroupId: `slot_${cleanStart}_${cleanEnd}`,
-                customTitle: `Combined Full Lecture - ${todayStr}`,
-                status: 'pending',
-                createdAt: FieldValue.serverTimestamp(),
-              });
+              let shouldWrite = true;
+              let nextRetryCount = existingStatus === 'failed' ? retryCount + 1 : 0;
+              if (isRecombine) {
+                const targetSnap = await targetDocRef.get();
+                const targetData = targetSnap?.exists ? targetSnap.data() : null;
+                const targetStatus = targetData?.status;
+                const targetRetryCount = Number(targetData?.autoRetryCount || 0);
+                if (targetSnap?.exists && !(targetStatus === 'failed' && targetRetryCount < 1)) {
+                  shouldWrite = false;
+                } else if (targetStatus === 'failed') {
+                  nextRetryCount = targetRetryCount + 1;
+                }
+              }
+
+              if (shouldWrite) {
+                logger.info(`Creating consolidated lesson merge job '${effectiveJobId}' for ${itemsToConsolidate.length} items (${slotCombined.length} previous combined, ${slotClips.length} segments) in class ${classId}`);
+                await targetDocRef.set({
+                  jobId: effectiveJobId,
+                  classId,
+                  recordingIds: itemsToConsolidate.map((c) => c.id),
+                  sessionGroupId: `slot_${cleanStart}_${cleanEnd}`,
+                  customTitle: `Combined Full Lecture - ${todayStr}`,
+                  status: 'pending',
+                  autoRetryCount: nextRetryCount,
+                  createdAt: FieldValue.serverTimestamp(),
+                });
+              }
 
               // Mark these clips as handled so they aren't processed again in the group loop below
               const handledIds = new Set(itemsToConsolidate.map((i) => i.id));
@@ -682,8 +759,11 @@ export const handlePostLessonMediaConsolidation = onSchedule(videoCombinationOpt
 
             const mergeJobRef = db.collection('lectureMergeJobs').doc(mergeJobId);
             const existingMergeJob = await mergeJobRef.get();
+            const existingJobData = existingMergeJob?.exists ? existingMergeJob.data() : null;
+            const retryCount = Number(existingJobData?.autoRetryCount || 0);
+            const canRetryFailed = existingJobData?.status === 'failed' && retryCount < 1;
 
-            if (!existingMergeJob || !existingMergeJob.exists || existingMergeJob.data()?.status === 'failed') {
+            if (!existingMergeJob || !existingMergeJob.exists || canRetryFailed) {
               logger.info(`Creating automatic lecture merge job '${mergeJobId}' for ${clips.length} clips in class ${classId} (zero special settings required)`);
               await mergeJobRef.set({
                 jobId: mergeJobId,
@@ -692,6 +772,7 @@ export const handlePostLessonMediaConsolidation = onSchedule(videoCombinationOpt
                 sessionGroupId: groupId,
                 customTitle: `Combined Full Lecture - ${todayStr}`,
                 status: 'pending',
+                autoRetryCount: existingJobData?.status === 'failed' ? retryCount + 1 : 0,
                 createdAt: FieldValue.serverTimestamp(),
               });
             }
@@ -889,11 +970,13 @@ export const handleAutomaticBingo = onSchedule(bingoScheduleOptions, async () =>
 
     if (isDue) {
       logger.info(`Class '${classId}' is due for automated Bingo check (interval: ${intervalMinutes}m, mode: ${mode}).`);
-      
-      const jobRef = db.collection('bingoJobs').doc();
+
+      const windowBucket = Math.floor(now.getTime() / 60000);
+      const deterministicJobId = `auto_${classId}_${windowBucket}`;
+      const jobRef = db.collection('bingoJobs').doc(deterministicJobId);
       const jobPromise = (async () => {
         await jobRef.set({
-          jobId: jobRef.id,
+          jobId: deterministicJobId,
           classId,
           mode,
           status: 'pending',

@@ -450,4 +450,82 @@ describe('onClassUpdate Lifecycle & User Association Trigger', () => {
       { merge: true }
     );
   });
+
+  it('handles class deletion without writing back to deleted class doc or studentDirectory', async () => {
+    mockGetUserByEmail
+      .mockResolvedValueOnce({
+        uid: 'del-student-uid',
+        email: 's1@stu.vtc.edu.hk',
+        customClaims: { role: 'student' },
+      })
+      .mockResolvedValueOnce({
+        uid: 'del-teacher-uid',
+        email: 't1@vtc.edu.hk',
+        customClaims: { role: 'teacher' },
+      });
+
+    await onClassUpdate({
+      params: { classId: 'CLASS_DELETED' },
+      data: {
+        before: {
+          data: () => ({
+            studentEmails: ['s1@stu.vtc.edu.hk'],
+            teacherEmails: ['t1@vtc.edu.hk'],
+            studentProfiles: { 's1@stu.vtc.edu.hk': { studentName: 'Should Not Write' } },
+          }),
+        },
+        after: {
+          exists: false,
+          data: () => null,
+        },
+      },
+    });
+
+    expect(mockBatchCommit).toHaveBeenCalledTimes(2);
+    expect(mockBatchUpdate).not.toHaveBeenCalled();
+    expect(mockDocUpdate).not.toHaveBeenCalled();
+    expect(mockBatchSet).toHaveBeenCalledTimes(2);
+  });
+
+  it('ignores whitespace-only email differences between before and after without invoking Auth lookups', async () => {
+    await onClassUpdate({
+      params: { classId: 'CLASS_WS' },
+      data: {
+        before: { data: () => ({ studentEmails: [' s1@stu.vtc.edu.hk '], teacherEmails: [] }) },
+        after: {
+          exists: true,
+          data: () => ({ studentEmails: ['s1@stu.vtc.edu.hk'], teacherEmails: [] }),
+        },
+      },
+    });
+
+    expect(mockGetUserByEmail).not.toHaveBeenCalled();
+    expect(mockCreateUser).not.toHaveBeenCalled();
+    expect(mockBatchCommit).not.toHaveBeenCalled();
+  });
+
+  it('splits large student roster additions across multiple Firestore batches under 500 ops', async () => {
+    const bulkEmails = Array.from({ length: 250 }, (_, idx) => `stu${idx}@stu.vtc.edu.hk`);
+    mockDocGet.mockResolvedValue({ exists: false });
+    mockGetUserByEmail.mockImplementation(async (email) => ({
+      uid: `uid-${email}`,
+      email,
+      customClaims: { role: 'student' },
+    }));
+
+    await onClassUpdate({
+      params: { classId: 'CLASS_BULK_250' },
+      data: {
+        before: { data: () => ({ studentEmails: [], teacherEmails: [] }) },
+        after: {
+          exists: true,
+          data: () => ({ studentEmails: bulkEmails, teacherEmails: [] }),
+        },
+      },
+    });
+
+    // 250 students * 2 ops + 1 class update = 501 ops -> requires >= 2 batch commits at BATCH_LIMIT=400
+    expect(mockBatchCommit.mock.calls.length).toBeGreaterThanOrEqual(2);
+    expect(mockBatchUpdate).toHaveBeenCalledTimes(1);
+  });
 });

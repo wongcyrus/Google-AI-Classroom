@@ -374,7 +374,7 @@ describe('Storage Quota Calculations (functions/storage_triggers/storageQuota.js
       ).rejects.toThrow(/Missing classId/);
     });
 
-    it('throws permission-denied if caller is neither teacher by role nor assigned in class doc', async () => {
+    it('throws permission-denied if caller is an unrelated teacher or student not assigned to class doc', async () => {
       mockDoc.get.mockResolvedValueOnce({
         exists: true,
         data: () => ({
@@ -389,9 +389,32 @@ describe('Storage Quota Calculations (functions/storage_triggers/storageQuota.js
           data: { classId: 'CLASS_1' },
         })
       ).rejects.toThrow(/Only teachers assigned to this class/);
+
+      mockDoc.get.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({
+          ownerUid: 't1',
+          teacherEmails: ['t1@school.com'],
+          teachers: { t1: true },
+        }),
+      });
+
+      await expect(
+        recalculateStorageUsage({
+          auth: { uid: 'other_teacher', token: { role: 'teacher', email: 'intruder@school.com' } },
+          data: { classId: 'CLASS_1' },
+        })
+      ).rejects.toThrow(/Only teachers assigned to this class/);
     });
 
-    it('allows teacher authorized via role="teacher"', async () => {
+    it('allows assigned teacher or admin to recalculate storage usage', async () => {
+      mockDoc.get.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({
+          ownerUid: 't1',
+          teachers: { t1: true },
+        }),
+      });
       mockBucket.getFiles.mockResolvedValue([
         [
           { metadata: { size: '1048576' } }, // 1 MB
@@ -487,6 +510,78 @@ describe('Storage Quota Calculations (functions/storage_triggers/storageQuota.js
         expect.any(Error)
       );
       consoleWarnSpy.mockRestore();
+    });
+  });
+
+  describe('remux overwrite & skipDeleteDecrement loop protection', () => {
+    it('ignores upload events tagged with isRemuxOverwrite=true', async () => {
+      await updateStorageUsageOnUpload({
+        bucket: 'test-bucket',
+        data: {
+          name: 'recordings/CLASS_1/s1/lecture.webm',
+          size: '5000000',
+          metadata: { isRemuxOverwrite: 'true' },
+        },
+      });
+
+      expect(mockDoc.update).not.toHaveBeenCalled();
+      expect(mockDoc.set).not.toHaveBeenCalled();
+    });
+
+    it('marks quota-exceeded file metadata skipDeleteDecrement=true before deleting', async () => {
+      mockDoc.get
+        .mockResolvedValueOnce({
+          exists: true,
+          data: () => ({ storageQuota: 1000 }),
+        })
+        .mockResolvedValueOnce({
+          exists: true,
+          data: () => ({ storageUsage: 1500 }),
+        });
+
+      const callOrder = [];
+      const mockFile = {
+        setMetadata: vi.fn(async () => callOrder.push('setMetadata')),
+        delete: vi.fn(async () => callOrder.push('delete')),
+      };
+      mockBucket.file.mockReturnValue(mockFile);
+
+      await updateStorageUsageOnUpload({
+        bucket: 'test-bucket',
+        data: { name: 'screenshots/CLASS_1/s1/shot.jpg', size: '600' },
+      });
+
+      expect(mockFile.setMetadata).toHaveBeenCalledWith({
+        metadata: { skipDeleteDecrement: 'true' },
+      });
+      expect(callOrder).toEqual(['setMetadata', 'delete']);
+    });
+
+    it('skips storageUsage decrement on delete when skipDeleteDecrement=true', async () => {
+      await updateStorageUsageOnDelete({
+        data: {
+          name: 'screenshots/CLASS_1/s1/shot.jpg',
+          size: '600',
+          metadata: { skipDeleteDecrement: 'true' },
+        },
+      });
+
+      expect(mockDoc.get).not.toHaveBeenCalled();
+      expect(mockDoc.update).not.toHaveBeenCalled();
+    });
+
+    it('includes projectMeetings prefix in recalculateStorageUsageInternal', async () => {
+      mockBucket.getFiles.mockImplementation(({ prefix }) => {
+        if (prefix === 'projectMeetings/CLASS_PM/') {
+          return [[{ metadata: { size: '4096' } }]];
+        }
+        return [[]];
+      });
+
+      const result = await recalculateStorageUsageInternal('CLASS_PM');
+
+      expect(result.storageUsageProjectMeetings).toBe(4096);
+      expect(result.storageUsage).toBe(4096);
     });
   });
 });

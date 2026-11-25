@@ -169,7 +169,7 @@ describe('extractRetroactiveTaskSubmissions', () => {
           isTaskSubmission: true,
           slicedFromClassVideo: true,
           isRetroactive: true,
-          status: 'pending',
+          status: 'awaiting_eval',
         })
       );
       expect(updateJobMock).toHaveBeenCalledWith(
@@ -181,13 +181,54 @@ describe('extractRetroactiveTaskSubmissions', () => {
   });
 
   describe('executeExtractRetroactiveTaskSubmissions', () => {
+    it('rejects unauthenticated requests', async () => {
+      await expect(
+        executeExtractRetroactiveTaskSubmissions({ classId: 'c1', taskId: 't1', auth: null })
+      ).rejects.toThrow(/authenticated/);
+    });
+
     it('validates required parameters', async () => {
+      const auth = { uid: 't1', token: { role: 'teacher' } };
       await expect(
-        executeExtractRetroactiveTaskSubmissions({ classId: null, taskId: 't1' })
-      ).rejects.toThrow();
+        executeExtractRetroactiveTaskSubmissions({ classId: null, taskId: 't1', auth })
+      ).rejects.toThrow(/Missing required parameters/);
       await expect(
-        executeExtractRetroactiveTaskSubmissions({ classId: 'c1', taskId: null })
-      ).rejects.toThrow();
+        executeExtractRetroactiveTaskSubmissions({ classId: 'c1', taskId: null, auth })
+      ).rejects.toThrow(/Missing required parameters/);
+    });
+
+    it('rejects students (including institution domain) and unrelated teachers not assigned to the class', async () => {
+      const createClassOnlyDb = (classData) => ({
+        collection: (colName) => {
+          if (colName === 'classes') {
+            return {
+              doc: () => ({
+                get: vi.fn().mockResolvedValue({ exists: true, data: () => classData }),
+              }),
+            };
+          }
+          return {};
+        },
+      });
+      const db = createClassOnlyDb({ ownerUid: 'teacher_1', teacherEmails: ['teacher_1@vtc.edu.hk'] });
+
+      await expect(
+        executeExtractRetroactiveTaskSubmissions({
+          classId: 'c1',
+          taskId: 't1',
+          auth: { uid: 'stu_1', token: { role: 'student', email: 'stu@vtc.edu.hk' } },
+          dbInstance: db,
+        })
+      ).rejects.toThrow(/Only teachers assigned to this class/);
+
+      await expect(
+        executeExtractRetroactiveTaskSubmissions({
+          classId: 'c1',
+          taskId: 't1',
+          auth: { uid: 'other_teacher', token: { role: 'teacher', email: 'other@vtc.edu.hk' } },
+          dbInstance: db,
+        })
+      ).rejects.toThrow(/Only teachers assigned to this class/);
     });
 
     it('processes candidates, slices clips, and marks absent students', async () => {
@@ -231,6 +272,7 @@ describe('extractRetroactiveTaskSubmissions', () => {
                   data: () => ({
                     id: classId,
                     name: 'Test Class',
+                    ownerUid: 'teacher_1',
                     students: [
                       { uid: 's1', email: 's1@test.com' },
                       { uid: 's2_absent', email: 's2@test.com' },
@@ -281,6 +323,7 @@ describe('extractRetroactiveTaskSubmissions', () => {
         windowType: 'relative_offset',
         startOffsetSeconds: 300,
         endOffsetSeconds: 900,
+        auth: { uid: 'teacher_1', token: { role: 'teacher' } },
         dbInstance: mockDb,
         bucketInstance: mockBucket,
       });
@@ -333,6 +376,7 @@ describe('extractRetroactiveTaskSubmissions', () => {
                 get: vi.fn().mockResolvedValue({
                   exists: true,
                   data: () => ({
+                    ownerUid: 'teacher_1',
                     students: [{ uid: 's1', email: 's1@test.com' }],
                   }),
                 }),
@@ -380,6 +424,7 @@ describe('extractRetroactiveTaskSubmissions', () => {
         endTime: '2026-09-10T09:45:00Z',
         lessonId: 'lesson_101',
         sessionDate: '2026-09-10',
+        auth: { uid: 'teacher_1', token: { role: 'teacher' } },
         dbInstance: mockDb,
         bucketInstance: mockBucket,
       });
@@ -399,6 +444,7 @@ describe('extractRetroactiveTaskSubmissions', () => {
                 get: vi.fn().mockResolvedValue({
                   exists: true,
                   data: () => ({
+                    ownerUid: 'teacher_1',
                     students: {
                       uid_absent_1: 'absent1@school.edu',
                       uid_absent_2: { email: 'absent2@school.edu', displayName: 'Student Two' },
@@ -435,6 +481,7 @@ describe('extractRetroactiveTaskSubmissions', () => {
       const summary = await executeExtractRetroactiveTaskSubmissions({
         classId: 'c1',
         taskId: 'task_map',
+        auth: { uid: 'teacher_1', token: { role: 'teacher' } },
         dbInstance: mockDb,
         bucketInstance: {},
       });
@@ -470,14 +517,14 @@ describe('extractRetroactiveTaskSubmissions', () => {
       ).rejects.toThrow(/Missing classId or taskId/);
     });
 
-    it('rejects non-teacher caller when not in teacherProfiles', async () => {
+    it('rejects non-teacher or unassigned class requests via onCall wrapper', async () => {
       const handler = extractRetroactiveTaskSubmissions.run || extractRetroactiveTaskSubmissions;
       await expect(
         handler({
-          auth: { uid: 'student_1', token: { role: 'student', email: 'stu@other.com' } },
+          auth: { uid: 'student_1', token: { role: 'student', email: 'stu@vtc.edu.hk' } },
           data: { classId: 'c1', taskId: 't1' },
         })
-      ).rejects.toThrow(/Only teachers can extract/);
+      ).rejects.toThrow();
     });
 
     it('allows authorized teacher caller to invoke execution', async () => {

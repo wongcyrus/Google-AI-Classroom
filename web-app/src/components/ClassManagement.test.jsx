@@ -143,6 +143,7 @@ const mockGetDocs = vi.fn((colRef) =>
 
 vi.mock('firebase/firestore', () => ({
   doc: vi.fn((db, col, id) => ({ path: `${col}/${id}`, id })),
+  documentId: vi.fn(() => '__name__'),
   collection: vi.fn((db, ...pathSegments) => ({
     path: pathSegments.join('/'),
     id: pathSegments[pathSegments.length - 1],
@@ -1409,7 +1410,7 @@ lee.sm@stu.vtc.edu.hk,Lee Siu Ming,,HD in Software Engineering,IT114115/1B`;
 
     expect(screen.getByText('Phone Passkey')).toBeInTheDocument();
 
-    const resetBtn = screen.getByTestId('btn-roster-reset-passkey-alice_school_edu');
+    const resetBtn = await screen.findByTestId('btn-roster-reset-passkey-alice_school_edu');
     expect(resetBtn).toBeInTheDocument();
 
     await act(async () => {

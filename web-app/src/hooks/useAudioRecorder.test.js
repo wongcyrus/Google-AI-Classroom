@@ -625,5 +625,31 @@ describe('useAudioRecorder Hook & AI Monitoring Modes', () => {
       })
     );
   });
+
+  it('restarts recording when classId changes so segments belong to the new class', async () => {
+    const { rerender, unmount } = renderHook(
+      ({ classId }) =>
+        useAudioRecorder({
+          classId,
+          studentUid: 's1',
+          enabled: true,
+          strideDurationSec: 15,
+        }),
+      { initialProps: { classId: 'CLASS_1' } }
+    );
+
+    await waitFor(() => {
+      expect(mockGetUserMedia).toHaveBeenCalledTimes(1);
+    });
+
+    rerender({ classId: 'CLASS_2' });
+
+    await waitFor(() => {
+      expect(mockGetUserMedia).toHaveBeenCalledTimes(2);
+    });
+    expect(mockAudioTrack.stop).toHaveBeenCalled();
+
+    unmount();
+  });
 });
 

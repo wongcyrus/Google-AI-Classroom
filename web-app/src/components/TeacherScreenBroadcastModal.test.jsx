@@ -364,8 +364,8 @@ describe('TeacherScreenBroadcastModal', () => {
 
     expect(screen.getByText('🖥️ Live Class Screen Broadcast')).toBeInTheDocument();
     expect(screen.getByText(/2 Students Watching/i)).toBeInTheDocument();
-    expect(screen.getByText('alice@school.edu')).toBeInTheDocument();
-    expect(screen.getByText('bob@school.edu')).toBeInTheDocument();
+    expect(screen.getByText('al***@school.edu')).toBeInTheDocument();
+    expect(screen.getByText('bo***@school.edu')).toBeInTheDocument();
 
     // Clicking Stop Screen Broadcast
     const stopBtn = screen.getByRole('button', { name: /Stop Screen Broadcast/i });
@@ -1107,6 +1107,22 @@ describe('TeacherScreenBroadcastModal', () => {
     const dismissBtn = screen.getByTestId('dismiss-mic-silent-btn');
     fireEvent.click(dismissBtn);
     expect(dismissMicSilentWarning).toHaveBeenCalledTimes(1);
+  });
+
+  it('triggers onPushFrameNow when Push Slide Now button is clicked in active broadcast', () => {
+    const onPushFrameNow = vi.fn();
+    render(
+      <TeacherScreenBroadcastModal
+        isOpen={true}
+        onClose={vi.fn()}
+        isBroadcasting={true}
+        onPushFrameNow={onPushFrameNow}
+      />
+    );
+
+    const pushBtn = screen.getByRole('button', { name: /Push Slide Now/i });
+    fireEvent.click(pushBtn);
+    expect(onPushFrameNow).toHaveBeenCalledTimes(1);
   });
 });
 

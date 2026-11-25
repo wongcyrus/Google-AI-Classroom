@@ -9,6 +9,12 @@ export default function TeacherScreenViewerModal({
   liveFrame,
   connectionState,
   broadcastInfo,
+  onRefreshFrame = null,
+  onFrameError = null,
+  frameUpdatedAt = null,
+  hasNewFrame = false,
+  isRefreshing = false,
+  refreshStatus = 'idle',
   classId,
   activeClassIds = [],
   userClasses = [],
@@ -255,6 +261,14 @@ export default function TeacherScreenViewerModal({
                 {broadcastInfo.resolution.toUpperCase()}
               </span>
             )}
+            {frameUpdatedAt && (
+              <span
+                className="slide-timestamp-pill"
+                title={`Slide captured at ${new Date(frameUpdatedAt).toLocaleTimeString()}`}
+              >
+                🕒 {new Date(frameUpdatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+              </span>
+            )}
             {onSelectClass && Array.isArray(userClasses) && userClasses.length > 1 && (
               <select
                 aria-label="Switch Class in Broadcast Viewer"
@@ -336,6 +350,30 @@ export default function TeacherScreenViewerModal({
           </div>
 
           <div className="stream-header-right">
+            {onRefreshFrame && (
+              <button
+                type="button"
+                className={`slide-refresh-btn ${hasNewFrame ? 'has-update' : ''} ${refreshStatus === 'up_to_date' ? 'up-to-date' : ''}`}
+                onClick={onRefreshFrame}
+                disabled={isRefreshing}
+                title={
+                  hasNewFrame
+                    ? 'Teacher updated the screen — click to download latest slide'
+                    : refreshStatus === 'up_to_date'
+                    ? 'Slide already up to date (browser cache reused — 0 bytes transferred)'
+                    : 'Refresh slide if teacher changed screen'
+                }
+                aria-label={hasNewFrame ? 'Refresh Slide (New slide available)' : 'Refresh Slide'}
+              >
+                {isRefreshing
+                  ? '⏳ Refreshing...'
+                  : hasNewFrame
+                  ? '🔄 Refresh Slide • New!'
+                  : refreshStatus === 'up_to_date'
+                  ? '✓ Up to Date'
+                  : '🔄 Refresh Slide'}
+              </button>
+            )}
             {/* Layout Mode Switchers */}
             <div className="view-mode-buttons">
               <button
@@ -432,7 +470,9 @@ export default function TeacherScreenViewerModal({
               src={liveFrame}
               alt="Teacher Live Screen"
               className="teacher-live-video"
+              fetchPriority="high"
               draggable={false}
+              onError={onFrameError || undefined}
               style={{
                 transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoomScale})`,
                 transformOrigin: 'center center',

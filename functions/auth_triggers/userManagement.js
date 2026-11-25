@@ -10,11 +10,13 @@ import { FUNCTION_REGION, CORS_ORIGINS, deriveUserRole, getAllowedEmailDomainsDe
 const db = getFirestore();
 const adminAuth = getAuth();
 
+const sanitizeEmailList = (arr) =>
+  Array.isArray(arr) ? arr.map((e) => (typeof e === 'string' ? e.replace(/\s/g, '') : '')).filter(Boolean) : [];
+
 // Helper function to get or create multiple users in bulk, ensuring one UID per email.
 const getOrCreateUsers = async (emails, userType) => {
     const expectedRole = userType === 'student' ? 'student' : 'teacher';
-
-    const promises = [];
+    const tasks = [];
 
     for (const email of emails) {
         if (!email) continue;
@@ -30,7 +32,7 @@ const getOrCreateUsers = async (emails, userType) => {
             continue;
         }
 
-        const task = async () => {
+        tasks.push(async () => {
             try {
                 // 1. Attempt to fetch the user by email.
                 const userRecord = await adminAuth.getUserByEmail(email);
@@ -63,22 +65,28 @@ const getOrCreateUsers = async (emails, userType) => {
                 logger.error(`Error fetching user '${email}':`, error);
                 return null;
             }
-        };
-        promises.push(task());
+        });
     }
 
-    // Execute all operations in parallel and filter out any nulls from failures.
-    const results = await Promise.all(promises);
+    // Bound Auth API concurrency to avoid quota spikes/429s during large class imports
+    const AUTH_CONCURRENCY = 15;
+    const results = [];
+    for (let i = 0; i < tasks.length; i += AUTH_CONCURRENCY) {
+      const chunk = tasks.slice(i, i + AUTH_CONCURRENCY);
+      const chunkResults = await Promise.all(chunk.map((fn) => fn()));
+      results.push(...chunkResults);
+    }
     return results.filter(Boolean);
 };
 
 
 // Helper function to manage user-class associations in bulk
-const updateUserAssociations = async (classId, emails, userType, action, studentProfiles = {}) => {
+const updateUserAssociations = async (classId, emails, userType, action, studentProfiles = {}, options = {}) => {
   if (!emails || emails.length === 0) {
     return;
   }
 
+  const { skipClassDocUpdate = false } = options;
   const profileCollection = userType === 'student' ? 'studentProfiles' : 'teacherProfiles';
   const firestoreAction = action === 'add' ? FieldValue.arrayUnion : FieldValue.arrayRemove;
 
@@ -107,15 +115,27 @@ const updateUserAssociations = async (classId, emails, userType, action, student
   // Cross-class auto-enrichment: check central studentDirectory for any student missing a profile
   const directoryBackfills = {};
   if (action === 'add' && userType === 'student') {
-    const missingProfileEmails = userRecords
-      .map(u => (u.email ? u.email.trim().toLowerCase() : ''))
-      .filter(e => e && (!studentProfiles[e] || !studentProfiles[e].studentName));
+    const missingProfileEmails = Array.from(new Set(
+      userRecords
+        .map(u => (u.email ? u.email.trim().toLowerCase() : ''))
+        .filter(e => e && (!studentProfiles[e] || !studentProfiles[e].studentName))
+    ));
 
     if (missingProfileEmails.length > 0) {
-      for (const normEmail of missingProfileEmails) {
+      const READ_CHUNK = 100;
+      for (let i = 0; i < missingProfileEmails.length; i += READ_CHUNK) {
+        const chunkEmails = missingProfileEmails.slice(i, i + READ_CHUNK);
+        const dirRefs = chunkEmails.map((normEmail) => db.collection('studentDirectory').doc(normEmail));
         try {
-          const dirSnap = await db.collection('studentDirectory').doc(normEmail).get();
-          if (dirSnap.exists) {
+          let snaps;
+          if (typeof db.getAll === 'function') {
+            snaps = await db.getAll(...dirRefs);
+          } else {
+            snaps = await Promise.all(dirRefs.map((ref) => ref.get().catch(() => null)));
+          }
+          (snaps || []).forEach((dirSnap, idx) => {
+            if (!dirSnap?.exists) return;
+            const normEmail = chunkEmails[idx];
             const dirData = dirSnap.data() || {};
             if (dirData.studentName) {
               directoryBackfills[normEmail] = {
@@ -126,23 +146,38 @@ const updateUserAssociations = async (classId, emails, userType, action, student
               };
               logger.info(`Auto-backfilled profile for ${normEmail} from central studentDirectory.`);
             }
-          }
+          });
         } catch (dirErr) {
-          logger.warn(`Could not check studentDirectory for ${normEmail}:`, dirErr);
+          logger.warn(`Could not check studentDirectory batch for class ${classId}:`, dirErr);
         }
       }
     }
   }
 
-  const batch = db.batch();
+  const BATCH_LIMIT = 400;
   const classDocRef = db.collection('classes').doc(classId);
   const classUpdatePayload = {};
+  let batch = db.batch();
+  let batchOpCount = 0;
+
+  const commitAndResetBatch = async () => {
+    if (batchOpCount > 0) {
+      await batch.commit();
+      batch = db.batch();
+      batchOpCount = 0;
+    }
+  };
 
   for (const userRecord of userRecords) {
+    if (batchOpCount >= BATCH_LIMIT - 2) {
+      await commitAndResetBatch();
+    }
+
     const userDocRef = db.collection(profileCollection).doc(userRecord.uid);
 
     // Update the user's profile with the classId
     batch.set(userDocRef, { classes: firestoreAction(classId) }, { merge: true });
+    batchOpCount++;
 
     if (userType === 'teacher') {
       if (action === 'add') {
@@ -158,6 +193,7 @@ const updateUserAssociations = async (classId, emails, userType, action, student
         const normEmail = userRecord.email ? userRecord.email.trim().toLowerCase() : '';
         const profileData = studentProfiles[normEmail] || directoryBackfills[normEmail] || {};
         batch.set(studentPropsRef, { ...classProps, ...profileData }, { merge: true });
+        batchOpCount++;
       } else {
         classUpdatePayload[`students.${userRecord.uid}`] = FieldValue.delete();
       }
@@ -166,7 +202,7 @@ const updateUserAssociations = async (classId, emails, userType, action, student
   }
 
   // If profiles were backfilled from central studentDirectory, patch class document's studentProfiles
-  if (Object.keys(directoryBackfills).length > 0) {
+  if (!skipClassDocUpdate && Object.keys(directoryBackfills).length > 0) {
     for (const [normEmail, bProfile] of Object.entries(directoryBackfills)) {
       classUpdatePayload[`studentProfiles.${normEmail}`] = {
         ...bProfile,
@@ -175,38 +211,46 @@ const updateUserAssociations = async (classId, emails, userType, action, student
     }
   }
   
-  if (Object.keys(classUpdatePayload).length > 0) {
+  if (!skipClassDocUpdate && Object.keys(classUpdatePayload).length > 0) {
+    if (batchOpCount >= BATCH_LIMIT) {
+      await commitAndResetBatch();
+    }
     batch.update(classDocRef, classUpdatePayload);
+    batchOpCount++;
   }
 
-  await batch.commit();
+  await commitAndResetBatch();
   logger.info(`Batch committed for ${userRecords.length} ${userType}(s) association changes in class ${classId}.`);
 };
 
 export const onClassUpdate = onDocumentWritten({ document: 'classes/{classId}', region: FUNCTION_REGION }, async (event) => {
   const classId = event.params.classId;
   const beforeData = event.data.before.data() || {};
-  const afterData = event.data.after.data() || {};
+  const afterSnap = event.data?.after;
+  const afterData = afterSnap?.data?.() || {};
+  const afterExists = typeof afterSnap?.exists === 'function'
+    ? afterSnap.exists()
+    : (typeof afterSnap?.exists === 'boolean' ? afterSnap.exists : Boolean(afterSnap?.data?.()));
 
-  // Handle Students
-  const originalStudentEmails = afterData.studentEmails || [];
-  const cleanedStudentEmails = originalStudentEmails.map(e => e.replace(/\s/g, '')).filter(Boolean);
+  // Handle Students (normalize both before & after identically so whitespace differences don't churn associations)
+  const originalStudentEmails = Array.isArray(afterData.studentEmails) ? afterData.studentEmails : [];
+  const cleanedStudentEmails = sanitizeEmailList(originalStudentEmails);
 
-  const studentsBefore = new Set(beforeData.studentEmails || []);
-  const studentsAfter = new Set(cleanedStudentEmails);
+  const studentsBefore = new Set(sanitizeEmailList(beforeData.studentEmails));
+  const studentsAfter = new Set(afterExists ? cleanedStudentEmails : []);
   const addedStudents = [...studentsAfter].filter(email => !studentsBefore.has(email));
   const removedStudents = [...studentsBefore].filter(email => !studentsAfter.has(email));
 
   // Handle Teachers
-  const teachersBefore = new Set(beforeData.teacherEmails || []);
-  const teachersAfter = new Set(afterData.teacherEmails || []);
+  const teachersBefore = new Set(sanitizeEmailList(beforeData.teacherEmails));
+  const teachersAfter = new Set(afterExists ? sanitizeEmailList(afterData.teacherEmails) : []);
   const addedTeachers = [...teachersAfter].filter(email => !teachersBefore.has(email));
   const removedTeachers = [...teachersBefore].filter(email => !teachersAfter.has(email));
 
   // Fast-path early return for status-only updates (e.g. isCapturing, aiUsedQuota, lastAutoBingoAt)
   const beforeProfiles = (beforeData.studentProfiles && typeof beforeData.studentProfiles === 'object') ? beforeData.studentProfiles : {};
   const afterProfiles = (afterData.studentProfiles && typeof afterData.studentProfiles === 'object') ? afterData.studentProfiles : {};
-  const needsEmailSanitization = JSON.stringify(originalStudentEmails) !== JSON.stringify(cleanedStudentEmails);
+  const needsEmailSanitization = afterExists && JSON.stringify(originalStudentEmails) !== JSON.stringify(cleanedStudentEmails);
 
   if (
     addedStudents.length === 0 &&
@@ -214,20 +258,20 @@ export const onClassUpdate = onDocumentWritten({ document: 'classes/{classId}', 
     addedTeachers.length === 0 &&
     removedTeachers.length === 0 &&
     !needsEmailSanitization &&
-    JSON.stringify(beforeProfiles) === JSON.stringify(afterProfiles)
+    (!afterExists || JSON.stringify(beforeProfiles) === JSON.stringify(afterProfiles))
   ) {
     return null;
   }
 
   const promises = [
     updateUserAssociations(classId, addedStudents, 'student', 'add', afterData.studentProfiles || {}),
-    updateUserAssociations(classId, removedStudents, 'student', 'remove'),
+    updateUserAssociations(classId, removedStudents, 'student', 'remove', {}, { skipClassDocUpdate: !afterExists }),
     updateUserAssociations(classId, addedTeachers, 'teacher', 'add'),
-    updateUserAssociations(classId, removedTeachers, 'teacher', 'remove'),
+    updateUserAssociations(classId, removedTeachers, 'teacher', 'remove', {}, { skipClassDocUpdate: !afterExists }),
   ];
 
   // Sync only added/changed student profiles to the central institutional studentDirectory
-  if (afterData.studentProfiles && typeof afterData.studentProfiles === 'object') {
+  if (afterExists && afterData.studentProfiles && typeof afterData.studentProfiles === 'object') {
     let dirBatch = db.batch();
     let dirCount = 0;
     for (const [rawEmail, prof] of Object.entries(afterData.studentProfiles)) {
@@ -271,7 +315,7 @@ export const onClassUpdate = onDocumentWritten({ document: 'classes/{classId}', 
   }
 
   // If the student emails were cleaned, update the document to store the clean version.
-  if (JSON.stringify(originalStudentEmails) !== JSON.stringify(cleanedStudentEmails)) {
+  if (needsEmailSanitization) {
     logger.info(`Sanitizing studentEmails array for class ${classId}.`);
     const classRef = db.collection('classes').doc(classId);
     promises.push(classRef.update({ studentEmails: cleanedStudentEmails }));
@@ -364,16 +408,77 @@ export async function handleGetAllSystemStudentEmailsLogic(request, customDeps =
   const callerEmail = request.auth.token?.email || '';
   const callerRole = request.auth.token?.role || currentDeriveRole(callerEmail);
 
-  if (callerRole !== 'teacher') {
+  if (callerRole !== 'teacher' && callerRole !== 'admin') {
     throw new HttpsError('permission-denied', 'Only teachers can access the system student directory.');
   }
 
   const studentEmailsSet = new Set();
   const studentProfilesMap = {};
 
-  // 1. Fetch from central studentDirectory collection first
-  try {
-    const studentDirSnap = await currentDb.collection('studentDirectory').get();
+  const selectFields = (colRef, ...fields) => (
+    typeof colRef?.select === 'function' ? colRef.select(...fields) : colRef
+  );
+
+  // Fetch all 4 sources in parallel with field projection to cut latency and memory usage
+  const [studentDirSnap, authStudentEmails, classesSnap, studentProfilesSnap] = await Promise.all([
+    // 1. Central studentDirectory collection
+    selectFields(
+      currentDb.collection('studentDirectory'),
+      'email', 'studentName', 'nickname', 'programme', 'studentClass'
+    ).get().catch((dirErr) => {
+      logger.warn('Error querying studentDirectory:', dirErr);
+      return null;
+    }),
+
+    // 2. Firebase Auth users paginated list
+    (async () => {
+      const emails = [];
+      try {
+        let nextPageToken;
+        do {
+          const listUsersResult = await currentAuth.listUsers(1000, nextPageToken);
+          for (const userRecord of listUsersResult.users) {
+            if (!userRecord.email) continue;
+            const role = userRecord.customClaims?.role || currentDeriveRole(userRecord.email);
+            if (role === 'student') {
+              emails.push(userRecord.email.trim().toLowerCase());
+            }
+          }
+          nextPageToken = listUsersResult.pageToken;
+        } while (nextPageToken);
+      } catch (authErr) {
+        logger.warn('Error listing users from auth:', authErr);
+      }
+      return emails;
+    })(),
+
+    // 3. Classes collection (optionally teacher-scoped when requested)
+    (async () => {
+      try {
+        let classesQuery = currentDb.collection('classes');
+        const normalizedCallerEmail = callerEmail.trim().toLowerCase();
+        if (request.data?.teacherScoped === true && callerRole !== 'admin' && normalizedCallerEmail && typeof classesQuery.where === 'function') {
+          classesQuery = classesQuery.where('teacherEmails', 'array-contains', normalizedCallerEmail);
+        }
+        return await selectFields(classesQuery, 'studentEmails', 'students', 'studentProfiles').get();
+      } catch (fsErr) {
+        logger.warn('Error querying classes for student emails:', fsErr);
+        return null;
+      }
+    })(),
+
+    // 4. StudentProfiles collection
+    selectFields(
+      currentDb.collection('studentProfiles'),
+      'email', 'studentName', 'nickname', 'programme', 'studentClass'
+    ).get().catch((spErr) => {
+      logger.warn('Error querying studentProfiles for student emails:', spErr);
+      return null;
+    }),
+  ]);
+
+  // Merge in deterministic priority order: studentDirectory -> Auth -> classes -> studentProfiles
+  if (studentDirSnap && typeof studentDirSnap.forEach === 'function') {
     studentDirSnap.forEach((docSnap) => {
       const data = docSnap.data() || {};
       const email = (data.email || docSnap.id).trim().toLowerCase();
@@ -387,31 +492,11 @@ export async function handleGetAllSystemStudentEmailsLogic(request, customDeps =
         };
       }
     });
-  } catch (dirErr) {
-    logger.warn('Error querying studentDirectory:', dirErr);
   }
 
-  // 2. Fetch from Firebase Auth users in batches
-  try {
-    let nextPageToken;
-    do {
-      const listUsersResult = await currentAuth.listUsers(1000, nextPageToken);
-      for (const userRecord of listUsersResult.users) {
-        if (!userRecord.email) continue;
-        const role = userRecord.customClaims?.role || currentDeriveRole(userRecord.email);
-        if (role === 'student') {
-          studentEmailsSet.add(userRecord.email.trim().toLowerCase());
-        }
-      }
-      nextPageToken = listUsersResult.pageToken;
-    } while (nextPageToken);
-  } catch (authErr) {
-    logger.warn('Error listing users from auth:', authErr);
-  }
+  authStudentEmails.forEach((em) => studentEmailsSet.add(em));
 
-  // 3. Fetch from classes collection (studentEmails array, students map, and studentProfiles)
-  try {
-    const classesSnap = await currentDb.collection('classes').get();
+  if (classesSnap && typeof classesSnap.forEach === 'function') {
     classesSnap.forEach((docSnap) => {
       const classData = docSnap.data();
       if (Array.isArray(classData.studentEmails)) {
@@ -445,13 +530,9 @@ export async function handleGetAllSystemStudentEmailsLogic(request, customDeps =
         }
       }
     });
-  } catch (fsErr) {
-    logger.warn('Error querying classes for student emails:', fsErr);
   }
 
-  // 4. Fetch from studentProfiles collection
-  try {
-    const studentProfilesSnap = await currentDb.collection('studentProfiles').get();
+  if (studentProfilesSnap && typeof studentProfilesSnap.forEach === 'function') {
     studentProfilesSnap.forEach((docSnap) => {
       const data = docSnap.data();
       if (data.email && typeof data.email === 'string' && data.email.includes('@')) {
@@ -467,8 +548,6 @@ export async function handleGetAllSystemStudentEmailsLogic(request, customDeps =
         }
       }
     });
-  } catch (spErr) {
-    logger.warn('Error querying studentProfiles for student emails:', spErr);
   }
 
   const sortedStudentEmails = Array.from(studentEmailsSet).sort();

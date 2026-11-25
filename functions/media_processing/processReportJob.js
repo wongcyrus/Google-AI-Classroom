@@ -57,6 +57,11 @@ export const processReportJob = onDocumentCreated(
     } = jobData;
     const jobRef = snap.ref;
 
+    if (jobData.status && jobData.status !== 'pending') {
+      console.log(`Report job ${jobId} is not in 'pending' state (${jobData.status}). Skipping.`);
+      return;
+    }
+
     console.log(`Starting report generation for job ${jobId}, class ${classId}`);
 
     try {
@@ -72,21 +77,54 @@ export const processReportJob = onDocumentCreated(
       const classDoc = await db.doc(`classes/${classId}`).get();
       const classInfo = classDoc.exists ? classDoc.data() : { name: classId };
 
-      // 2. Fetch Students & Student Properties
-      const studentsSnap = await db.collection(`classes/${classId}/students`).get();
+      // 2. Fetch Students & Student Properties (support classInfo.students map/array, subcollection, and studentProperties)
       const studentMap = {};
-      studentsSnap.forEach((doc) => {
-        studentMap[doc.id] = { id: doc.id, ...doc.data() };
-      });
-
-      const studentPropsSnap = await db.collection(`classes/${classId}/studentProperties`).get();
-      studentPropsSnap.forEach((doc) => {
-        if (studentMap[doc.id]) {
-          studentMap[doc.id].properties = doc.data();
+      if (classInfo?.students && typeof classInfo.students === 'object') {
+        if (Array.isArray(classInfo.students)) {
+          classInfo.students.forEach((s) => {
+            const uid = s?.uid || s?.id;
+            if (uid) {
+              studentMap[uid] = { id: uid, ...(typeof s === 'object' ? s : {}) };
+            }
+          });
         } else {
-          studentMap[doc.id] = { id: doc.id, properties: doc.data() };
+          Object.entries(classInfo.students).forEach(([uid, emailOrObj]) => {
+            if (!uid) return;
+            studentMap[uid] = typeof emailOrObj === 'string'
+              ? { id: uid, email: emailOrObj }
+              : { id: uid, ...(emailOrObj || {}) };
+          });
         }
-      });
+      }
+
+      const [studentsSnap, studentPropsSnap] = await Promise.all([
+        db.collection(`classes/${classId}/students`).get().catch(() => null),
+        db.collection(`classes/${classId}/studentProperties`).get().catch(() => null),
+      ]);
+
+      if (studentsSnap && typeof studentsSnap.forEach === 'function') {
+        studentsSnap.forEach((doc) => {
+          studentMap[doc.id] = { ...(studentMap[doc.id] || {}), id: doc.id, ...doc.data() };
+        });
+      }
+
+      if (studentPropsSnap && typeof studentPropsSnap.forEach === 'function') {
+        studentPropsSnap.forEach((doc) => {
+          const props = doc.data() || {};
+          if (studentMap[doc.id]) {
+            studentMap[doc.id].properties = props;
+            if (!studentMap[doc.id].name && props.studentName) {
+              studentMap[doc.id].name = props.studentName;
+            }
+          } else {
+            studentMap[doc.id] = {
+              id: doc.id,
+              name: props.studentName || props.nickname || '',
+              properties: props,
+            };
+          }
+        });
+      }
 
       // Filter students if studentUids provided
       let targetStudentIds = Object.keys(studentMap);
@@ -94,20 +132,50 @@ export const processReportJob = onDocumentCreated(
         targetStudentIds = targetStudentIds.filter((uid) => studentUids.includes(uid));
       }
 
-      // 3. Fetch Irregularities (Strictly Scoped to Class & Time Period)
+      // 3. Fetch Irregularities from BOTH classes/{classId}/irregularities AND root irregularities (deduped)
       let irregularities = [];
-      const irregSnap = await db
-        .collection(`classes/${classId}/irregularities`)
-        .where('timestamp', '>=', startTimestamp)
-        .where('timestamp', '<=', endTimestamp)
-        .orderBy('timestamp', 'asc')
-        .get();
+      const seenIrregIds = new Set();
+      const seenIrregComposite = new Set();
 
-      irregSnap.forEach((doc) => {
-        const d = doc.data();
-        if (!targetStudentIds.length || targetStudentIds.includes(d.studentUid || d.userId)) {
+      const [subIrregSnap, rootIrregSnap] = await Promise.all([
+        db
+          .collection(`classes/${classId}/irregularities`)
+          .where('timestamp', '>=', startTimestamp)
+          .where('timestamp', '<=', endTimestamp)
+          .orderBy('timestamp', 'asc')
+          .get()
+          .catch(() => null),
+        db
+          .collection('irregularities')
+          .where('classId', '==', classId)
+          .where('timestamp', '>=', startTimestamp)
+          .where('timestamp', '<=', endTimestamp)
+          .orderBy('timestamp', 'asc')
+          .get()
+          .catch(() => null),
+      ]);
+
+      const pushIrregDoc = (doc) => {
+        if (!doc || seenIrregIds.has(doc.id)) return;
+        seenIrregIds.add(doc.id);
+        const d = (typeof doc.data === 'function' ? doc.data() : doc.data) || {};
+        const irUid = d.studentUid || d.userId || '';
+        const irTs = d.timestamp?.toDate ? d.timestamp.toDate().getTime() : new Date(d.timestamp || 0).getTime();
+        const compositeKey = `${irUid}::${isNaN(irTs) ? '' : irTs}::${d.type || ''}::${d.audioPath || d.screenshotPath || d.imagePath || ''}`;
+        if (seenIrregComposite.has(compositeKey)) return;
+        seenIrregComposite.add(compositeKey);
+        if (!targetStudentIds.length || targetStudentIds.includes(irUid)) {
           irregularities.push({ id: doc.id, ...d });
         }
+      };
+
+      if (subIrregSnap && typeof subIrregSnap.forEach === 'function') subIrregSnap.forEach(pushIrregDoc);
+      if (rootIrregSnap && typeof rootIrregSnap.forEach === 'function') rootIrregSnap.forEach(pushIrregDoc);
+
+      irregularities.sort((a, b) => {
+        const aMs = a.timestamp?.toDate ? a.timestamp.toDate().getTime() : new Date(a.timestamp || 0).getTime();
+        const bMs = b.timestamp?.toDate ? b.timestamp.toDate().getTime() : new Date(b.timestamp || 0).getTime();
+        return (isNaN(aMs) ? 0 : aMs) - (isNaN(bMs) ? 0 : bMs);
       });
 
       // 4. Fetch Audio Transcripts
@@ -128,20 +196,9 @@ export const processReportJob = onDocumentCreated(
         });
       }
 
-      // 5. Fetch Screenshot Evidences (if enabled)
-      let screenshots = [];
-      if (includeScreenshots) {
-        const screenSnap = await db
-          .collection('screenshots')
-          .where('classId', '==', classId)
-          .where('timestamp', '>=', startTimestamp)
-          .where('timestamp', '<=', endTimestamp)
-          .get();
-
-        screenSnap.forEach((doc) => {
-          screenshots.push({ id: doc.id, ...doc.data() });
-        });
-      }
+      // 5. Screenshot evidences are referenced directly from irregularity records;
+      //    skip scanning the full screenshots collection to avoid reading thousands of unrendered docs.
+      const screenshots = [];
 
       console.log(
         `Loaded: ${targetStudentIds.length} students, ${irregularities.length} irregularities, ${audioTranscripts.length} audio records, ${screenshots.length} screenshots`

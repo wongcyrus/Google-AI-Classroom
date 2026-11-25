@@ -58,21 +58,43 @@ async function deleteSubcollectionByPath(subcollectionPath) {
   return totalDeleted;
 }
 
+function toSafeDate(val) {
+  if (!val) return new Date();
+  if (typeof val.toDate === 'function') return val.toDate();
+  if (typeof val._seconds === 'number') return new Date(val._seconds * 1000);
+  if (typeof val.seconds === 'number') return new Date(val.seconds * 1000);
+  const parsed = val instanceof Date ? val : new Date(val);
+  return isNaN(parsed.getTime()) ? new Date() : parsed;
+}
+
 /**
- * Helper to unassign deleted class from user profiles (teacherProfiles & studentProfiles).
+ * Helper to unassign deleted class from user profiles (teacherProfiles & studentProfiles) in chunks.
  */
 async function removeClassFromProfiles(collectionName, classId) {
-  const snap = await db.collection(collectionName)
-    .where('classes', 'array-contains', classId)
-    .get();
+  const BATCH_SIZE = 450;
+  let hasMore = true;
 
-  if (snap.empty) return;
+  while (hasMore) {
+    let profileQuery = db.collection(collectionName)
+      .where('classes', 'array-contains', classId);
+    if (typeof profileQuery.limit === 'function') {
+      profileQuery = profileQuery.limit(BATCH_SIZE);
+    }
 
-  const batch = db.batch();
-  snap.docs.forEach(doc => {
-    batch.update(doc.ref, { classes: FieldValue.arrayRemove(classId) });
-  });
-  await batch.commit();
+    const snap = await profileQuery.get();
+    if (!snap || snap.empty || !Array.isArray(snap.docs) || snap.docs.length === 0) break;
+
+    const batch = db.batch();
+    snap.docs.forEach(doc => {
+      batch.update(doc.ref, { classes: FieldValue.arrayRemove(classId) });
+    });
+    await batch.commit();
+
+    const docCount = typeof snap.size === 'number' ? snap.size : snap.docs.length;
+    if (docCount < BATCH_SIZE) {
+      hasMore = false;
+    }
+  }
 }
 
 /**
@@ -194,7 +216,8 @@ export const onClassDocDeleted = onDocumentDeleted({
     `submissions/${classId}/`,
     `reports/${classId}/`,
     `taskDemos/${classId}/`,
-    `projectMeetings/${classId}/`
+    `projectMeetings/${classId}/`,
+    `broadcasts/${classId}/`
   ];
 
   for (const prefix of prefixes) {
@@ -230,11 +253,16 @@ export const onClassDocDeleted = onDocumentDeleted({
     }
   }
 
-  // 3. Purge subcollections
+  // 3. Purge subcollections & metadata docs
   try {
     await db.doc(`classes/${classId}/metadata/storage`).delete();
   } catch (err) {
     logger.warn(`Could not delete storage metadata for class ${classId}:`, err);
+  }
+  try {
+    await db.doc(`classes/${classId}/metadata/ai`).delete();
+  } catch (err) {
+    logger.warn(`Could not delete AI metadata for class ${classId}:`, err);
   }
 
   // Purge standard subcollections (including project group meetings, groups, student profiles, etc.)
@@ -245,6 +273,8 @@ export const onClassDocDeleted = onDocumentDeleted({
     'activeMeetingCaptures',
     'lectureRecordings',
     'bingoSessions',
+    'bingoRounds',
+    'livePeeks',
     'status',
     'lessons',
     'bingoRecords',
@@ -270,14 +300,29 @@ export const onClassDocDeleted = onDocumentDeleted({
     }
   }
 
-  // Purge tasks and their submissions (nested subcollection)
+  // Purge tasks, submissions, and nested attempts subcollections in bounded batches
   try {
     const tasksSnap = await db.collection(`classes/${classId}/tasks`).get();
+    const TASK_BATCH_LIMIT = 450;
     for (const taskDoc of tasksSnap.docs) {
       const subSnap = await taskDoc.ref.collection('submissions').get();
-      if (!subSnap.empty) {
+      const refsToDelete = [];
+      if (subSnap && !subSnap.empty && Array.isArray(subSnap.docs)) {
+        for (const sDoc of subSnap.docs) {
+          if (typeof sDoc.ref?.collection === 'function') {
+            try {
+              const attemptsSnap = await sDoc.ref.collection('attempts').get();
+              if (attemptsSnap && !attemptsSnap.empty && Array.isArray(attemptsSnap.docs)) {
+                attemptsSnap.docs.forEach((aDoc) => refsToDelete.push(aDoc.ref));
+              }
+            } catch {}
+          }
+          refsToDelete.push(sDoc.ref);
+        }
+      }
+      for (let i = 0; i < refsToDelete.length; i += TASK_BATCH_LIMIT) {
         const subBatch = db.batch();
-        subSnap.docs.forEach(sDoc => subBatch.delete(sDoc.ref));
+        refsToDelete.slice(i, i + TASK_BATCH_LIMIT).forEach((ref) => subBatch.delete(ref));
         await subBatch.commit();
       }
       await taskDoc.ref.delete();
@@ -336,7 +381,7 @@ export const onClassRetentionUpdated = onDocumentUpdated({
 
   const classId = event.params.classId;
   const now = Date.now();
-  const BATCH_SIZE = 500;
+  const BATCH_SIZE = 450;
 
   // 1. Handle Screenshot Retention Updates
   if (oldScreenshotDays !== newScreenshotDays) {
@@ -352,7 +397,7 @@ export const onClassRetentionUpdated = onDocumentUpdated({
         .where('classId', '==', classId)
         .limit(BATCH_SIZE);
 
-      if (lastDoc) {
+      if (lastDoc && typeof query.startAfter === 'function') {
         query = query.startAfter(lastDoc);
       }
 
@@ -361,8 +406,8 @@ export const onClassRetentionUpdated = onDocumentUpdated({
 
       const batch = db.batch();
       snapshot.docs.forEach(doc => {
-        const data = doc.data();
-        const docDate = data.timestamp ? data.timestamp.toDate() : new Date();
+        const data = typeof doc.data === 'function' ? doc.data() : (doc.data || {});
+        const docDate = toSafeDate(data.timestamp);
         const newExpireAt = new Date(docDate.getTime() + retentionMs);
 
         if (newExpireAt.getTime() <= now) {
@@ -395,7 +440,7 @@ export const onClassRetentionUpdated = onDocumentUpdated({
         .where('classId', '==', classId)
         .limit(BATCH_SIZE);
 
-      if (lastAudioDoc) {
+      if (lastAudioDoc && typeof query.startAfter === 'function') {
         query = query.startAfter(lastAudioDoc);
       }
 
@@ -404,8 +449,8 @@ export const onClassRetentionUpdated = onDocumentUpdated({
 
       const batch = db.batch();
       snapshot.docs.forEach(doc => {
-        const data = doc.data();
-        const docDate = data.timestamp ? (data.timestamp.toDate ? data.timestamp.toDate() : new Date(data.timestamp)) : new Date();
+        const data = typeof doc.data === 'function' ? doc.data() : (doc.data || {});
+        const docDate = toSafeDate(data.timestamp);
         const newExpireAt = new Date(docDate.getTime() + retentionMs);
 
         if (newExpireAt.getTime() <= now) {
@@ -442,7 +487,7 @@ export const onClassRetentionUpdated = onDocumentUpdated({
         .where('classId', '==', classId)
         .limit(BATCH_SIZE);
 
-      if (lastVideoDoc) {
+      if (lastVideoDoc && typeof query.startAfter === 'function') {
         query = query.startAfter(lastVideoDoc);
       }
 
@@ -451,8 +496,8 @@ export const onClassRetentionUpdated = onDocumentUpdated({
 
       const batch = db.batch();
       snapshot.docs.forEach(doc => {
-        const data = doc.data();
-        const docDate = data.createdAt ? data.createdAt.toDate() : (data.startTime ? data.startTime.toDate() : new Date());
+        const data = typeof doc.data === 'function' ? doc.data() : (doc.data || {});
+        const docDate = toSafeDate(data.createdAt || data.startTime);
         const newExpireAt = new Date(docDate.getTime() + videoRetentionMs);
 
         if (newExpireAt.getTime() <= now) {

@@ -462,5 +462,80 @@ describe('triggerAutomaticAnalysis Cloud Function', () => {
     await triggerAutomaticAnalysis(event);
     expect(mockLoggerInfo).toHaveBeenCalledWith(expect.stringContaining('already exists. Skipping creation.'));
   });
+
+  it('uses atomic create() and swallows ALREADY_EXISTS (code 6) cleanly without throwing', async () => {
+    const event = {
+      params: { jobId: 'videoJob_race' },
+      data: {
+        before: { data: () => ({ status: 'processing' }) },
+        after: {
+          data: () => ({
+            classId: 'it3101-race',
+            startTime: timestampObj,
+            endTime: endTimestampObj,
+            status: 'completed',
+          }),
+        },
+      },
+    };
+
+    const createErr = Object.assign(new Error('6 ALREADY_EXISTS: Document already exists'), { code: 6 });
+    const mockCreate = vi.fn().mockRejectedValueOnce(createErr);
+
+    mockDoc
+      .mockReturnValueOnce({
+        get: vi.fn().mockResolvedValue({
+          exists: true,
+          data: () => ({
+            automaticCombine: true,
+            afterClassVideoPrompt: { promptText: 'Analyze session' },
+            students: { s1: 's1@test.com' },
+          }),
+        }),
+      })
+      .mockReturnValueOnce({
+        create: mockCreate,
+        get: mockDocGet,
+        set: mockDocSet,
+      });
+
+    mockCollectionGet.mockResolvedValueOnce({ size: 1 });
+
+    await expect(triggerAutomaticAnalysis(event)).resolves.toBeUndefined();
+    expect(mockCreate).toHaveBeenCalledTimes(1);
+    expect(mockDocSet).not.toHaveBeenCalled();
+    expect(mockLoggerInfo).toHaveBeenCalledWith(expect.stringContaining('already exists. Skipping creation.'));
+  });
+
+  it('skips cleanly when startTime is invalid rather than crashing', async () => {
+    const event = {
+      params: { jobId: 'videoJob_bad_ts' },
+      data: {
+        before: { data: () => ({ status: 'processing' }) },
+        after: {
+          data: () => ({
+            classId: 'it3101-bad-ts',
+            startTime: 'invalid-date',
+            endTime: endTimestampObj,
+            status: 'completed',
+          }),
+        },
+      },
+    };
+
+    mockDocGet.mockResolvedValueOnce({
+      exists: true,
+      data: () => ({
+        automaticCombine: true,
+        afterClassVideoPrompt: { promptText: 'Check' },
+        students: { s1: 's1@test.com' },
+      }),
+    });
+    mockCollectionGet.mockResolvedValueOnce({ size: 1 });
+
+    await expect(triggerAutomaticAnalysis(event)).resolves.toBeUndefined();
+    expect(mockLoggerWarn).toHaveBeenCalledWith(expect.stringContaining('invalid startTime'));
+    expect(mockDocSet).not.toHaveBeenCalled();
+  });
 });
 

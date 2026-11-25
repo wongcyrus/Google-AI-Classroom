@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { db } from '../firebase-config';
-import { collection, query, where, onSnapshot, doc } from 'firebase/firestore';
+import { collection, query, where, orderBy, limit, onSnapshot, doc } from 'firebase/firestore';
 import { formatAiCost, formatBytes, formatStorageCost } from '../utils/formatters';
 import { aggregateAiCost } from '../utils/aiCostAggregator';
 import { generateAiCostCsv, downloadCsvFile, exportAiCostToExcel } from '../utils/aiCostCsvExporter';
@@ -105,7 +105,7 @@ const AiCostReportView = ({
     }
 
     const aiJobsRef = collection(db, 'aiJobs');
-    const q = query(aiJobsRef, where('classId', '==', classId));
+    const q = query(aiJobsRef, where('classId', '==', classId), orderBy('timestamp', 'desc'), limit(500));
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const jobs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));

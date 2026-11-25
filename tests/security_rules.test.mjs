@@ -4,6 +4,7 @@ import { getFirestore as getAdminFirestore, FieldValue } from 'firebase-admin/fi
 import { initializeApp as initClient } from 'firebase/app';
 import { getAuth as getClientAuth, signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { getFirestore as getClientFirestore, doc, getDoc, updateDoc, setDoc, deleteDoc } from 'firebase/firestore';
+import { getStorage, ref, uploadBytes, getDownloadURL, getBytes, deleteObject } from 'firebase/storage';
 
 import fs from 'fs';
 import path from 'path';
@@ -67,9 +68,11 @@ const clientApp = initClient({
   projectId: projectId,
   apiKey: apiKey,
   authDomain: `${projectId}.firebaseapp.com`,
+  storageBucket: `${projectId}.firebasestorage.app`,
 }, 'clientApp_' + Date.now());
 const clientAuth = getClientAuth(clientApp);
 const clientDb = getClientFirestore(clientApp);
+const clientStorage = getStorage(clientApp);
 
 let passed = 0;
 let failed = 0;
@@ -90,6 +93,7 @@ async function expectPermissionDenied(promise, message) {
     assert(false, `${message} (Expected PERMISSION_DENIED but operation SUCCEEDED)`);
   } catch (err) {
     const isDenied = err.code === 'permission-denied' || 
+                     err.code === 'storage/unauthorized' ||
                      err.message?.includes('insufficient permissions') || 
                      err.message?.includes('PERMISSION_DENIED') ||
                      err.code === 'auth/user-not-found' ||
@@ -809,6 +813,123 @@ async function runSecurityRulesSuite() {
     await adminDb.collection('classes').doc(classA).collection('lectureRecordings').doc(recPrivateId).delete().catch(() => {});
     await adminDb.collection('classes').doc(classA).collection('lectureRecordings').doc(recSharedId).delete().catch(() => {});
     await adminDb.collection('classes').doc(classA).collection('lectureRecordings').doc(recExamId).delete().catch(() => {});
+
+    // -------------------------------------------------------------
+    // SUITE 6: Cloud Storage Cross-Service & Screen Broadcast Security
+    // -------------------------------------------------------------
+    console.log(`\n📦 SUITE 6: Cloud Storage & Screen Broadcast Security Rules...`);
+    const sampleJpg = Buffer.from([0xff, 0xd8, 0xff, 0xd9]);
+    const sampleAudio = Buffer.from([0x1a, 0x45, 0xdf, 0xa3]);
+
+    // Ensure classA includes studentEmails too so both email and UID lookup paths are exercised
+    await adminDb.collection('classes').doc(classA).update({
+      studentEmails: [student1Email],
+    });
+    await new Promise(r => setTimeout(r, 800));
+
+    // Teacher uploads slide image to broadcasts/classA and obtains tokenized download URL
+    await signInWithEmailAndPassword(clientAuth, teacherEmail, defaultPassword);
+    const broadcastRef = ref(clientStorage, `broadcasts/${classA}/slide_${timestamp}_r99.jpg`);
+    let broadcastTokenUrl = null;
+    try {
+      await uploadBytes(broadcastRef, sampleJpg, { contentType: 'image/jpeg' });
+      broadcastTokenUrl = await getDownloadURL(broadcastRef);
+      assert(broadcastTokenUrl.includes('token='), 'Teacher can upload slide to broadcasts/classA and obtain token URL');
+    } catch (err) {
+      assert(false, `Teacher can upload slide to broadcasts/classA and obtain token URL (Failed with: ${err.message})`);
+    }
+
+    if (broadcastTokenUrl) {
+      const noTokenUrl = broadcastTokenUrl.split('&token=')[0];
+      const withTokRes = await fetch(broadcastTokenUrl);
+      const noTokRes = await fetch(noTokenUrl);
+      assert(withTokRes.status === 200, `Tokenized broadcast slide HTTPS GET returns 200 (got ${withTokRes.status})`);
+      assert(noTokRes.status === 403, `Un-tokenized broadcast slide HTTPS GET returns 403 (got ${noTokRes.status})`);
+    }
+
+    // Teacher can upload own preview screenshot in classA
+    const teacherShotRef = ref(clientStorage, `screenshots/${classA}/${teacherUid}/preview_${timestamp}.jpg`);
+    await expectAllowed(
+      uploadBytes(teacherShotRef, sampleJpg, { contentType: 'image/jpeg' }),
+      'Teacher can upload preview screenshot in enrolled classA'
+    );
+
+    // Enrolled Student 1 Storage permissions
+    await signInWithEmailAndPassword(clientAuth, student1Email, defaultPassword);
+    await expectPermissionDenied(
+      getBytes(broadcastRef),
+      'Enrolled Student 1 CANNOT read broadcasts/classA via Storage SDK'
+    );
+    await expectPermissionDenied(
+      uploadBytes(broadcastRef, sampleJpg, { contentType: 'image/jpeg' }),
+      'Enrolled Student 1 CANNOT write broadcasts/classA'
+    );
+    await expectPermissionDenied(
+      deleteObject(broadcastRef),
+      'Enrolled Student 1 CANNOT delete broadcasts/classA'
+    );
+
+    const stu1ShotRef = ref(clientStorage, `screenshots/${classA}/${student1Uid}/s_${timestamp}.jpg`);
+    await expectAllowed(
+      uploadBytes(stu1ShotRef, sampleJpg, { contentType: 'image/jpeg' }),
+      'Enrolled Student 1 CAN upload own screenshot to screenshots/classA'
+    );
+    await expectAllowed(
+      getDownloadURL(stu1ShotRef),
+      'Enrolled Student 1 CAN read own screenshot URL in screenshots/classA'
+    );
+
+    const stu1AudioRef = ref(clientStorage, `audio/${classA}/${student1Uid}/a_${timestamp}.webm`);
+    await expectAllowed(
+      uploadBytes(stu1AudioRef, sampleAudio, { contentType: 'audio/webm' }),
+      'Enrolled Student 1 CAN upload audio segment to audio/classA'
+    );
+
+    const stu1IrrRef = ref(clientStorage, `irregularities/${classA}/${student1Uid}/irr_${timestamp}.jpg`);
+    await expectAllowed(
+      uploadBytes(stu1IrrRef, sampleJpg, { contentType: 'image/jpeg' }),
+      'Enrolled Student 1 CAN upload evidence to irregularities/classA'
+    );
+
+    await expectPermissionDenied(
+      uploadBytes(ref(clientStorage, `screenshots/${classA}/${student2Uid}/spoof_${timestamp}.jpg`), sampleJpg, { contentType: 'image/jpeg' }),
+      'Student 1 CANNOT upload screenshot into Student 2 UID path'
+    );
+
+    // Non-enrolled Student 2 blocked from classA Storage
+    await signInWithEmailAndPassword(clientAuth, student2Email, defaultPassword);
+    await expectPermissionDenied(
+      uploadBytes(ref(clientStorage, `screenshots/${classA}/${student2Uid}/outsider_${timestamp}.jpg`), sampleJpg, { contentType: 'image/jpeg' }),
+      'Non-enrolled Student 2 CANNOT upload screenshot into classA'
+    );
+    await expectPermissionDenied(
+      uploadBytes(ref(clientStorage, `audio/${classA}/${student2Uid}/outsider_${timestamp}.webm`), sampleAudio, { contentType: 'audio/webm' }),
+      'Non-enrolled Student 2 CANNOT upload audio into classA'
+    );
+
+    // Unauthenticated user blocked from Storage SDK reads/writes
+    await signOut(clientAuth);
+    await expectPermissionDenied(
+      getDownloadURL(broadcastRef),
+      'Unauthenticated user CANNOT call Storage SDK getDownloadURL on broadcasts/'
+    );
+    await expectPermissionDenied(
+      uploadBytes(broadcastRef, sampleJpg, { contentType: 'image/jpeg' }),
+      'Unauthenticated user CANNOT write broadcasts/'
+    );
+
+    // Cleanup Storage fixture objects as Teacher
+    await signInWithEmailAndPassword(clientAuth, teacherEmail, defaultPassword);
+    await expectAllowed(
+      Promise.all([
+        deleteObject(broadcastRef),
+        deleteObject(teacherShotRef),
+        deleteObject(stu1ShotRef),
+        deleteObject(stu1AudioRef),
+        deleteObject(stu1IrrRef),
+      ]),
+      'Teacher can delete Storage test objects in classA'
+    );
 
     // -------------------------------------------------------------
     // Cleanup Fixture Documents & Users

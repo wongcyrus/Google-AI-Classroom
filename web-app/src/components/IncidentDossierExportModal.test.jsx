@@ -1,5 +1,5 @@
 import React from 'react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import IncidentDossierExportModal from './IncidentDossierExportModal';
 
@@ -30,6 +30,11 @@ describe('IncidentDossierExportModal Component', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockSnapshotCallback = null;
+    localStorage.setItem('teacher_privacy_mode', 'false');
+  });
+
+  afterEach(() => {
+    localStorage.removeItem('teacher_privacy_mode');
   });
 
   it('renders form with time filters, formats, evidence checkboxes and email options', () => {

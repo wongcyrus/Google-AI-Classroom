@@ -79,8 +79,10 @@ async function purgeDocList(docs, bucket, pathExtractors) {
  */
 async function purgeOrphanedStorageFiles(bucket, prefix, start, end) {
   let count = 0;
+  const DELETE_CONCURRENCY = 25;
   try {
     const [files] = await bucket.getFiles({ prefix });
+    const filesToDelete = [];
     for (const file of files) {
       let created = null;
       if (file.metadata?.timeCreated) {
@@ -95,12 +97,24 @@ async function purgeOrphanedStorageFiles(bucket, prefix, start, end) {
 
       if (created && !isNaN(created.getTime())) {
         if (created >= start && created <= end) {
-          await file.delete({ ignoreNotFound: true }).catch((err) => {
-            console.warn(`Could not delete orphaned file ${file.name}:`, err);
-          });
-          count++;
+          filesToDelete.push(file);
         }
       }
+    }
+
+    for (let i = 0; i < filesToDelete.length; i += DELETE_CONCURRENCY) {
+      const chunk = filesToDelete.slice(i, i + DELETE_CONCURRENCY);
+      const results = await Promise.allSettled(
+        chunk.map((file) =>
+          file.delete({ ignoreNotFound: true }).catch((err) => {
+            console.warn(`Could not delete orphaned file ${file.name}:`, err);
+            throw err;
+          })
+        )
+      );
+      results.forEach((res) => {
+        if (res.status === 'fulfilled') count++;
+      });
     }
   } catch (err) {
     console.warn(`[purgeClassTelemetryData] Error scanning prefix ${prefix} for orphans:`, err);
@@ -143,17 +157,31 @@ export const purgeClassTelemetryData = onCall({
     );
   }
 
-  // Authorization Check: Must be teacher assigned to class or admin
-  let isAuthorizedTeacher = request.auth.token?.role === 'teacher';
-  if (!isAuthorizedTeacher && request.auth.uid) {
+  // Authorization Check: Must be admin or teacher assigned to this specific class
+  let isAuthorizedTeacher = request.auth.token?.role === 'admin';
+  const callerUid = request.auth.uid;
+  const callerEmail = (request.auth.token?.email || '').trim().toLowerCase();
+
+  if (!isAuthorizedTeacher && (callerUid || callerEmail)) {
     try {
       const classDoc = await db.collection('classes').doc(classId).get();
       if (classDoc.exists) {
         const cData = classDoc.data() || {};
-        if (
-          (cData.teacherEmails && cData.teacherEmails.includes(request.auth.token?.email)) ||
-          (cData.teachers && (cData.teachers[request.auth.uid] || Object.keys(cData.teachers).includes(request.auth.uid)))
-        ) {
+        const matchesUid = Boolean(
+          callerUid && (
+            cData.ownerUid === callerUid ||
+            cData.teacherUid === callerUid ||
+            cData.createdBy === callerUid ||
+            (cData.teachers && typeof cData.teachers === 'object' && Boolean(cData.teachers[callerUid]))
+          )
+        );
+        const matchesEmail = Boolean(
+          callerEmail && (
+            (cData.teacherEmail && String(cData.teacherEmail).trim().toLowerCase() === callerEmail) ||
+            (Array.isArray(cData.teacherEmails) && cData.teacherEmails.some((e) => typeof e === 'string' && e.trim().toLowerCase() === callerEmail))
+          )
+        );
+        if (matchesUid || matchesEmail) {
           isAuthorizedTeacher = true;
         }
       }
@@ -349,19 +377,23 @@ export const purgeClassTelemetryData = onCall({
 
     // 6. Process Bingo & Activity Audit Records (Optional)
     if (targets.bingoRecords === true) {
-      const subCols = ['bingoRecords', 'attendanceAdjustments', 'audio_audits'];
-      for (const scName of subCols) {
+      const subColConfigs = [
+        { name: 'bingoRecords', dateField: 'issuedAt' },
+        { name: 'attendanceAdjustments', dateField: 'startTime' },
+        { name: 'audio_audits', dateField: 'timestamp' },
+      ];
+      for (const { name: scName, dateField } of subColConfigs) {
         try {
           const colRef = db.collection(`classes/${classId}/${scName}`);
           let docsToDelete = [];
           try {
-            const snap = await colRef.where('timestamp', '>=', start).where('timestamp', '<=', end).get();
+            const snap = await colRef.where(dateField, '>=', start).where(dateField, '<=', end).get();
             docsToDelete = snap.docs;
           } catch {
             const snap = await colRef.get();
             docsToDelete = snap.docs.filter(d => {
               const data = d.data();
-              const raw = data.timestamp || data.createdAt || data.adjustedAt || data.startedAt;
+              const raw = data[dateField] || data.issuedAtMillis || data.timestamp || data.createdAt || data.adjustedAt || data.startTime || data.startedAt;
               if (!raw) return true;
               const ts = raw.toDate ? raw.toDate() : new Date(raw);
               return !isNaN(ts.getTime()) && ts >= start && ts <= end;

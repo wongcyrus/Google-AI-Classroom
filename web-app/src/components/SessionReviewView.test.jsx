@@ -91,6 +91,7 @@ vi.mock('./VideoPlayerModal', () => ({
 describe('SessionReviewView Full Suite', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.setItem('teacher_privacy_mode', 'false');
     window.alert = vi.fn();
     window.confirm = vi.fn().mockReturnValue(true);
   });
@@ -366,6 +367,66 @@ describe('SessionReviewView Full Suite', () => {
     await waitFor(() => {
       expect(screen.getByTestId('video-player-modal')).toBeInTheDocument();
     });
+  });
+
+  it('tolerates jobs without toMillis on createdAt and ignores storage/object-not-found during chunked batch deletion', async () => {
+    mockJobs.push(
+      {
+        id: 'vj_3_str',
+        studentUid: 's1',
+        studentEmail: 'alice@school.edu',
+        status: 'completed',
+        createdAt: '2026-08-30T02:00:00Z',
+      },
+      {
+        id: 'vj_4_sec',
+        studentUid: 's2',
+        studentEmail: 'bob@school.edu',
+        status: 'completed',
+        createdAt: { seconds: 1788055200 },
+      },
+      {
+        id: 'vj_5_missing',
+        studentUid: 's1',
+        studentEmail: 'alice@school.edu',
+        status: 'completed',
+      },
+      {
+        id: 'vj_6_extra',
+        studentUid: 's2',
+        studentEmail: 'bob@school.edu',
+        status: 'completed',
+        createdAt: { _seconds: 1788055300 },
+      }
+    );
+
+    mockDeleteObject.mockRejectedValue({ code: 'storage/object-not-found' });
+
+    try {
+      render(
+        <SessionReviewView
+          classId="class-1"
+          startTime="2026-08-30T00:00:00Z"
+          endTime="2026-08-30T23:59:59Z"
+        />
+      );
+
+      const table = screen.getByRole('table');
+      const selectAllCheckbox = table.querySelector('thead input[type="checkbox"]');
+      fireEvent.click(selectAllCheckbox);
+
+      const deleteSelectedBtn = screen.getByRole('button', { name: /Delete Selected/i });
+      await act(async () => {
+        fireEvent.click(deleteSelectedBtn);
+      });
+
+      await waitFor(() => {
+        expect(mockDeleteDoc).toHaveBeenCalledTimes(6);
+      });
+      expect(screen.getByText(/Successfully deleted 6 jobs\./i)).toBeInTheDocument();
+    } finally {
+      mockJobs.splice(2);
+    }
   });
 });
 

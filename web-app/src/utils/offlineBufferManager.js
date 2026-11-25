@@ -4,6 +4,9 @@
  * and automatically drains and backfills them in chronological order upon reconnection.
  */
 
+import { isPermanentAuthOrRulesError } from './firebaseErrors.js';
+export { isPermanentAuthOrRulesError };
+
 const DB_NAME = 'ClassroomAssistantOfflineDB';
 const DB_VERSION = 1;
 const STORE_NAME = 'offline_queue';
@@ -204,6 +207,11 @@ export async function flushOfflineQueue({
         }
       } catch (err) {
         console.warn(`[OfflineBuffer] Error syncing item ${item.id}:`, err);
+        if (isPermanentAuthOrRulesError(err)) {
+          console.error(`[OfflineBuffer] Dropping permanently rejected item ${item.id}:`, err?.code || err?.message);
+          await removeOfflineItem(item.id);
+          continue;
+        }
         if (typeof navigator !== 'undefined' && !navigator.onLine) {
           break;
         }

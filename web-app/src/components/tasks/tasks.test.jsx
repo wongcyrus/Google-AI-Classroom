@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import React from 'react';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import TasksManagementView from './TasksManagementView';
@@ -103,6 +103,11 @@ vi.mock('../../hooks/useRubricPrompts', () => ({
 describe('Tasks Component Suite', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.setItem('teacher_privacy_mode', 'false');
+  });
+
+  afterEach(() => {
+    localStorage.removeItem('teacher_privacy_mode');
   });
 
   /* =========================================================================

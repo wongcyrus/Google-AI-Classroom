@@ -23,6 +23,7 @@ export default [
       globals: {
         ...globals.browser,
         ...globals.node,
+        __APP_BUILD_TIMESTAMP__: 'readonly',
         describe: 'readonly',
         it: 'readonly',
         test: 'readonly',
@@ -50,6 +51,7 @@ export default [
       'react-hooks/rules-of-hooks': 'error',
       'react-hooks/exhaustive-deps': 'warn',
       'react/no-unescaped-entities': 'off',
+      'react/no-unknown-property': ['error', { 'ignore': ['closedby'] }],
       'react/react-in-jsx-scope': 'off',
       'react/prop-types': 'off',
       'react-refresh/only-export-components': 'warn',

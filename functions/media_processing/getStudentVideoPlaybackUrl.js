@@ -99,17 +99,33 @@ export async function executeGetStudentVideoPlaybackUrl(request, { db = getFires
 
   const jobData = jobDoc.data();
   const isOwner = jobData.studentUid === request.auth.uid;
-  let isTeacher = request.auth.token?.role === 'teacher';
+  const isAdmin = request.auth.token?.role === 'admin';
+  let isTeacher = isAdmin;
 
   let classData = null;
   if (jobData.classId) {
     try {
       const classDoc = await db.collection('classes').doc(jobData.classId).get();
       if (classDoc.exists) {
-        classData = classDoc.data();
+        classData = classDoc.data() || {};
         if (!isTeacher) {
-          if ((classData.teacherEmails && classData.teacherEmails.includes(request.auth.token?.email)) ||
-              (classData.teachers && (classData.teachers[request.auth.uid] || Object.keys(classData.teachers).includes(request.auth.uid)))) {
+          const callerUid = request.auth.uid;
+          const callerEmail = (request.auth.token?.email || '').trim().toLowerCase();
+          const matchesUid = Boolean(
+            callerUid && (
+              classData.ownerUid === callerUid ||
+              classData.teacherUid === callerUid ||
+              classData.createdBy === callerUid ||
+              (classData.teachers && typeof classData.teachers === 'object' && Boolean(classData.teachers[callerUid]))
+            )
+          );
+          const matchesEmail = Boolean(
+            callerEmail && (
+              (classData.teacherEmail && String(classData.teacherEmail).trim().toLowerCase() === callerEmail) ||
+              (Array.isArray(classData.teacherEmails) && classData.teacherEmails.some((e) => typeof e === 'string' && e.trim().toLowerCase() === callerEmail))
+            )
+          );
+          if (matchesUid || matchesEmail) {
             isTeacher = true;
           }
         }

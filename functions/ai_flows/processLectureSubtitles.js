@@ -16,8 +16,10 @@ import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
 import { FUNCTION_REGION, AI_MODEL, DEFAULT_LECTURE_AI_MODEL } from './config.js';
 import { generateWithResilience } from './analysisFlows.js';
-import { calculateCost } from './cost.js';
+import { calculateCost, estimateCost } from './cost.js';
 import { logJob } from './jobLogger.js';
+import { checkQuota } from './quotaManagement.js';
+import { assertTeacherInClass } from './authHelpers.js';
 
 const db = getFirestore();
 const storage = getStorage();
@@ -715,6 +717,7 @@ export async function ensureIndexedLectureVideo({
           metadata: {
             ...(metadata?.metadata || {}),
             hasCuesIndex: 'true',
+            isRemuxOverwrite: 'true',
             durationSeconds: String(Math.round(durationSec || Number(metadata?.metadata?.durationSeconds || 0))),
             firebaseStorageDownloadTokens: token,
           },
@@ -972,6 +975,23 @@ export async function handleProcessLectureSubtitles(data = {}, context = {}) {
     // Backwards compatibility alias
     const resolvedCustomPrompt = resolvedSttPrompt;
     const resolvedPromptName = resolvedSttPromptName;
+
+    const estPromptText = resolvedCustomPrompt || DEFAULT_LECTURE_STT_PROMPT_TEXT;
+    const estCost = estimateCost(estPromptText, [{ media: { url: effectiveStoragePath } }], activeModel);
+    const hasQuota = await checkQuota(classId, estCost);
+    if (!hasQuota) {
+      await logJob({
+        classId,
+        sessionId,
+        jobType: 'lectureSubtitles',
+        status: 'blocked-by-quota',
+        promptText: estPromptText.slice(0, 500),
+        mediaPaths: [effectiveStoragePath],
+        cost: 0,
+        modelUsed: activeModel,
+      }).catch(() => {});
+      throw new HttpsError('resource-exhausted', `Monthly AI quota exceeded for class ${classId}.`);
+    }
 
     console.info(`[processLectureSubtitles] Transcribing via ${transcriptionSource} track: ${effectiveStoragePath} using model ${activeModel}. Target languages: ${effectiveTargetLanguages.join(', ')}. STT prompt: ${Boolean(resolvedSttPrompt)}, Translation prompt: ${Boolean(resolvedTranslationPrompt)}`);
 
@@ -1561,6 +1581,14 @@ export const processLectureSubtitles = onCall(
     timeoutSeconds: 540,
   },
   async (request) => {
+    if (!request.auth?.uid) {
+      throw new HttpsError('unauthenticated', 'User must be authenticated.');
+    }
+    const { classId, sessionId } = request.data || {};
+    if (!classId || !sessionId) {
+      throw new HttpsError('invalid-argument', 'classId and sessionId are required.');
+    }
+    await assertTeacherInClass(request.auth, classId, db);
     return await handleProcessLectureSubtitles(request.data || {}, { auth: request.auth });
   }
 );
@@ -1782,15 +1810,22 @@ export async function handleReconcileLectureRecordings({ classId, triggerSubtitl
 
       if (triggerSubtitles && !data.vttUrls && (videoPath || data.storagePath)) {
         try {
-          await handleProcessLectureSubtitles({
-            classId,
-            sessionId,
-            storagePath: videoPath || data.storagePath,
-            title: data.title,
-            targetLanguages: data.targetLanguages,
-          });
+          const jobId = `${classId}_${sessionId}`.replace(/[^a-zA-Z0-9_-]/g, '_');
+          await db.collection('lectureSubtitleJobs').doc(jobId).set(
+            {
+              status: 'pending',
+              classId,
+              sessionId,
+              storagePath: videoPath || data.storagePath,
+              title: data.title || '',
+              targetLanguages: data.targetLanguages || null,
+              source: 'reconcile',
+              createdAt: FieldValue.serverTimestamp(),
+            },
+            { merge: true }
+          );
         } catch (subErr) {
-          console.warn(`[handleReconcileLectureRecordings] Auto-trigger subtitles notice for ${sessionId}:`, subErr.message);
+          console.warn(`[handleReconcileLectureRecordings] Failed to enqueue subtitle job for ${sessionId}:`, subErr.message);
         }
       }
 

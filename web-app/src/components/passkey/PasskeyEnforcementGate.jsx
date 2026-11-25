@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import NativeDialog from '../NativeDialog';
 import QRCode from 'qrcode';
 import { httpsCallable } from 'firebase/functions';
 import { signOut } from 'firebase/auth';
-import { doc, onSnapshot } from 'firebase/firestore';
+import { doc } from 'firebase/firestore';
 import { functions, db, auth } from '../../firebase-config';
+import { subscribeDocShared } from '../../utils/sharedFirestoreListeners';
 import { isHandheldPhone } from '../../utils/browserDetection';
 import { isTeacherEmail, isStudentEmail } from '../../utils/domainConfig';
 import { useStudentClassSchedule } from '../../hooks/useStudentClassSchedule';
@@ -74,19 +75,25 @@ const PasskeyEnforcementGate = ({ user, classId: propClassId, role, children }) 
     if (!user?.email || !isStudent) return;
 
     const userEmail = user.email.toLowerCase().trim();
-    const unsubWhitelist = onSnapshot(doc(db, 'system_config/loginPolicy'), (snapshot) => {
-      if (snapshot.exists()) {
-        const data = snapshot.data();
-        const list = Array.isArray(data.passwordWhitelist) ? data.passwordWhitelist : [];
-        const isListed = list.some((e) => e && e.toLowerCase().trim() === userEmail) || (data.passwordWhitelistUids && data.passwordWhitelistUids.includes(user.uid));
-        setIsWhitelisted(!!isListed);
-      } else {
+    const unsubWhitelist = subscribeDocShared(
+      db,
+      'system_config/loginPolicy',
+      (snapshot) => {
+        if (snapshot.exists()) {
+          const data = snapshot.data();
+          const list = Array.isArray(data.passwordWhitelist) ? data.passwordWhitelist : [];
+          const isListed = list.some((e) => e && e.toLowerCase().trim() === userEmail) || (data.passwordWhitelistUids && data.passwordWhitelistUids.includes(user.uid));
+          setIsWhitelisted(!!isListed);
+        } else {
+          setIsWhitelisted(false);
+        }
+      },
+      (err) => {
+        console.warn('[PasskeyEnforcementGate] loginPolicy listener warning:', err);
         setIsWhitelisted(false);
-      }
-    }, (err) => {
-      console.warn('[PasskeyEnforcementGate] loginPolicy listener warning:', err);
-      setIsWhitelisted(false);
-    });
+      },
+      () => doc(db, 'system_config/loginPolicy')
+    );
 
     return () => unsubWhitelist();
   }, [user?.email, user?.uid, isStudent]);
@@ -98,19 +105,25 @@ const PasskeyEnforcementGate = ({ user, classId: propClassId, role, children }) 
       return;
     }
 
-    const unsubPasskey = onSnapshot(doc(db, `studentPasskeys/${user.uid}`), (snapshot) => {
-      if (snapshot.exists()) {
-        const data = snapshot.data();
-        setDeviceModel(data.deviceModel || 'Mobile Device');
-        setHasPasskey(true);
-      } else {
+    const unsubPasskey = subscribeDocShared(
+      db,
+      `studentPasskeys/${user.uid}`,
+      (snapshot) => {
+        if (snapshot.exists()) {
+          const data = snapshot.data();
+          setDeviceModel(data.deviceModel || 'Mobile Device');
+          setHasPasskey(true);
+        } else {
+          setHasPasskey(false);
+        }
+      },
+      (err) => {
+        console.warn('[PasskeyEnforcementGate] passkey listener error:', err);
+        // In case of error or offline, fallback to check bypass
         setHasPasskey(false);
-      }
-    }, (err) => {
-      console.warn('[PasskeyEnforcementGate] passkey listener error:', err);
-      // In case of error or offline, fallback to check bypass
-      setHasPasskey(false);
-    });
+      },
+      () => doc(db, `studentPasskeys/${user.uid}`)
+    );
 
     return () => unsubPasskey();
   }, [user?.uid, isStudent]);
@@ -135,36 +148,42 @@ const PasskeyEnforcementGate = ({ user, classId: propClassId, role, children }) 
     const activeBypasses = new Map();
 
     const unsubscribers = classesToListen.map((cid) => {
-      return onSnapshot(doc(db, `classes/${cid}/studentProperties/${user.uid}`), (snapshot) => {
-        if (snapshot.exists()) {
-          const data = snapshot.data();
-          const bypass = data.passkeyBypass;
-          if (bypass && bypass.active) {
-            const now = Date.now();
-            const expires = bypass.expiresAtMillis || (bypass.expiresAt ? new Date(bypass.expiresAt).getTime() : 0);
-            if (now < expires) {
-              activeBypasses.set(cid, bypass);
+      return subscribeDocShared(
+        db,
+        `classes/${cid}/studentProperties/${user.uid}`,
+        (snapshot) => {
+          if (snapshot.exists()) {
+            const data = snapshot.data();
+            const bypass = data.passkeyBypass;
+            if (bypass && bypass.active) {
+              const now = Date.now();
+              const expires = bypass.expiresAtMillis || (bypass.expiresAt ? new Date(bypass.expiresAt).getTime() : 0);
+              if (now < expires) {
+                activeBypasses.set(cid, bypass);
+              } else {
+                activeBypasses.delete(cid);
+              }
             } else {
               activeBypasses.delete(cid);
             }
           } else {
             activeBypasses.delete(cid);
           }
-        } else {
-          activeBypasses.delete(cid);
-        }
 
-        if (activeBypasses.size > 0) {
-          const firstBypass = activeBypasses.values().next().value;
-          setHasBypass(true);
-          setBypassData(firstBypass);
-        } else {
-          setHasBypass(false);
-          setBypassData(null);
-        }
-      }, (err) => {
-        console.warn(`[PasskeyEnforcementGate] bypass listener error for class ${cid}:`, err);
-      });
+          if (activeBypasses.size > 0) {
+            const firstBypass = activeBypasses.values().next().value;
+            setHasBypass(true);
+            setBypassData(firstBypass);
+          } else {
+            setHasBypass(false);
+            setBypassData(null);
+          }
+        },
+        (err) => {
+          console.warn(`[PasskeyEnforcementGate] bypass listener error for class ${cid}:`, err);
+        },
+        () => doc(db, `classes/${cid}/studentProperties/${user.uid}`)
+      );
     });
 
     return () => {
@@ -173,8 +192,10 @@ const PasskeyEnforcementGate = ({ user, classId: propClassId, role, children }) 
   }, [user?.uid, propClassId, classesKey, effectiveClassId, isStudent]);
 
   // 3. Generate single-use pairing QR code when passkey is missing
+  const isGeneratingQrRef = useRef(false);
   const generatePairingQR = async () => {
-    if (!user?.uid) return;
+    if (!user?.uid || isGeneratingQrRef.current) return;
+    isGeneratingQrRef.current = true;
     setQrLoading(true);
     setQrError('');
     try {
@@ -187,9 +208,11 @@ const PasskeyEnforcementGate = ({ user, classId: propClassId, role, children }) 
       }
 
       setPairingToken(tokenId);
-      const expMillis = expiresAtMillis || (Date.now() + 5 * 60 * 1000);
+      const serverRemainingMs = expiresAtMillis ? expiresAtMillis - Date.now() : 5 * 60 * 1000;
+      const effectiveTtlMs = Math.max(30000, Number.isFinite(serverRemainingMs) ? serverRemainingMs : 5 * 60 * 1000);
+      const expMillis = Date.now() + effectiveTtlMs;
       setQrExpiresAtMillis(expMillis);
-      setQrTimeLeftSec(Math.max(0, Math.round((expMillis - Date.now()) / 1000)));
+      setQrTimeLeftSec(Math.max(0, Math.round(effectiveTtlMs / 1000)));
 
       const pairingUrl = `${window.location.origin}/pair-phone?token=${tokenId}`;
       const dataUrl = await QRCode.toDataURL(pairingUrl, {
@@ -205,19 +228,20 @@ const PasskeyEnforcementGate = ({ user, classId: propClassId, role, children }) 
       console.error('[PasskeyEnforcementGate] QR generation error:', err);
       setQrError(err.message || 'Could not initialize pairing QR.');
     } finally {
+      isGeneratingQrRef.current = false;
       setQrLoading(false);
     }
   };
 
   useEffect(() => {
-    if (hasPasskey === false && !hasBypass) {
+    if (hasPasskey === false && !hasBypass && !pairingToken && !qrLoading && !qrError) {
       generatePairingQR();
     }
-  }, [hasPasskey, hasBypass, user?.uid]);
+  }, [hasPasskey, hasBypass, user?.uid, pairingToken, qrLoading, qrError]);
 
   // Pairing QR countdown and auto-refresh interval
   useEffect(() => {
-    if (!qrExpiresAtMillis || hasPasskey !== false || hasBypass) return;
+    if (!qrExpiresAtMillis || hasPasskey !== false || hasBypass || qrError) return;
 
     const interval = setInterval(() => {
       const now = Date.now();
@@ -231,7 +255,7 @@ const PasskeyEnforcementGate = ({ user, classId: propClassId, role, children }) 
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [qrExpiresAtMillis, hasPasskey, hasBypass]);
+  }, [qrExpiresAtMillis, hasPasskey, hasBypass, qrError]);
 
   // Handle teacher bypass request submission
   const handleSubmitBypassRequest = async (e) => {

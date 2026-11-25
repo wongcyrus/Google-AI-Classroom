@@ -6,7 +6,9 @@ import { getFunctions } from 'firebase-admin/functions';
 import { CORS_ORIGINS, FUNCTION_REGION } from './config.js';
 import { generateWithResilience } from './analysisFlows.js';
 import { logJob } from './jobLogger.js';
-import { calculateCost } from './cost.js';
+import { calculateCost, estimateCost } from './cost.js';
+import { checkQuota } from './quotaManagement.js';
+import { assertTeacherInClass } from './authHelpers.js';
 
 const db = getFirestore();
 
@@ -284,6 +286,27 @@ Respond strictly with valid JSON conforming to this schema:
 Return ONLY raw JSON. Do not wrap in markdown code fence blocks (\`\`\`json).`;
 
   const preferredModel = model || taskData.model || 'gemini-3.8-flash';
+  const estCost = estimateCost(
+    promptText,
+    [{ media: { url: gcsUri, contentType: 'video/mp4' } }],
+    preferredModel
+  );
+  const hasQuota = await checkQuota(classId, estCost);
+  if (!hasQuota) {
+    await logJob({
+      classId,
+      studentUid,
+      jobType: 'evaluateTaskSubmission',
+      status: 'blocked-by-quota',
+      promptText,
+      mediaPaths: [effectiveVideoPath],
+      cost: 0,
+      modelUsed: preferredModel,
+      errorDetails: 'Class AI quota exceeded.',
+    }).catch(() => {});
+    throw new HttpsError('resource-exhausted', 'Class AI quota exceeded for task submission evaluation.');
+  }
+
   const generateConfig = {
     prompt: [
       { text: promptText },
@@ -328,75 +351,89 @@ Return ONLY raw JSON. Do not wrap in markdown code fence blocks (\`\`\`json).`;
   evaluation.evaluatedAt = new Date();
   evaluation.model = modelUsed || preferredModel;
 
-  // 3. Update Firestore Attempt Record
-  await attemptRef.set(
-    {
-      evaluation,
-      status: isEvaluationFailed ? 'evaluation_failed' : 'evaluated',
-      finishedAt: new Date(),
-    },
-    { merge: true }
-  );
-
-  // 4. Update Root Submission Document
-  const attemptsSnap = await submissionRef.collection('attempts').get();
-
-  const attemptScoreMap = new Map();
-  if (!isEvaluationFailed && typeof evaluation.finalScore === 'number') {
-    attemptScoreMap.set(Number(attemptNumber) || 1, evaluation.finalScore);
-  }
-
-  attemptsSnap.forEach((doc) => {
-    const data = doc.data();
-    const attNum = Number(data.attemptNumber || parseInt(doc.id, 10)) || 1;
-    const score = data.evaluation?.finalScore;
-    if (typeof score === 'number' && (!data.status || data.status === 'evaluated')) {
-      attemptScoreMap.set(attNum, score);
-    }
-  });
-
-  const sortedAttempts = Array.from(attemptScoreMap.entries()).sort((a, b) => a[0] - b[0]);
-  const hasEvaluatedAttempt = sortedAttempts.length > 0;
-
-  let bestScore = null;
-  let latestScore = null;
-  let averageScore = null;
-  let highestAttempt = attemptNumber;
-
-  if (hasEvaluatedAttempt) {
-    let sum = 0;
-    for (const [attNum, score] of sortedAttempts) {
-      sum += score;
-      if (bestScore === null || score > bestScore) {
-        bestScore = score;
-        highestAttempt = attNum;
-      }
-      latestScore = score;
-    }
-    averageScore = Math.round(sum / sortedAttempts.length);
-  }
-
   const scoringStrategy = taskData.constraints?.attempts?.scoringStrategy || 'highest';
-  const effectiveScore =
-    scoringStrategy === 'latest'
-      ? latestScore
-      : scoringStrategy === 'average'
-      ? averageScore
-      : bestScore;
+  const attemptsQuery = submissionRef.collection('attempts');
 
-  await submissionRef.set(
-    {
-      status: hasEvaluatedAttempt ? 'evaluated' : 'evaluation_failed',
-      effectiveScore: effectiveScore ?? 0,
-      bestScore: bestScore ?? 0,
-      latestScore: latestScore ?? 0,
-      averageScore: averageScore ?? 0,
-      highestAttempt,
-      lastEvaluatedAt: new Date(),
-      evaluation, // Latest evaluation preview
-    },
-    { merge: true }
-  );
+  // 3 & 4. Atomically update Attempt & Root Submission Record inside a transaction (read before writes)
+  const { effectiveScore } = await db.runTransaction(async (tx) => {
+    const attemptsSnap = typeof tx.get === 'function'
+      ? await tx.get(attemptsQuery)
+      : await attemptsQuery.get();
+
+    const attemptScoreMap = new Map();
+    if (attemptsSnap && typeof attemptsSnap.forEach === 'function') {
+      attemptsSnap.forEach((doc) => {
+        const data = doc.data();
+        const attNum = Number(data.attemptNumber || parseInt(doc.id, 10)) || 1;
+        const score = data.evaluation?.finalScore;
+        if (typeof score === 'number' && (!data.status || data.status === 'evaluated')) {
+          attemptScoreMap.set(attNum, score);
+        }
+      });
+    }
+
+    const currentAttemptNum = Number(attemptNumber) || 1;
+    if (!isEvaluationFailed && typeof evaluation.finalScore === 'number') {
+      attemptScoreMap.set(currentAttemptNum, evaluation.finalScore);
+    } else if (isEvaluationFailed) {
+      attemptScoreMap.delete(currentAttemptNum);
+    }
+
+    const sortedAttempts = Array.from(attemptScoreMap.entries()).sort((a, b) => a[0] - b[0]);
+    const hasEvaluatedAttempt = sortedAttempts.length > 0;
+
+    let bestScore = null;
+    let latestScore = null;
+    let averageScore = null;
+    let highestAttempt = attemptNumber;
+
+    if (hasEvaluatedAttempt) {
+      let sum = 0;
+      for (const [attNum, score] of sortedAttempts) {
+        sum += score;
+        if (bestScore === null || score > bestScore) {
+          bestScore = score;
+          highestAttempt = attNum;
+        }
+        latestScore = score;
+      }
+      averageScore = Math.round(sum / sortedAttempts.length);
+    }
+
+    const computedEffectiveScore =
+      scoringStrategy === 'latest'
+        ? latestScore
+        : scoringStrategy === 'average'
+        ? averageScore
+        : bestScore;
+
+    tx.set(
+      attemptRef,
+      {
+        evaluation,
+        status: isEvaluationFailed ? 'evaluation_failed' : 'evaluated',
+        finishedAt: new Date(),
+      },
+      { merge: true }
+    );
+
+    tx.set(
+      submissionRef,
+      {
+        status: hasEvaluatedAttempt ? 'evaluated' : 'evaluation_failed',
+        effectiveScore: computedEffectiveScore ?? 0,
+        bestScore: bestScore ?? 0,
+        latestScore: latestScore ?? 0,
+        averageScore: averageScore ?? 0,
+        highestAttempt,
+        lastEvaluatedAt: new Date(),
+        evaluation, // Latest evaluation preview
+      },
+      { merge: true }
+    );
+
+    return { effectiveScore: computedEffectiveScore };
+  });
 
   const usage = response?.usage || response?.usageMetadata || {};
   const cost = calculateCost(usage, modelUsed || preferredModel);
@@ -563,6 +600,13 @@ export const evaluateTaskSubmission = onCall(
       model,
       sync = false,
     } = request.data || {};
+
+    await assertTeacherInClass(
+      request.auth,
+      classId,
+      db,
+      'Only teachers assigned to this class can evaluate task submissions.'
+    );
 
     if (sync) {
       return await handleEvaluateTaskSubmission({

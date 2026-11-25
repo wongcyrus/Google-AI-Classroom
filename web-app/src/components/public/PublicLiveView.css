@@ -126,7 +126,56 @@
   cursor: pointer;
 }
 
-:where(.lang-select-btn, .header-action-btn, .hud-lang-select, .hud-btn, .pin-submit-btn):focus-visible {
+.slide-status-chip {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #cbd5e1;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 999px;
+  padding: 0.2rem 0.5rem;
+  white-space: nowrap;
+}
+
+.header-refresh-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  background: rgba(37, 99, 235, 0.85);
+  color: #ffffff;
+  border: 1px solid rgba(96, 165, 250, 0.5);
+  border-radius: 6px;
+  padding: 0.35rem 0.65rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  min-block-size: 28px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.header-refresh-btn:hover:not(:disabled) {
+  background: #1d4ed8;
+}
+
+.header-refresh-btn:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+.header-refresh-btn.has-update,
+.hud-refresh-btn.has-update {
+  background: #d97706;
+  border-color: #fbbf24;
+  color: #ffffff;
+}
+
+.header-refresh-btn.up-to-date {
+  background: rgba(5, 150, 105, 0.85);
+  border-color: rgba(52, 211, 153, 0.55);
+}
+
+:where(.lang-select-btn, .header-action-btn, .header-refresh-btn, .hud-lang-select, .hud-btn, .pin-submit-btn):focus-visible {
   outline: 2px solid #60a5fa;
   outline-offset: 2px;
 }
@@ -214,6 +263,7 @@
 @media (pointer: coarse) {
   .lang-select-btn,
   .header-action-btn,
+  .header-refresh-btn,
   .hud-lang-select,
   .hud-btn {
     min-block-size: 44px;

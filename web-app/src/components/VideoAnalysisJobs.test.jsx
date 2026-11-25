@@ -1,5 +1,5 @@
 import React from 'react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import VideoAnalysisJobs from './VideoAnalysisJobs';
 
@@ -128,6 +128,7 @@ vi.mock('firebase/firestore', () => ({
 describe('VideoAnalysisJobs Component Full Suite', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.setItem('teacher_privacy_mode', 'false');
     mockHttpsCallable.mockImplementation((fnInstance, functionName) => {
       if (functionName === 'generateLabTaskPrompt') {
         return mockGeneratePromptCallable;
@@ -138,6 +139,10 @@ describe('VideoAnalysisJobs Component Full Suite', () => {
     window.confirm = vi.fn().mockReturnValue(true);
     URL.createObjectURL = vi.fn().mockReturnValue('blob:mock-csv');
     URL.revokeObjectURL = vi.fn();
+  });
+
+  afterEach(() => {
+    localStorage.removeItem('teacher_privacy_mode');
   });
 
   it('renders video analysis jobs list and selects a job to load AI sub-jobs', async () => {

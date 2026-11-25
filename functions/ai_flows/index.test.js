@@ -215,6 +215,14 @@ import {
 describe('AI Flows Index Callables and Dispatches (functions/ai_flows/index.mjs)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockFirestoreDoc.get.mockResolvedValue({
+      exists: true,
+      data: () => ({
+        ownerUid: 't1',
+        teachers: { t1: true, teacher_1: true },
+        teacherEmails: ['prof@school.edu'],
+      }),
+    });
   });
 
   describe('Genkit flow auth policies', () => {
@@ -243,11 +251,15 @@ describe('AI Flows Index Callables and Dispatches (functions/ai_flows/index.mjs)
   describe('Bingo callables & task dispatches', () => {
     it('triggerBingoCheck enforces teacher role and delegates', async () => {
       await expect(
-        triggerBingoCheck({ auth: { token: { role: 'student' } }, data: { classId: 'C1' } })
+        triggerBingoCheck({ auth: { uid: 's1', token: { role: 'student' } }, data: { classId: 'C1' } })
       ).rejects.toThrow(/Only teachers/);
 
+      await expect(
+        triggerBingoCheck({ auth: { uid: 'other_teacher', token: { role: 'teacher' } }, data: { classId: 'C1' } })
+      ).rejects.toThrow(/Only teachers assigned to this class/);
+
       const res = await triggerBingoCheck({
-        auth: { token: { role: 'teacher' } },
+        auth: { uid: 't1', token: { role: 'teacher' } },
         data: { classId: 'C1' },
       });
       expect(res).toEqual({ status: 'ok' });
@@ -256,11 +268,11 @@ describe('AI Flows Index Callables and Dispatches (functions/ai_flows/index.mjs)
 
     it('cancelActiveBingo enforces teacher role and delegates', async () => {
       await expect(
-        cancelActiveBingo({ auth: { token: { role: 'student' } }, data: { classId: 'C1' } })
+        cancelActiveBingo({ auth: { uid: 's1', token: { role: 'student' } }, data: { classId: 'C1' } })
       ).rejects.toThrow(/Only teachers/);
 
       const res = await cancelActiveBingo({
-        auth: { token: { role: 'teacher' } },
+        auth: { uid: 't1', token: { role: 'teacher' } },
         data: { classId: 'C1' },
       });
       expect(res).toEqual({ status: 'cancelled' });
@@ -284,11 +296,11 @@ describe('AI Flows Index Callables and Dispatches (functions/ai_flows/index.mjs)
 
     it('generateQuestionBankAi enforces teacher role and delegates', async () => {
       await expect(
-        generateQuestionBankAi({ auth: { token: { role: 'student' } }, data: {} })
+        generateQuestionBankAi({ auth: { uid: 's1', token: { role: 'student' } }, data: {} })
       ).rejects.toThrow(/Only teachers/);
 
       const res = await generateQuestionBankAi({
-        auth: { token: { role: 'teacher' } },
+        auth: { uid: 't1', token: { role: 'teacher' } },
         data: { topic: 'Math', count: 5, classId: 'C1' },
       });
       expect(res).toEqual({ questions: [] });
@@ -417,8 +429,15 @@ describe('AI Flows Index Callables and Dispatches (functions/ai_flows/index.mjs)
       expect(resOverride).toEqual({ override: true });
     });
 
-    it('getStudentPasskeyStatus delegates with fallback to auth.uid', async () => {
+    it('getStudentPasskeyStatus delegates with fallback to auth.uid and blocks cross-student access', async () => {
       await expect(getStudentPasskeyStatus({ auth: null, data: {} })).rejects.toThrow(/authenticated/);
+
+      await expect(
+        getStudentPasskeyStatus({
+          auth: { uid: 's1', token: { role: 'student' } },
+          data: { studentUid: 's2', classId: 'C1' },
+        })
+      ).rejects.toThrow(/Only assigned teachers/);
 
       const res = await getStudentPasskeyStatus({
         auth: { uid: 's1' },
@@ -521,6 +540,13 @@ describe('AI Flows Index Callables and Dispatches (functions/ai_flows/index.mjs)
       await expect(
         reconcileLectureRecordings({
           auth: { uid: 's1', token: { role: 'student' } },
+          data: { classId: 'C1' },
+        })
+      ).rejects.toThrow(/Only teachers/);
+
+      await expect(
+        reconcileLectureRecordings({
+          auth: { uid: 'other_teacher', token: { role: 'teacher' } },
           data: { classId: 'C1' },
         })
       ).rejects.toThrow(/Only teachers/);

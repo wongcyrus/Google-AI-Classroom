@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import NativeDialog from './NativeDialog';
 import { db, functions, storage } from '../firebase-config';
-import { collection, query, where, orderBy, getDocs, limit } from 'firebase/firestore';
+import { collection, query, where, getDocs, limit } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { ref, getDownloadURL } from 'firebase/storage';
 
@@ -25,6 +25,16 @@ const VideoPlayerModal = ({ show, onClose, videoUrl, loading, video, classId: pr
   const studentEmail = video?.studentEmail || video?.email;
   const startTime = video?.startTime;
   const endTime = video?.endTime;
+  const videoId = video?.id || video?.jobId || '';
+  const directAudioUrl = audioUrl || video?.audioUrl || video?.combinedAudioUrl || '';
+  const videoAudioDuration = video?.audioDuration || video?.durationSeconds || null;
+  const videoAudioClipCount = video?.audioClipCount || video?.clipCount || null;
+  const startTimeIso = startTime?.toDate
+    ? startTime.toDate().toISOString()
+    : (startTime?._seconds ? new Date(startTime._seconds * 1000).toISOString() : (startTime?.seconds ? new Date(startTime.seconds * 1000).toISOString() : (startTime || null)));
+  const endTimeIso = endTime?.toDate
+    ? endTime.toDate().toISOString()
+    : (endTime?._seconds ? new Date(endTime._seconds * 1000).toISOString() : (endTime?.seconds ? new Date(endTime.seconds * 1000).toISOString() : (endTime || null)));
 
   useEffect(() => {
     if (!show) {
@@ -36,18 +46,14 @@ const VideoPlayerModal = ({ show, onClose, videoUrl, loading, video, classId: pr
     }
 
     // Direct audio URL provided
-    if (audioUrl || video?.audioUrl || video?.combinedAudioUrl) {
-      const url = audioUrl || video?.audioUrl || video?.combinedAudioUrl;
-      setResolvedAudioUrl(url);
+    if (directAudioUrl) {
+      setResolvedAudioUrl(directAudioUrl);
       setAudioMeta({
-        durationSeconds: video?.audioDuration || video?.durationSeconds || null,
-        clipCount: video?.audioClipCount || video?.clipCount || null,
+        durationSeconds: videoAudioDuration,
+        clipCount: videoAudioClipCount,
       });
       return;
     }
-
-    const studentUid = video?.studentUid || video?.uid || video?.userId;
-    const studentEmail = video?.studentEmail || video?.email;
 
     if (!classId || (!studentUid && !studentEmail) || !db) return;
 
@@ -182,8 +188,8 @@ const VideoPlayerModal = ({ show, onClose, videoUrl, loading, video, classId: pr
                 mergeFn({
                   classId,
                   studentUid,
-                  startTime: startTime?.toDate ? startTime.toDate().toISOString() : (startTime?._seconds ? new Date(startTime._seconds * 1000).toISOString() : (startTime || null)),
-                  endTime: endTime?.toDate ? endTime.toDate().toISOString() : (endTime?._seconds ? new Date(endTime._seconds * 1000).toISOString() : (endTime || null)),
+                  startTime: startTimeIso,
+                  endTime: endTimeIso,
                 }).then((res) => {
                   if (isMounted && res.data?.status === 'success' && res.data?.audioUrl) {
                     setResolvedAudioUrl(res.data.audioUrl);
@@ -219,42 +225,7 @@ const VideoPlayerModal = ({ show, onClose, videoUrl, loading, video, classId: pr
     return () => {
       isMounted = false;
     };
-  }, [show, classId, studentUid, startTime, endTime, audioUrl, video]);
-
-  const handleMergeAudio = async () => {
-    if (!classId || !studentUid || isMergingAudio) return;
-    setIsMergingAudio(true);
-    setMergeFeedback('');
-
-    try {
-      const mergeFn = httpsCallable(functions, 'mergeStudentSessionAudio');
-      const res = await mergeFn({
-        classId,
-        studentUid,
-        startTime: startTime?.toDate ? startTime.toDate().toISOString() : (startTime?._seconds ? new Date(startTime._seconds * 1000).toISOString() : (startTime || null)),
-        endTime: endTime?.toDate ? endTime.toDate().toISOString() : (endTime?._seconds ? new Date(endTime._seconds * 1000).toISOString() : (endTime || null)),
-      });
-
-      const data = res.data || {};
-      if (data.status === 'success' && data.audioUrl) {
-        setResolvedAudioUrl(data.audioUrl);
-        setAudioMeta({
-          durationSeconds: data.durationSeconds,
-          clipCount: data.clipCount,
-        });
-        setMergeFeedback(`✅ Merged ${data.clipCount || rawAudioCount} audio clip(s) (${data.durationSeconds || 0}s).`);
-      } else if (data.status === 'no_clips') {
-        setMergeFeedback('⚠️ No audio clips available for this student session.');
-      } else {
-        setMergeFeedback(data.message || 'Audio merge completed.');
-      }
-    } catch (err) {
-      console.error('[VideoPlayerModal] Error merging student audio:', err);
-      setMergeFeedback(`❌ Failed to merge audio: ${err.message}`);
-    } finally {
-      setIsMergingAudio(false);
-    }
-  };
+  }, [show, classId, studentUid, studentEmail, videoId, startTimeIso, endTimeIso, directAudioUrl, videoAudioDuration, videoAudioClipCount]);
 
   if (!show) return null;
 

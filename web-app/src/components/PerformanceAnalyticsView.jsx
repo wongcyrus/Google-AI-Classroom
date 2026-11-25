@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
-import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
+import { collection, query, where, limit, getDocs, doc, getDoc } from 'firebase/firestore';
 import { db } from '../firebase-config';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell } from 'recharts';
 import { exportToExcel } from '../utils/exportUtils';
@@ -118,7 +118,8 @@ const PerformanceAnalyticsView = ({
       const q = query(
         collection(db, 'performanceMetrics'),
         where('classId', '==', classId),
-        where('status', '==', 'completed')
+        where('status', '==', 'completed'),
+        limit(500)
       );
 
       const querySnapshot = await getDocs(q);

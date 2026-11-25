@@ -657,7 +657,10 @@ Stores information about each class.
     *   **`screenBroadcast`**: Stores teacher live screen broadcast session metadata and the active compressed screen frame stream.
         *   **Document `session`** (`classes/{classId}/screenBroadcast/session`):
             *   `isBroadcasting`: (boolean) Whether teacher screen broadcasting is currently active.
-            *   `broadcastMode`: (string) Broadcast transmission mode (`'frame'`). Pure frame architecture avoiding WebRTC mesh CPU exhaustion.
+            *   `broadcastMode`: (string) Broadcast transmission mode (`'static_url'` default for static Cloud Storage tokenized slide URLs with manual student refresh; `'frame'` legacy fallback).
+            *   `frameUrl`: (string | optional) Firebase Cloud Storage download URL with `?alt=media&token=...` pointing to `broadcasts/{classId}/slide_<ts>_<16hex>.jpg` in `static_url` mode.
+            *   `frameUpdatedAt`: (number | optional) Epoch milliseconds timestamp of the latest pushed slide, used by clients to detect new slides without re-downloading unchanged images.
+            *   `frameSeq`: (number | optional) Monotonically increasing slide sequence counter.
             *   `resolution`: (string) Broadcast target resolution preset (`'720p'`, `'1080p'`, `'1440p'`). Defaults to `'720p'`.
             *   `interval`: (number) Frame capture cadence in milliseconds (`3000`, `1500`, `800`, `500`). Defaults to `3000` (3.0s / 0.33 FPS).
             *   `isPublic`: (boolean) Whether Public Presentation Mode is active for the current session or lobby.

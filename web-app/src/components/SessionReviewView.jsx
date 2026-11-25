@@ -36,17 +36,31 @@ const SessionReviewView = ({ classId, startTime, endTime }) => {
 
   const filteredVideoJobs = useMemo(() => {
     if (!videoJobsFromHook) return [];
+    const getCreatedAtMs = (val) => {
+      if (!val) return 0;
+      if (typeof val.toMillis === 'function') return val.toMillis();
+      if (typeof val.toDate === 'function') return val.toDate().getTime();
+      if (typeof val.seconds === 'number') return val.seconds * 1000;
+      if (typeof val._seconds === 'number') return val._seconds * 1000;
+      if (val instanceof Date) return val.getTime();
+      if (typeof val === 'number') return Number.isFinite(val) ? val : 0;
+      if (typeof val === 'string') {
+        const ms = new Date(val).getTime();
+        return Number.isNaN(ms) ? 0 : ms;
+      }
+      return 0;
+    };
     // Create a shallow copy before sorting to avoid mutating the original array
     const jobs = [...videoJobsFromHook];
 
     if (statusFilter.length > 0) {
       return jobs
         .filter(job => statusFilter.includes(job.status))
-        .sort((a, b) => b.createdAt?.toMillis() - a.createdAt?.toMillis());
+        .sort((a, b) => getCreatedAtMs(b.createdAt) - getCreatedAtMs(a.createdAt));
     }
-    
+
     // Perform sort on the copied array
-    jobs.sort((a, b) => b.createdAt?.toMillis() - a.createdAt?.toMillis());
+    jobs.sort((a, b) => getCreatedAtMs(b.createdAt) - getCreatedAtMs(a.createdAt));
     return jobs;
   }, [videoJobsFromHook, statusFilter]);
 
@@ -142,7 +156,13 @@ const SessionReviewView = ({ classId, startTime, endTime }) => {
       const jobData = jobDocSnap.data();
       if (jobData.videoPath) {
         const storageRef = ref(storage, jobData.videoPath);
-        await deleteObject(storageRef);
+        try {
+          await deleteObject(storageRef);
+        } catch (err) {
+          if (err?.code !== 'storage/object-not-found') {
+            throw err;
+          }
+        }
       }
     }
     await deleteDoc(jobDocRef);
@@ -154,22 +174,29 @@ const SessionReviewView = ({ classId, startTime, endTime }) => {
       return;
     }
 
-    setNotification({ type: 'info', message: `Deleting ${selectedJobs.size} jobs...` });
+    const jobIds = Array.from(selectedJobs);
+    setNotification({ type: 'info', message: `Deleting ${jobIds.length} jobs...` });
     const errors = [];
-    for (const jobId of selectedJobs) {
-      try {
-        await deleteJob(jobId);
-      } catch (error) {
-        console.error(`Failed to delete job ${jobId}`, error);
-        errors.push(jobId);
-      }
+    const CHUNK_SIZE = 5;
+    for (let i = 0; i < jobIds.length; i += CHUNK_SIZE) {
+      const chunk = jobIds.slice(i, i + CHUNK_SIZE);
+      await Promise.all(
+        chunk.map(async (jobId) => {
+          try {
+            await deleteJob(jobId);
+          } catch (error) {
+            console.error(`Failed to delete job ${jobId}`, error);
+            errors.push(jobId);
+          }
+        })
+      );
     }
 
     setSelectedJobs(new Set());
     if (errors.length > 0) {
       setNotification({ type: 'error', message: `Failed to delete ${errors.length} jobs. See console for details.` });
     } else {
-      setNotification({ type: 'success', message: `Successfully deleted ${selectedJobs.size} jobs.` });
+      setNotification({ type: 'success', message: `Successfully deleted ${jobIds.length} jobs.` });
     }
   };
 

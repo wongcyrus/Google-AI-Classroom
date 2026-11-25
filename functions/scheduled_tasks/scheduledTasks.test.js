@@ -1557,6 +1557,390 @@ describe('Scheduled Tasks & Auto-Capture Time Calculations (functions/scheduled_
 
       vi.useRealTimers();
     });
+
+    it('skips stale sweep in handleAutomaticCapture when static_url broadcast session has recent lastActiveAt or frameUpdatedAt without liveFrame', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-09-14T11:05:00Z'));
+
+      const updateActiveStaticBroadcast = vi.fn().mockResolvedValue(true);
+      const docs = [
+        {
+          id: 'c_static_active',
+          data: () => ({
+            automaticCapture: true,
+            isCapturing: false,
+            isBroadcasting: true,
+            schedule: { timeZone: 'UTC', timeSlots: [{ days: ['Mon'], startTime: '08:00', endTime: '09:30' }] },
+          }),
+          ref: { update: updateActiveStaticBroadcast },
+        },
+      ];
+
+      mockDb.collection.mockReturnValue(mockCollection);
+      mockDb.doc.mockImplementation((path) => {
+        if (path === 'classes/c_static_active/screenBroadcast/session') {
+          return {
+            get: vi.fn().mockResolvedValue({
+              exists: true,
+              data: () => ({
+                isBroadcasting: true,
+                broadcastMode: 'static_url',
+                frameUpdatedAt: Date.now() - 2 * 60 * 1000, // 2 mins ago (< 15 min threshold)
+                lastActiveAt: { toMillis: () => Date.now() - 60 * 1000 },
+              }),
+            }),
+            set: vi.fn().mockResolvedValue(true),
+          };
+        }
+        return {
+          get: vi.fn().mockResolvedValue({ exists: false, data: () => ({}) }),
+          set: vi.fn().mockResolvedValue(true),
+        };
+      });
+
+      mockCollection.get.mockResolvedValueOnce({
+        empty: false,
+        forEach: (cb) => docs.forEach(cb),
+      });
+
+      await handleAutomaticCapture();
+      expect(updateActiveStaticBroadcast).not.toHaveBeenCalled();
+
+      vi.useRealTimers();
+    });
+
+    it('uses deterministic recombine ID hash and skips duplicate recombine jobs across runs', async () => {
+      const fixedNow = new Date('2026-09-10T10:45:00Z');
+      vi.useFakeTimers();
+      vi.setSystemTime(fixedNow);
+
+      const mockClassData = {
+        schedule: {
+          startDate: '2026-09-01',
+          endDate: '2026-09-30',
+          timeSlots: [{ days: ['Thu'], startTime: '09:00', endTime: '10:30' }],
+          timeZone: 'UTC',
+        },
+        consolidateLessonVideo: true,
+      };
+
+      const prevCombined = {
+        id: 'combined_part_1',
+        isCombined: true,
+        status: 'ready',
+        storagePath: 'rec/combined1.webm',
+        startedAt: new Date(fixedNow.getTime() - 30 * 60 * 1000).toISOString(),
+      };
+      const newClip = {
+        id: 'new_clip_2',
+        isCombined: false,
+        status: 'ready',
+        storagePath: 'rec/clip2.webm',
+        startedAt: new Date(fixedNow.getTime() - 10 * 60 * 1000).toISOString(),
+      };
+
+      const createdJobIds = [];
+      const mergeDocs = {
+        'merge_class_recomb_0900_1030_2026-09-10': {
+          status: 'completed',
+          recordingIds: ['combined_part_1'],
+        },
+      };
+
+      mockDb.collection.mockImplementation((collName) => {
+        if (collName === 'classes') {
+          return {
+            get: vi.fn().mockResolvedValue({
+              empty: false,
+              size: 1,
+              docs: [{ id: 'class_recomb', data: () => mockClassData }],
+            }),
+            doc: vi.fn(() => ({
+              collection: vi.fn(() => ({
+                doc: vi.fn(() => ({
+                  get: vi.fn().mockResolvedValue({ exists: false }),
+                  set: vi.fn().mockResolvedValue(true),
+                })),
+              })),
+            })),
+          };
+        }
+        if (collName.includes('lectureRecordings')) {
+          const docs = [
+            { id: 'combined_part_1', data: () => prevCombined },
+            { id: 'new_clip_2', data: () => newClip },
+          ];
+          return {
+            where: vi.fn().mockReturnThis(),
+            get: vi.fn().mockResolvedValue({
+              empty: false,
+              docs,
+              forEach: (cb) => docs.forEach(cb),
+            }),
+          };
+        }
+        if (collName.includes('lectureMergeJobs')) {
+          return {
+            doc: vi.fn((docId) => ({
+              get: vi.fn().mockResolvedValue(
+                mergeDocs[docId]
+                  ? { exists: true, data: () => mergeDocs[docId] }
+                  : { exists: false }
+              ),
+              set: vi.fn(async (payload) => {
+                createdJobIds.push(docId);
+                mergeDocs[docId] = { ...payload };
+              }),
+            })),
+          };
+        }
+        return {
+          where: vi.fn().mockReturnThis(),
+          doc: vi.fn(() => ({
+            id: 'other_doc',
+            get: vi.fn().mockResolvedValue({ exists: false }),
+            set: vi.fn().mockResolvedValue(true),
+          })),
+          get: vi.fn().mockResolvedValue({ empty: true, docs: [] }),
+          add: vi.fn().mockResolvedValue({ id: 'add_1' }),
+        };
+      });
+
+      // Run 1: creates deterministic _recombine_<hash> job
+      await handlePostLessonMediaConsolidation();
+      expect(createdJobIds).toHaveLength(1);
+      expect(createdJobIds[0]).toMatch(/^merge_class_recomb_0900_1030_2026-09-10_recombine_[a-f0-9]{12}$/);
+
+      // Mark target recombine doc as completed (simulating already scheduled/finished) and run again
+      mergeDocs[createdJobIds[0]].status = 'completed';
+      await handlePostLessonMediaConsolidation();
+      expect(createdJobIds).toHaveLength(1);
+
+      vi.useRealTimers();
+    });
+
+    it('retries failed lectureMergeJobs at most once via autoRetryCount cap', async () => {
+      const fixedNow = new Date('2026-09-10T10:45:00Z');
+      vi.useFakeTimers();
+      vi.setSystemTime(fixedNow);
+
+      const mockClassData = {
+        schedule: {
+          startDate: '2026-09-01',
+          endDate: '2026-09-30',
+          timeSlots: [{ days: ['Thu'], startTime: '09:00', endTime: '10:30' }],
+          timeZone: 'UTC',
+        },
+        consolidateLessonVideo: true,
+      };
+      const clips = [
+        { id: 'c1', status: 'ready', storagePath: 'rec/c1.webm', startedAt: new Date(fixedNow.getTime() - 20 * 60 * 1000).toISOString() },
+        { id: 'c2', status: 'ready', storagePath: 'rec/c2.webm', startedAt: new Date(fixedNow.getTime() - 10 * 60 * 1000).toISOString() },
+      ];
+
+      let storedJob = { status: 'failed', autoRetryCount: 0, recordingIds: ['c1', 'c2'] };
+      const setPayloads = [];
+
+      mockDb.collection.mockImplementation((collName) => {
+        if (collName === 'classes') {
+          return {
+            get: vi.fn().mockResolvedValue({
+              empty: false,
+              size: 1,
+              docs: [{ id: 'class_retry_cap', data: () => mockClassData }],
+            }),
+            doc: vi.fn(() => ({
+              collection: vi.fn(() => ({
+                doc: vi.fn(() => ({
+                  get: vi.fn().mockResolvedValue({ exists: false }),
+                  set: vi.fn().mockResolvedValue(true),
+                })),
+              })),
+            })),
+          };
+        }
+        if (collName.includes('lectureRecordings')) {
+          const docs = clips.map((c) => ({ id: c.id, data: () => c }));
+          return {
+            where: vi.fn().mockReturnThis(),
+            get: vi.fn().mockResolvedValue({ empty: false, docs, forEach: (cb) => docs.forEach(cb) }),
+          };
+        }
+        if (collName.includes('lectureMergeJobs')) {
+          return {
+            doc: vi.fn(() => ({
+              get: vi.fn().mockResolvedValue({ exists: true, data: () => storedJob }),
+              set: vi.fn(async (payload) => {
+                setPayloads.push(payload);
+                storedJob = { ...payload };
+              }),
+            })),
+          };
+        }
+        return {
+          where: vi.fn().mockReturnThis(),
+          doc: vi.fn(() => ({ id: 'x', get: vi.fn().mockResolvedValue({ exists: false }), set: vi.fn().mockResolvedValue(true) })),
+          get: vi.fn().mockResolvedValue({ empty: true, docs: [] }),
+          add: vi.fn().mockResolvedValue({ id: 'add_1' }),
+        };
+      });
+
+      // Run 1: failed with autoRetryCount: 0 -> allowed 1 automatic retry with autoRetryCount: 1
+      await handlePostLessonMediaConsolidation();
+      expect(setPayloads).toHaveLength(1);
+      expect(setPayloads[0].autoRetryCount).toBe(1);
+
+      // Run 2: retry fails again with autoRetryCount: 1 -> must NOT auto-retry again
+      storedJob = { status: 'failed', autoRetryCount: 1, recordingIds: ['c1', 'c2'] };
+      await handlePostLessonMediaConsolidation();
+      expect(setPayloads).toHaveLength(1);
+
+      vi.useRealTimers();
+    });
+
+    it('skips teacher notification when videoJobs already exist and ignores deleted screenshots in attendance snapshot', async () => {
+      const fixedNow = new Date('2026-09-10T10:15:00Z');
+      vi.useFakeTimers();
+      vi.setSystemTime(fixedNow);
+
+      const mockClassData = {
+        automaticCombine: true,
+        students: { s1: 's1@stu.vtc.edu.hk' },
+        teachers: { t1: 't1@vtc.edu.hk' },
+        schedule: {
+          startDate: '2026-09-01',
+          endDate: '2026-09-30',
+          timeSlots: [{ days: ['Thu'], startTime: '09:00', endTime: '10:00' }],
+          timeZone: 'UTC',
+        },
+      };
+
+      const notifAddMock = vi.fn().mockResolvedValue({ id: 'n1' });
+      const lessonSetMock = vi.fn().mockResolvedValue(true);
+
+      mockDb.collection.mockImplementation((collName) => {
+        if (collName === 'classes') {
+          return {
+            get: vi.fn().mockResolvedValue({
+              empty: false,
+              size: 1,
+              docs: [{ id: 'class_notif_skip', data: () => mockClassData }],
+            }),
+            doc: vi.fn(() => ({
+              collection: vi.fn(() => ({
+                doc: vi.fn(() => ({
+                  get: vi.fn().mockResolvedValue({ exists: false }),
+                  set: lessonSetMock,
+                })),
+              })),
+            })),
+          };
+        }
+        if (collName === 'videoJobs') {
+          return {
+            where: vi.fn().mockReturnThis(),
+            get: vi.fn().mockResolvedValue({ empty: false, docs: [{ id: 'existing_job' }] }),
+          };
+        }
+        if (collName === 'screenshots') {
+          const docs = [
+            { id: 'shot_del', data: () => ({ studentUid: 's1', deleted: true, timestamp: new Date('2026-09-10T09:10:00Z') }) },
+            { id: 'shot_ok', data: () => ({ studentUid: 's1', deleted: false, timestamp: new Date('2026-09-10T09:20:00Z') }) },
+          ];
+          return {
+            where: vi.fn().mockReturnThis(),
+            get: vi.fn().mockResolvedValue({ empty: false, docs, forEach: (cb) => docs.forEach(cb) }),
+          };
+        }
+        if (collName === 'notifications') {
+          return { add: notifAddMock };
+        }
+        return {
+          where: vi.fn().mockReturnThis(),
+          doc: vi.fn(() => ({ id: 'd1', get: vi.fn().mockResolvedValue({ exists: false }), set: vi.fn().mockResolvedValue(true) })),
+          get: vi.fn().mockResolvedValue({ empty: true, docs: [] }),
+          add: vi.fn().mockResolvedValue({ id: 'add_1' }),
+        };
+      });
+
+      await handlePostLessonMediaConsolidation();
+
+      expect(notifAddMock).not.toHaveBeenCalled();
+      expect(lessonSetMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          students: expect.objectContaining({
+            s1: expect.objectContaining({
+              sharedScreenMinutes: 1,
+            }),
+          }),
+        }),
+        { merge: true }
+      );
+
+      vi.useRealTimers();
+    });
+
+    it('skips out-of-range schedule dates in handleAutomaticCapture while still sweeping expired capture flags', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-09-14T08:55:00Z')); // Mon 08:55 UTC (before startDate)
+
+      const updateExpiredStart = vi.fn().mockResolvedValue(true);
+      vi.setSystemTime(new Date('2026-09-14T09:05:00Z')); // stop window, outside schedule endDate -> stale sweep!
+      const updateExpiredSweep = vi.fn().mockResolvedValue(true);
+
+      // Verify start window skips expired class
+      vi.setSystemTime(new Date('2026-09-14T08:55:00Z'));
+      mockDb.collection.mockReturnValue(mockCollection);
+      mockCollection.get.mockResolvedValueOnce({
+        empty: false,
+        forEach: (cb) => cb({
+          id: 'c_out_of_range',
+          data: () => ({
+            automaticCapture: true,
+            isCapturing: false,
+            schedule: {
+              timeZone: 'UTC',
+              startDate: '2026-09-01',
+              endDate: '2026-09-10',
+              timeSlots: [{ days: ['Mon'], startTime: '09:00', endTime: '11:00' }],
+            },
+          }),
+          ref: { update: updateExpiredStart },
+        }),
+      });
+      await handleAutomaticCapture();
+      expect(updateExpiredStart).not.toHaveBeenCalled();
+
+      // Verify stop window still sweeps zombie isCapturing even when past endDate
+      vi.setSystemTime(new Date('2026-09-14T09:05:00Z'));
+      mockDb.doc.mockReturnValue({
+        get: vi.fn().mockResolvedValue({ exists: false, data: () => ({}) }),
+        set: vi.fn().mockResolvedValue(true),
+      });
+      mockCollection.get.mockResolvedValueOnce({
+        empty: false,
+        forEach: (cb) => cb({
+          id: 'c_zombie_expired',
+          data: () => ({
+            automaticCapture: true,
+            isCapturing: true,
+            schedule: {
+              timeZone: 'UTC',
+              startDate: '2026-09-01',
+              endDate: '2026-09-10',
+              timeSlots: [{ days: ['Mon'], startTime: '09:00', endTime: '11:00' }],
+            },
+          }),
+          ref: { update: updateExpiredSweep },
+        }),
+      });
+      await handleAutomaticCapture();
+      expect(updateExpiredSweep).toHaveBeenCalledWith(
+        expect.objectContaining({ isCapturing: false, isBroadcasting: false })
+      );
+
+      vi.useRealTimers();
+    });
   });
 });
 

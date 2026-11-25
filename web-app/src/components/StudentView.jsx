@@ -4,6 +4,7 @@ import { storage, db, auth, functions } from '../firebase-config';
 import { httpsCallable } from 'firebase/functions';
 import { signOut } from 'firebase/auth';
 import { collection, onSnapshot, doc, query, where, orderBy, limit, addDoc, serverTimestamp, setDoc } from 'firebase/firestore';
+import { subscribeDocShared } from '../utils/sharedFirestoreListeners';
 import Banner from './Banner';
 import { v4 as uuidv4 } from 'uuid';
 import './StudentView.css';
@@ -31,6 +32,7 @@ import {
 import StudentTaskWorkspaceModal from './tasks/StudentTaskWorkspaceModal';
 import UnenrolledStudentView from './UnenrolledStudentView';
 import { saveToOfflineQueue, flushOfflineQueue, getOfflineQueueCount } from '../utils/offlineBufferManager';
+import { isPermanentAuthOrRulesError } from '../utils/firebaseErrors';
 import { decodeAudioBlobToPcm } from '../utils/audioDecoder';
 import { isGoogleChrome, isMobileDevice, isHandheldPhone } from '../utils/browserDetection';
 import { acquireInputDeviceStream } from '../utils/mediaDeviceCapture';
@@ -1063,7 +1065,7 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
         });
       }
     }
-  }, [transcribeAudioChunk, audioSegmentDuration, evaluateSpeechWithGemma, setWhisperTranscript, effectiveVoiceAiMode, isLocalVoiceAiEnabled, shouldEvaluateVoiceWithGemma, voiceAiCloudFallbackRate, activeClass, targetClasses, user, selectedMicDeviceId, classSpeechLanguage]);
+  }, [transcribeAudioChunk, audioSegmentDuration, evaluateSpeechWithGemma, setWhisperTranscript, effectiveVoiceAiMode, isLocalVoiceAiEnabled, shouldEvaluateVoiceWithGemma, voiceAiCloudFallbackRate, activeClass, targetClasses, user?.uid, user?.email, selectedMicDeviceId, classSpeechLanguage, liveAudioPrompt]);
 
   handleAudioUploadedRef.current = handleAudioUploaded;
 
@@ -1115,11 +1117,17 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
     audioStreamRef,
   });
 
-  // Receiver Hook for Teacher Screen Broadcast (Classroom Frame Stream)
+  // Receiver Hook for Teacher Screen Broadcast (Option B: session On/Off + manual Refresh)
   const {
     isBroadcastActive: isTeacherBroadcastActive,
     broadcastInfo: teacherBroadcastInfo,
     liveFrame: teacherLiveFrame,
+    frameUpdatedAt: teacherFrameUpdatedAt,
+    hasNewFrame: hasTeacherNewFrame,
+    isRefreshing: isTeacherFrameRefreshing,
+    refreshStatus: teacherFrameRefreshStatus,
+    refreshFrame: refreshTeacherBroadcastFrame,
+    handleFrameLoadError: handleTeacherFrameLoadError,
     connectionState: teacherConnectionState,
     joinBroadcast: joinTeacherBroadcast,
     leaveBroadcast: leaveTeacherBroadcast,
@@ -1315,7 +1323,7 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
         console.error(`Firestore: Error updating capture status for ${cls}: `, error);
       }
     }
-  }, [targetClasses, user]);
+  }, [targetClasses, user?.uid, user?.email, user?.displayName]);
 
   // Dedicated presence & sharing heartbeat: guarantees freshness in Firestore even if screenshots buffer offline or upload slowly
   useEffect(() => {
@@ -1356,7 +1364,7 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
     const heartbeatInterval = setInterval(() => sendHeartbeat(false), 12000);
 
     return () => clearInterval(heartbeatInterval);
-  }, [user?.uid, user?.email, user?.displayName, isSharing, isScreenSharing, isWebcamSharing, enableAudioCapture, isAudioRecording, isAudioUserEnabled, hasMicPermission, audioError, activeClass, targetClasses]);
+  }, [user?.uid, user?.email, user?.displayName, isSharing, isScreenSharing, isWebcamSharing, isSessionDisplaced, isAudioRecording, isAudioUserEnabled, hasMicPermission, audioError, activeClass, targetClasses]);
 
   const stopScreen = useCallback(async () => {
     displaySurfaceRef.current = null;
@@ -1382,7 +1390,7 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
         ? "Screen and microphone sharing have stopped."
         : "Screen sharing has stopped."
     );
-  }, [enableAudioCapture, isAudioUserEnabled, hasMicPermission, audioError, isWebcamSharing, updateCaptureStatus, showSystemNotification]);
+  }, [isAudioUserEnabled, hasMicPermission, audioError, isWebcamSharing, updateCaptureStatus, showSystemNotification]);
 
   const stopWebcam = useCallback(async () => {
     webcamRequestIdRef.current += 1;
@@ -1408,7 +1416,7 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
       : [];
     await updateCaptureStatus(activeStreams);
     showSystemNotification("Webcam stream has stopped.");
-  }, [enableAudioCapture, isAudioUserEnabled, hasMicPermission, audioError, isScreenSharing, updateCaptureStatus, showSystemNotification]);
+  }, [isAudioUserEnabled, hasMicPermission, audioError, isScreenSharing, updateCaptureStatus, showSystemNotification]);
 
   const stopAllStreams = useCallback(async ({ skipFirestoreUpdate = false } = {}) => {
     webcamRequestIdRef.current += 1;
@@ -1610,7 +1618,7 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
       setIsWebcamSharing(false);
       return;
     }
-  }, [selectedWebcamId, availableWebcams, isScreenSharing, enableAudioCapture, isAudioUserEnabled, hasMicPermission, audioError, updateCaptureStatus, stopWebcam, refreshWebcams]);
+  }, [selectedWebcamId, isScreenSharing, isAudioUserEnabled, hasMicPermission, audioError, updateCaptureStatus, refreshWebcams]);
 
   useEffect(() => {
     startWebcamRef.current = startWebcam;
@@ -1813,7 +1821,7 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
     } finally {
       isStartingScreenRef.current = false;
     }
-  }, [activeClass, enableAudioCapture, isAudioUserEnabled, hasMicPermission, audioError, isCapturing, isWebcamSharing, requireFullScreenOnly, showSystemNotification, stopScreen, updateCaptureStatus, user]);
+  }, [activeClass, isAudioUserEnabled, hasMicPermission, audioError, startAudioRecording, isCapturing, isWebcamSharing, requireFullScreenOnly, showSystemNotification, updateCaptureStatus, user]);
 
   // Ensure screen video element srcObject is always attached
   useEffect(() => {
@@ -2015,32 +2023,36 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
                 ),
               ]);
             } catch (err) {
-              console.warn(`[StudentView] Error recording screenshot doc for class ${cls}, queueing metadata retry:`, err);
-              try {
-                await saveToOfflineQueue({
-                  id: `screenshot_${cls}_${user.uid}_${channelName}_${timestamp}`,
-                  type: 'screenshot',
-                  classId: cls,
-                  studentUid: user.uid,
-                  studentEmail: user.email.toLowerCase(),
-                  blob,
-                  timestamp,
-                  metadata: {
-                    channel: channelName,
-                    imagePath: resolvedImagePath,
-                    alreadyUploaded: true,
-                    retentionDays: retentionDays || 30,
-                    ipAddress: ipAddress || null,
-                    captureInterval: actualInterval,
-                    sessionId: activeCaptureSessionId || null,
-                    activeTaskId: activeTaskSession?.taskId || null,
-                    activeAttemptNumber: activeTaskSession?.attemptNumber || null,
-                  },
-                });
-                bufferedAnyForFirestore = true;
-                hasOfflineScreenshotsRef.current = true;
-              } catch (queueErr) {
-                console.error(`Error saving ${channelName} screenshot metadata to offline queue:`, queueErr);
+              if (isPermanentAuthOrRulesError(err)) {
+                console.error(`[StudentView] Permanent permission/auth error recording screenshot doc for class ${cls}, skipping offline queue:`, err);
+              } else {
+                console.warn(`[StudentView] Error recording screenshot doc for class ${cls}, queueing metadata retry:`, err);
+                try {
+                  await saveToOfflineQueue({
+                    id: `screenshot_${cls}_${user.uid}_${channelName}_${timestamp}`,
+                    type: 'screenshot',
+                    classId: cls,
+                    studentUid: user.uid,
+                    studentEmail: user.email.toLowerCase(),
+                    blob,
+                    timestamp,
+                    metadata: {
+                      channel: channelName,
+                      imagePath: resolvedImagePath,
+                      alreadyUploaded: true,
+                      retentionDays: retentionDays || 30,
+                      ipAddress: ipAddress || null,
+                      captureInterval: actualInterval,
+                      sessionId: activeCaptureSessionId || null,
+                      activeTaskId: activeTaskSession?.taskId || null,
+                      activeAttemptNumber: activeTaskSession?.attemptNumber || null,
+                    },
+                  });
+                  bufferedAnyForFirestore = true;
+                  hasOfflineScreenshotsRef.current = true;
+                } catch (queueErr) {
+                  console.error(`Error saving ${channelName} screenshot metadata to offline queue:`, queueErr);
+                }
               }
             }
 
@@ -2072,55 +2084,59 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
           }
           console.log(`[StudentView] 📸 Successfully uploaded ${channelName} snapshot (${blob.size} bytes) to ${resolvedImagePath} for classes:`, classes);
         } catch (uploadErr) {
-          console.warn(`Network error uploading ${channelName} screenshot, buffering offline:`, uploadErr);
-          const resolvedImagePath = screenshotRef.fullPath || screenshotPath;
-          let bufferedAny = false;
-          for (const cls of classes) {
-            try {
-              await saveToOfflineQueue({
-                id: `screenshot_${cls}_${user.uid}_${channelName}_${timestamp}`,
-                type: 'screenshot',
-                classId: cls,
-                studentUid: user.uid,
-                studentEmail: user.email.toLowerCase(),
-                blob,
-                timestamp,
-                metadata: {
-                  channel: channelName,
-                  imagePath: resolvedImagePath,
-                  alreadyUploaded: false,
-                  timedOut: isTimeoutError,
-                  retentionDays: retentionDays || 30,
-                  ipAddress: ipAddress || null,
-                  captureInterval: actualInterval,
-                  sessionId: activeCaptureSessionId || null,
-                  activeTaskId: activeTaskSession?.taskId || null,
-                  activeAttemptNumber: activeTaskSession?.attemptNumber || null,
-                },
-              });
-              bufferedAny = true;
-              hasOfflineScreenshotsRef.current = true;
-            } catch (queueErr) {
-              console.error(`Error saving ${channelName} screenshot to offline queue:`, queueErr);
-            }
-            // Keep status fresh in Firestore even when screenshot upload is buffered offline
-            try {
-              const statusRef = doc(db, "classes", cls, "status", user.uid);
-              setDoc(statusRef, {
-                isSharing: true,
-                email: user.email.toLowerCase(),
-                name: user.displayName || user.email,
-                timestamp: serverTimestamp(),
-                lastHeartbeat: Date.now(),
-              }, { merge: true }).catch(statusErr => {
+          if (!isTimeoutError && isPermanentAuthOrRulesError(uploadErr)) {
+            console.error(`Permanent permission/auth error uploading ${channelName} screenshot, skipping offline queue:`, uploadErr);
+          } else {
+            console.warn(`Network error uploading ${channelName} screenshot, buffering offline:`, uploadErr);
+            const resolvedImagePath = screenshotRef.fullPath || screenshotPath;
+            let bufferedAny = false;
+            for (const cls of classes) {
+              try {
+                await saveToOfflineQueue({
+                  id: `screenshot_${cls}_${user.uid}_${channelName}_${timestamp}`,
+                  type: 'screenshot',
+                  classId: cls,
+                  studentUid: user.uid,
+                  studentEmail: user.email.toLowerCase(),
+                  blob,
+                  timestamp,
+                  metadata: {
+                    channel: channelName,
+                    imagePath: resolvedImagePath,
+                    alreadyUploaded: false,
+                    timedOut: isTimeoutError,
+                    retentionDays: retentionDays || 30,
+                    ipAddress: ipAddress || null,
+                    captureInterval: actualInterval,
+                    sessionId: activeCaptureSessionId || null,
+                    activeTaskId: activeTaskSession?.taskId || null,
+                    activeAttemptNumber: activeTaskSession?.attemptNumber || null,
+                  },
+                });
+                bufferedAny = true;
+                hasOfflineScreenshotsRef.current = true;
+              } catch (queueErr) {
+                console.error(`Error saving ${channelName} screenshot to offline queue:`, queueErr);
+              }
+              // Keep status fresh in Firestore even when screenshot upload is buffered offline
+              try {
+                const statusRef = doc(db, "classes", cls, "status", user.uid);
+                setDoc(statusRef, {
+                  isSharing: true,
+                  email: user.email.toLowerCase(),
+                  name: user.displayName || user.email,
+                  timestamp: serverTimestamp(),
+                  lastHeartbeat: Date.now(),
+                }, { merge: true }).catch(statusErr => {
+                  console.debug("Error updating status on offline buffer:", statusErr);
+                });
+              } catch (statusErr) {
                 console.debug("Error updating status on offline buffer:", statusErr);
-              });
-            } catch (statusErr) {
-              console.debug("Error updating status on offline buffer:", statusErr);
+              }
             }
-          }
-          if (bufferedAny) {
-            setOfflinePendingCount(c => c + 1);
+            if (bufferedAny) {
+              setOfflinePendingCount(c => c + 1);
+            }
           }
         }
       }
@@ -2139,7 +2155,7 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
         }
       }
     }
-  }, [user, maxImageSize, imageQuality, retentionDays, ipAddress, targetClasses, frameRate, sessionFrameRate, activeCaptureSessionId, activeTaskSession]);
+  }, [user?.uid, user?.email, user?.displayName, maxImageSize, imageQuality, retentionDays, ipAddress, targetClasses, frameRate, sessionFrameRate, activeCaptureSessionId, activeTaskSession]);
 
   const captureAndUploadAllChannels = useCallback((targetClassesInput) => {
     const classes = targetClassesInput || targetClasses;
@@ -2326,29 +2342,36 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
 
   // Listen for Custom Properties
   useEffect(() => {
-    if (!activeClass || !user?.uid) {
-        // eslint-disable-next-line react-hooks/set-state-in-effect
-        setClassProperties(null);
-         
-        setMyProperties(null);
-        return;
+    const uid = user?.uid;
+    if (!activeClass || !uid) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setClassProperties(null);
+      setMyProperties(null);
+      return;
     }
 
-    const classPropsRef = doc(db, 'classes', activeClass, 'classProperties', 'config');
     console.log(`Firestore: Subscribing to class properties for ${activeClass}`);
-    const unsubClassProps = onSnapshot(classPropsRef, (docSnap) => {
+    const unsubClassProps = subscribeDocShared(
+      db,
+      `classes/${activeClass}/classProperties/config`,
+      (docSnap) => {
         console.log("Firestore: Received class properties snapshot.");
         setClassProperties(docSnap.exists() ? docSnap.data() : null);
-    }, (error) => {
+      },
+      (error) => {
         console.error(`Firestore: Error subscribing to class properties for ${activeClass}:`, error);
-    });
+      },
+      () => doc(db, 'classes', activeClass, 'classProperties', 'config')
+    );
 
-    const studentPropsRef = doc(db, 'classes', activeClass, 'studentProperties', user.uid);
-    console.log(`Firestore: Subscribing to student properties for ${user.uid} in ${activeClass}`);
-    const unsubStudentProps = onSnapshot(studentPropsRef, (docSnap) => {
+    console.log(`Firestore: Subscribing to student properties for ${uid} in ${activeClass}`);
+    const unsubStudentProps = subscribeDocShared(
+      db,
+      `classes/${activeClass}/studentProperties/${uid}`,
+      (docSnap) => {
         console.log("Firestore: Received student properties snapshot.");
         if (docSnap.exists()) {
-          const data = docSnap.data();
+          const data = { ...docSnap.data() };
           // Fallback to legacy activeBingo fields ONLY if structured activeBingo map does not exist
           if (!data.activeBingo && data['activeBingo.status']) {
             data.activeBingo = {
@@ -2361,63 +2384,90 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
         } else {
           setMyProperties(null);
         }
-    }, (error) => {
-        console.error(`Firestore: Error subscribing to student properties for ${user.uid}:`, error);
-    });
+      },
+      (error) => {
+        console.error(`Firestore: Error subscribing to student properties for ${uid}:`, error);
+      },
+      () => doc(db, 'classes', activeClass, 'studentProperties', uid)
+    );
 
     return () => {
-        unsubClassProps();
-        unsubStudentProps();
+      unsubClassProps();
+      unsubStudentProps();
     };
-  }, [activeClass, user]);
+  }, [activeClass, user?.uid]);
+
+  const userClassesRef = useRef(userClasses);
+  userClassesRef.current = userClasses;
+  const enrolledClassesKey = useMemo(
+    () =>
+      (Array.isArray(userClasses) ? userClasses : [])
+        .map((c) => (typeof c === 'string' ? c : `${c?.id || ''}:${c?.name || ''}`))
+        .filter(Boolean)
+        .sort()
+        .join('|'),
+    [userClasses]
+  );
 
   // Listen for studentProperties across all enrolled classes to support multi-class Bingo presence
   useEffect(() => {
-    if (!user?.uid || !userClasses || userClasses.length === 0) {
+    const uid = user?.uid;
+    const currentClasses = userClassesRef.current;
+    if (!uid || !currentClasses || currentClasses.length === 0) {
       setEnrolledBingoChallenges({});
       return;
     }
 
     const unsubs = [];
-    const enrolledClassIds = userClasses.map(c => typeof c === 'string' ? c : c.id).filter(Boolean);
+    const enrolledClassIds = currentClasses.map(c => typeof c === 'string' ? c : c.id).filter(Boolean);
 
     enrolledClassIds.forEach(cId => {
-      const classObj = userClasses.find(c => (typeof c === 'string' ? c : c.id) === cId);
+      const classObj = currentClasses.find(c => (typeof c === 'string' ? c : c.id) === cId);
       const cName = typeof classObj === 'string' ? classObj : (classObj?.name || cId);
 
-      const studentPropsRef = doc(db, 'classes', cId, 'studentProperties', user.uid);
-      const unsub = onSnapshot(studentPropsRef, (docSnap) => {
-        if (docSnap.exists()) {
-          const data = docSnap.data();
-          let bingo = data.activeBingo;
-          if (!bingo && data['activeBingo.status']) {
-            bingo = {
-              status: data['activeBingo.status'],
-              result: data['activeBingo.result'],
-            };
-          }
+      const unsub = subscribeDocShared(
+        db,
+        `classes/${cId}/studentProperties/${uid}`,
+        (docSnap) => {
+          if (docSnap.exists()) {
+            const data = docSnap.data();
+            let bingo = data.activeBingo;
+            if (!bingo && data['activeBingo.status']) {
+              bingo = {
+                status: data['activeBingo.status'],
+                result: data['activeBingo.result'],
+              };
+            }
 
-          if (bingo && (bingo.status === 'pending' || bingo.status === 'active') && (!bingo.result || bingo.result === 'pending')) {
-            const totalSeconds = bingo.timeLimitSeconds || 30;
-            const expiresAt = bingo.expiresAtMillis || (bingo.issuedAtMillis ? bingo.issuedAtMillis + totalSeconds * 1000 : null);
-            if (expiresAt && expiresAt <= Date.now()) {
+            if (bingo && (bingo.status === 'pending' || bingo.status === 'active') && (!bingo.result || bingo.result === 'pending')) {
+              const totalSeconds = bingo.timeLimitSeconds || 30;
+              const expiresAt = bingo.expiresAtMillis || (bingo.issuedAtMillis ? bingo.issuedAtMillis + totalSeconds * 1000 : null);
+              if (expiresAt && expiresAt <= Date.now()) {
+                setEnrolledBingoChallenges(prev => {
+                  if (!prev[cId]) return prev;
+                  const next = { ...prev };
+                  delete next[cId];
+                  return next;
+                });
+                return;
+              }
+
+              setEnrolledBingoChallenges(prev => ({
+                ...prev,
+                [cId]: {
+                  ...bingo,
+                  classId: bingo.classId || cId,
+                  className: cName,
+                }
+              }));
+            } else {
               setEnrolledBingoChallenges(prev => {
                 if (!prev[cId]) return prev;
                 const next = { ...prev };
                 delete next[cId];
                 return next;
               });
-              return;
             }
-
-            setEnrolledBingoChallenges(prev => ({
-              ...prev,
-              [cId]: {
-                ...bingo,
-                classId: bingo.classId || cId,
-                className: cName,
-              }
-            }));
           } else {
             setEnrolledBingoChallenges(prev => {
               if (!prev[cId]) return prev;
@@ -2426,24 +2476,19 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
               return next;
             });
           }
-        } else {
-          setEnrolledBingoChallenges(prev => {
-            if (!prev[cId]) return prev;
-            const next = { ...prev };
-            delete next[cId];
-            return next;
-          });
-        }
-      }, (err) => {
-        console.warn(`[StudentView] Error subscribing to studentProperties for ${cId}:`, err);
-      });
+        },
+        (err) => {
+          console.warn(`[StudentView] Error subscribing to studentProperties for ${cId}:`, err);
+        },
+        () => doc(db, 'classes', cId, 'studentProperties', uid)
+      );
       unsubs.push(unsub);
     });
 
     return () => {
       unsubs.forEach(u => u());
     };
-  }, [user?.uid, userClasses]);
+  }, [user?.uid, enrolledClassesKey]);
 
   const handleBingoSubmit = async ({ bingoId, selectedIndex, responseTimeSec, windowFocused }) => {
     const targetClassId = currentBingoChallenge?.classId || activeClass;
@@ -2592,6 +2637,7 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
   useEffect(() => {
     let worker = null;
     let fallbackInterval = null;
+    let blobUrl = null;
 
     const isTaskActive = Boolean(activeTaskSession?.taskId);
     const shouldCapture = isSharing && (isCapturing || isExamActive || isTaskActive) && activeClass;
@@ -2629,7 +2675,7 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
               }
             };
           `], { type: 'application/javascript' });
-          const blobUrl = URL.createObjectURL(blob);
+          blobUrl = URL.createObjectURL(blob);
           worker = new Worker(blobUrl);
           worker.onmessage = (e) => {
             if (e.data === 'tick') {
@@ -2651,12 +2697,88 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
         worker.terminate();
         worker = null;
       }
+      if (blobUrl) {
+        URL.revokeObjectURL(blobUrl);
+        blobUrl = null;
+      }
       if (fallbackInterval) {
         clearInterval(fallbackInterval);
         fallbackInterval = null;
       }
     };
-  }, [isSharing, isCapturing, frameRate, activeClass, targetClasses, captureStartedAt, myProperties?.examReadiness?.isReady, myProperties?.examReadiness?.calibratedAt, user?.uid, activeTaskSession?.taskId]);
+  }, [isSharing, isCapturing, isExamActive, frameRate, activeClass, targetClasses, captureStartedAt, myProperties?.examReadiness?.isReady, myProperties?.examReadiness?.calibratedAt, user?.uid, activeTaskSession?.taskId]);
+
+  const handleCloseMicSetup = useCallback(() => setIsMicSetupOpen(false), []);
+  const handleConfirmMicSetup = useCallback((payload) => {
+    const micId = typeof payload === 'object' && payload !== null ? payload.deviceId : payload;
+    setSelectedMicDeviceId(micId || '');
+    if (micId) {
+      try {
+        localStorage.setItem('preferred_mic_device_id', micId);
+      } catch {}
+    }
+    setIsAudioUserEnabled(true);
+    setIsMicSetupOpen(false);
+  }, []);
+
+  const handleCloseReadinessWizard = useCallback(() => setIsReadinessWizardOpen(false), []);
+  const handleSelectWizardMicDevice = useCallback((id) => {
+    setSelectedMicDeviceId(id);
+    if (id) {
+      try {
+        localStorage.setItem('preferred_mic_device_id', id);
+      } catch {}
+    }
+    setIsAudioUserEnabled(true);
+  }, []);
+  const handleSelectWizardCameraDevice = useCallback((id) => {
+    setSelectedWebcamId(id);
+    if (id) {
+      try {
+        localStorage.setItem('preferred_camera_device_id', id);
+      } catch {}
+    }
+  }, []);
+  const handleCompleteReadinessWizard = useCallback(async (readinessResult) => {
+    setIsReadinessWizardOpen(false);
+    setIsExamReadyLocal(true);
+
+    // 1. Enable user mic state & device (if available)
+    if (readinessResult?.micDeviceId) {
+      setIsAudioUserEnabled(true);
+      setSelectedMicDeviceId(readinessResult.micDeviceId);
+      try {
+        localStorage.setItem('preferred_mic_device_id', readinessResult.micDeviceId);
+      } catch {}
+    }
+
+    // 2. Start webcam stream if camera is present and verified (non-blocking)
+    const camId = readinessResult?.cameraDeviceId;
+    if (camId) {
+      setSelectedWebcamId(camId);
+      try {
+        localStorage.setItem('preferred_camera_device_id', camId);
+      } catch {}
+      try {
+        await startWebcam(camId, readinessResult?.cameraStream);
+      } catch (camErr) {
+        console.warn('[StudentView] Webcam start skipped or unavailable:', camErr);
+      }
+    }
+
+    // 3. Start full screen sharing independently (ALWAYS works standalone)
+    try {
+      await startScreen(readinessResult?.screenStream);
+    } catch (screenErr) {
+      console.warn('[StudentView] Screen share start error:', screenErr);
+    }
+  }, [startWebcam, startScreen]);
+
+  const handleCancelScreenSharePrecheck = useCallback(() => setIsScreenSharePrecheckOpen(false), []);
+  const handleConfirmScreenSharePrecheck = useCallback(() => {
+    setIsScreenSharePrecheckOpen(false);
+    startScreen();
+  }, [startScreen]);
 
   const isChrome = isGoogleChrome();
   if (!isChrome && !isPreviewMode) {
@@ -3489,10 +3611,33 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
                   <div className="teacher-live-top-bar">
                     <div className="live-badges-group">
                       <span className="live-pill"><span className="live-dot" /> LIVE</span>
-                      <span className="res-tag">1080P</span>
+                      <span className="res-tag">{teacherBroadcastInfo?.resolution?.toUpperCase() || '1080P'}</span>
+                      {teacherFrameUpdatedAt && (
+                        <span className="res-tag">
+                          🕒 {new Date(teacherFrameUpdatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                        </span>
+                      )}
                       <span className="teacher-name-tag">{teacherBroadcastInfo?.teacherEmail || 'Teacher Stream'}</span>
                     </div>
-                    <div className="stream-zoom-controls">
+                    <div className="stream-zoom-controls" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      {refreshTeacherBroadcastFrame && (
+                        <button
+                          type="button"
+                          onClick={refreshTeacherBroadcastFrame}
+                          disabled={isTeacherFrameRefreshing}
+                          className={`yt-zoom-btn yt-refresh-btn ${hasTeacherNewFrame ? 'has-update' : ''} ${teacherFrameRefreshStatus === 'up_to_date' && !hasTeacherNewFrame ? 'up-to-date' : ''}`}
+                          title={hasTeacherNewFrame ? 'New slide ready — click to load' : 'Refresh slide (0 traffic if unchanged)'}
+                          aria-label={hasTeacherNewFrame ? 'Refresh Teacher Screen (New slide available)' : 'Refresh Teacher Screen'}
+                        >
+                          {isTeacherFrameRefreshing
+                            ? '⏳...'
+                            : hasTeacherNewFrame
+                            ? '🔄 Refresh • New'
+                            : teacherFrameRefreshStatus === 'up_to_date'
+                            ? '✓ Latest'
+                            : '🔄 Refresh'}
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={() => setTeacherZoomScale(prev => (prev > 1 ? 1 : 1.75))}
@@ -3507,6 +3652,8 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
                     src={teacherLiveFrame}
                     alt="Teacher Live Screen Broadcast"
                     className="teacher-live-screen-img"
+                    fetchPriority="high"
+                    onError={handleTeacherFrameLoadError}
                     style={{
                       transform: `scale(${teacherZoomScale})`,
                     }}
@@ -4111,18 +4258,8 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
 
       <MicSetupModal
         isOpen={isMicSetupOpen}
-        onClose={() => setIsMicSetupOpen(false)}
-        onConfirm={(payload) => {
-          const micId = typeof payload === 'object' && payload !== null ? payload.deviceId : payload;
-          setSelectedMicDeviceId(micId || '');
-          if (micId) {
-            try {
-              localStorage.setItem('preferred_mic_device_id', micId);
-            } catch {}
-          }
-          setIsAudioUserEnabled(true);
-          setIsMicSetupOpen(false);
-        }}
+        onClose={handleCloseMicSetup}
+        onConfirm={handleConfirmMicSetup}
         studentUid={user?.uid}
         studentName={user?.displayName || user?.email || ''}
         currentMicDeviceId={selectedMicDeviceId}
@@ -4131,78 +4268,27 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
 
       <ExamReadinessWizard
         isOpen={isReadinessWizardOpen}
-        onClose={() => setIsReadinessWizardOpen(false)}
+        onClose={handleCloseReadinessWizard}
         initialStep={wizardInitialStep}
         user={user}
         classId={activeClass}
         currentMicDeviceId={selectedMicDeviceId}
-        onSelectMicDevice={(id) => {
-          setSelectedMicDeviceId(id);
-          if (id) {
-            try {
-              localStorage.setItem('preferred_mic_device_id', id);
-            } catch {}
-          }
-          setIsAudioUserEnabled(true);
-        }}
+        onSelectMicDevice={handleSelectWizardMicDevice}
         currentCameraDeviceId={selectedWebcamId}
-        onSelectCameraDevice={(id) => {
-          setSelectedWebcamId(id);
-          if (id) {
-            try {
-              localStorage.setItem('preferred_camera_device_id', id);
-            } catch {}
-          }
-        }}
+        onSelectCameraDevice={handleSelectWizardCameraDevice}
         currentScreenStream={screenStreamRef.current}
         captureMode={captureMode}
         enableAudioCapture={enableAudioCapture}
         audioCaptureMode={audioCaptureMode}
-        onComplete={async (readinessResult) => {
-          setIsReadinessWizardOpen(false);
-          setIsExamReadyLocal(true);
-
-          // 1. Enable user mic state & device (if available)
-          if (readinessResult?.micDeviceId) {
-            setIsAudioUserEnabled(true);
-            setSelectedMicDeviceId(readinessResult.micDeviceId);
-            try {
-              localStorage.setItem('preferred_mic_device_id', readinessResult.micDeviceId);
-            } catch {}
-          }
-
-          // 2. Start webcam stream if camera is present and verified (non-blocking)
-          const camId = readinessResult?.cameraDeviceId;
-          if (camId) {
-            setSelectedWebcamId(camId);
-            try {
-              localStorage.setItem('preferred_camera_device_id', camId);
-            } catch {}
-            try {
-              await startWebcam(camId, readinessResult?.cameraStream);
-            } catch (camErr) {
-              console.warn('[StudentView] Webcam start skipped or unavailable:', camErr);
-            }
-          }
-
-          // 3. Start full screen sharing independently (ALWAYS works standalone)
-          try {
-            await startScreen(readinessResult?.screenStream);
-          } catch (screenErr) {
-            console.warn('[StudentView] Screen share start error:', screenErr);
-          }
-        }}
+        onComplete={handleCompleteReadinessWizard}
       />
 
       <ScreenSharePrecheckModal
         isOpen={isScreenSharePrecheckOpen}
         requireFullScreenOnly={requireFullScreenOnly}
         isAudioEnabled={Boolean(enableAudioCapture && isAudioUserEnabled)}
-        onCancel={() => setIsScreenSharePrecheckOpen(false)}
-        onConfirm={() => {
-          setIsScreenSharePrecheckOpen(false);
-          startScreen();
-        }}
+        onCancel={handleCancelScreenSharePrecheck}
+        onConfirm={handleConfirmScreenSharePrecheck}
       />
 
       {/* Teacher Live Screen Viewer Modal for Students */}
@@ -4215,6 +4301,12 @@ const StudentDesktopView = ({ user, previewClassId, isPreviewMode, onViewModeTog
         liveFrame={teacherLiveFrame}
         connectionState={teacherConnectionState}
         broadcastInfo={teacherBroadcastInfo}
+        onRefreshFrame={refreshTeacherBroadcastFrame}
+        onFrameError={handleTeacherFrameLoadError}
+        frameUpdatedAt={teacherFrameUpdatedAt}
+        hasNewFrame={hasTeacherNewFrame}
+        isRefreshing={isTeacherFrameRefreshing}
+        refreshStatus={teacherFrameRefreshStatus}
         classId={activeClass}
         activeClassIds={activeClassIds}
         userClasses={userClasses}

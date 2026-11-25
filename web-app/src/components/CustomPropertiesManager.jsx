@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback } from 'react';
-import { doc, getDoc, collection, onSnapshot, query, where, writeBatch, addDoc, serverTimestamp, orderBy, limit, getDocs, deleteField } from 'firebase/firestore';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { doc, getDoc, collection, onSnapshot, query, where, addDoc, serverTimestamp, orderBy, limit, getDocs, deleteField } from 'firebase/firestore';
 import { db, auth } from '../firebase-config';
+import { commitBatchChunks } from '../utils/firestoreBatchUtils';
 import { isInternalPropertyKey } from './student/PropertiesWidget';
 import { exportToExcel, readExcelFile, generateCsvContent } from '../utils/exportUtils';
 import './ClassManagement.css';
@@ -27,6 +28,7 @@ const CustomPropertiesManager = ({ selectedClass, studentEmails }) => {
   const [syncMode, setSyncMode] = useState(true);
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState('');
+  const lastCompletedJobSigRef = useRef('');
 
   // Fetch detected custom properties for enrolled students
   const fetchStudentPropertiesStats = useCallback(async (classId) => {
@@ -86,8 +88,12 @@ const CustomPropertiesManager = ({ selectedClass, studentEmails }) => {
   useEffect(() => {
     if (!selectedClass) {
       setPropertyUploadJobs([]);
+      lastCompletedJobSigRef.current = '';
       return;
     }
+
+    let isInitialSnapshot = true;
+    lastCompletedJobSigRef.current = '';
 
     const jobsRef = collection(db, 'propertyUploadJobs');
     const q = query(jobsRef, where('classId', '==', selectedClass), orderBy('createdAt', 'desc'), limit(5));
@@ -95,7 +101,15 @@ const CustomPropertiesManager = ({ selectedClass, studentEmails }) => {
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const jobs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setPropertyUploadJobs(jobs);
-      if (jobs.some(j => j.status === 'completed' || j.status === 'completed_with_errors')) {
+      const completedSig = jobs
+        .filter(j => j.status === 'completed' || j.status === 'completed_with_errors')
+        .map(j => `${j.id}:${j.status}:${j.processedCount || 0}:${j.updatedCount || 0}`)
+        .join('|');
+      if (isInitialSnapshot) {
+        isInitialSnapshot = false;
+        lastCompletedJobSigRef.current = completedSig;
+      } else if (completedSig && completedSig !== lastCompletedJobSigRef.current) {
+        lastCompletedJobSigRef.current = completedSig;
         fetchStudentPropertiesStats(selectedClass);
       }
     }, (err) => {
@@ -191,8 +205,6 @@ const CustomPropertiesManager = ({ selectedClass, studentEmails }) => {
     setSuccessMessage('');
 
     try {
-      const batch = writeBatch(db);
-
       // Save class-wide properties
       const classPropsRef = doc(db, 'classes', selectedClass, 'classProperties', 'config');
       const classPropsMap = classProperties.reduce((acc, prop) => {
@@ -201,9 +213,7 @@ const CustomPropertiesManager = ({ selectedClass, studentEmails }) => {
         }
         return acc;
       }, {});
-      batch.set(classPropsRef, classPropsMap);
-
-      await batch.commit();
+      await commitBatchChunks(db, [{ type: 'set', ref: classPropsRef, data: classPropsMap }]);
       setSuccessMessage("Successfully saved class-wide properties!");
 
     } catch (err) {
@@ -240,16 +250,12 @@ const CustomPropertiesManager = ({ selectedClass, studentEmails }) => {
         return;
       }
 
-      const BATCH_SIZE = 450;
-      for (let i = 0; i < docsToUpdate.length; i += BATCH_SIZE) {
-        const batch = writeBatch(db);
-        const chunk = docsToUpdate.slice(i, i + BATCH_SIZE);
-        chunk.forEach(uid => {
-          const docRef = doc(db, 'classes', selectedClass, 'studentProperties', uid);
-          batch.update(docRef, { [propKey]: deleteField() });
-        });
-        await batch.commit();
-      }
+      const deleteOps = docsToUpdate.map(uid => ({
+        type: 'update',
+        ref: doc(db, 'classes', selectedClass, 'studentProperties', uid),
+        data: { [propKey]: deleteField() },
+      }));
+      await commitBatchChunks(db, deleteOps, 450);
 
       setSuccessMessage(`Successfully deleted custom property "${propKey}" from ${docsToUpdate.length} student(s)!`);
       await fetchStudentPropertiesStats(selectedClass);
@@ -287,20 +293,18 @@ const CustomPropertiesManager = ({ selectedClass, studentEmails }) => {
         return;
       }
 
-      const BATCH_SIZE = 450;
-      for (let i = 0; i < updates.length; i += BATCH_SIZE) {
-        const batch = writeBatch(db);
-        const chunk = updates.slice(i, i + BATCH_SIZE);
-        chunk.forEach(({ id, keysToDelete }) => {
-          const docRef = doc(db, 'classes', selectedClass, 'studentProperties', id);
-          const payload = {};
-          keysToDelete.forEach(k => {
-            payload[k] = deleteField();
-          });
-          batch.update(docRef, payload);
+      const clearOps = updates.map(({ id, keysToDelete }) => {
+        const payload = {};
+        keysToDelete.forEach(k => {
+          payload[k] = deleteField();
         });
-        await batch.commit();
-      }
+        return {
+          type: 'update',
+          ref: doc(db, 'classes', selectedClass, 'studentProperties', id),
+          data: payload,
+        };
+      });
+      await commitBatchChunks(db, clearOps, 450);
 
       setSuccessMessage(`Successfully cleared all custom properties across ${updates.length} student(s)!`);
       await fetchStudentPropertiesStats(selectedClass);

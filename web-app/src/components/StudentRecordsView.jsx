@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import NativeDialog from './NativeDialog';
 import { db, storage, functions } from '../firebase-config';
-import { collection, query, where, getDocs, doc, getDoc, onSnapshot, setDoc, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, query, where, limit, getDocs, doc, getDoc, onSnapshot, setDoc, addDoc, serverTimestamp } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { ref, getDownloadURL } from 'firebase/storage';
 import VideoPlayerModal from './VideoPlayerModal';
@@ -206,7 +206,8 @@ const StudentRecordsView = ({ user }) => {
 
   // Subscribe to practical tasks and submissions
   useEffect(() => {
-    if (!selectedClassId || !user?.uid) {
+    const uid = user?.uid;
+    if (!selectedClassId || !uid) {
       setPracticalTasks([]);
       setTaskSubmissionsMap({});
       return;
@@ -214,6 +215,8 @@ const StudentRecordsView = ({ user }) => {
 
     if (typeof onSnapshot !== 'function') return;
 
+    let isCancelled = false;
+    let snapshotVersion = 0;
     let subUnsubs = [];
     const cleanupSubUnsubs = () => {
       subUnsubs.forEach((fn) => {
@@ -224,17 +227,21 @@ const StudentRecordsView = ({ user }) => {
 
     const tasksRef = collection(db, 'classes', selectedClassId, 'tasks');
     const unsub = onSnapshot(tasksRef, async (snap) => {
+      const version = ++snapshotVersion;
       cleanupSubUnsubs();
       const tasksList = (snap?.docs || [])
         .map((d) => ({ id: d.id, ...d.data() }))
         .filter((t) => !t.status || t.status === 'published');
+      if (isCancelled) return;
       setPracticalTasks(tasksList);
 
       const subMap = {};
       for (const t of tasksList) {
-        const subRef = doc(db, 'classes', selectedClassId, 'tasks', t.id, 'submissions', user.uid);
+        if (isCancelled || version !== snapshotVersion) return;
+        const subRef = doc(db, 'classes', selectedClassId, 'tasks', t.id, 'submissions', uid);
         try {
           const subDoc = await getDoc(subRef);
+          if (isCancelled || version !== snapshotVersion) return;
           if (subDoc && subDoc.exists()) {
             subMap[t.id] = { id: subDoc.id, ...subDoc.data() };
           }
@@ -246,6 +253,7 @@ const StudentRecordsView = ({ user }) => {
           const unsubSub = onSnapshot(
             subRef,
             (subSnap) => {
+              if (isCancelled || version !== snapshotVersion) return;
               if (subSnap && typeof subSnap.exists === 'function' && subSnap.exists()) {
                 const updatedSub = { id: subSnap.id, ...subSnap.data() };
                 setTaskSubmissionsMap((prev) => ({ ...prev, [t.id]: updatedSub }));
@@ -256,6 +264,10 @@ const StudentRecordsView = ({ user }) => {
             },
             () => {}
           );
+          if (isCancelled || version !== snapshotVersion) {
+            if (typeof unsubSub === 'function') unsubSub();
+            return;
+          }
           if (typeof unsubSub === 'function') {
             subUnsubs.push(unsubSub);
           }
@@ -263,10 +275,14 @@ const StudentRecordsView = ({ user }) => {
           // Ignore if mock onSnapshot doesn't support doc ref
         }
       }
-      setTaskSubmissionsMap((prev) => ({ ...prev, ...subMap }));
+      if (!isCancelled && version === snapshotVersion) {
+        setTaskSubmissionsMap((prev) => ({ ...prev, ...subMap }));
+      }
     });
 
     return () => {
+      isCancelled = true;
+      snapshotVersion += 1;
       cleanupSubUnsubs();
       if (typeof unsub === 'function') unsub();
     };
@@ -406,14 +422,17 @@ const StudentRecordsView = ({ user }) => {
 
   // 1. Fetch Enrolled Classes for Student
   useEffect(() => {
-    if (!user?.uid) return;
+    const uid = user?.uid;
+    if (!uid) return;
+    let isCancelled = false;
     const fetchClasses = async () => {
       try {
         const classMap = new Map();
 
         // Check studentProfiles doc
-        const profileRef = doc(db, 'studentProfiles', user.uid);
+        const profileRef = doc(db, 'studentProfiles', uid);
         const profileSnap = await getDoc(profileRef);
+        if (isCancelled) return;
         if (profileSnap.exists()) {
           const profileClasses = profileSnap.data().classes || [];
           for (const cId of profileClasses) {
@@ -427,6 +446,7 @@ const StudentRecordsView = ({ user }) => {
           const classDocs = await Promise.all(
             classIds.map((id) => getDoc(doc(db, 'classes', id)).catch(() => null))
           );
+          if (isCancelled) return;
           classDocs.forEach((cSnap, idx) => {
             if (cSnap && cSnap.exists()) {
               const docId = cSnap.id || classIds[idx];
@@ -461,24 +481,46 @@ const StudentRecordsView = ({ user }) => {
           });
         }
       } catch (err) {
-        console.error('Error fetching enrolled classes:', err);
+        if (!isCancelled) {
+          console.error('Error fetching enrolled classes:', err);
+        }
       }
     };
     fetchClasses();
-  }, [user]);
+    return () => {
+      isCancelled = true;
+    };
+  }, [user?.uid]);
+
+  const enrolledClassesRef = useRef(enrolledClasses);
+  enrolledClassesRef.current = enrolledClasses;
+  const enrolledClassesKey = useMemo(
+    () =>
+      (Array.isArray(enrolledClasses) ? enrolledClasses : [])
+        .map((c) => c?.id || '')
+        .filter(Boolean)
+        .sort()
+        .join('|'),
+    [enrolledClasses]
+  );
+  const loadRecordsRequestIdRef = useRef(0);
 
   // 2. Fetch All Student Records
   const loadAllStudentRecords = useCallback(async () => {
-    if (!user?.uid) return;
+    const uid = user?.uid;
+    if (!uid) return;
+    const requestId = ++loadRecordsRequestIdRef.current;
     setLoading(true);
 
     try {
-      // 2a. Fetch Video Jobs
+      // 2a. Fetch Video Jobs (bounded)
       const videoQuery = query(
         collection(db, 'videoJobs'),
-        where('studentUid', '==', user.uid)
+        where('studentUid', '==', uid),
+        limit(300)
       );
       const videoSnap = await getDocs(videoQuery);
+      if (requestId !== loadRecordsRequestIdRef.current) return;
       const fetchedVideos = videoSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
       fetchedVideos.sort((a, b) => {
         const timeA = a.startTime?.toDate ? a.startTime.toDate() : new Date(a.startTime || a.createdAt || 0);
@@ -487,12 +529,14 @@ const StudentRecordsView = ({ user }) => {
       });
       setVideoJobs(fetchedVideos);
 
-      // 2b. Fetch Irregularities
+      // 2b. Fetch Irregularities (bounded)
       const irregQuery = query(
         collection(db, 'irregularities'),
-        where('studentUid', '==', user.uid)
+        where('studentUid', '==', uid),
+        limit(300)
       );
       const irregSnap = await getDocs(irregQuery);
+      if (requestId !== loadRecordsRequestIdRef.current) return;
       const fetchedIrregs = irregSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
       fetchedIrregs.sort((a, b) => {
         const timeA = a.timestamp?.toDate ? a.timestamp.toDate() : new Date(a.timestamp || 0);
@@ -501,12 +545,14 @@ const StudentRecordsView = ({ user }) => {
       });
       setIrregularities(fetchedIrregs);
 
-      // 2c. Fetch Audio Records
+      // 2c. Fetch Audio Records (bounded)
       const audioQuery = query(
         collection(db, 'audio'),
-        where('studentUid', '==', user.uid)
+        where('studentUid', '==', uid),
+        limit(300)
       );
       const audioSnap = await getDocs(audioQuery);
+      if (requestId !== loadRecordsRequestIdRef.current) return;
       const fetchedAudio = audioSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
       fetchedAudio.sort((a, b) => {
         const timeA = a.timestamp?.toDate ? a.timestamp.toDate() : new Date(a.timestamp || 0);
@@ -515,12 +561,14 @@ const StudentRecordsView = ({ user }) => {
       });
       setAudioRecords(fetchedAudio);
 
-      // 2d. Fetch Performance Metrics
+      // 2d. Fetch Performance Metrics (bounded)
       const metricsQuery = query(
         collection(db, 'performanceMetrics'),
-        where('studentUid', '==', user.uid)
+        where('studentUid', '==', uid),
+        limit(300)
       );
       const metricsSnap = await getDocs(metricsQuery);
+      if (requestId !== loadRecordsRequestIdRef.current) return;
       const fetchedMetrics = metricsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
       fetchedMetrics.sort((a, b) => {
         const timeA = a.timestamp?.toDate ? a.timestamp.toDate() : new Date(a.timestamp || 0);
@@ -529,12 +577,14 @@ const StudentRecordsView = ({ user }) => {
       });
       setPerformanceMetrics(fetchedMetrics);
 
-      // 2e. Fetch Progress Reports
+      // 2e. Fetch Progress Reports (bounded)
       const progressQuery = query(
         collection(db, 'progress'),
-        where('studentUid', '==', user.uid)
+        where('studentUid', '==', uid),
+        limit(300)
       );
       const progressSnap = await getDocs(progressQuery);
+      if (requestId !== loadRecordsRequestIdRef.current) return;
       const fetchedProgress = progressSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
       fetchedProgress.sort((a, b) => {
         const timeA = a.timestamp?.toDate ? a.timestamp.toDate() : new Date(a.timestamp || 0);
@@ -543,12 +593,14 @@ const StudentRecordsView = ({ user }) => {
       });
       setProgressReports(fetchedProgress);
 
-      // 2f. Fetch AI Jobs Feedback
+      // 2f. Fetch AI Jobs Feedback (bounded)
       const aiJobsQuery = query(
         collection(db, 'aiJobs'),
-        where('studentUid', '==', user.uid)
+        where('studentUid', '==', uid),
+        limit(300)
       );
       const aiJobsSnap = await getDocs(aiJobsQuery);
+      if (requestId !== loadRecordsRequestIdRef.current) return;
       const fetchedAiJobs = aiJobsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
       fetchedAiJobs.sort((a, b) => {
         const timeA = a.timestamp?.toDate ? a.timestamp.toDate() : new Date(a.timestamp || 0);
@@ -558,15 +610,17 @@ const StudentRecordsView = ({ user }) => {
       setAiJobsFeedback(fetchedAiJobs);
 
       // 2g. Fetch & Generate Lessons for Enrolled Classes (Scheduled + Subcollection + Discovered)
-      let candidateClasses = [...enrolledClasses];
+      let candidateClasses = [...(enrolledClassesRef.current || [])];
       if (candidateClasses.length === 0) {
         try {
-          const profileDoc = await getDoc(doc(db, 'studentProfiles', user.uid));
+          const profileDoc = await getDoc(doc(db, 'studentProfiles', uid));
+          if (requestId !== loadRecordsRequestIdRef.current) return;
           if (profileDoc.exists()) {
             const cIds = profileDoc.data().classes || [];
             const fetchedClassDocs = await Promise.all(
               cIds.map((id) => getDoc(doc(db, 'classes', id)).catch(() => null))
             );
+            if (requestId !== loadRecordsRequestIdRef.current) return;
             fetchedClassDocs.forEach((cSnap) => {
               if (cSnap && cSnap.exists()) {
                 const cData = cSnap.data();
@@ -591,6 +645,7 @@ const StudentRecordsView = ({ user }) => {
 
       const lessonsList = [];
       for (const classObj of candidateClasses) {
+        if (requestId !== loadRecordsRequestIdRef.current) return;
         const cId = classObj.id;
         const classLessonsMap = new Map();
 
@@ -598,9 +653,10 @@ const StudentRecordsView = ({ user }) => {
         try {
           const lessonsColRef = collection(db, 'classes', cId, 'lessons');
           const lessonSnaps = await getDocs(lessonsColRef);
+          if (requestId !== loadRecordsRequestIdRef.current) return;
           (lessonSnaps.docs || []).forEach((lDoc) => {
             const data = lDoc.data();
-            const studentEntry = data.students?.[user.uid];
+            const studentEntry = data.students?.[uid];
             const startStr = data.startTime?.toDate ? data.startTime.toDate().toISOString() : data.startTime;
             const endStr = data.endTime?.toDate ? data.endTime.toDate().toISOString() : data.endTime;
             const duration = data.duration || computeLessonDuration(startStr, endStr) || (studentEntry?.attendance?.length || 0) || 60;
@@ -782,18 +838,26 @@ const StudentRecordsView = ({ user }) => {
         classLessonsMap.forEach((l) => lessonsList.push(l));
       }
 
+      if (requestId !== loadRecordsRequestIdRef.current) return;
       lessonsList.sort((a, b) => new Date(b.startTime || 0) - new Date(a.startTime || 0));
       setLessonsData(lessonsList);
 
     } catch (err) {
-      console.error('Error loading student records:', err);
+      if (requestId === loadRecordsRequestIdRef.current) {
+        console.error('Error loading student records:', err);
+      }
     } finally {
-      setLoading(false);
+      if (requestId === loadRecordsRequestIdRef.current) {
+        setLoading(false);
+      }
     }
-  }, [user, enrolledClasses]);
+  }, [user?.uid, enrolledClassesKey]);
 
   useEffect(() => {
     loadAllStudentRecords();
+    return () => {
+      loadRecordsRequestIdRef.current += 1;
+    };
   }, [loadAllStudentRecords]);
 
   // Active class object

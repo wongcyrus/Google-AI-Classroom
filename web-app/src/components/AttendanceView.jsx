@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { httpsCallable } from 'firebase/functions';
-import { doc, getDoc, collection, getDocs, query, where } from 'firebase/firestore';
+import { doc, getDoc, collection, getDocs, query, where, limit } from 'firebase/firestore';
 import { ref, getDownloadURL } from 'firebase/storage';
 import { db, functions, storage } from '../firebase-config';
 import { exportToExcel } from '../utils/exportUtils';
@@ -321,7 +321,8 @@ const AttendanceView = ({ classId, selectedLesson, startTime, endTime, lessons, 
         try {
           const videoQuery = query(
             collection(db, 'videoJobs'),
-            where('classId', '==', classId)
+            where('classId', '==', classId),
+            limit(500)
           );
           const videoSnap = await getDocs(videoQuery);
           if (!cancelled) {

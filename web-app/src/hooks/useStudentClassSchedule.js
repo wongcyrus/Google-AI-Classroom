@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { doc, onSnapshot, getDoc } from 'firebase/firestore';
 import { db } from '../firebase-config';
 
@@ -9,286 +9,410 @@ const timeStringToMinutes = (t) => {
   return h * 60 + m;
 };
 
-export const useStudentClassSchedule = (user) => {
-  const [userClasses, setUserClasses] = useState([]);
-  const [schedules, setSchedules] = useState({});
-  const [classMeta, setClassMeta] = useState({});
-  const classMetaRef = useRef({});
-  const [activeClassIds, setActiveClassIds] = useState([]);
-  const [currentActiveClassId, setCurrentActiveClassId] = useState(null);
-  const [loading, setLoading] = useState(true);
+const toEpochMs = (val) => {
+  if (!val) return 0;
+  if (typeof val.toMillis === 'function') return val.toMillis();
+  if (typeof val.toDate === 'function') {
+    const ms = val.toDate().getTime();
+    return Number.isNaN(ms) ? 0 : ms;
+  }
+  if (typeof val.seconds === 'number') return val.seconds * 1000;
+  if (typeof val._seconds === 'number') return val._seconds * 1000;
+  if (val instanceof Date) {
+    const ms = val.getTime();
+    return Number.isNaN(ms) ? 0 : ms;
+  }
+  if (typeof val === 'number') return Number.isFinite(val) ? val : 0;
+  if (typeof val === 'string') {
+    const ms = new Date(val).getTime();
+    return Number.isNaN(ms) ? 0 : ms;
+  }
+  return 0;
+};
 
-  // Step 1: Fetch all class IDs for the student in real-time
-  useEffect(() => {
-    if (!user || !user.uid) {
-      console.log('useStudentClassSchedule: No user, skipping.');
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setLoading(false);
-      return;
-    }
+const EMPTY_SCHEDULE_STATE = {
+  userClasses: [],
+  currentActiveClassId: null,
+  activeClassIds: [],
+  schedules: {},
+  loading: false,
+};
 
-    console.log(`useStudentClassSchedule: Subscribing to student profile for ${user.uid}`);
-    const userDocRef = doc(db, 'studentProfiles', user.uid);
-    const unsubscribe = onSnapshot(userDocRef, (docSnap) => {
-      if (docSnap.exists()) {
-        const userData = docSnap.data();
-        const classes = userData.classes || [];
-        console.log(`useStudentClassSchedule: Student is in classes:`, classes);
-        setUserClasses(classes);
-      } else {
-        console.log('useStudentClassSchedule: Student profile does not exist.');
-        setUserClasses([]);
-      }
-    }, (error) => {
-      console.error('useStudentClassSchedule: Error fetching student profile:', error);
-    });
+function evaluateSchedulesFromData(currentSchedules, currentMeta) {
+  const now = new Date();
+  const nowMs = now.getTime();
 
-    return () => unsubscribe();
-  }, [user]);
+  const inSlotBroadcastClasses = [];
+  const overrunBroadcastClasses = [];
+  const inSlotScheduledClasses = [];
+  const overrunActiveClasses = [];
 
-  // Step 2: Fetch the schedule and live broadcast/overtime metadata for each class whenever the student's class list changes
-  useEffect(() => {
-    if (userClasses.length === 0) {
-      console.log('useStudentClassSchedule: No classes for student, schedules empty.');
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setSchedules({});
-      setClassMeta({});
-      classMetaRef.current = {};
-      setLoading(false);
-      return;
-    }
+  const allClassIds = Array.from(
+    new Set([...Object.keys(currentSchedules || {}), ...Object.keys(currentMeta || {})])
+  );
 
-    const fetchSchedules = async () => {
-      setLoading(true);
-      console.log('useStudentClassSchedule: Fetching schedules for classes:', userClasses);
-      const schedulesData = {};
-      const metaData = {};
-      for (const rawClass of userClasses) {
-        const classId = typeof rawClass === 'string' ? rawClass : rawClass?.id;
-        if (!classId) continue;
-        try {
-          const classRef = doc(db, 'classes', classId);
-          console.log(`useStudentClassSchedule: Getting document for class ${classId}`);
-          const classSnap = await getDoc(classRef);
-          if (classSnap && typeof classSnap.exists === 'function' && classSnap.exists()) {
-            console.log(`useStudentClassSchedule: Successfully fetched schedule for ${classId}`);
-            const data = classSnap.data() || {};
-            schedulesData[classId] = data.schedule;
-            metaData[classId] = {
-              isBroadcasting: Boolean(data.isBroadcasting),
-              isCapturing: Boolean(data.isCapturing),
-              overtimeUntil: data.overtimeUntil || null,
-              broadcastStartedAt: data.broadcastStartedAt || null,
-              captureStartedAt: data.captureStartedAt || null,
-            };
-          } else {
-            console.log(`useStudentClassSchedule: Class document ${classId} does not exist.`);
-          }
-        } catch (error) {
-          console.error(`useStudentClassSchedule: Error fetching schedule for class ${classId}:`, error);
-        }
-      }
-      classMetaRef.current = metaData;
-      setClassMeta(metaData);
-      setSchedules(schedulesData);
-      setLoading(false);
-      console.log('useStudentClassSchedule: Finished fetching schedules.', schedulesData);
-    };
+  for (const classId of allClassIds) {
+    const meta = currentMeta?.[classId] || {};
+    const overtimeUntilMs = toEpochMs(meta.overtimeUntil);
+    const hasActiveOvertime = overtimeUntilMs > nowMs;
+    const hasExpiredOvertime = overtimeUntilMs > 0 && overtimeUntilMs <= nowMs;
 
-    fetchSchedules();
-  }, [userClasses]);
+    const broadcastStartedMs = toEpochMs(meta.broadcastStartedAt);
+    const hasFreshBroadcastStart =
+      broadcastStartedMs > 0 &&
+      nowMs - broadcastStartedMs <= 3 * 60 * 60 * 1000;
 
-  // Step 3: Periodically check the schedules & live broadcast/overtime status to determine the currently active class(es)
-  useEffect(() => {
-    const evaluateSchedules = (currentSchedules, currentMeta) => {
-      const now = new Date();
-      const nowMs = now.getTime();
+    const schedule = currentSchedules?.[classId];
+    let matchesScheduledSlot = false;
+    let matchesCaptureOverrun = false;
 
-      // Priority buckets to ensure overlapping / back-to-back classes are handled without hijacking:
-      // 1. inSlotBroadcastClasses: Currently in scheduled slot AND actively broadcasting
-      // 2. overrunBroadcastClasses: Outside scheduled slot, but teacher is actively broadcasting live right now
-      // 3. inSlotScheduledClasses: Currently in scheduled slot (normal scheduled class)
-      // 4. overrunActiveClasses: Outside scheduled slot, but has explicit overtimeUntil > now or active capture overrun (within 90m)
-      const inSlotBroadcastClasses = [];
-      const overrunBroadcastClasses = [];
-      const inSlotScheduledClasses = [];
-      const overrunActiveClasses = [];
+    if (schedule && schedule.timeSlots && schedule.timeZone && schedule.startDate && schedule.endDate) {
+      const { timeSlots, timeZone, startDate, endDate } = schedule;
+      try {
+        const formatter = new Intl.DateTimeFormat('en-US', {
+          timeZone,
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          weekday: 'short',
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false,
+        });
+        const parts = formatter.formatToParts(now);
+        const currentDay = parts.find((p) => p.type === 'weekday')?.value;
+        const currentHour = parts.find((p) => p.type === 'hour')?.value;
+        const currentMinute = parts.find((p) => p.type === 'minute')?.value;
 
-      const allClassIds = Array.from(
-        new Set([...Object.keys(currentSchedules || {}), ...Object.keys(currentMeta || {})])
-      );
+        const year = parts.find((p) => p.type === 'year')?.value;
+        const month = parts.find((p) => p.type === 'month')?.value;
+        const day = parts.find((p) => p.type === 'day')?.value;
 
-      for (const classId of allClassIds) {
-        const meta = currentMeta?.[classId] || {};
-        const overtimeUntilMs = meta.overtimeUntil
-          ? (typeof meta.overtimeUntil.toDate === 'function'
-              ? meta.overtimeUntil.toDate().getTime()
-              : new Date(meta.overtimeUntil).getTime())
-          : 0;
-        const hasActiveOvertime = !Number.isNaN(overtimeUntilMs) && overtimeUntilMs > nowMs;
-        const hasExpiredOvertime = !Number.isNaN(overtimeUntilMs) && overtimeUntilMs > 0 && overtimeUntilMs <= nowMs;
+        if (currentDay && currentHour && currentMinute && year && month && day) {
+          const currentDate = `${year}-${month}-${day}`;
 
-        const broadcastStartedMs = meta.broadcastStartedAt
-          ? (typeof meta.broadcastStartedAt.toDate === 'function'
-              ? meta.broadcastStartedAt.toDate().getTime()
-              : new Date(meta.broadcastStartedAt).getTime())
-          : 0;
-        const hasFreshBroadcastStart =
-          !Number.isNaN(broadcastStartedMs) &&
-          broadcastStartedMs > 0 &&
-          nowMs - broadcastStartedMs <= 3 * 60 * 60 * 1000;
+          if (currentDate >= startDate && currentDate <= endDate) {
+            const currentTime = `${currentHour}:${currentMinute}`;
+            const currentMins = timeStringToMinutes(currentTime);
 
-        const schedule = currentSchedules?.[classId];
-        let matchesScheduledSlot = false;
-        let matchesCaptureOverrun = false;
-
-        if (schedule && schedule.timeSlots && schedule.timeZone && schedule.startDate && schedule.endDate) {
-          const { timeSlots, timeZone, startDate, endDate } = schedule;
-          try {
-            // Get current time and day in the target timezone
-            const formatter = new Intl.DateTimeFormat('en-US', {
-              timeZone,
-              year: 'numeric',
-              month: '2-digit',
-              day: '2-digit',
-              weekday: 'short',
-              hour: '2-digit',
-              minute: '2-digit',
-              hour12: false,
-            });
-            const parts = formatter.formatToParts(now);
-            const currentDay = parts.find(p => p.type === 'weekday')?.value;
-            const currentHour = parts.find(p => p.type === 'hour')?.value;
-            const currentMinute = parts.find(p => p.type === 'minute')?.value;
-
-            const year = parts.find(p => p.type === 'year')?.value;
-            const month = parts.find(p => p.type === 'month')?.value;
-            const day = parts.find(p => p.type === 'day')?.value;
-
-            if (currentDay && currentHour && currentMinute && year && month && day) {
-              const currentDate = `${year}-${month}-${day}`;
-
-              if (currentDate >= startDate && currentDate <= endDate) {
-                const currentTime = `${currentHour}:${currentMinute}`;
-                const currentMins = timeStringToMinutes(currentTime);
-
-                for (const slot of timeSlots) {
-                  if (slot.days.includes(currentDay)) {
-                    const { startTime, endTime } = slot;
-                    // Overnight slot
-                    if (startTime > endTime) {
-                      if (currentTime >= startTime || currentTime < endTime) {
-                        matchesScheduledSlot = true;
-                        break;
-                      }
-                    } else { // Same day slot
-                      if (currentTime >= startTime && currentTime < endTime) {
-                        matchesScheduledSlot = true;
-                        break;
-                      } else if (meta.isCapturing && !hasExpiredOvertime && currentMins >= 0) {
-                        const endMins = timeStringToMinutes(endTime);
-                        if (endMins >= 0 && currentMins >= endMins && currentMins <= endMins + 90) {
-                          matchesCaptureOverrun = true;
-                        }
-                      }
+            for (const slot of timeSlots) {
+              if (slot.days.includes(currentDay)) {
+                const { startTime, endTime } = slot;
+                if (startTime > endTime) {
+                  if (currentTime >= startTime || currentTime < endTime) {
+                    matchesScheduledSlot = true;
+                    break;
+                  }
+                } else {
+                  if (currentTime >= startTime && currentTime < endTime) {
+                    matchesScheduledSlot = true;
+                    break;
+                  } else if (meta.isCapturing && !hasExpiredOvertime && currentMins >= 0) {
+                    const endMins = timeStringToMinutes(endTime);
+                    if (endMins >= 0 && currentMins >= endMins && currentMins <= endMins + 90) {
+                      matchesCaptureOverrun = true;
                     }
                   }
                 }
               }
             }
-          } catch (e) {
-            console.error(`Invalid timezone identifier: '${timeZone}' for class ${classId}`, e);
           }
         }
-
-        // Only treat out-of-slot isBroadcasting as an active overrun if overtimeUntil is still active,
-        // or the broadcast was started within the last 3 hours, or it is within today's 90m post-slot window.
-        // This prevents stale zombie isBroadcasting flags from previous days from hijacking today's classes.
-        const isActiveBroadcastOverrun =
-          Boolean(meta.isBroadcasting) &&
-          (hasActiveOvertime || (!hasExpiredOvertime && (hasFreshBroadcastStart || matchesCaptureOverrun)));
-
-        if (matchesScheduledSlot) {
-          if (meta.isBroadcasting) {
-            inSlotBroadcastClasses.push(classId);
-          } else {
-            inSlotScheduledClasses.push(classId);
-          }
-        } else if (isActiveBroadcastOverrun) {
-          overrunBroadcastClasses.push(classId);
-        } else if (hasActiveOvertime || matchesCaptureOverrun) {
-          overrunActiveClasses.push(classId);
-        }
+      } catch (e) {
+        console.error(`Invalid timezone identifier: '${timeZone}' for class ${classId}`, e);
       }
+    }
 
-      const matchedClasses = [
-        ...inSlotBroadcastClasses,
-        ...inSlotScheduledClasses,
-        ...overrunBroadcastClasses,
-        ...overrunActiveClasses,
-      ];
-      setActiveClassIds(matchedClasses);
-      setCurrentActiveClassId(matchedClasses.length > 0 ? matchedClasses[0] : null);
+    const isActiveBroadcastOverrun =
+      Boolean(meta.isBroadcasting) &&
+      (hasActiveOvertime || (!hasExpiredOvertime && (hasFreshBroadcastStart || matchesCaptureOverrun)));
+
+    if (matchesScheduledSlot) {
+      if (meta.isBroadcasting) {
+        inSlotBroadcastClasses.push(classId);
+      } else {
+        inSlotScheduledClasses.push(classId);
+      }
+    } else if (isActiveBroadcastOverrun) {
+      overrunBroadcastClasses.push(classId);
+    } else if (hasActiveOvertime || matchesCaptureOverrun) {
+      overrunActiveClasses.push(classId);
+    }
+  }
+
+  return [
+    ...inSlotBroadcastClasses,
+    ...inSlotScheduledClasses,
+    ...overrunBroadcastClasses,
+    ...overrunActiveClasses,
+  ];
+}
+
+function arraysEqual(a, b) {
+  return a.length === b.length && a.every((v, i) => v === b[i]);
+}
+
+/**
+ * Shared reference-counted schedule store per `(db, userUid)` so multiple components
+ * (`PasskeyEnforcementGate`, `StudentView`, `StudentMobileView`) share one
+ * `studentProfiles/{uid}` listener, one batch of `classes/{id}` fetches, and one 30s timer.
+ */
+const dbScheduleStores = new WeakMap();
+
+function getDbScheduleMap(dbInstance) {
+  if (!dbInstance || (typeof dbInstance !== 'object' && typeof dbInstance !== 'function')) {
+    return null;
+  }
+  let map = dbScheduleStores.get(dbInstance);
+  if (!map) {
+    map = new Map();
+    dbScheduleStores.set(dbInstance, map);
+  }
+  return map;
+}
+
+function subscribeStudentScheduleStore(dbInstance, userUid, callback) {
+  const storeMap = getDbScheduleMap(dbInstance);
+  if (!storeMap || !userUid) {
+    callback(EMPTY_SCHEDULE_STATE);
+    return () => {};
+  }
+
+  let entry = storeMap.get(userUid);
+  if (!entry) {
+    entry = {
+      listeners: new Set([callback]),
+      disposed: false,
+      fetchGeneration: 0,
+      profileUnsub: null,
+      intervalId: null,
+      classMeta: {},
+      state: {
+        userClasses: [],
+        currentActiveClassId: null,
+        activeClassIds: [],
+        schedules: {},
+        loading: true,
+      },
+    };
+    storeMap.set(userUid, entry);
+
+    const emitState = (partial) => {
+      if (entry.disposed) return;
+      const prev = entry.state;
+      const next = { ...prev, ...partial };
+      const unchanged =
+        prev.userClasses === next.userClasses &&
+        prev.currentActiveClassId === next.currentActiveClassId &&
+        prev.schedules === next.schedules &&
+        prev.loading === next.loading &&
+        arraysEqual(prev.activeClassIds, next.activeClassIds);
+      if (unchanged) return;
+      entry.state = next;
+      Array.from(entry.listeners).forEach((cb) => {
+        try {
+          cb(next);
+        } catch (err) {
+          console.error('[useStudentClassSchedule] Subscriber error:', err);
+        }
+      });
     };
 
-    // Run check immediately
-    evaluateSchedules(schedules, classMeta);
+    const evaluateAndComputePatch = (nextSchedules, nextMeta) => {
+      const matchedClasses = evaluateSchedulesFromData(nextSchedules, nextMeta);
+      const nextPrimary = matchedClasses.length > 0 ? matchedClasses[0] : null;
+      return {
+        activeClassIds: arraysEqual(entry.state.activeClassIds, matchedClasses)
+          ? entry.state.activeClassIds
+          : matchedClasses,
+        currentActiveClassId: nextPrimary,
+      };
+    };
 
-    // Every 30 seconds, evaluate schedule immediately and refresh class metadata in background
-    const interval = setInterval(() => {
-      evaluateSchedules(schedules, classMetaRef.current);
-
-      if (userClasses && userClasses.length > 0) {
-        (async () => {
-          let hasChanges = false;
-          const nextSchedules = { ...schedules };
-          const nextMeta = { ...classMetaRef.current };
-
-          for (const rawClass of userClasses) {
-            const classId = typeof rawClass === 'string' ? rawClass : rawClass?.id;
-            if (!classId) continue;
-            try {
-              const snap = await getDoc(doc(db, 'classes', classId));
-              if (snap && typeof snap.exists === 'function' && snap.exists()) {
-                const data = snap.data() || {};
-                if (data.schedule) {
-                  nextSchedules[classId] = data.schedule;
-                }
-                const newMeta = {
-                  isBroadcasting: Boolean(data.isBroadcasting),
-                  isCapturing: Boolean(data.isCapturing),
-                  overtimeUntil: data.overtimeUntil || null,
-                  broadcastStartedAt: data.broadcastStartedAt || null,
-                  captureStartedAt: data.captureStartedAt || null,
-                };
-                const prevMeta = nextMeta[classId] || {};
-                if (
-                  prevMeta.isBroadcasting !== newMeta.isBroadcasting ||
-                  prevMeta.isCapturing !== newMeta.isCapturing ||
-                  prevMeta.overtimeUntil !== newMeta.overtimeUntil ||
-                  prevMeta.broadcastStartedAt !== newMeta.broadcastStartedAt
-                ) {
-                  nextMeta[classId] = newMeta;
-                  hasChanges = true;
-                }
-              }
-            } catch {
-              // Ignore transient polling errors
-            }
-          }
-
-          if (hasChanges) {
-            classMetaRef.current = nextMeta;
-            setClassMeta(nextMeta);
-            evaluateSchedules(nextSchedules, nextMeta);
-          }
-        })();
+    const fetchInitialSchedules = async (classes) => {
+      const gen = ++entry.fetchGeneration;
+      if (!classes || classes.length === 0) {
+        entry.classMeta = {};
+        const evalPatch = evaluateAndComputePatch({}, {});
+        emitState({
+          userClasses: classes,
+          schedules: {},
+          loading: false,
+          ...evalPatch,
+        });
+        return;
       }
-    }, 30000);
 
-    return () => clearInterval(interval);
-  }, [schedules, classMeta, userClasses]);
+      emitState({ userClasses: classes, loading: true });
+      const schedulesData = {};
+      const metaData = {};
 
-  return { userClasses, currentActiveClassId, activeClassIds, schedules, loading };
+      const classIds = classes
+        .map((rawClass) => (typeof rawClass === 'string' ? rawClass : rawClass?.id))
+        .filter(Boolean);
+
+      await Promise.all(
+        classIds.map(async (classId) => {
+          try {
+            const classRef = doc(dbInstance, 'classes', classId);
+            const classSnap = await getDoc(classRef);
+            if (classSnap && typeof classSnap.exists === 'function' && classSnap.exists()) {
+              const data = classSnap.data() || {};
+              schedulesData[classId] = data.schedule;
+              metaData[classId] = {
+                isBroadcasting: Boolean(data.isBroadcasting),
+                isCapturing: Boolean(data.isCapturing),
+                overtimeUntil: data.overtimeUntil || null,
+                broadcastStartedAt: data.broadcastStartedAt || null,
+                captureStartedAt: data.captureStartedAt || null,
+              };
+            }
+          } catch (error) {
+            console.error(`useStudentClassSchedule: Error fetching schedule for class ${classId}:`, error);
+          }
+        })
+      );
+
+      if (entry.disposed || entry.fetchGeneration !== gen) return;
+      entry.classMeta = metaData;
+      const evalPatch = evaluateAndComputePatch(schedulesData, metaData);
+      emitState({
+        schedules: schedulesData,
+        loading: false,
+        ...evalPatch,
+      });
+    };
+
+    const userDocRef = doc(dbInstance, 'studentProfiles', userUid);
+    const profileUnsub = onSnapshot(
+      userDocRef,
+      (docSnap) => {
+        if (entry.disposed) return;
+        const classes = docSnap.exists() ? (docSnap.data().classes || []) : [];
+        fetchInitialSchedules(classes);
+      },
+      (error) => {
+        console.error('useStudentClassSchedule: Error fetching student profile:', error);
+      }
+    );
+
+    if (entry.disposed) {
+      if (typeof profileUnsub === 'function') profileUnsub();
+    } else {
+      entry.profileUnsub = profileUnsub;
+      entry.intervalId = setInterval(() => {
+        if (entry.disposed) return;
+
+        // Re-evaluate time slot transitions first
+        const timePatch = evaluateAndComputePatch(entry.state.schedules, entry.classMeta);
+        emitState(timePatch);
+
+        const currentClasses = entry.state.userClasses;
+        if (currentClasses && currentClasses.length > 0) {
+          const gen = entry.fetchGeneration;
+          (async () => {
+            let hasMetaChanges = false;
+            let hasScheduleChanges = false;
+            const nextSchedules = { ...entry.state.schedules };
+            const nextMeta = { ...entry.classMeta };
+
+            const classIds = currentClasses
+              .map((rawClass) => (typeof rawClass === 'string' ? rawClass : rawClass?.id))
+              .filter(Boolean);
+
+            await Promise.all(
+              classIds.map(async (classId) => {
+                try {
+                  const snap = await getDoc(doc(dbInstance, 'classes', classId));
+                  if (snap && typeof snap.exists === 'function' && snap.exists()) {
+                    const data = snap.data() || {};
+                    if (data.schedule && JSON.stringify(nextSchedules[classId]) !== JSON.stringify(data.schedule)) {
+                      nextSchedules[classId] = data.schedule;
+                      hasScheduleChanges = true;
+                    }
+                    const newMeta = {
+                      isBroadcasting: Boolean(data.isBroadcasting),
+                      isCapturing: Boolean(data.isCapturing),
+                      overtimeUntil: data.overtimeUntil || null,
+                      broadcastStartedAt: data.broadcastStartedAt || null,
+                      captureStartedAt: data.captureStartedAt || null,
+                    };
+                    const prevMeta = nextMeta[classId] || {};
+                    if (
+                      prevMeta.isBroadcasting !== newMeta.isBroadcasting ||
+                      prevMeta.isCapturing !== newMeta.isCapturing ||
+                      toEpochMs(prevMeta.overtimeUntil) !== toEpochMs(newMeta.overtimeUntil) ||
+                      toEpochMs(prevMeta.broadcastStartedAt) !== toEpochMs(newMeta.broadcastStartedAt) ||
+                      toEpochMs(prevMeta.captureStartedAt) !== toEpochMs(newMeta.captureStartedAt)
+                    ) {
+                      nextMeta[classId] = newMeta;
+                      hasMetaChanges = true;
+                    }
+                  }
+                } catch {
+                  // Ignore transient polling errors
+                }
+              })
+            );
+
+            if (entry.disposed || entry.fetchGeneration !== gen) return;
+            if (hasMetaChanges || hasScheduleChanges) {
+              if (hasMetaChanges) entry.classMeta = nextMeta;
+              const patch = evaluateAndComputePatch(
+                hasScheduleChanges ? nextSchedules : entry.state.schedules,
+                entry.classMeta
+              );
+              emitState({
+                ...(hasScheduleChanges ? { schedules: nextSchedules } : {}),
+                ...patch,
+              });
+            }
+          })();
+        }
+      }, 30000);
+    }
+  } else {
+    entry.listeners.add(callback);
+    callback(entry.state);
+  }
+
+  let unsubscribed = false;
+  return () => {
+    if (unsubscribed) return;
+    unsubscribed = true;
+    entry.listeners.delete(callback);
+    if (entry.listeners.size === 0) {
+      entry.disposed = true;
+      entry.fetchGeneration += 1;
+      storeMap.delete(userUid);
+      if (entry.intervalId) {
+        clearInterval(entry.intervalId);
+        entry.intervalId = null;
+      }
+      if (typeof entry.profileUnsub === 'function') {
+        entry.profileUnsub();
+        entry.profileUnsub = null;
+      }
+    }
+  };
+}
+
+export const useStudentClassSchedule = (user) => {
+  const userUid = user?.uid || null;
+  const [scheduleState, setScheduleState] = useState(() =>
+    userUid
+      ? { ...EMPTY_SCHEDULE_STATE, loading: true }
+      : EMPTY_SCHEDULE_STATE
+  );
+
+  useEffect(() => {
+    if (!userUid) {
+      return;
+    }
+    return subscribeStudentScheduleStore(db, userUid, (nextState) => {
+      setScheduleState(nextState);
+    });
+  }, [userUid]);
+
+  return userUid ? scheduleState : EMPTY_SCHEDULE_STATE;
 };
-

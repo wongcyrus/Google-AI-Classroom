@@ -114,14 +114,15 @@ export async function executeMergeLectureRecordings(
     throw new HttpsError('invalid-argument', 'classId is required.');
   }
 
-  // 1. Verify caller authorization (teacher or admin for this class)
-  if (!auth) {
+  // 1. Verify caller authorization (admin or teacher assigned to this specific class)
+  if (!auth || (!auth.uid && auth.token?.role !== 'admin')) {
     throw new HttpsError('unauthenticated', 'User must be authenticated.');
   }
 
   const callerUid = auth.uid;
   const callerEmail = auth.token?.email || '';
-  const isGlobalTeacher = auth.token?.role === 'teacher' || auth.token?.role === 'admin';
+  const callerEmailNorm = callerEmail.trim().toLowerCase();
+  const isAdmin = auth.token?.role === 'admin';
 
   const classDocRef = currentDb.doc(`classes/${classId}`);
   const classDoc = await classDocRef.get();
@@ -130,12 +131,21 @@ export async function executeMergeLectureRecordings(
   }
 
   const classData = classDoc.data() || {};
-  const isClassTeacher =
-    (classData.teachers && (classData.teachers[callerUid] || Object.values(classData.teachers).includes(callerEmail))) ||
-    classData.teacherUid === callerUid ||
-    classData.teacherEmail === callerEmail;
+  const isClassTeacher = Boolean(
+    (callerUid && (
+      classData.ownerUid === callerUid ||
+      classData.teacherUid === callerUid ||
+      classData.createdBy === callerUid ||
+      (classData.teachers && typeof classData.teachers === 'object' && classData.teachers[callerUid])
+    )) ||
+    (callerEmailNorm && (
+      (classData.teacherEmail && String(classData.teacherEmail).trim().toLowerCase() === callerEmailNorm) ||
+      (Array.isArray(classData.teacherEmails) && classData.teacherEmails.some((e) => typeof e === 'string' && e.trim().toLowerCase() === callerEmailNorm)) ||
+      (classData.teachers && typeof classData.teachers === 'object' && Object.values(classData.teachers).some((v) => typeof v === 'string' && v.trim().toLowerCase() === callerEmailNorm))
+    ))
+  );
 
-  if (!isGlobalTeacher && !isClassTeacher) {
+  if (!isAdmin && !isClassTeacher) {
     throw new HttpsError('permission-denied', 'Only teachers of this class can merge lecture recordings.');
   }
 
@@ -727,31 +737,41 @@ export async function executeMergeLectureRecordings(
       }
     }
 
-    // Mark individual source clips as merged fragments & clean up dangling stubs
-    const batch = currentDb.batch();
+    // Mark individual source clips as merged fragments & clean up dangling stubs (chunked <= 400 ops per batch)
+    const BATCH_LIMIT = 400;
+    const pendingUpdates = [];
     for (let idx = 0; idx < recordingsToMerge.length; idx++) {
       const rec = recordingsToMerge[idx];
       if (rec.id === combinedSessionId) continue;
-      const recDocRef = recordingsRef.doc(rec.id);
-      batch.update(recDocRef, {
-        isFragment: true,
-        fragmentIndex: idx + 1,
-        totalFragments: recordingsToMerge.length,
-        mergedIntoSessionId: combinedSessionId,
-        isSegmentDeleted: true,
+      pendingUpdates.push({
+        ref: recordingsRef.doc(rec.id),
+        data: {
+          isFragment: true,
+          fragmentIndex: idx + 1,
+          totalFragments: recordingsToMerge.length,
+          mergedIntoSessionId: combinedSessionId,
+          isSegmentDeleted: true,
+        },
       });
     }
 
     for (const badRec of invalidRecordings) {
-      const badDocRef = recordingsRef.doc(badRec.id);
-      batch.update(badDocRef, {
-        status: 'interrupted',
-        interruptionRemarks: `Recording crashed before upload. Rest of lecture continued in session ${combinedSessionId}.`,
-        mergedIntoSessionId: combinedSessionId,
-        discardedAt: FieldValue.serverTimestamp(),
+      pendingUpdates.push({
+        ref: recordingsRef.doc(badRec.id),
+        data: {
+          status: 'interrupted',
+          interruptionRemarks: `Recording crashed before upload. Rest of lecture continued in session ${combinedSessionId}.`,
+          mergedIntoSessionId: combinedSessionId,
+          discardedAt: FieldValue.serverTimestamp(),
+        },
       });
     }
-    await batch.commit();
+
+    for (let i = 0; i < pendingUpdates.length; i += BATCH_LIMIT) {
+      const batch = currentDb.batch();
+      pendingUpdates.slice(i, i + BATCH_LIMIT).forEach(({ ref, data }) => batch.update(ref, data));
+      await batch.commit();
+    }
 
     // 13. Create decoupled subtitle job document in Firestore
     // This allows background workers in ai_flows to process subtitles with Gemini 3

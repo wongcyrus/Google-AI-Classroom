@@ -62,6 +62,21 @@ describe('generateLabTaskPrompt Cloud Function', () => {
 
   it('throws failed-precondition when no completed child jobs exist', async () => {
     mockCollection.mockImplementation((name) => {
+      if (name === 'classes') {
+        return {
+          doc: vi.fn().mockReturnValue({
+            get: vi.fn().mockResolvedValue({
+              exists: true,
+              data: () => ({ ownerUid: 'teacher1', aiQuota: 100 }),
+            }),
+            collection: vi.fn().mockReturnValue({
+              doc: vi.fn().mockReturnValue({
+                get: vi.fn().mockResolvedValue({ exists: true, data: () => ({ aiUsedQuota: 0 }) }),
+              }),
+            }),
+          }),
+        };
+      }
       if (name === 'videoAnalysisJobs') {
         return {
           doc: vi.fn().mockReturnValue({
@@ -91,6 +106,21 @@ describe('generateLabTaskPrompt Cloud Function', () => {
   it('synthesizes prompt from completed child job summaries successfully', async () => {
     const mockAddJob = vi.fn().mockResolvedValue({ id: 'new_prompt_job_id' });
     mockCollection.mockImplementation((name) => {
+      if (name === 'classes') {
+        return {
+          doc: vi.fn().mockReturnValue({
+            get: vi.fn().mockResolvedValue({
+              exists: true,
+              data: () => ({ ownerUid: 'teacher1', aiQuota: 100 }),
+            }),
+            collection: vi.fn().mockReturnValue({
+              doc: vi.fn().mockReturnValue({
+                get: vi.fn().mockResolvedValue({ exists: true, data: () => ({ aiUsedQuota: 0 }) }),
+              }),
+            }),
+          }),
+        };
+      }
       if (name === 'videoAnalysisJobs') {
         return {
           doc: vi.fn().mockReturnValue({
@@ -144,6 +174,21 @@ describe('generateLabTaskPrompt Cloud Function', () => {
 
   it('queries aiJobs by masterJobId when aiJobIds array is missing, and strips markdown code fences', async () => {
     mockCollection.mockImplementation((name) => {
+      if (name === 'classes') {
+        return {
+          doc: vi.fn().mockReturnValue({
+            get: vi.fn().mockResolvedValue({
+              exists: true,
+              data: () => ({ ownerUid: 'teacher1', aiQuota: 100 }),
+            }),
+            collection: vi.fn().mockReturnValue({
+              doc: vi.fn().mockReturnValue({
+                get: vi.fn().mockResolvedValue({ exists: true, data: () => ({ aiUsedQuota: 0 }) }),
+              }),
+            }),
+          }),
+        };
+      }
       if (name === 'videoAnalysisJobs') {
         return {
           doc: vi.fn().mockReturnValue({
@@ -190,5 +235,101 @@ describe('generateLabTaskPrompt Cloud Function', () => {
 
     expect(result.generatedPrompt).toBe('# Generated Lab Prompt\nTasks');
     expect(result.summaryCount).toBe(1);
+  });
+
+  it('rejects teacher who is not assigned to the class and enforces AI quota', async () => {
+    mockCollection.mockImplementation((name) => {
+      if (name === 'videoAnalysisJobs') {
+        return {
+          doc: vi.fn().mockReturnValue({
+            get: vi.fn().mockResolvedValue({
+              exists: true,
+              data: () => ({ classId: 'CLASS_OTHER', aiJobIds: ['AI_1'] }),
+            }),
+          }),
+        };
+      }
+      if (name === 'classes') {
+        return {
+          doc: vi.fn().mockReturnValue({
+            get: vi.fn().mockResolvedValue({
+              exists: true,
+              data: () => ({ ownerUid: 'other_teacher', aiQuota: 10 }),
+            }),
+            collection: vi.fn().mockReturnValue({
+              doc: vi.fn().mockReturnValue({
+                get: vi.fn().mockResolvedValue({ exists: true, data: () => ({ aiUsedQuota: 99 }) }),
+              }),
+            }),
+          }),
+        };
+      }
+      return { where: vi.fn(), add: vi.fn() };
+    });
+
+    await expect(
+      generateLabTaskPrompt.run({
+        auth: { uid: 'teacher1', token: { role: 'teacher' } },
+        data: { jobId: 'JOB_OTHER' },
+      })
+    ).rejects.toThrow(/Only teachers assigned to this class/);
+
+    // Now test quota exhaustion for an authorized class teacher
+    const mockAddBlocked = vi.fn().mockResolvedValue({ id: 'blocked_1' });
+    mockCollection.mockImplementation((name) => {
+      if (name === 'videoAnalysisJobs') {
+        return {
+          doc: vi.fn().mockReturnValue({
+            get: vi.fn().mockResolvedValue({
+              exists: true,
+              data: () => ({ classId: 'CLASS_FULL', aiJobIds: ['AI_1'] }),
+            }),
+          }),
+        };
+      }
+      if (name === 'classes') {
+        return {
+          doc: vi.fn().mockReturnValue({
+            get: vi.fn().mockResolvedValue({
+              exists: true,
+              data: () => ({ ownerUid: 'teacher1', aiQuota: 10 }),
+            }),
+            collection: vi.fn().mockReturnValue({
+              doc: vi.fn().mockReturnValue({
+                get: vi.fn().mockResolvedValue({ exists: true, data: () => ({ aiUsedQuota: 10 }) }),
+              }),
+            }),
+          }),
+        };
+      }
+      if (name === 'aiJobs') {
+        return {
+          where: vi.fn().mockReturnValue({
+            get: vi.fn().mockResolvedValue({
+              forEach: (cb) => {
+                cb({
+                  data: () => ({
+                    status: 'completed',
+                    studentUid: 's1',
+                    result: 'Finished step 1',
+                  }),
+                });
+              },
+            }),
+          }),
+          add: mockAddBlocked,
+        };
+      }
+    });
+
+    await expect(
+      generateLabTaskPrompt.run({
+        auth: { uid: 'teacher1' },
+        data: { jobId: 'JOB_FULL' },
+      })
+    ).rejects.toThrow(/Monthly AI quota exceeded/);
+    expect(mockAddBlocked).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'blocked-by-quota', jobType: 'generateLabTaskPrompt' })
+    );
   });
 });

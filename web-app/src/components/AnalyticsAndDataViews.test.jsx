@@ -57,6 +57,7 @@ vi.mock('recharts', async () => {
 describe('Analytics & Data Management Views Full Suite', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.setItem('teacher_privacy_mode', 'false');
     window.alert = vi.fn();
     window.confirm = vi.fn().mockReturnValue(true);
     window.open = vi.fn();

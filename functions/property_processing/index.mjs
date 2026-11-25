@@ -55,30 +55,84 @@ export const isInternalPropertyKey = (key) => {
     return exactInternalKeys.has(lower);
 };
 
-export const processPropertyUpload = onDocumentCreated({
-    document: "propertyUploadJobs/{jobId}",
-    region: FUNCTION_REGION,
-    memory: '256MiB',
-    timeoutSeconds: 300,
-}, async (event) => {
+function isTeacherAuthorizedInClass(classData, requesterUid, requesterRecord = null) {
+    if (!requesterUid || !classData || typeof classData !== 'object') {
+        return requesterRecord?.customClaims?.role === 'admin';
+    }
+    if (requesterRecord?.customClaims?.role === 'admin') {
+        return true;
+    }
+    if (
+        classData.ownerUid === requesterUid ||
+        classData.teacherUid === requesterUid ||
+        classData.createdBy === requesterUid ||
+        Boolean(classData.teachers && typeof classData.teachers === 'object' && classData.teachers[requesterUid])
+    ) {
+        return true;
+    }
+    const requesterEmail = (requesterRecord?.email || '').trim().toLowerCase();
+    if (requesterEmail) {
+        if (classData.teacherEmail && String(classData.teacherEmail).trim().toLowerCase() === requesterEmail) {
+            return true;
+        }
+        if (Array.isArray(classData.teacherEmails)) {
+            return classData.teacherEmails.some(
+                (e) => typeof e === 'string' && e.trim().toLowerCase() === requesterEmail
+            );
+        }
+    }
+    return false;
+}
+
+export const handleProcessPropertyUpload = async (event, customDeps = {}) => {
+    const currentDb = customDeps.db || db;
+    const currentAuth = customDeps.auth || auth;
+    const currentLogger = customDeps.logger || logger;
+
     const snap = event.data;
     if (!snap) {
-        logger.warn("processPropertyUpload triggered with no data.");
+        currentLogger.warn("processPropertyUpload triggered with no data.");
         return;
     }
 
     const jobId = event.params.jobId;
     const jobRef = snap.ref;
-    const jobData = snap.data();
+    const jobData = snap.data() || {};
     const { classId, csvData, requesterUid, mode } = jobData;
 
-    logger.info(`Starting property upload job ${jobId} for class ${classId}, mode: ${mode || 'sync'}, requested by ${requesterUid}`);
+    currentLogger.info(`Starting property upload job ${jobId} for class ${classId}, mode: ${mode || 'sync'}, requested by ${requesterUid}`);
 
     try {
         await jobRef.update({ status: 'processing', startedAt: new Date() });
 
+        if (!classId || typeof classId !== 'string' || !requesterUid || typeof requesterUid !== 'string') {
+            throw new Error('Unauthorized property upload job: valid classId and requesterUid are required.');
+        }
+
+        const classDoc = await currentDb.collection('classes').doc(classId).get();
+        if (!classDoc?.exists) {
+            throw new Error(`Class ${classId} not found.`);
+        }
+        const classData = (typeof classDoc.data === 'function' ? classDoc.data() : classDoc.data) || {};
+
+        // Fast path checks UID directly against classData; fallback fetches Auth user for admin/email check
+        let isAuthorized = isTeacherAuthorizedInClass(classData, requesterUid, null);
+        if (!isAuthorized) {
+            let requesterRecord = null;
+            try {
+                requesterRecord = await currentAuth.getUser(requesterUid);
+            } catch (authLookupErr) {
+                currentLogger.warn(`[${jobId}] Failed to inspect requester user ${requesterUid}:`, authLookupErr);
+            }
+            isAuthorized = isTeacherAuthorizedInClass(classData, requesterUid, requesterRecord);
+        }
+
+        if (!isAuthorized) {
+            throw new Error(`Unauthorized: user ${requesterUid} is not a teacher assigned to class ${classId}.`);
+        }
+
         // 1. Parse CSV
-        logger.info(`[${jobId}] Parsing CSV data.`);
+        currentLogger.info(`[${jobId}] Parsing CSV data.`);
         const parsed = Papa.parse(csvData, { header: true, skipEmptyLines: true });
         const rows = parsed.data;
 
@@ -107,7 +161,7 @@ export const processPropertyUpload = onDocumentCreated({
                  !isInternalPropertyKey(f)
         );
 
-        logger.info(`[${jobId}] Uploaded property headers detected: ${JSON.stringify(uploadedPropertyKeys)}`);
+        currentLogger.info(`[${jobId}] Uploaded property headers detected: ${JSON.stringify(uploadedPropertyKeys)}`);
 
         // 2. Resolve student emails to UIDs
         const emails = rows.map(r => {
@@ -118,23 +172,16 @@ export const processPropertyUpload = onDocumentCreated({
         if (emails.length === 0) {
             throw new Error('No valid student emails found in CSV.');
         }
-        logger.info(`[${jobId}] Found ${emails.length} emails to process.`);
+        currentLogger.info(`[${jobId}] Found ${emails.length} emails to process.`);
 
         const emailToUid = {};
 
-        // 2a. Pre-populate from class document students map if available
-        try {
-            const classDoc = await db.collection('classes').doc(classId).get();
-            if (classDoc.exists) {
-                const studentsMap = classDoc.data()?.students || {};
-                for (const [uid, studentEmail] of Object.entries(studentsMap)) {
-                    if (studentEmail && typeof studentEmail === 'string') {
-                        emailToUid[studentEmail.trim().toLowerCase()] = uid;
-                    }
-                }
+        // 2a. Pre-populate from already-fetched class document students map
+        const studentsMap = classData.students || {};
+        for (const [uid, studentEmail] of Object.entries(studentsMap)) {
+            if (studentEmail && typeof studentEmail === 'string') {
+                emailToUid[studentEmail.trim().toLowerCase()] = uid;
             }
-        } catch (classFetchErr) {
-            logger.warn(`[${jobId}] Could not fetch class students map:`, classFetchErr);
         }
 
         // 2b. For any emails not yet resolved from classDoc, query Firebase Auth
@@ -143,21 +190,21 @@ export const processPropertyUpload = onDocumentCreated({
         for (let i = 0; i < missingEmails.length; i += CHUNK_SIZE) {
             const emailChunk = missingEmails.slice(i, i + CHUNK_SIZE);
             try {
-                const userRecords = await auth.getUsers(emailChunk.map(email => ({ email })));
+                const userRecords = await currentAuth.getUsers(emailChunk.map(email => ({ email })));
                 userRecords.users.forEach(user => {
                     if (user.email) {
                         emailToUid[user.email.toLowerCase()] = user.uid;
                     }
                 });
             } catch (authErr) {
-                logger.warn(`[${jobId}] Error fetching users from auth chunk:`, authErr);
+                currentLogger.warn(`[${jobId}] Error fetching users from auth chunk:`, authErr);
             }
         }
 
-        logger.info(`[${jobId}] Matched ${Object.keys(emailToUid).length} emails to user UIDs.`);
+        currentLogger.info(`[${jobId}] Matched ${Object.keys(emailToUid).length} emails to user UIDs.`);
 
         // 3. Pre-fetch existing studentProperties in this class to know existing custom keys per student
-        const existingPropsSnap = await db.collection('classes').doc(classId).collection('studentProperties').get();
+        const existingPropsSnap = await currentDb.collection('classes').doc(classId).collection('studentProperties').get();
         const studentCurrentKeys = {}; // uid -> Set of existing custom keys
         existingPropsSnap.forEach(docSnap => {
             const data = docSnap.data() || {};
@@ -174,7 +221,7 @@ export const processPropertyUpload = onDocumentCreated({
         const BATCH_SIZE = 450; // Under Firestore limit of 500
 
         for (let i = 0; i < rows.length; i += BATCH_SIZE) {
-            const batch = db.batch();
+            const batch = currentDb.batch();
             const rowChunk = rows.slice(i, i + BATCH_SIZE);
             let batchProcessCount = 0;
 
@@ -212,7 +259,7 @@ export const processPropertyUpload = onDocumentCreated({
                         }
                     }
 
-                    const docRef = db.collection('classes').doc(classId).collection('studentProperties').doc(uid);
+                    const docRef = currentDb.collection('classes').doc(classId).collection('studentProperties').doc(uid);
                     batch.set(docRef, updatePayload, { merge: true });
 
                     processedCount++;
@@ -223,7 +270,7 @@ export const processPropertyUpload = onDocumentCreated({
             });
 
             if (batchProcessCount > 0) {
-                logger.info(`[${jobId}] Committing batch of ${batchProcessCount} property updates...`);
+                currentLogger.info(`[${jobId}] Committing batch of ${batchProcessCount} property updates...`);
                 await batch.commit();
             }
         }
@@ -234,7 +281,7 @@ export const processPropertyUpload = onDocumentCreated({
             ? `Could not find registered users for ${notFoundEmails.length} emails: ${notFoundEmails.slice(0, 5).join(', ')}`
             : null;
 
-        logger.info(`[${jobId}] Job finished with status: ${finalStatus}, processed: ${processedCount}/${rows.length}`);
+        currentLogger.info(`[${jobId}] Job finished with status: ${finalStatus}, processed: ${processedCount}/${rows.length}`);
         await jobRef.update({
             status: finalStatus,
             error: finalError,
@@ -246,7 +293,14 @@ export const processPropertyUpload = onDocumentCreated({
         });
 
     } catch (error) {
-        logger.error(`[${jobId}] Error processing property upload:`, error);
+        currentLogger.error(`[${jobId}] Error processing property upload:`, error);
         await jobRef.update({ status: 'failed', error: error.message, finishedAt: new Date() });
     }
-});
+};
+
+export const processPropertyUpload = onDocumentCreated({
+    document: "propertyUploadJobs/{jobId}",
+    region: FUNCTION_REGION,
+    memory: '256MiB',
+    timeoutSeconds: 300,
+}, async (event) => handleProcessPropertyUpload(event));

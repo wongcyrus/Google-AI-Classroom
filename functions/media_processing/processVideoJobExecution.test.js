@@ -582,4 +582,70 @@ describe('processVideoJob Cloud Function Execution', () => {
 
     expect(mockBatchDelete).not.toHaveBeenCalled();
   });
+
+  it('skips malformed screenshot docs missing paths, uses storagePath fallback, and cleans temp dir in finally', async () => {
+    const fsModule = (await import('fs')).default;
+    const mockSnap = {
+      data: () => ({
+        jobId: 'j-storagepath-fallback',
+        status: 'pending',
+        classId: 'c1',
+        studentUid: 's1',
+        studentEmail: 's1@test.com',
+        startTime: new Date('2026-09-19T09:00:00Z'),
+        endTime: new Date('2026-09-19T10:00:00Z'),
+      }),
+      ref: { update: mockJobUpdate },
+    };
+
+    const brokenShot = {
+      id: 'broken_1',
+      data: () => ({
+        timestamp: { toDate: () => new Date('2026-09-19T09:05:00Z') },
+        // neither imagePath nor storagePath
+      }),
+    };
+    const storagePathOnlyShot = {
+      id: 'valid_sp',
+      data: () => ({
+        storagePath: 'screenshots/c1/s1/fallback.jpg',
+        timestamp: { toDate: () => new Date('2026-09-19T09:10:00Z') },
+      }),
+    };
+
+    mockCollection.mockImplementation((name) => {
+      if (name === 'classes') {
+        return {
+          doc: vi.fn(() => ({
+            get: vi.fn().mockResolvedValue({ data: () => ({ schedule: { timeZone: 'UTC' } }) }),
+          })),
+        };
+      }
+      if (name === 'screenshots') {
+        return {
+          where: vi.fn().mockReturnThis(),
+          orderBy: vi.fn().mockReturnThis(),
+          get: vi.fn().mockResolvedValue({
+            empty: false,
+            docs: [brokenShot, storagePathOnlyShot],
+          }),
+        };
+      }
+      return {
+        doc: vi.fn(() => ({ set: vi.fn().mockResolvedValue() })),
+        where: vi.fn().mockReturnThis(),
+        orderBy: vi.fn().mockReturnThis(),
+        get: vi.fn().mockResolvedValue({ empty: true, docs: [] }),
+      };
+    });
+
+    await processVideoJob({ data: mockSnap });
+
+    expect(mockBucketFile).toHaveBeenCalledWith('screenshots/c1/s1/fallback.jpg');
+    expect(mockJobUpdate).toHaveBeenCalledWith(expect.objectContaining({ status: 'completed' }));
+    expect(fsModule.rmSync).toHaveBeenCalledWith(
+      expect.stringContaining('j-storagepath-fallback'),
+      { recursive: true, force: true }
+    );
+  });
 });

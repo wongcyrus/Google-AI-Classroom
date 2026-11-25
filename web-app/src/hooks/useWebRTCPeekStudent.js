@@ -25,6 +25,8 @@ export default function useWebRTCPeekStudent({
   const peerConnectionRef = useRef(null);
   const audioOutputRef = useRef(null);
   const audioSenderRef = useRef(null);
+  const processedOfferSdpRef = useRef(null);
+  const processedTeacherCandCountRef = useRef(0);
 
   useEffect(() => {
     if (!classId || !studentUid) return;
@@ -43,6 +45,8 @@ export default function useWebRTCPeekStudent({
 
     const unsubscribe = onSnapshot(peekDocRef, async (snapshot) => {
       if (!snapshot.exists()) {
+        processedOfferSdpRef.current = null;
+        processedTeacherCandCountRef.current = 0;
         if (peerConnectionRef.current) {
           console.log('[Student WebRTC] Peek session removed in Firestore, closing PeerConnection');
           peerConnectionRef.current.close();
@@ -51,10 +55,23 @@ export default function useWebRTCPeekStudent({
         return;
       }
 
-      const data = snapshot.data();
+      const data = snapshot.data() || {};
 
-      // Incoming offer from teacher
-      if (data.status === 'offered' && data.offer) {
+      if (data.status === 'closed' || data.status === 'rejected') {
+        processedOfferSdpRef.current = null;
+        processedTeacherCandCountRef.current = 0;
+        if (peerConnectionRef.current) {
+          peerConnectionRef.current.close();
+          peerConnectionRef.current = null;
+        }
+        return;
+      }
+
+      // Incoming offer from teacher (deduplicate by offer SDP so candidate updates don't restart handshake)
+      const incomingSdp = data.offer?.sdp || null;
+      if (data.status === 'offered' && data.offer && processedOfferSdpRef.current !== incomingSdp) {
+        processedOfferSdpRef.current = incomingSdp;
+        processedTeacherCandCountRef.current = 0;
         console.log('[Student WebRTC] Teacher initiated Live Peek offer. Initializing responder...');
         try {
           if (peerConnectionRef.current) {
@@ -174,20 +191,31 @@ export default function useWebRTCPeekStudent({
         }
       }
 
-      // Add teacher ICE candidates
-      if (data.teacherCandidates && Array.isArray(data.teacherCandidates) && peerConnectionRef.current) {
-        for (const cand of data.teacherCandidates) {
+      // Add only newly arrived teacher ICE candidates
+      if (
+        data.teacherCandidates &&
+        Array.isArray(data.teacherCandidates) &&
+        peerConnectionRef.current &&
+        peerConnectionRef.current.signalingState !== 'closed'
+      ) {
+        if (data.teacherCandidates.length < processedTeacherCandCountRef.current) {
+          processedTeacherCandCountRef.current = 0;
+        }
+        for (let i = processedTeacherCandCountRef.current; i < data.teacherCandidates.length; i += 1) {
           try {
-            await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(cand));
+            await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(data.teacherCandidates[i]));
           } catch {
             // Ignore
           }
         }
+        processedTeacherCandCountRef.current = data.teacherCandidates.length;
       }
     });
 
     return () => {
       unsubscribe();
+      processedOfferSdpRef.current = null;
+      processedTeacherCandCountRef.current = 0;
       if (peerConnectionRef.current) {
         peerConnectionRef.current.close();
         peerConnectionRef.current = null;

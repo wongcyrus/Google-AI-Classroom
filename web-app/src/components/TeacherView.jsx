@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { onSnapshot, getDoc, doc } from 'firebase/firestore';
 import { db } from '../firebase-config';
 import { Link, Navigate } from 'react-router-dom';
@@ -35,23 +35,36 @@ const TeacherView = ({ user }) => {
     return () => clearInterval(timer);
   }, []);
 
+  const userUid = user?.uid || null;
+  const userEmail = user?.email || '';
+  const userRef = useRef(user);
+  userRef.current = user;
+
   useEffect(() => {
+    let isCancelled = false;
     const checkRole = async () => {
-      if (user) {
-        let idTokenResult = await user.getIdTokenResult();
+      const currentUser = userRef.current;
+      if (currentUser && userUid) {
+        let idTokenResult = await currentUser.getIdTokenResult();
         if (!idTokenResult.claims.role) {
-          idTokenResult = await user.getIdTokenResult(true);
+          idTokenResult = await currentUser.getIdTokenResult(true);
         }
-        setRole(idTokenResult.claims.role || deriveRoleFromEmail(user.email));
+        if (!isCancelled) {
+          setRole(idTokenResult.claims.role || deriveRoleFromEmail(userEmail));
+        }
       }
     };
     checkRole();
-  }, [user]);
+    return () => {
+      isCancelled = true;
+    };
+  }, [userUid, userEmail]);
 
   useEffect(() => {
-    if (!user) return;
+    if (!userUid) return;
+    let isCancelled = false;
 
-    const userProfileRef = doc(db, "teacherProfiles", user.uid);
+    const userProfileRef = doc(db, "teacherProfiles", userUid);
     const unsubscribeProfile = onSnapshot(userProfileRef, async (profileSnap) => {
       let classIds = [];
       if (profileSnap.exists()) {
@@ -60,8 +73,10 @@ const TeacherView = ({ user }) => {
       }
 
       if (classIds.length === 0) {
-        setClasses([]);
-        setLoading(false);
+        if (!isCancelled) {
+          setClasses([]);
+          setLoading(false);
+        }
         return;
       }
 
@@ -75,6 +90,7 @@ const TeacherView = ({ user }) => {
         }
       });
       const classSnaps = await Promise.all(classPromises);
+      if (isCancelled) return;
       const classesData = classSnaps.filter(Boolean);
       classesData.sort((a, b) => a.id.localeCompare(b.id));
 
@@ -100,12 +116,16 @@ const TeacherView = ({ user }) => {
         }
       }));
 
+      if (isCancelled) return;
       setClasses(updatedClasses);
       setLoading(false);
     });
 
-    return () => unsubscribeProfile();
-  }, [user]);
+    return () => {
+      isCancelled = true;
+      unsubscribeProfile();
+    };
+  }, [userUid]);
 
   // Aggregate stats calculations
   const stats = useMemo(() => {

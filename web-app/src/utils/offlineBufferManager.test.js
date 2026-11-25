@@ -256,5 +256,38 @@ describe('Offline IndexedDB Buffer Manager', () => {
     expect(res2.synced).toBe(1);
     expect(await getOfflineQueueCount()).toBe(0);
   });
+
+  it('permanently purges permission-denied items while preserving transient failure items', async () => {
+    await saveToOfflineQueue({ id: 'perm_err_1', type: 'screenshot', classId: 'C1', blob: new Blob(['p1']), timestamp: 1000 });
+    await saveToOfflineQueue({ id: 'storage_unauth_2', type: 'audio', classId: 'C1', blob: new Blob(['s2']), timestamp: 2000 });
+    await saveToOfflineQueue({ id: 'transient_err_3', type: 'screenshot', classId: 'C1', blob: new Blob(['t3']), timestamp: 3000 });
+
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const result = await flushOfflineQueue({
+      uploadItemHandler: async (item) => {
+        if (item.id === 'perm_err_1') {
+          const e = new Error('Missing or insufficient permissions');
+          e.code = 'permission-denied';
+          throw e;
+        }
+        if (item.id === 'storage_unauth_2') {
+          const e = new Error('User is not authorized to perform this action');
+          e.code = 'storage/unauthorized';
+          throw e;
+        }
+        throw new Error('Temporary network timeout');
+      },
+    });
+
+    expect(result.synced).toBe(0);
+    expect(result.remaining).toBe(1);
+    const left = await getAllQueuedItems();
+    expect(left.map((i) => i.id)).toEqual(['transient_err_3']);
+
+    errSpy.mockRestore();
+    warnSpy.mockRestore();
+  });
 });
 

@@ -216,6 +216,68 @@ dialog.teacher-stream-viewer-wrapper.floating,
   color: #fde047;
 }
 
+.slide-timestamp-pill {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #94a3b8;
+  background-color: rgba(15, 23, 42, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  padding: 1px 7px;
+  border-radius: 9999px;
+  white-space: nowrap;
+}
+
+.slide-refresh-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  background: rgba(59, 130, 246, 0.22);
+  color: #dbeafe;
+  border: 1px solid rgba(96, 165, 250, 0.45);
+  border-radius: 6px;
+  padding: 0.26rem 0.65rem;
+  font-size: 0.76rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+
+.slide-refresh-btn:hover:not(:disabled) {
+  background: rgba(59, 130, 246, 0.45);
+  color: #ffffff;
+}
+
+.slide-refresh-btn:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+.slide-refresh-btn.has-update {
+  background: linear-gradient(135deg, #d97706, #b45309);
+  border-color: #fbbf24;
+  color: #ffffff;
+  box-shadow: 0 0 10px rgba(245, 158, 11, 0.45);
+}
+
+.slide-refresh-btn.up-to-date {
+  background: rgba(16, 185, 129, 0.22);
+  border-color: rgba(52, 211, 153, 0.45);
+  color: #6ee7b7;
+}
+
+.slide-refresh-btn:focus-visible {
+  outline: 2px solid #60a5fa;
+  outline-offset: 2px;
+}
+
+@media (pointer: coarse) {
+  .slide-refresh-btn {
+    min-block-size: 44px;
+    padding: 0.35rem 0.85rem;
+  }
+}
+
 /* Zoom Toolbar in Header */
 .stream-zoom-toolbar {
   display: flex;

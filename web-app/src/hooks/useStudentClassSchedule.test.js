@@ -438,6 +438,122 @@ describe('useStudentClassSchedule Hook', () => {
     expect(result.current.currentActiveClassId).toBe('CLASS_THU');
     expect(result.current.activeClassIds).toEqual(['CLASS_THU']);
   });
+
+  it('keeps state stable without extra re-renders across 30s polls when Firestore Timestamp wrappers return new object identities for the same instant', async () => {
+    const mockNow = new Date('2026-10-05T14:30:00Z');
+    vi.setSystemTime(mockNow);
+    const targetMs = new Date('2026-10-05T16:30:00Z').getTime();
+
+    let profileCb;
+    onSnapshot.mockImplementation((ref, cb) => {
+      profileCb = cb;
+      return unsubMock;
+    });
+
+    getDoc.mockImplementation(async () => ({
+      exists: () => true,
+      data: () => ({
+        isBroadcasting: true,
+        overtimeUntil: { toMillis: () => targetMs },
+        schedule: {
+          timeZone: 'UTC',
+          startDate: '2026-09-01',
+          endDate: '2026-09-30',
+          timeSlots: [{ days: ['Mon'], startTime: '10:00', endTime: '12:00' }],
+        },
+      }),
+    }));
+
+    let renderCount = 0;
+    const { result } = renderHook(() => {
+      renderCount += 1;
+      return useStudentClassSchedule({ uid: 'student_stable' });
+    });
+
+    await act(async () => {
+      profileCb({
+        exists: () => true,
+        data: () => ({ classes: ['CLASS_TS'] }),
+      });
+    });
+
+    act(() => {
+      vi.advanceTimersByTime(100);
+    });
+
+    expect(result.current.currentActiveClassId).toBe('CLASS_TS');
+    expect(result.current.loading).toBe(false);
+    expect(getDoc).toHaveBeenCalledTimes(1);
+    const rendersAfterInitialLoad = renderCount;
+
+    // 3 periodic 30s polls returning fresh { toMillis } wrappers for the same timestamp
+    // must NOT churn classMeta/schedules state or reset loading (1 initial + 3 polls = 4).
+    await act(async () => {
+      vi.advanceTimersByTime(90000);
+    });
+
+    expect(getDoc).toHaveBeenCalledTimes(4);
+    expect(renderCount).toBe(rendersAfterInitialLoad);
+    expect(result.current.currentActiveClassId).toBe('CLASS_TS');
+  });
+
+  it('deduplicates studentProfiles listener, class fetches, and 30s timer across multiple simultaneous consumers', async () => {
+    const mockNow = new Date('2026-09-02T10:30:00Z');
+    vi.setSystemTime(mockNow);
+
+    let profileCb;
+    const sharedUnsub = vi.fn();
+    onSnapshot.mockImplementation((_ref, cb) => {
+      profileCb = cb;
+      return sharedUnsub;
+    });
+
+    getDoc.mockResolvedValue({
+      exists: () => true,
+      data: () => ({
+        schedule: {
+          timeZone: 'UTC',
+          startDate: '2026-09-01',
+          endDate: '2026-09-30',
+          timeSlots: [{ days: ['Wed'], startTime: '10:00', endTime: '12:00' }],
+        },
+      }),
+    });
+
+    const consumer1 = renderHook(() => useStudentClassSchedule({ uid: 'student_multi_shared' }));
+    const consumer2 = renderHook(() => useStudentClassSchedule({ uid: 'student_multi_shared' }));
+
+    expect(onSnapshot).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      profileCb({
+        exists: () => true,
+        data: () => ({ classes: ['CLASS_SHARED'] }),
+      });
+    });
+
+    act(() => {
+      vi.advanceTimersByTime(100);
+    });
+
+    expect(getDoc).toHaveBeenCalledTimes(1);
+    expect(consumer1.result.current.currentActiveClassId).toBe('CLASS_SHARED');
+    expect(consumer2.result.current.currentActiveClassId).toBe('CLASS_SHARED');
+
+    // First unmount keeps store alive for consumer2
+    consumer1.unmount();
+    expect(sharedUnsub).not.toHaveBeenCalled();
+
+    // Advance one 30s poll -> still only 1 fetch per interval
+    await act(async () => {
+      vi.advanceTimersByTime(30000);
+    });
+    expect(getDoc).toHaveBeenCalledTimes(2);
+
+    // Second unmount disposes listener and interval
+    consumer2.unmount();
+    expect(sharedUnsub).toHaveBeenCalledTimes(1);
+  });
 });
 
 

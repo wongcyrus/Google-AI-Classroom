@@ -346,6 +346,28 @@ export const processVideoJob = onDocumentCreated({ document: 'videoJobs/{jobId}'
 
   console.log(`Processing video job: ${jobId}`);
 
+  let tempDir = null;
+  let outputVideoPath = null;
+  let tempCleaned = false;
+  const cleanupTempFiles = () => {
+    if (tempCleaned) return;
+    tempCleaned = true;
+    try {
+      if (tempDir && fs.existsSync(tempDir)) {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
+    } catch (cleanupErr) {
+      console.warn(`[processVideoJob] Failed to remove tempDir ${tempDir}:`, cleanupErr?.message);
+    }
+    try {
+      if (outputVideoPath && fs.existsSync(outputVideoPath)) {
+        fs.unlinkSync(outputVideoPath);
+      }
+    } catch (cleanupErr) {
+      console.warn(`[processVideoJob] Failed to remove outputVideoPath ${outputVideoPath}:`, cleanupErr?.message);
+    }
+  };
+
   try {
     await jobRef.update({ status: 'processing', startedAt: new Date() });
 
@@ -402,12 +424,12 @@ export const processVideoJob = onDocumentCreated({ document: 'videoJobs/{jobId}'
       .map(doc => doc.data())
       .filter(s => {
         const imgPath = s?.imagePath || s?.storagePath;
-        if (!imgPath) return true;
+        if (!imgPath) return false;
         if (seenImagePaths.has(imgPath)) return false;
         seenImagePaths.add(imgPath);
         return true;
       });
-    const tempDir = path.join(os.tmpdir(), jobId);
+    tempDir = path.join(os.tmpdir(), jobId);
     fs.mkdirSync(tempDir, { recursive: true });
 
     console.log(`Downloading and processing ${screenshots.length} images to ${tempDir}`);
@@ -423,7 +445,8 @@ export const processVideoJob = onDocumentCreated({ document: 'videoJobs/{jobId}'
         const overallIndex = i + indexInBatch;
         const fileName = `image-${overallIndex.toString().padStart(5, '0')}.jpg`;
         const filePath = path.join(tempDir, fileName);
-        await bucket.file(screenshot.imagePath).download({ destination: filePath });
+        const imgPath = screenshot.imagePath || screenshot.storagePath;
+        await bucket.file(imgPath).download({ destination: filePath });
         
         const image = sharp(filePath);
         const metadata = await image.metadata();
@@ -476,7 +499,7 @@ export const processVideoJob = onDocumentCreated({ document: 'videoJobs/{jobId}'
     console.log('All images downloaded and processed. Starting ffmpeg.');
 
     const outputVideoName = `${jobId}.mp4`;
-    const outputVideoPath = path.join(os.tmpdir(), outputVideoName);
+    outputVideoPath = path.join(os.tmpdir(), outputVideoName);
 
     await new Promise((resolve, reject) => {
       let lastPercent = -1;
@@ -655,8 +678,7 @@ export const processVideoJob = onDocumentCreated({ document: 'videoJobs/{jobId}'
     }
 
     // Clean up local files
-    fs.rmSync(tempDir, { recursive: true, force: true });
-    fs.unlinkSync(outputVideoPath);
+    cleanupTempFiles();
 
     // Auto-delete routine screenshots once combined into video (preserving flagged/irregularity evidence)
     // Only class-level video jobs should trigger routine screenshot purge, never standalone task jobs
@@ -781,5 +803,7 @@ export const processVideoJob = onDocumentCreated({ document: 'videoJobs/{jobId}'
         console.warn('[processVideoJob] Failed to mark task submission as compilation_failed on error:', subErr);
       }
     }
+  } finally {
+    cleanupTempFiles();
   }
 });

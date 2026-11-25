@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { db, auth } from '../../firebase-config';
-import { doc, setDoc, deleteDoc, onSnapshot, serverTimestamp } from 'firebase/firestore';
+import { doc, setDoc, getDoc, deleteDoc, onSnapshot, serverTimestamp } from 'firebase/firestore';
 import { LANGUAGE_LABELS, getLanguageLabel } from '../../hooks/useStudentLiveSubtitles';
 import './PublicLiveView.css';
 
@@ -22,6 +22,37 @@ function getOrCreateSpectatorId() {
   }
 }
 
+function toEpochMillis(value) {
+  if (value == null) return null;
+  if (typeof value === 'number') {
+    return Number.isFinite(value) && value > 0 ? value : null;
+  }
+  if (typeof value?.toMillis === 'function') {
+    const ms = value.toMillis();
+    return Number.isFinite(ms) ? ms : null;
+  }
+  if (typeof value?.toDate === 'function') {
+    const ms = value.toDate().getTime();
+    return Number.isFinite(ms) ? ms : null;
+  }
+  if (value instanceof Date) {
+    const ms = value.getTime();
+    return Number.isFinite(ms) ? ms : null;
+  }
+  if (typeof value === 'object') {
+    const sec = typeof value.seconds === 'number' ? value.seconds : value._seconds;
+    if (typeof sec === 'number' && Number.isFinite(sec)) {
+      const ns = typeof value.nanoseconds === 'number' ? value.nanoseconds : (value._nanoseconds || 0);
+      return Math.round(sec * 1000 + ns / 1e6);
+    }
+  }
+  if (typeof value === 'string') {
+    const parsed = Date.parse(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
 export default function PublicLiveView() {
   const { classId } = useParams();
   const [searchParams] = useSearchParams();
@@ -37,11 +68,20 @@ export default function PublicLiveView() {
   const [isPinVerified, setIsPinVerified] = useState(false);
   const [pinError, setPinError] = useState(null);
 
-  // Broadcast stream state
+  // Broadcast slide state (Option B: session listener + manual timestamp-checked refresh)
   const [isBroadcastActive, setIsBroadcastActive] = useState(false);
   const [sessionData, setSessionData] = useState(null);
   const [frameData, setFrameData] = useState(null);
+  const [displayedTimestamp, setDisplayedTimestamp] = useState(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [refreshFeedback, setRefreshFeedback] = useState(''); // '' | 'updated' | 'up_to_date' | 'no_slide' | 'error'
   const [hasReceivedFrame, setHasReceivedFrame] = useState(false);
+  const frameDataRef = useRef(null);
+  const displayedTimestampRef = useRef(null);
+  const displayedLegacySeqRef = useRef(null);
+  const legacyInitialAttemptedRef = useRef(false);
+  const lastErroredUrlRef = useRef(null);
+  const handleRefreshSlideRef = useRef(null);
 
   // Subtitle state
   const [subtitleData, setSubtitleData] = useState(null);
@@ -103,105 +143,234 @@ export default function PublicLiveView() {
     }
   }, [classId, authUid]);
 
-  // 3. Auto-verify if PIN is present in URL query params
+  // 3. Auto-verify if PIN is present in URL query params (attempt at most once per classId+pin)
+  const attemptedAutoPinKeyRef = useRef('');
   useEffect(() => {
-    if (!authLoading && authUid && urlPin && !isPinVerified && !isVerifyingPin) {
+    if (!authLoading && authUid && urlPin && classId && !isPinVerified && !isVerifyingPin) {
+      const autoKey = `${classId}::${urlPin}`;
+      if (attemptedAutoPinKeyRef.current === autoKey) return;
+      attemptedAutoPinKeyRef.current = autoKey;
       handleVerifyPin(urlPin);
     }
-  }, [authLoading, authUid, urlPin, isPinVerified, isVerifyingPin, handleVerifyPin]);
+  }, [authLoading, authUid, classId, urlPin, isPinVerified, isVerifyingPin, handleVerifyPin]);
 
-  // 4. Subscriptions when PIN is verified (with automatic 2s re-subscription on network/Wi-Fi handoff errors)
+  // 4. Subscriptions when PIN is verified (session On/Off + live subtitles only; static slides use manual Refresh)
   useEffect(() => {
     if (!isPinVerified || !classId) return;
 
     let cancelled = false;
     let unsubSession = null;
-    let unsubFrame = null;
     let unsubSubtitles = null;
     let sessionRetryTimer = null;
-    let frameRetryTimer = null;
     let subtitlesRetryTimer = null;
+    let sessionRetryAttempt = 0;
+    let subtitlesRetryAttempt = 0;
+
+    const MAX_SNAPSHOT_RETRIES = 8;
+    const isPermanentSnapshotError = (err) => {
+      const code = String(err?.code || '').toLowerCase();
+      const msg = String(err?.message || '');
+      return (
+        code === 'permission-denied' ||
+        code === 'unauthenticated' ||
+        /permission[-_ ]denied|missing or insufficient permissions/i.test(msg)
+      );
+    };
+    const getRetryDelayMs = (attempt) => Math.min(30000, 2000 * (2 ** Math.min(attempt, 4)));
 
     const subscribeSession = () => {
       if (cancelled) return;
+      if (unsubSession) {
+        try { unsubSession(); } catch {}
+        unsubSession = null;
+      }
       const sessionDocRef = doc(db, `classes/${classId}/screenBroadcast/session`);
       unsubSession = onSnapshot(
         sessionDocRef,
         (snap) => {
+          sessionRetryAttempt = 0;
           if (snap.exists()) {
-            const data = snap.data();
+            const data = snap.data() || {};
             const active = Boolean(data.isBroadcasting && (data.isPublic || data.savedIsPublic));
             setIsBroadcastActive(active);
             setSessionData(data);
+
+            const nextTs = active ? toEpochMillis(data.frameUpdatedAt) : null;
+            if (!active) {
+              legacyInitialAttemptedRef.current = false;
+            } else if (!frameDataRef.current) {
+              // Load initial slide automatically once upon joining; subsequent updates load on manual Refresh
+              if (data.frameUrl) {
+                legacyInitialAttemptedRef.current = false;
+                frameDataRef.current = data.frameUrl;
+                displayedTimestampRef.current = nextTs;
+                displayedLegacySeqRef.current = null;
+                lastErroredUrlRef.current = null;
+                setFrameData(data.frameUrl);
+                setDisplayedTimestamp(nextTs);
+                setHasReceivedFrame(true);
+              } else if (data.broadcastMode !== 'static_url' && !legacyInitialAttemptedRef.current) {
+                // Pre-deploy presenter emitting legacy `liveFrame`: single read on join without attaching listener
+                legacyInitialAttemptedRef.current = true;
+                handleRefreshSlideRef.current?.();
+              }
+            }
           } else {
+            legacyInitialAttemptedRef.current = false;
             setIsBroadcastActive(false);
           }
         },
         (err) => {
-          console.warn('[PublicLiveView] Session snapshot error (retrying in 2s):', err);
-          if (!cancelled) {
-            sessionRetryTimer = setTimeout(subscribeSession, 2000);
+          if (cancelled) return;
+          if (isPermanentSnapshotError(err)) {
+            console.warn('[PublicLiveView] Session snapshot permission denied; stopping retries:', err);
+            setPinError('Session ended or access expired. Please re-enter the presentation PIN.');
+            setIsPinVerified(false);
+            return;
           }
-        }
-      );
-    };
-
-    const subscribeFrame = () => {
-      if (cancelled) return;
-      const liveFrameDocRef = doc(db, `classes/${classId}/screenBroadcast/liveFrame`);
-      unsubFrame = onSnapshot(
-        liveFrameDocRef,
-        (snap) => {
-          if (snap.exists()) {
-            const data = snap.data();
-            if (data.frameData) {
-              setFrameData(data.frameData);
-              setHasReceivedFrame(true);
-            }
+          if (sessionRetryAttempt >= MAX_SNAPSHOT_RETRIES) {
+            console.warn('[PublicLiveView] Session snapshot max retries reached:', err);
+            return;
           }
-        },
-        (err) => {
-          console.warn('[PublicLiveView] Frame snapshot error (retrying in 2s):', err);
-          if (!cancelled) {
-            frameRetryTimer = setTimeout(subscribeFrame, 2000);
-          }
+          const delayMs = getRetryDelayMs(sessionRetryAttempt);
+          sessionRetryAttempt += 1;
+          console.warn(`[PublicLiveView] Session snapshot error (retrying in ${delayMs}ms):`, err);
+          sessionRetryTimer = setTimeout(subscribeSession, delayMs);
         }
       );
     };
 
     const subscribeSubtitles = () => {
       if (cancelled) return;
+      if (unsubSubtitles) {
+        try { unsubSubtitles(); } catch {}
+        unsubSubtitles = null;
+      }
       const subtitlesDocRef = doc(db, `classes/${classId}/liveSubtitles/current`);
       unsubSubtitles = onSnapshot(
         subtitlesDocRef,
         (snap) => {
+          subtitlesRetryAttempt = 0;
           if (snap.exists()) {
             setSubtitleData(snap.data());
           }
         },
         (err) => {
-          console.warn('[PublicLiveView] Subtitles snapshot error (retrying in 2s):', err);
-          if (!cancelled) {
-            subtitlesRetryTimer = setTimeout(subscribeSubtitles, 2000);
+          if (cancelled) return;
+          if (isPermanentSnapshotError(err)) {
+            console.warn('[PublicLiveView] Subtitles snapshot permission denied; stopping retries:', err);
+            return;
           }
+          if (subtitlesRetryAttempt >= MAX_SNAPSHOT_RETRIES) {
+            console.warn('[PublicLiveView] Subtitles snapshot max retries reached:', err);
+            return;
+          }
+          const delayMs = getRetryDelayMs(subtitlesRetryAttempt);
+          subtitlesRetryAttempt += 1;
+          console.warn(`[PublicLiveView] Subtitles snapshot error (retrying in ${delayMs}ms):`, err);
+          subtitlesRetryTimer = setTimeout(subscribeSubtitles, delayMs);
         }
       );
     };
 
     subscribeSession();
-    subscribeFrame();
     subscribeSubtitles();
 
     return () => {
       cancelled = true;
       if (sessionRetryTimer) clearTimeout(sessionRetryTimer);
-      if (frameRetryTimer) clearTimeout(frameRetryTimer);
       if (subtitlesRetryTimer) clearTimeout(subtitlesRetryTimer);
       if (unsubSession) unsubSession();
-      if (unsubFrame) unsubFrame();
       if (unsubSubtitles) unsubSubtitles();
     };
   }, [isPinVerified, classId]);
+
+  const handleRefreshSlide = useCallback(async () => {
+    if (!classId) return;
+    setIsRefreshing(true);
+    try {
+      const sessionDocRef = doc(db, `classes/${classId}/screenBroadcast/session`);
+      let freshData = sessionData;
+      if (typeof getDoc === 'function') {
+        try {
+          const freshSnap = await getDoc(sessionDocRef);
+          if (freshSnap?.exists?.()) {
+            freshData = freshSnap.data() || {};
+            setSessionData(freshData);
+          }
+        } catch {
+          // Fallback to latest sessionData from session snapshot
+        }
+      }
+
+      let candidateUrl = freshData?.frameUrl || null;
+      let candidateTs = toEpochMillis(freshData?.frameUpdatedAt);
+      let candidateLegacySeq = null;
+
+      // Single-read fallback only when pre-deploy presenter is emitting legacy liveFrame
+      if (freshData?.isBroadcasting && !candidateUrl && freshData?.broadcastMode !== 'static_url' && typeof getDoc === 'function') {
+        try {
+          const legacySnap = await getDoc(doc(db, `classes/${classId}/screenBroadcast/liveFrame`));
+          if (legacySnap?.exists?.()) {
+            const legacyData = legacySnap.data() || {};
+            if (legacyData.frameData) {
+              candidateUrl = legacyData.frameData;
+              candidateTs = candidateTs ?? toEpochMillis(legacyData.timestamp);
+              candidateLegacySeq = legacyData.frameSeq ?? null;
+            }
+          }
+        } catch {}
+      }
+
+      if (!candidateUrl) {
+        setRefreshFeedback('no_slide');
+        return;
+      }
+
+      const currentTs = displayedTimestampRef.current;
+      const currentUrl = frameDataRef.current;
+      const currentLegacySeq = displayedLegacySeqRef.current;
+      const isLegacySeqUnchanged = Boolean(
+        candidateLegacySeq != null && currentLegacySeq != null && candidateLegacySeq === currentLegacySeq
+      );
+      const isTimestampUnchanged = Boolean(
+        candidateLegacySeq == null && currentLegacySeq == null && candidateTs && currentTs && candidateTs === currentTs
+      );
+      const isSameFallbackUrl = Boolean(
+        candidateLegacySeq == null && !candidateTs && currentUrl && currentUrl === candidateUrl
+      );
+
+      if (isLegacySeqUnchanged || isTimestampUnchanged || isSameFallbackUrl) {
+        setRefreshFeedback('up_to_date');
+        return;
+      }
+
+      frameDataRef.current = candidateUrl;
+      displayedTimestampRef.current = candidateTs;
+      displayedLegacySeqRef.current = candidateLegacySeq;
+      lastErroredUrlRef.current = null;
+      setFrameData(candidateUrl);
+      setDisplayedTimestamp(candidateTs);
+      setHasReceivedFrame(true);
+      setRefreshFeedback('updated');
+    } catch (err) {
+      console.warn('[PublicLiveView] Manual refresh notice:', err);
+      setRefreshFeedback('error');
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [classId, sessionData]);
+
+  useEffect(() => {
+    handleRefreshSlideRef.current = handleRefreshSlide;
+  }, [handleRefreshSlide]);
+
+  const handleFrameError = useCallback(() => {
+    const failedUrl = frameDataRef.current;
+    if (!failedUrl || lastErroredUrlRef.current === failedUrl) return;
+    lastErroredUrlRef.current = failedUrl;
+    handleRefreshSlide();
+  }, [handleRefreshSlide]);
 
   // 5. Clean up spectator viewer doc on exit
   useEffect(() => {
@@ -274,6 +443,13 @@ export default function PublicLiveView() {
 
   const currentTranslation = subtitleData?.translations?.[selectedLang] || '';
   const originalTranscript = subtitleData?.text || subtitleData?.originalText || '';
+  const latestSessionTs = toEpochMillis(sessionData?.frameUpdatedAt);
+  const hasNewSlide = Boolean(
+    isBroadcastActive &&
+    latestSessionTs &&
+    displayedTimestamp &&
+    latestSessionTs !== displayedTimestamp
+  );
 
   // Render Loading state
   if (authLoading) {
@@ -382,6 +558,38 @@ export default function PublicLiveView() {
         </div>
 
         <div className="public-live-controls">
+          {displayedTimestamp && (
+            <span
+              className="slide-status-chip"
+              title={`Displayed slide captured at ${new Date(displayedTimestamp).toLocaleTimeString()}`}
+            >
+              🕒 {new Date(displayedTimestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+            </span>
+          )}
+
+          <button
+            type="button"
+            onClick={handleRefreshSlide}
+            disabled={isRefreshing}
+            className={`header-refresh-btn ${hasNewSlide ? 'has-update' : ''} ${refreshFeedback === 'up_to_date' && !hasNewSlide ? 'up-to-date' : ''}`}
+            title={
+              hasNewSlide
+                ? 'Presenter updated the slide — click to load the new slide'
+                : refreshFeedback === 'up_to_date'
+                ? 'Already viewing the latest slide (cached — 0 repeat download)'
+                : 'Check & refresh presentation slide'
+            }
+            aria-label={hasNewSlide ? 'Refresh Slide (New slide available)' : 'Refresh Slide'}
+          >
+            {isRefreshing
+              ? '⏳ Checking...'
+              : hasNewSlide
+              ? '🔄 Refresh • New'
+              : refreshFeedback === 'up_to_date'
+              ? '✓ Up to Date'
+              : '🔄 Refresh'}
+          </button>
+
           {/* Subtitle Translation Language Selector */}
           <select
             value={selectedLang}
@@ -418,22 +626,43 @@ export default function PublicLiveView() {
             src={frameData}
             alt="Live presentation stream"
             className={`stream-frame-img ${zoomLevel === 1.5 ? 'zoom-15x' : zoomLevel === 2 ? 'zoom-2x' : ''}`}
+            fetchPriority="high"
             onClick={cycleZoom}
+            onError={handleFrameError}
             title="Tap to zoom slides and code"
           />
         ) : (
           <div style={{ textAlign: 'center', color: '#94a3b8', padding: '2rem' }}>
             <div className="setup-spinner" style={{ margin: '0 auto 12px' }} />
             <p style={{ margin: '0 0 6px 0', color: '#e2e8f0', fontWeight: 600 }}>Waiting for presenter's screen...</p>
-            <p style={{ margin: 0, fontSize: '0.82rem', color: '#94a3b8' }}>
-              You are in the waiting room — live slides and subtitles will appear automatically when the session begins.
+            <p style={{ margin: '0 0 14px 0', fontSize: '0.82rem', color: '#94a3b8' }}>
+              You are in the waiting room — live slides will load once available, and you can tap Refresh anytime to pull slide updates.
             </p>
+            <button
+              type="button"
+              onClick={handleRefreshSlide}
+              disabled={isRefreshing}
+              className="header-refresh-btn"
+              aria-label="Check for slide"
+            >
+              {isRefreshing ? '⏳ Checking...' : '🔄 Check Slide'}
+            </button>
           </div>
         )}
 
         {/* Floating Zoom & Orientation HUD (Always available in active/fullscreen view so CC & Fullscreen controls work in fullscreen) */}
         {(frameData || isFullscreen || currentTranslation || originalTranscript) && (
           <div className="stream-overlay-hud">
+            <button
+              type="button"
+              onClick={handleRefreshSlide}
+              disabled={isRefreshing}
+              className={`hud-btn hud-refresh-btn ${hasNewSlide ? 'has-update' : ''}`}
+              title={hasNewSlide ? 'Load new slide' : 'Refresh slide'}
+              aria-label={hasNewSlide ? 'Fullscreen Refresh Slide (New slide available)' : 'Fullscreen Refresh Slide'}
+            >
+              {isRefreshing ? '⏳' : hasNewSlide ? '🔄 New' : '🔄'}
+            </button>
             {isFullscreen && (
               <select
                 value={selectedLang}

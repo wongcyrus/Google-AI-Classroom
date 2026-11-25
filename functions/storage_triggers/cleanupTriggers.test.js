@@ -81,8 +81,11 @@ import {
 describe('Cleanup Triggers & Retention Calculation (functions/storage_triggers/cleanupTriggers.js)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockDb.collection.mockImplementation(() => mockCollection);
+    mockDb.doc.mockImplementation(() => mockDoc);
     mockCollection.where.mockReturnValue(mockCollection);
     mockCollection.limit.mockReturnValue(mockCollection);
+    mockCollection.startAfter.mockReturnValue(mockCollection);
     mockCollection.get.mockResolvedValue({ empty: true, docs: [] });
   });
 
@@ -214,6 +217,10 @@ describe('Cleanup Triggers & Retention Calculation (functions/storage_triggers/c
       });
       expect(mockBucket.deleteFiles).toHaveBeenCalledWith({
         prefix: 'projectMeetings/CLASS_EXP_1/',
+        force: true,
+      });
+      expect(mockBucket.deleteFiles).toHaveBeenCalledWith({
+        prefix: 'broadcasts/CLASS_EXP_1/',
         force: true,
       });
     });
@@ -578,11 +585,49 @@ describe('Cleanup Triggers & Retention Calculation (functions/storage_triggers/c
 
       await onClassDocDeleted({ params: { classId: 'CLASS_SUBCOLS' } });
 
+      expect(mockDb.doc).toHaveBeenCalledWith('classes/CLASS_SUBCOLS/metadata/storage');
+      expect(mockDb.doc).toHaveBeenCalledWith('classes/CLASS_SUBCOLS/metadata/ai');
       expect(mockDb.collection).toHaveBeenCalledWith('classes/CLASS_SUBCOLS/projectMeetings');
       expect(mockDb.collection).toHaveBeenCalledWith('classes/CLASS_SUBCOLS/projectGroups');
       expect(mockDb.collection).toHaveBeenCalledWith('classes/CLASS_SUBCOLS/projectStudentProfiles');
+      expect(mockDb.collection).toHaveBeenCalledWith('classes/CLASS_SUBCOLS/bingoRounds');
+      expect(mockDb.collection).toHaveBeenCalledWith('classes/CLASS_SUBCOLS/livePeeks');
       expect(mockBatch.delete).toHaveBeenCalled();
       expect(mockBatch.commit).toHaveBeenCalled();
+    });
+
+    it('chunks removeClassFromProfiles in 450-item batches and tolerates non-Timestamp dates in onClassRetentionUpdated', async () => {
+      await expect(
+        onClassRetentionUpdated({
+          data: {
+            before: { data: () => ({ retentionDays: 30 }) },
+            after: { data: () => ({ retentionDays: 14 }) },
+          },
+          params: { classId: 'CLASS_SAFE_DATE' },
+        })
+      ).resolves.toBeUndefined();
+
+      mockCollection.get
+        .mockResolvedValueOnce({
+          empty: false,
+          size: 1,
+          docs: [{ ref: { id: 'shot_legacy' }, data: () => ({ timestamp: { _seconds: Math.floor(Date.now() / 1000) } }) }],
+        })
+        .mockResolvedValueOnce({
+          empty: false,
+          size: 1,
+          docs: [{ ref: { id: 'aud_bad' }, data: () => ({ timestamp: 'not-a-date' }) }],
+        });
+
+      await expect(
+        onClassRetentionUpdated({
+          data: {
+            before: { data: () => ({ retentionDays: 30 }) },
+            after: { data: () => ({ retentionDays: 14 }) },
+          },
+          params: { classId: 'CLASS_SECONDS' },
+        })
+      ).resolves.not.toThrow();
     });
   });
 });

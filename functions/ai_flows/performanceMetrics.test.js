@@ -154,4 +154,78 @@ describe('aggregatePerformanceMetrics (functions/ai_flows/performanceMetrics.js)
     expect(mockDocRef.update).not.toHaveBeenCalled();
     expect(mockCollection.add).not.toHaveBeenCalled();
   });
+
+  it('skips cleanly when required fields or valid timestamps are missing', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    await aggregatePerformanceMetrics({
+      data: {
+        data: () => ({ studentUid: 's1', classId: 'c1', currentTask: null, timestamp: new Date() }),
+      },
+    });
+    expect(mockCollection.get).not.toHaveBeenCalled();
+
+    await aggregatePerformanceMetrics({
+      data: {
+        data: () => ({ studentUid: 's1', classId: 'c1', currentTask: 'Task 1', timestamp: 'not-a-date' }),
+      },
+    });
+    expect(mockCollection.get).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
+  });
+
+  it('executes atomically inside db.runTransaction when supported and clamps negative duration to 0', async () => {
+    const prevStart = new Date('2026-08-01T10:15:00Z');
+    const outOfOrderTimestamp = { toDate: () => new Date('2026-08-01T10:10:00Z') };
+
+    const activeDoc = {
+      ref: mockDocRef,
+      data: () => ({
+        taskName: 'Task 1: Setup',
+        startTime: { toDate: () => prevStart },
+      }),
+    };
+
+    const txUpdate = vi.fn();
+    const txSet = vi.fn();
+    const newDocRef = { id: 'metric_tx_new' };
+    mockCollection.doc = vi.fn(() => newDocRef);
+    mockDb.runTransaction = vi.fn(async (cb) => {
+      const tx = {
+        get: vi.fn().mockResolvedValue({ empty: false, docs: [activeDoc] }),
+        update: txUpdate,
+        set: txSet,
+      };
+      return cb(tx);
+    });
+
+    try {
+      await aggregatePerformanceMetrics({
+        data: {
+          data: () => ({
+            studentUid: 'student_1',
+            classId: 'CLASS_A',
+            currentTask: 'Task 2: Coding',
+            timestamp: outOfOrderTimestamp,
+          }),
+        },
+      });
+
+      expect(mockDb.runTransaction).toHaveBeenCalledTimes(1);
+      expect(txUpdate).toHaveBeenCalledWith(mockDocRef, {
+        status: 'completed',
+        endTime: outOfOrderTimestamp,
+        duration: 0,
+      });
+      expect(txSet).toHaveBeenCalledWith(newDocRef, {
+        studentUid: 'student_1',
+        classId: 'CLASS_A',
+        taskName: 'Task 2: Coding',
+        startTime: outOfOrderTimestamp,
+        status: 'in-progress',
+      });
+    } finally {
+      delete mockDb.runTransaction;
+    }
+  });
 });

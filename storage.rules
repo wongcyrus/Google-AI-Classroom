@@ -2,146 +2,233 @@ rules_version = '2';
 
 service firebase.storage {
   match /b/{bucket}/o {
-    match /screenshots/{classId}/{userId}/{fileName} {
-      // Allow authenticated users to write to their own folder within a class.
-      // The userId in the path MUST match the user's own UID.
-      allow write: if request.auth != null &&
-                      request.auth.uid == userId &&
-                      request.resource.size < 2097152 && // 2 MB, configured in functions/config.js
-                      request.resource.contentType.matches('image/.*');
 
-      // Allow authenticated users to read screenshots
-      allow read: if request.auth != null;
-
-      // Allow authenticated teachers to delete.
-      allow delete: if request.auth != null && request.auth.token.role == 'teacher';
+    function isSignedIn() {
+      return request.auth != null;
     }
 
-    match /audio/{allPaths=**} {
-      // Allow authenticated students to upload audio segments and read audio
-      allow write: if request.auth != null;
-      allow read: if request.auth != null;
-      allow delete: if request.auth != null && request.auth.token.role == 'teacher';
+    function isAdmin() {
+      return isSignedIn() &&
+        'role' in request.auth.token &&
+        request.auth.token.role == 'admin';
+    }
+
+    function hasTokenEmail() {
+      return isSignedIn() &&
+        'email' in request.auth.token &&
+        request.auth.token.email is string &&
+        request.auth.token.email != '';
+    }
+
+    function isTeacher() {
+      return isSignedIn() && (
+        ('role' in request.auth.token && request.auth.token.role == 'teacher') ||
+        isAdmin() ||
+        (hasTokenEmail() &&
+         request.auth.token.email.lower().matches('.*@vtc\\.edu\\.hk') &&
+         !request.auth.token.email.lower().matches('.*@stu\\.vtc\\.edu\\.hk'))
+      );
+    }
+
+    function isTeacherInClassData(classData) {
+      return isSignedIn() && (
+        isAdmin() ||
+        (hasTokenEmail() && (
+          ('teacherEmails' in classData && classData.teacherEmails is list &&
+            (request.auth.token.email in classData.teacherEmails ||
+             request.auth.token.email.lower() in classData.teacherEmails)) ||
+          ('teacherEmail' in classData && classData.teacherEmail is string &&
+            (classData.teacherEmail == request.auth.token.email ||
+             classData.teacherEmail.lower() == request.auth.token.email.lower()))
+        )) ||
+        ('teachers' in classData && (classData.teachers is map || classData.teachers is list) &&
+          request.auth.uid in classData.teachers) ||
+        ('teacherUid' in classData && classData.teacherUid is string &&
+          classData.teacherUid == request.auth.uid) ||
+        ('ownerUid' in classData && classData.ownerUid is string &&
+          classData.ownerUid == request.auth.uid) ||
+        ('createdBy' in classData && classData.createdBy is string &&
+          classData.createdBy == request.auth.uid)
+      );
+    }
+
+    function isTeacherInClass(classId) {
+      return isSignedIn() && (
+        isAdmin() || (
+          classId != '' &&
+          firestore.exists(/databases/(default)/documents/classes/$(classId)) &&
+          isTeacherInClassData(firestore.get(/databases/(default)/documents/classes/$(classId)).data)
+        )
+      );
+    }
+
+    function isStudentInClassData(classData) {
+      return isSignedIn() && (
+        (hasTokenEmail() &&
+         'studentEmails' in classData &&
+         classData.studentEmails is list &&
+         (request.auth.token.email in classData.studentEmails ||
+          request.auth.token.email.lower() in classData.studentEmails)) ||
+        ('students' in classData &&
+         (classData.students is map || classData.students is list) &&
+         request.auth.uid in classData.students)
+      );
+    }
+
+    function isStudentInClass(classId) {
+      return isSignedIn() &&
+        classId != '' &&
+        firestore.exists(/databases/(default)/documents/classes/$(classId)) &&
+        isStudentInClassData(firestore.get(/databases/(default)/documents/classes/$(classId)).data);
+    }
+
+    match /screenshots/{classId}/{userId}/{fileName} {
+      // Allow enrolled students (or previewing class teacher) to upload their own screenshots within 2 MB.
+      allow write: if isSignedIn() &&
+                      request.auth.uid == userId &&
+                      (isStudentInClass(classId) || isTeacherInClass(classId)) &&
+                      request.resource.size < 2097152 &&
+                      request.resource.contentType.matches('image/.*');
+
+      // Only class teachers and the owning student (including retry URL checks) may read.
+      allow read: if isTeacherInClass(classId) || (isSignedIn() && request.auth.uid == userId);
+
+      allow delete: if isTeacherInClass(classId);
+    }
+
+    match /audio/{classId}/{studentUid}/{fileName} {
+      // Raw student audio segments
+      allow write: if isSignedIn() &&
+                      request.auth.uid == studentUid &&
+                      isStudentInClass(classId) &&
+                      request.resource.size < 10485760 && // 10 MB
+                      request.resource.contentType.matches('audio/.*');
+      allow read: if isTeacherInClass(classId) || (isSignedIn() && request.auth.uid == studentUid);
+      allow delete: if isTeacherInClass(classId);
+    }
+
+    match /audio/{classId}/{dateStr}/{studentUid}/{fileName} {
+      // Backend-combined MP3 audio generated via mergeStudentSessionAudio
+      allow write: if false;
+      allow read: if isTeacherInClass(classId) || (isSignedIn() && request.auth.uid == studentUid);
+      allow delete: if isTeacherInClass(classId);
     }
 
     match /irregularities/{classId}/{userId}/{fileName} {
-      // Allow authenticated students to upload incident evidence screenshots and audio snippets
-      allow write: if request.auth != null &&
+      // Allow enrolled students to upload incident evidence screenshots and audio snippets
+      allow write: if isSignedIn() &&
                       request.auth.uid == userId &&
+                      isStudentInClass(classId) &&
                       request.resource.size < 5242880 && // 5 MB
-                      (request.resource.contentType.matches('image/.*') || request.resource.contentType.matches('audio/.*'));
+                      (request.resource.contentType.matches('image/.*') ||
+                       request.resource.contentType.matches('audio/.*'));
 
-      // Teachers and students can read
-      allow read: if request.auth != null;
-      allow delete: if request.auth != null && request.auth.token.role == 'teacher';
+      // Only class teachers and the owning student may read evidence
+      allow read: if isTeacherInClass(classId) || (isSignedIn() && request.auth.uid == userId);
+      allow delete: if isTeacherInClass(classId);
     }
 
     match /temp_ai/{fileName} {
-      allow write: if request.auth != null;
-      allow read: if request.auth != null;
-      allow delete: if request.auth != null;
+      // Ephemeral face-fallback webcam images scoped by caller UID prefix (fallback_<uid>_<ts>.jpg)
+      allow write: if isSignedIn() &&
+                      fileName.matches('fallback_' + request.auth.uid + '_.*') &&
+                      request.resource.size < 2097152 &&
+                      request.resource.contentType.matches('image/.*');
+      allow read: if isTeacher() ||
+                     (isSignedIn() && fileName.matches('fallback_' + request.auth.uid + '_.*'));
+      allow delete: if isTeacher() ||
+                       (isSignedIn() && fileName.matches('fallback_' + request.auth.uid + '_.*'));
     }
 
     match /mock/{allPaths=**} {
-      allow read: if request.auth != null;
+      allow read: if isSignedIn();
     }
 
     match /videos/{classId}/{videoId} {
-      // Allow authenticated teachers to read any video in a class.
-      // Students can only read non-exam videos that belong to them.
-      allow read: if request.auth != null && (
-        request.auth.token.role == 'teacher' ||
-        (
-          resource.metadata != null &&
-          'studentUid' in resource.metadata &&
-          resource.metadata.studentUid == request.auth.uid &&
-          (!('isExam' in resource.metadata) || resource.metadata.isExam != 'true')
-        )
+      // Allow class teachers to read any video in the class.
+      // Students can only read non-exam videos in their class that belong to them.
+      allow read: if isTeacherInClass(classId) || (
+        isStudentInClass(classId) &&
+        resource.metadata != null &&
+        'studentUid' in resource.metadata &&
+        resource.metadata.studentUid == request.auth.uid &&
+        (!('isExam' in resource.metadata) || resource.metadata.isExam != 'true')
       );
-      allow delete: if request.auth != null && request.auth.token.role == 'teacher';
+      allow delete: if isTeacherInClass(classId);
     }
 
     match /zips/{classId}/{zipFilename} {
-      // Allow authenticated teachers to read any zip archive in a class.
-      allow read: if request.auth != null && request.auth.token.role == 'teacher';
-      allow delete: if request.auth != null && request.auth.token.role == 'teacher';
+      allow read, delete: if isTeacherInClass(classId);
     }
 
     match /recordings/{classId}/{sessionId}/{fileName} {
-      // Allow authenticated users to read non-exam lecture videos, teachers can read all
-      allow read: if request.auth != null && (
-        request.auth.token.role == 'teacher' ||
-        (!('isExam' in resource.metadata) || resource.metadata.isExam != 'true')
+      allow read: if isTeacherInClass(classId) || (
+        isStudentInClass(classId) &&
+        (resource.metadata == null || !('isExam' in resource.metadata) || resource.metadata.isExam != 'true')
       );
-      allow write: if request.auth != null && (
-        request.auth.token.role == 'teacher' ||
-        (request.auth.token.email != null && request.auth.token.email.matches('.*@vtc\\.edu\\.hk') && !request.auth.token.email.matches('.*@stu\\.vtc\\.edu\\.hk'))
-      );
-      allow delete: if request.auth != null && (
-        request.auth.token.role == 'teacher' ||
-        (request.auth.token.email != null && request.auth.token.email.matches('.*@vtc\\.edu\\.hk') && !request.auth.token.email.matches('.*@stu\\.vtc\\.edu\\.hk'))
-      );
+      allow write, delete: if isTeacherInClass(classId);
     }
 
     match /subtitles/{classId}/{sessionId}/{fileName} {
-      // Allow authenticated users to read non-exam lecture subtitles, teachers can read all
-      allow read: if request.auth != null && (
-        request.auth.token.role == 'teacher' ||
-        (!('isExam' in resource.metadata) || resource.metadata.isExam != 'true')
+      allow read: if isTeacherInClass(classId) || (
+        isStudentInClass(classId) &&
+        (resource.metadata == null || !('isExam' in resource.metadata) || resource.metadata.isExam != 'true')
       );
-      allow write: if request.auth != null && (
-        request.auth.token.role == 'teacher' ||
-        (request.auth.token.email != null && request.auth.token.email.matches('.*@vtc\\.edu\\.hk') && !request.auth.token.email.matches('.*@stu\\.vtc\\.edu\\.hk'))
-      );
-      allow delete: if request.auth != null && (
-        request.auth.token.role == 'teacher' ||
-        (request.auth.token.email != null && request.auth.token.email.matches('.*@vtc\\.edu\\.hk') && !request.auth.token.email.matches('.*@stu\\.vtc\\.edu\\.hk'))
-      );
+      allow write, delete: if isTeacherInClass(classId);
     }
 
     match /classes/{classId}/tasks/demos/{fileName} {
-      // Allow any authenticated user in the class to watch reference demo videos
-      allow read: if request.auth != null;
-      // Allow teachers to upload and delete task demonstration videos
-      allow write, delete: if request.auth != null && (
-        request.auth.token.role == 'teacher' ||
-        (request.auth.token.email != null && request.auth.token.email.matches('.*@vtc\\.edu\\.hk') && !request.auth.token.email.matches('.*@stu\\.vtc\\.edu\\.hk'))
-      );
+      allow read: if isTeacherInClass(classId) || isStudentInClass(classId);
+      allow write, delete: if isTeacherInClass(classId);
     }
 
     match /classes/{classId}/tasks/{taskId}/submissions/{studentUid}/{fileName} {
-      // Allow teachers and the owning student to read/write task submission videos
-      allow read, write: if request.auth != null && (
-        request.auth.uid == studentUid ||
-        request.auth.token.role == 'teacher' ||
-        (request.auth.token.email != null && request.auth.token.email.matches('.*@vtc\\.edu\\.hk') && !request.auth.token.email.matches('.*@stu\\.vtc\\.edu\\.hk'))
+      allow read: if isTeacherInClass(classId) || (isSignedIn() && request.auth.uid == studentUid);
+      allow write: if isTeacherInClass(classId) || (
+        isSignedIn() &&
+        request.auth.uid == studentUid &&
+        isStudentInClass(classId) &&
+        request.resource.size < 524288000
       );
-      allow delete: if request.auth != null && (
-        request.auth.token.role == 'teacher' ||
-        (request.auth.token.email != null && request.auth.token.email.matches('.*@vtc\\.edu\\.hk') && !request.auth.token.email.matches('.*@stu\\.vtc\\.edu\\.hk'))
-      );
+      allow delete: if isTeacherInClass(classId);
     }
 
     match /projectMeetings/{classId}/{groupId}/{meetingId}/{fileName} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null &&
+      allow read: if isTeacherInClass(classId) || isStudentInClass(classId);
+      allow write: if isSignedIn() &&
         request.resource.size < 262144000 && (
           (
-            (request.auth.token.role == 'teacher' ||
-              (request.auth.token.email != null && request.auth.token.email.matches('.*@vtc\\.edu\\.hk') && !request.auth.token.email.matches('.*@stu\\.vtc\\.edu\\.hk'))) &&
-            fileName.matches('voice_.*\\.(webm|m4a)') &&
-            request.resource.contentType.matches('audio/(webm|mp4).*')
+            isTeacherInClass(classId) &&
+            fileName.matches('(voice|demo)_.*\\.(webm|mp4|m4a)') &&
+            (request.resource.contentType.matches('audio/(webm|mp4).*') ||
+             request.resource.contentType.matches('video/(webm|mp4).*'))
           ) ||
           (
+            isStudentInClass(classId) &&
             fileName.matches('screen_' + request.auth.uid + '_.*\\.(webm|mp4)') &&
             request.resource.contentType.matches('video/(webm|mp4).*')
           )
         );
-      allow delete: if request.auth != null && (
-        request.auth.token.role == 'teacher' ||
-        (request.auth.token.email != null && request.auth.token.email.matches('.*@vtc\\.edu\\.hk') && !request.auth.token.email.matches('.*@stu\\.vtc\\.edu\\.hk'))
-      );
+      allow delete: if isTeacherInClass(classId);
+    }
+
+    match /projectMeetings/{classId}/{groupId}/{meetingId}/photos/{photoId} {
+      allow read: if isTeacherInClass(classId) || isStudentInClass(classId);
+      allow write: if isTeacherInClass(classId) &&
+                      request.resource.size < 10485760 &&
+                      request.resource.contentType.matches('image/.*');
+      allow delete: if isTeacherInClass(classId);
+    }
+
+    match /broadcasts/{classId}/{fileName} {
+      // Class teachers read/write/delete randomized slide images and obtain token download URLs.
+      // Students and zero-auth spectators render the token URL written in screenBroadcast/session
+      // (protected by firestore.rules) without querying Cloud Storage SDK directly.
+      allow read: if isTeacherInClass(classId);
+      allow write: if isTeacherInClass(classId) &&
+                      request.resource.size < 5242880 &&
+                      request.resource.contentType.matches('image/.*');
+      allow delete: if isTeacherInClass(classId);
     }
   }
 }
-

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { renderHook, act } from '@testing-library/react';
+import { renderHook, act, waitFor } from '@testing-library/react';
 import { useFaceMonitor } from './useFaceMonitor';
 
 const createMockLandmarks = (yawOffset = 0, pitchOffset = 0) => {
@@ -634,6 +634,42 @@ describe('useFaceMonitor Hook', () => {
     });
 
     expect(result.current.faceStatus).toBe('normal');
+  });
+
+  it('latches permanent permission-denied error on startIncident and avoids write storms across RAF ticks', async () => {
+    const { addDoc } = await import('firebase/firestore');
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.mocked(addDoc).mockRejectedValue(
+      Object.assign(new Error('Missing or insufficient permissions'), { code: 'permission-denied' })
+    );
+
+    mockDetectForVideo.mockReturnValue({ faceLandmarks: [createMockLandmarks(0.35, 0)] });
+    renderHook(() =>
+      useFaceMonitor({
+        webcamVideoRef: mockWebcamVideoRef,
+        screenVideoRef: mockScreenVideoRef,
+        overlayCanvasRef: mockOverlayCanvasRef,
+        activeClass: 'class_1',
+        user: { uid: 'user_1', email: 'student@school.edu' },
+        isWebcamSharing: true,
+        isScreenSharing: true,
+        isCapturing: true,
+        aiMonitoringMode: 'client_only',
+        debounceSeconds: 0,
+      })
+    );
+
+    await waitFor(() => {
+      expect(addDoc).toHaveBeenCalledTimes(1);
+    }, { timeout: 2000 });
+
+    // Confirm additional RAF frames do not trigger more Firestore incident writes
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 80));
+    });
+
+    expect(addDoc).toHaveBeenCalledTimes(1);
+    errSpy.mockRestore();
   });
 });
 

@@ -81,33 +81,55 @@ export const triggerAutomaticAnalysis = onDocumentUpdated({ document: 'videoJobs
   const finishedJobsSnapshot = await q.get();
   const finishedCount = finishedJobsSnapshot.size;
 
-  logger.info(`Found ${finishedCount}/${totalStudents} finished video jobs for class ${classId} session at ${startTime.toDate().toISOString()}`);
+  const toDateSafe = (ts) => (ts?.toDate ? ts.toDate() : new Date(ts));
+  const startDateObj = toDateSafe(startTime);
+  if (isNaN(startDateObj.getTime())) {
+    logger.warn(`Job ${event.params.jobId} has invalid startTime. Cannot trigger analysis.`);
+    return;
+  }
+  const startIso = startDateObj.toISOString();
+
+  logger.info(`Found ${finishedCount}/${totalStudents} finished video jobs for class ${classId} session at ${startIso}`);
 
   if (finishedCount >= totalStudents) {
     logger.info(`All ${totalStudents} video jobs are finished for class ${classId}. Triggering analysis.`);
 
     // Create a deterministic ID to prevent duplicate jobs
-    const analysisJobId = `auto-analysis-${classId}-${startTime.toDate().toISOString()}`;
+    const analysisJobId = `auto-analysis-${classId}-${startIso}`;
     const analysisJobRef = db.collection('videoAnalysisJobs').doc(analysisJobId);
+    const jobPayload = {
+      jobId: analysisJobId,
+      classId: classId,
+      requester: 'system-automatic-analysis',
+      startTime: startTime,
+      endTime: endTime,
+      filterField: 'startTime',
+      prompt: afterClassVideoPrompt.promptText,
+      model: classData.aiModel || 'gemini-3.5-flash-lite',
+      status: 'pending',
+      deleted: false,
+      createdAt: FieldValue.serverTimestamp(),
+    };
 
-    const jobDoc = await analysisJobRef.get();
-    if (!jobDoc.exists) {
-      logger.info(`Creating video analysis job '${analysisJobId}' for class ${classId}`);
-      await analysisJobRef.set({
-        jobId: analysisJobId,
-        classId: classId,
-        requester: 'system-automatic-analysis',
-        startTime: startTime,
-        endTime: endTime,
-        filterField: 'startTime',
-        prompt: afterClassVideoPrompt.promptText,
-        model: classData.aiModel || 'gemini-3.5-flash-lite',
-        status: 'pending',
-        deleted: false,
-        createdAt: FieldValue.serverTimestamp(),
-      });
+    if (typeof analysisJobRef.create === 'function') {
+      try {
+        await analysisJobRef.create(jobPayload);
+        logger.info(`Creating video analysis job '${analysisJobId}' for class ${classId}`);
+      } catch (createErr) {
+        if (createErr?.code === 6 || /ALREADY_EXISTS/i.test(String(createErr?.message || ''))) {
+          logger.info(`Video analysis job '${analysisJobId}' already exists. Skipping creation.`);
+        } else {
+          throw createErr;
+        }
+      }
     } else {
-      logger.info(`Video analysis job '${analysisJobId}' already exists. Skipping creation.`);
+      const jobDoc = await analysisJobRef.get();
+      if (!jobDoc.exists) {
+        logger.info(`Creating video analysis job '${analysisJobId}' for class ${classId}`);
+        await analysisJobRef.set(jobPayload);
+      } else {
+        logger.info(`Video analysis job '${analysisJobId}' already exists. Skipping creation.`);
+      }
     }
   }
 });

@@ -8,6 +8,15 @@ import { FUNCTION_REGION, CORS_ORIGINS } from './config.js';
 const db = getFirestore();
 const adminStorage = getStorage();
 
+async function deleteFileWithoutDecrement(file) {
+  if (typeof file?.setMetadata === 'function') {
+    try {
+      await file.setMetadata({ metadata: { skipDeleteDecrement: 'true' } });
+    } catch {}
+  }
+  await file.delete();
+}
+
 /**
  * Resolves the class ID and the quota usage field for any Storage file path.
  * Supports all classroom assets: screenshots, student videos, lecture recordings,
@@ -72,6 +81,12 @@ export const updateStorageUsageOnUpload = onObjectFinalized({
     return;
   }
 
+  const customMeta = event.data?.metadata || {};
+  if (customMeta.isRemuxOverwrite === 'true') {
+    console.log(`Ignoring remux overwrite for ${filePath} (isRemuxOverwrite=true).`);
+    return;
+  }
+
   console.log(`Updating storage for class ${classId} by ${fileSize} bytes for ${usageField}.`);
 
   const classRef = db.collection('classes').doc(classId);
@@ -99,7 +114,7 @@ export const updateStorageUsageOnUpload = onObjectFinalized({
                 
         const bucket = adminStorage.bucket(event.bucket);
         const file = bucket.file(filePath);
-        await file.delete();
+        await deleteFileWithoutDecrement(file);
         console.log(`Successfully deleted ${filePath}.`);
                 
         const revertPayload = {
@@ -122,7 +137,7 @@ export const updateStorageUsageOnUpload = onObjectFinalized({
         if (quota > 0 && fileSize > quota) {
           console.log(`Quota exceeded for class ${classId} on first upload. Deleting file: ${filePath}`);
           const bucket = adminStorage.bucket(event.bucket);
-          await bucket.file(filePath).delete();
+          await deleteFileWithoutDecrement(bucket.file(filePath));
           console.log(`Successfully deleted ${filePath}.`);
         } else {
           const initialPayload = { 
@@ -135,7 +150,7 @@ export const updateStorageUsageOnUpload = onObjectFinalized({
       } else {
         console.error(`Class document ${classId} not found. Deleting orphaned file: ${filePath}`);
         const bucket = adminStorage.bucket(event.bucket);
-        await bucket.file(filePath).delete();
+        await deleteFileWithoutDecrement(bucket.file(filePath));
         console.log('Successfully deleted orphaned file.');
       }
     } else {
@@ -163,6 +178,12 @@ export const updateStorageUsageOnDelete = onObjectDeleted({
 
   if (isNaN(fileSize) || fileSize === 0) {
     console.log(`Ignoring file with invalid size: ${fileSize}`);
+    return;
+  }
+
+  const customMeta = event.data?.metadata || {};
+  if (customMeta.skipDeleteDecrement === 'true') {
+    console.log(`Skipping decrement for internal/quota-rejected deletion of ${filePath}.`);
     return;
   }
 
@@ -235,17 +256,31 @@ export const recalculateStorageUsage = onCall({
     throw new HttpsError('invalid-argument', 'Missing classId.');
   }
 
-  // Teacher authorization check
-  let isAuthorizedTeacher = request.auth.token?.role === 'teacher';
-  if (!isAuthorizedTeacher && request.auth.uid) {
+  // Authorization Check: Must be admin or teacher assigned to this specific class
+  let isAuthorizedTeacher = request.auth.token?.role === 'admin';
+  const callerUid = request.auth.uid;
+  const callerEmail = (request.auth.token?.email || '').trim().toLowerCase();
+
+  if (!isAuthorizedTeacher && (callerUid || callerEmail)) {
     try {
       const classDoc = await db.collection('classes').doc(classId).get();
-      if (classDoc.exists) {
-        const cData = classDoc.data() || {};
-        if (
-          (cData.teacherEmails && cData.teacherEmails.includes(request.auth.token?.email)) ||
-          (cData.teachers && (cData.teachers[request.auth.uid] || Object.keys(cData.teachers).includes(request.auth.uid)))
-        ) {
+      if (classDoc?.exists) {
+        const cData = (typeof classDoc.data === 'function' ? classDoc.data() : classDoc.data) || {};
+        const matchesUid = Boolean(
+          callerUid && (
+            cData.ownerUid === callerUid ||
+            cData.teacherUid === callerUid ||
+            cData.createdBy === callerUid ||
+            (cData.teachers && typeof cData.teachers === 'object' && Boolean(cData.teachers[callerUid]))
+          )
+        );
+        const matchesEmail = Boolean(
+          callerEmail && (
+            (cData.teacherEmail && String(cData.teacherEmail).trim().toLowerCase() === callerEmail) ||
+            (Array.isArray(cData.teacherEmails) && cData.teacherEmails.some((e) => typeof e === 'string' && e.trim().toLowerCase() === callerEmail))
+          )
+        );
+        if (matchesUid || matchesEmail) {
           isAuthorizedTeacher = true;
         }
       }
@@ -287,6 +322,7 @@ export async function recalculateStorageUsageInternal(classId) {
     { prefix: `tasks/${classId}/`, field: 'storageUsageTasks' },
     { prefix: `submissions/${classId}/`, field: 'storageUsageTasks' },
     { prefix: `reports/${classId}/`, field: 'storageUsageReports' },
+    { prefix: `projectMeetings/${classId}/`, field: 'storageUsageProjectMeetings' },
   ];
 
   const results = {
@@ -298,6 +334,7 @@ export async function recalculateStorageUsageInternal(classId) {
     storageUsageIrregularities: 0,
     storageUsageTasks: 0,
     storageUsageReports: 0,
+    storageUsageProjectMeetings: 0,
     storageUsage: 0,
   };
 

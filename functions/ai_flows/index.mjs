@@ -8,6 +8,7 @@ export { triggerAutomaticAnalysis } from './triggerAutomaticAnalysis.js';
 import { CORS_ORIGINS, FUNCTION_REGION, isPasskeySharingWhitelisted } from './config.js';
 import { translateTeacherSpeech as translateTeacherSpeechInternal } from './subtitleFlows.js';
 import { getFirestore } from 'firebase-admin/firestore';
+import { assertTeacherInClass, isAdminCaller, isTeacherInClassData, isTeacherRoleCaller } from './authHelpers.js';
 import { onDocumentCreated } from "firebase-functions/v2/firestore";
 import {
   handleRequestPasskeyPairingToken,
@@ -123,17 +124,14 @@ export * from './performanceMetrics.js';
 export { generateLabTaskPrompt } from './generateLabTaskPrompt.js';
  
  export const triggerBingoCheck = onCall(callOptions, async (request) => {
-   if (request.auth?.token?.role !== 'teacher') {
-     throw new HttpsError('permission-denied', 'Only teachers can trigger Bingo checks.');
-   }
+   const classId = request.data?.classId;
+   await assertTeacherInClass(request.auth, classId, getFirestore(), 'Only teachers assigned to this class can trigger Bingo checks.');
    return await generateBingoChallenge(request.data);
  });
 
  export const cancelActiveBingo = onCall(callOptions, async (request) => {
-   if (request.auth?.token?.role !== 'teacher') {
-     throw new HttpsError('permission-denied', 'Only teachers can cancel active Bingo checks.');
-   }
    const { classId } = request.data || {};
+   await assertTeacherInClass(request.auth, classId, getFirestore(), 'Only teachers assigned to this class can cancel active Bingo checks.');
    return await cancelActiveBingoFlow({ classId });
  });
  
@@ -152,10 +150,15 @@ export { generateLabTaskPrompt } from './generateLabTaskPrompt.js';
    });
  });
 export const generateQuestionBankAi = onCall(callOptions, async (request) => {
-  if (request.auth?.token?.role !== 'teacher') {
-    throw new HttpsError('permission-denied', 'Only teachers can generate question banks.');
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'User must be authenticated.');
   }
   const { topic, count, classId, model } = request.data || {};
+  if (classId) {
+    await assertTeacherInClass(request.auth, classId, getFirestore(), 'Only teachers assigned to this class can generate question banks.');
+  } else if (!isTeacherRoleCaller(request.auth)) {
+    throw new HttpsError('permission-denied', 'Only teachers can generate question banks.');
+  }
   return await generateBingoQuestionBank({ topic, count, classId, model });
 });
 
@@ -163,30 +166,10 @@ export const translateTeacherSpeech = onCall(callOptions, async (request) => {
   if (!request.auth?.uid) {
     throw new HttpsError('unauthenticated', 'User must be authenticated.');
   }
-  const email = (request.auth.token?.email || '').toLowerCase();
-  let isTeacher = request.auth?.token?.role === 'teacher' ||
-    (email.endsWith('@vtc.edu.hk') && !email.includes('@stu.'));
-
   const classId = request.data?.classId;
-  if (!isTeacher && classId && request.auth?.uid) {
-    try {
-      const classDoc = await getFirestore().doc(`classes/${classId}`).get();
-      if (classDoc.exists) {
-        const cData = classDoc.data() || {};
-        if ((cData.teacherEmails && cData.teacherEmails.includes(email)) ||
-            (cData.teacherEmail && cData.teacherEmail.toLowerCase() === email) ||
-            cData.teacherUid === request.auth.uid ||
-            cData.ownerUid === request.auth.uid ||
-            cData.createdBy === request.auth.uid ||
-            (cData.teachers && (cData.teachers[request.auth.uid] || Object.keys(cData.teachers).includes(request.auth.uid)))) {
-          isTeacher = true;
-        }
-      }
-    } catch (e) {
-      console.warn('Error verifying teacher status for subtitle translation:', e);
-    }
-  }
-  if (!isTeacher) {
+  if (classId) {
+    await assertTeacherInClass(request.auth, classId, getFirestore(), 'Only teachers can request live subtitle translation.');
+  } else if (!isTeacherRoleCaller(request.auth)) {
     throw new HttpsError('permission-denied', 'Only teachers can request live subtitle translation.');
   }
   const { text, sourceLang, targetLangs, context, customPrompt, historyText, model } = request.data || {};
@@ -309,25 +292,8 @@ export const claimInPersonAttendance = onCall(callOptions, async (request) => {
 });
 
 export const verifyInPersonAttendanceOverride = onCall(callOptions, async (request) => {
-  let isTeacher = request.auth?.token?.role === 'teacher';
   const { classId, bingoId, studentUid } = request.data || {};
-  if (!isTeacher && classId && request.auth?.uid) {
-    try {
-      const classDoc = await getFirestore().doc(`classes/${classId}`).get();
-      if (classDoc.exists) {
-        const cData = classDoc.data() || {};
-        if ((cData.teacherEmails && cData.teacherEmails.includes(request.auth.token?.email)) ||
-            (cData.teachers && (cData.teachers[request.auth.uid] || Object.keys(cData.teachers).includes(request.auth.uid)))) {
-          isTeacher = true;
-        }
-      }
-    } catch (e) {
-      console.warn('Error checking teacher for in-person override:', e);
-    }
-  }
-  if (!isTeacher) {
-    throw new HttpsError('permission-denied', 'Only teachers can verify attendance in person.');
-  }
+  await assertTeacherInClass(request.auth, classId, getFirestore(), 'Only teachers can verify attendance in person.');
   return await handleVerifyInPersonAttendanceOverride({
     classId,
     bingoId,
@@ -338,15 +304,23 @@ export const verifyInPersonAttendanceOverride = onCall(callOptions, async (reque
 });
 
 export const getStudentPasskeyStatus = onCall(callOptions, async (request) => {
-  const studentUid = request.data?.studentUid || request.auth?.uid;
-  if (!studentUid) {
+  if (!request.auth?.uid) {
     throw new HttpsError('unauthenticated', 'User must be authenticated.');
+  }
+  const requestedUid = request.data?.studentUid;
+  const studentUid = requestedUid || request.auth.uid;
+  const classId = request.data?.classId;
+  if (studentUid !== request.auth.uid && !isAdminCaller(request.auth)) {
+    if (classId) {
+      await assertTeacherInClass(request.auth, classId, getFirestore(), 'Only assigned teachers can view another student passkey status.');
+    } else if (!isTeacherRoleCaller(request.auth)) {
+      throw new HttpsError('permission-denied', 'Cannot view another student passkey status.');
+    }
   }
   return await handleGetStudentPasskeyStatus({ studentUid });
 });
 
 export const resetStudentPasskey = onCall(callOptions, async (request) => {
-  let isTeacher = request.auth?.token?.role === 'teacher';
   const { studentUid, studentEmail, classId, reason } = request.data || {};
   if (!request.auth?.uid) {
     throw new HttpsError('unauthenticated', 'User must be authenticated.');
@@ -355,18 +329,19 @@ export const resetStudentPasskey = onCall(callOptions, async (request) => {
     throw new HttpsError('invalid-argument', 'Missing studentUid or studentEmail.');
   }
 
-  if (!isTeacher && classId) {
-    try {
-      const classDoc = await getFirestore().doc(`classes/${classId}`).get();
-      if (classDoc.exists) {
-        const cData = classDoc.data() || {};
-        if ((cData.teacherEmails && cData.teacherEmails.includes(request.auth.token?.email)) ||
-            (cData.teachers && (cData.teachers[request.auth.uid] || Object.keys(cData.teachers).includes(request.auth.uid)))) {
-          isTeacher = true;
+  let isTeacher = isAdminCaller(request.auth);
+  if (!isTeacher) {
+    if (classId) {
+      try {
+        const classDoc = await getFirestore().doc(`classes/${classId}`).get();
+        if (classDoc.exists) {
+          isTeacher = isTeacherInClassData(classDoc.data() || {}, request.auth);
         }
+      } catch (e) {
+        console.warn('Error checking teacher for passkey reset:', e);
       }
-    } catch (e) {
-      console.warn('Error checking teacher for passkey reset:', e);
+    } else {
+      isTeacher = isTeacherRoleCaller(request.auth);
     }
   }
 
@@ -380,6 +355,9 @@ export const resetStudentPasskey = onCall(callOptions, async (request) => {
   );
 
   if (!isTeacher && !(isSelf && isCallerWhitelisted)) {
+    if (classId && isTeacherRoleCaller(request.auth)) {
+      throw new HttpsError('permission-denied', 'Only teachers assigned to this class can reset student passkeys.');
+    }
     throw new HttpsError('permission-denied', 'Students cannot self-unlink passkey authenticators. Please contact your instructor to request a passkey reset.');
   }
 
@@ -410,6 +388,13 @@ export const verifyDesktopLoginPasskey = onCall(callOptions, async (request) => 
 
 export const requestTeacherPasskeyBypass = onCall(callOptions, async (request) => {
   const { studentUid, studentEmail, classId, deskNumber, reason } = request.data || {};
+  if (request.auth?.uid && studentUid && studentUid !== request.auth.uid && !isAdminCaller(request.auth)) {
+    if (classId) {
+      await assertTeacherInClass(request.auth, classId, getFirestore(), 'Cannot request passkey bypass for another student.');
+    } else if (!isTeacherRoleCaller(request.auth)) {
+      throw new HttpsError('permission-denied', 'Cannot request passkey bypass for another student.');
+    }
+  }
   const effectiveUid = studentUid || request.auth?.uid;
   const effectiveEmail = studentEmail || request.auth?.token?.email || '';
   return await handleRequestTeacherPasskeyBypass({
@@ -425,25 +410,10 @@ export const approveTeacherPasskeyBypass = onCall(callOptions, async (request) =
   if (!request.auth?.uid) {
     throw new HttpsError('unauthenticated', 'User must be authenticated.');
   }
-  let isTeacher = request.auth?.token?.role === 'teacher';
   const { requestId, classId, studentUid, studentEmail, bypassDurationMinutes, approved, action } = request.data || {};
-
-  if (!isTeacher && classId) {
-    try {
-      const classDoc = await getFirestore().doc(`classes/${classId}`).get();
-      if (classDoc.exists) {
-        const cData = classDoc.data() || {};
-        if ((cData.teacherEmails && cData.teacherEmails.includes(request.auth.token?.email)) ||
-            (cData.teachers && (cData.teachers[request.auth.uid] || Object.keys(cData.teachers).includes(request.auth.uid)))) {
-          isTeacher = true;
-        }
-      }
-    } catch (e) {
-      console.warn('Error checking teacher for passkey bypass approval:', e);
-    }
-  }
-
-  if (!isTeacher) {
+  if (classId) {
+    await assertTeacherInClass(request.auth, classId, getFirestore(), 'Only teachers can approve passkey bypass requests.');
+  } else if (!isTeacherRoleCaller(request.auth)) {
     throw new HttpsError('permission-denied', 'Only teachers can approve passkey bypass requests.');
   }
 
@@ -462,6 +432,13 @@ export const approveTeacherPasskeyBypass = onCall(callOptions, async (request) =
 
 export const verifyTeacherPasskeyBypassPin = onCall(callOptions, async (request) => {
   const { classId, studentUid, pin, reason, deskNumber } = request.data || {};
+  if (request.auth?.uid && studentUid && studentUid !== request.auth.uid && !isAdminCaller(request.auth)) {
+    if (classId) {
+      await assertTeacherInClass(request.auth, classId, getFirestore(), 'Cannot verify bypass PIN for another student.');
+    } else if (!isTeacherRoleCaller(request.auth)) {
+      throw new HttpsError('permission-denied', 'Cannot verify bypass PIN for another student.');
+    }
+  }
   const effectiveUid = studentUid || request.auth?.uid;
   return await handleVerifyTeacherPasskeyBypassPin({
     classId,
@@ -473,36 +450,14 @@ export const verifyTeacherPasskeyBypassPin = onCall(callOptions, async (request)
 });
 
 export const toggleStudentPasskeyExemption = onCall(callOptions, async (request) => {
-  if (!request.auth) {
+  if (!request.auth?.uid) {
     throw new HttpsError('unauthenticated', 'User must be authenticated.');
   }
 
   const { studentEmail, studentUid, classId, exempt, reason } = request.data || {};
-  let isTeacher = request.auth.token?.role === 'teacher';
-
-  if (!isTeacher && request.auth.token?.email) {
-    const email = request.auth.token.email.toLowerCase();
-    isTeacher = email.endsWith('@vtc.edu.hk') && !email.includes('@stu.vtc.edu.hk');
-  }
-
-  if (!isTeacher && classId) {
-    try {
-      const classDoc = await getFirestore().doc(`classes/${classId}`).get();
-      if (classDoc.exists) {
-        const cData = classDoc.data() || {};
-        if (
-          (cData.teacherEmails && cData.teacherEmails.includes(request.auth.token?.email)) ||
-          (cData.teachers && (cData.teachers[request.auth.uid] || Object.keys(cData.teachers).includes(request.auth.uid)))
-        ) {
-          isTeacher = true;
-        }
-      }
-    } catch (e) {
-      console.warn('[toggleStudentPasskeyExemption] Teacher check failed:', e);
-    }
-  }
-
-  if (!isTeacher) {
+  if (classId) {
+    await assertTeacherInClass(request.auth, classId, getFirestore(), 'Only teachers can grant or revoke permanent passkey exemptions.');
+  } else if (!isTeacherRoleCaller(request.auth)) {
     throw new HttpsError('permission-denied', 'Only teachers can grant or revoke permanent passkey exemptions.');
   }
 
@@ -518,25 +473,8 @@ export const toggleStudentPasskeyExemption = onCall(callOptions, async (request)
 });
 
 export const createLectureBingoSession = onCall(callOptions, async (request) => {
-  let isTeacher = request.auth?.token?.role === 'teacher';
   const { classId, timeLimitSeconds } = request.data || {};
-  if (!isTeacher && classId && request.auth?.uid) {
-    try {
-      const classDoc = await getFirestore().doc(`classes/${classId}`).get();
-      if (classDoc.exists) {
-        const cData = classDoc.data() || {};
-        if ((cData.teacherEmails && cData.teacherEmails.includes(request.auth.token?.email)) ||
-            (cData.teachers && (cData.teachers[request.auth.uid] || Object.keys(cData.teachers).includes(request.auth.uid)))) {
-          isTeacher = true;
-        }
-      }
-    } catch (e) {
-      console.warn('Error checking teacher for createLectureBingoSession:', e);
-    }
-  }
-  if (!isTeacher) {
-    throw new HttpsError('permission-denied', 'Only instructors can create a lecture QR attendance session.');
-  }
+  await assertTeacherInClass(request.auth, classId, getFirestore(), 'Only instructors can create a lecture QR attendance session.');
   return await handleCreateLectureBingoSession({
     classId,
     timeLimitSeconds,
@@ -578,10 +516,8 @@ export const verifyLecturePasskeyAuth = onCall(callOptions, async (request) => {
 });
 
 export const reconcileLectureRecordings = onCall(callOptions, async (request) => {
-  if (request.auth?.token?.role !== 'teacher') {
-    throw new HttpsError('permission-denied', 'Only teachers can reconcile lecture recordings.');
-  }
   const { classId } = request.data || {};
+  await assertTeacherInClass(request.auth, classId, getFirestore(), 'Only teachers can reconcile lecture recordings.');
   return await handleReconcileLectureRecordings({ classId });
 });
 

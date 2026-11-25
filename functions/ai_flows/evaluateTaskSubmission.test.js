@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+const mockClassGet = vi.fn();
 const mockTaskGet = vi.fn();
 const mockAttemptSet = vi.fn();
 const mockSubmissionSet = vi.fn();
@@ -11,7 +12,16 @@ vi.mock('firebase-admin/firestore', () => ({
       if (colName === 'classes') {
         return {
           doc: vi.fn(() => ({
+            get: mockClassGet,
             collection: vi.fn((subCol) => {
+              if (subCol === 'metadata') {
+                return {
+                  doc: vi.fn(() => ({
+                    get: vi.fn().mockResolvedValue({ exists: false }),
+                    set: vi.fn().mockResolvedValue(true),
+                  })),
+                };
+              }
               if (subCol === 'tasks') {
                 return {
                   doc: vi.fn(() => ({
@@ -41,6 +51,13 @@ vi.mock('firebase-admin/firestore', () => ({
         };
       }
       return {};
+    }),
+    runTransaction: vi.fn(async (cb) => {
+      const tx = {
+        get: vi.fn((ref) => ref.get()),
+        set: vi.fn((ref, data, opts) => ref.set(data, opts)),
+      };
+      return cb(tx);
     }),
   }),
 }));
@@ -82,6 +99,10 @@ import {
 describe('evaluateTaskSubmission', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockClassGet.mockResolvedValue({
+      exists: true,
+      data: () => ({ ownerUid: 'teacher_1', teachers: { teacher1: true } }),
+    });
   });
 
   it('throws invalid-argument when required arguments are missing', async () => {
@@ -487,6 +508,21 @@ describe('evaluateTaskSubmission', () => {
 
     expect(res.success).toBe(true);
     expect(res.queued).toBe(true);
+  });
+
+  it('rejects callers who are not teachers assigned to the class', async () => {
+    const callableFn = evaluateTaskSubmission.run || evaluateTaskSubmission;
+    mockClassGet.mockResolvedValueOnce({
+      exists: true,
+      data: () => ({ ownerUid: 'other_teacher', teachers: {} }),
+    });
+
+    await expect(
+      callableFn({
+        auth: { uid: 'intruder_teacher', token: { role: 'teacher' } },
+        data: { classId: 'c1', taskId: 't1', studentUid: 's1' },
+      })
+    ).rejects.toThrow(/Only teachers assigned to this class/);
   });
 
   it('reconciles omitted rubric steps, clamps step scores to maxPoints, and injects custom prompt templates', async () => {

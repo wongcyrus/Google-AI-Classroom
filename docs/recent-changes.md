@@ -4,6 +4,29 @@
 **System**: Google AI Classroom  
 **Production URL**: `https://it114115-2627.web.app`
 
+## 0.0.0.0.0.0.0.0.0.0.4.3 Static-URL Screen Broadcast, Cross-Service Storage Rules & Deployment Hardening
+
+**Date**: November 25, 2026  
+**Status**: Implemented, Verified with Unit/Integration/Security Rules Tests & Headless Chrome, Deployed to `it114115-dev-2026` and `it114115-2627`  
+**Primary Files**:
+- [`web-app/src/hooks/useTeacherScreenBroadcast.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/hooks/useTeacherScreenBroadcast.js), [`web-app/src/hooks/useTeacherScreenBroadcastStudent.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/hooks/useTeacherScreenBroadcastStudent.js), & [`web-app/src/components/public/PublicLiveView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/public/PublicLiveView.jsx)
+- [`storage.rules`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/storage.rules), [`firestore.rules`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/firestore.rules), & [`firestore.indexes.json`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/firestore.indexes.json)
+- [`deploy.sh`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/deploy.sh), [`admin/scripts/seed_initial_data.mjs`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/admin/scripts/seed_initial_data.mjs), & [`tests/security_rules.test.mjs`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/tests/security_rules.test.mjs)
+
+### Key Enhancements & Fixes:
+1. **Static-URL Tokenized Screen Broadcast (`broadcastMode: 'static_url'`)**:
+   - Replaced continuous base64 Firestore `liveFrame` streaming with teacher-pushed static JPEG uploads to Cloud Storage (`broadcasts/{classId}/slide_<ts>_<16hex>.jpg`) secured by Firebase download `token=` URLs, automatically deleting the previous slide file on each new push.
+   - Students and public spectators fetch the tokenized URL on initial join or manual **Refresh**, eliminating continuous Firestore frame listener fan-out and redundant downloads.
+   - Added single-read `getDoc(liveFrame)` fallback (with `toEpochMillis` normalization and `frameSeq` change tracking) in `useTeacherScreenBroadcastStudent.js` and `PublicLiveView.jsx` for seamless compatibility with active pre-update `frame`-mode sessions.
+2. **Cross-Service Cloud Storage Security Rules & `deploy.sh` IAM Auto-Provisioning**:
+   - Scoped `storage.rules` (`broadcasts/`, `screenshots/`, `audio/`, `irregularities/`, `videos/`, `recordings/`, `subtitles/`, `tasks/`, `projectMeetings/`) to class enrollment and teacher ownership via `firestore.exists(...)` / `firestore.get(...)`.
+   - Fixed non-interactive `firebase deploy --force` skipping `roles/firebaserules.firestoreServiceAgent` on `service-<PROJECT_NUMBER>@gcp-sa-firebasestorage.iam.gserviceaccount.com` by adding idempotent IAM verification/binding to `deploy.sh`.
+   - Added `SUITE 6` to `tests/security_rules.test.mjs` (`92 PASSED, 0 FAILED`) covering Storage cross-service rules and tokenized vs. un-tokenized broadcast slide access.
+3. **Production Seed Safety**:
+   - Hardened `admin/scripts/seed_initial_data.mjs` so non-dev deployments never overwrite existing user passwords, `displayName`, matching custom claims, or existing `system_config/loginPolicy`.
+
+---
+
 ## 0.0.0.0.0.0.0.0.0.0.4.2 Class-Safe Remote Client Refresh, Firestore Loop Fix & Native `<dialog>` Refactor
 
 **Date**: November 25, 2026  

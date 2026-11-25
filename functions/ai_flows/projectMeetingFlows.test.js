@@ -592,6 +592,34 @@ describe('projectMeetingFlows', () => {
       })
     ).rejects.toThrow(/Only class teachers and project supervisors/);
 
+    // Rejects teacher from another class
+    mockDocGet.mockResolvedValueOnce({
+      exists: true,
+      data: () => ({ teacherEmails: ['other@vtc.edu.hk'], ownerUid: 'owner_1' }),
+    });
+    await expect(
+      analyzeProjectMeeting.run({
+        auth: { uid: 'intruder_teacher', token: { email: 'intruder@vtc.edu.hk', role: 'teacher' } },
+        data: { classId: 'c1', meetingId: 'm1' },
+      })
+    ).rejects.toThrow(/Only class teachers and project supervisors/);
+
+    // Blocks when class AI quota is exhausted
+    mockDocGet.mockImplementation(async (path) => {
+      if (path === 'classes/c_quota') return { exists: true, data: () => ({ ownerUid: 't_q', aiQuota: 5 }) };
+      if (path === 'classes/c_quota/metadata/ai') return { exists: true, data: () => ({ aiUsedQuota: 5 }) };
+      if (path === 'classes/c_quota/projectMeetings/m_q') {
+        return { exists: true, data: () => ({ audioClips: [{ storagePath: 'a.webm' }] }) };
+      }
+      return { exists: false };
+    });
+    await expect(
+      analyzeProjectMeeting.run({
+        auth: { uid: 't_q', token: { role: 'teacher' } },
+        data: { classId: 'c_quota', meetingId: 'm_q' },
+      })
+    ).rejects.toThrow(/Monthly AI quota exceeded/);
+
     // Authorized via class teacherEmails
     mockDocGet.mockImplementation(async (path) => {
       if (path === 'classes/c1') {
@@ -1050,6 +1078,18 @@ describe('projectMeetingFlows', () => {
       await expect(
         batchEmailProjectMeetingReports.run({
           auth: { uid: 'stu_1', token: { email: 'stu@stu.vtc.edu.hk', role: 'student' } },
+          data: { classId: 'c1', weekNumber: 8 },
+        })
+      ).rejects.toThrow(/Only teachers and project supervisors can email meeting reports/);
+
+      // Rejects cross-teacher belonging to another class
+      mockDocGet.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({ teacherEmails: ['owner@vtc.edu.hk'], ownerUid: 'owner_1' }),
+      });
+      await expect(
+        batchEmailProjectMeetingReports.run({
+          auth: { uid: 'other_teacher', token: { email: 'other@vtc.edu.hk', role: 'teacher' } },
           data: { classId: 'c1', weekNumber: 8 },
         })
       ).rejects.toThrow(/Only teachers and project supervisors can email meeting reports/);

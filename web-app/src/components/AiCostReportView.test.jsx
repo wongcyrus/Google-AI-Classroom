@@ -50,6 +50,8 @@ vi.mock('firebase/firestore', () => ({
   collection: vi.fn(),
   query: vi.fn(),
   where: vi.fn(),
+  orderBy: vi.fn(),
+  limit: vi.fn(),
   onSnapshot: (...args) => mockOnSnapshot(...args),
 }));
 

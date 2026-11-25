@@ -3,6 +3,7 @@ import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage
 import { collection, doc, setDoc, updateDoc } from 'firebase/firestore';
 import { storage, db } from '../firebase-config';
 import { saveToOfflineQueue, flushOfflineQueue } from '../utils/offlineBufferManager';
+import { isPermanentAuthOrRulesError } from '../utils/firebaseErrors';
 import { acquireInputDeviceStream } from '../utils/mediaDeviceCapture';
 
 /**
@@ -95,6 +96,8 @@ export function useAudioRecorder({
       analyserRef.current = analyser;
 
       const dataArray = new Uint8Array(analyser.frequencyBinCount);
+      let lastUiVolume = -1;
+      let lastUiVolumeAt = 0;
 
       const loop = () => {
         if (!analyserRef.current) return;
@@ -107,7 +110,16 @@ export function useAudioRecorder({
         const avg = sum / dataArray.length;
         const normalized = Math.min(100, Math.round((avg / 128) * 100));
 
-        setCurrentVolume(normalized);
+        const nowPerf = typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now();
+        if (
+          lastUiVolumeAt === 0 ||
+          (normalized === 0 && lastUiVolume !== 0) ||
+          (nowPerf - lastUiVolumeAt >= 100 && normalized !== lastUiVolume)
+        ) {
+          lastUiVolume = normalized;
+          lastUiVolumeAt = nowPerf;
+          setCurrentVolume(normalized);
+        }
         volumeSamplesRef.current.push(normalized);
 
         // Smooth speaking indicator with 1.5s hangover
@@ -287,37 +299,41 @@ export function useAudioRecorder({
         flushOfflineAudioRef.current?.();
       }
     } catch (err) {
-      console.warn('[useAudioRecorder] ❌ Network error uploading audio segment, buffering in IndexedDB:', err);
-      try {
-        await saveToOfflineQueue({
-          id: `audio_${audioDocId}`,
-          type: 'audio',
-          classId,
-          studentUid,
-          studentEmail,
-          blob,
-          timestamp: now,
-          metadata: {
-            audioPath: fullAudioPath,
-            audioDocId,
-            alreadyUploaded: storageUploaded,
-            timedOut: isTimeoutError,
-            downloadUrl: downloadUrl || null,
-            aiMonitoringMode: effectiveMode,
-            allowCloudDiarization: effectiveMode === 'hybrid' || effectiveMode === 'cloud_only',
-            duration: effWindowSec,
-            strideDuration: effStrideSec,
-            strideIndex,
-            isSlidingWindow: enableMovingWindow,
-            windowStartSec: windowStartOffsetSec,
-            peakVolume: peakVol,
-            averageVolume: avgVol,
-            retentionDays: retentionDays || 30,
-          },
-        });
-        hasOfflineAudioRef.current = true;
-      } catch (queueErr) {
-        console.error('Failed to buffer audio offline:', queueErr);
+      if (isPermanentAuthOrRulesError(err)) {
+        console.error('[useAudioRecorder] Permanent permission/auth error uploading audio segment; skipping offline queue:', err);
+      } else {
+        console.warn('[useAudioRecorder] ❌ Network error uploading audio segment, buffering in IndexedDB:', err);
+        try {
+          await saveToOfflineQueue({
+            id: `audio_${audioDocId}`,
+            type: 'audio',
+            classId,
+            studentUid,
+            studentEmail,
+            blob,
+            timestamp: now,
+            metadata: {
+              audioPath: fullAudioPath,
+              audioDocId,
+              alreadyUploaded: storageUploaded,
+              timedOut: isTimeoutError,
+              downloadUrl: downloadUrl || null,
+              aiMonitoringMode: effectiveMode,
+              allowCloudDiarization: effectiveMode === 'hybrid' || effectiveMode === 'cloud_only',
+              duration: effWindowSec,
+              strideDuration: effStrideSec,
+              strideIndex,
+              isSlidingWindow: enableMovingWindow,
+              windowStartSec: windowStartOffsetSec,
+              peakVolume: peakVol,
+              averageVolume: avgVol,
+              retentionDays: retentionDays || 30,
+            },
+          });
+          hasOfflineAudioRef.current = true;
+        } catch (queueErr) {
+          console.error('Failed to buffer audio offline:', queueErr);
+        }
       }
 
       // Keep student audio sharing status active even when Cloud Storage upload fails
@@ -706,6 +722,8 @@ export function useAudioRecorder({
   }, [classId, studentUid]);
 
   const recordingConfigKey = [
+    classId || '',
+    studentUid || '',
     deviceId,
     defaultDeviceRevision,
     effWindowSec,
@@ -717,6 +735,10 @@ export function useAudioRecorder({
     effectiveMode,
   ].join(':');
   const currentRecordingConfigRef = useRef(recordingConfigKey);
+  const stopRecordingRef = useRef(stopRecording);
+  useEffect(() => {
+    stopRecordingRef.current = stopRecording;
+  }, [stopRecording]);
 
   useEffect(() => {
     if (
@@ -768,9 +790,9 @@ export function useAudioRecorder({
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      stopRecording();
+      stopRecordingRef.current?.();
     };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   return {
     isRecording,

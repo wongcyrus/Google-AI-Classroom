@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { isInternalPropertyKey } from './index.mjs';
+import { isInternalPropertyKey, handleProcessPropertyUpload } from './index.mjs';
 
 describe('property_processing isInternalPropertyKey', () => {
   it('identifies internal system and operational prefixes', () => {
@@ -45,5 +45,101 @@ describe('property_processing isInternalPropertyKey', () => {
     assert.equal(isInternalPropertyKey('SpecialNeeds'), false);
     assert.equal(isInternalPropertyKey('ProjectTopic'), false);
     assert.equal(isInternalPropertyKey('SeatNumber'), false);
+  });
+});
+
+describe('property_processing handleProcessPropertyUpload authorization', () => {
+  const createDeps = ({ classExists = true, classData = {}, requesterRecord = null } = {}) => {
+    const updates = [];
+    const batchSets = [];
+    const mockDb = {
+      collection: (colName) => {
+        if (colName === 'classes') {
+          return {
+            doc: () => ({
+              get: async () => ({ exists: classExists, data: () => classData }),
+              collection: () => ({
+                get: async () => ({ forEach: () => {} }),
+                doc: (uid) => ({ id: uid }),
+              }),
+            }),
+          };
+        }
+        return {};
+      },
+      batch: () => ({
+        set: (ref, data, opts) => batchSets.push({ ref, data, opts }),
+        commit: async () => {},
+      }),
+    };
+    const mockAuth = {
+      getUser: async () => requesterRecord || { uid: 'unknown', email: 'unknown@stu.vtc.edu.hk', customClaims: {} },
+      getUsers: async () => ({ users: [] }),
+    };
+    const mockLogger = { info: () => {}, warn: () => {}, error: () => {} };
+    const makeEvent = (jobData) => ({
+      params: { jobId: 'job_1' },
+      data: {
+        data: () => jobData,
+        ref: { update: async (payload) => updates.push(payload) },
+      },
+    });
+    return { mockDb, mockAuth, mockLogger, makeEvent, updates, batchSets };
+  };
+
+  it('fails job when requester is a student or unrelated teacher not assigned to class', async () => {
+    const { mockDb, mockAuth, mockLogger, makeEvent, updates, batchSets } = createDeps({
+      classData: { ownerUid: 'teacher_1', teacherEmails: ['teacher1@vtc.edu.hk'], students: { s1: 's1@stu.vtc.edu.hk' } },
+      requesterRecord: { uid: 'other_teacher', email: 'other@vtc.edu.hk', customClaims: { role: 'teacher' } },
+    });
+
+    await handleProcessPropertyUpload(
+      makeEvent({
+        classId: 'c1',
+        requesterUid: 'other_teacher',
+        csvData: 'StudentEmail,Group\ns1@stu.vtc.edu.hk,A\n',
+      }),
+      { db: mockDb, auth: mockAuth, logger: mockLogger }
+    );
+
+    const finalUpdate = updates[updates.length - 1];
+    assert.equal(finalUpdate.status, 'failed');
+    assert.match(finalUpdate.error, /Unauthorized/);
+    assert.equal(batchSets.length, 0);
+  });
+
+  it('fails job when classId or requesterUid is missing', async () => {
+    const { mockDb, mockAuth, mockLogger, makeEvent, updates, batchSets } = createDeps();
+
+    await handleProcessPropertyUpload(
+      makeEvent({ classId: 'c1', csvData: 'StudentEmail,Group\ns1@stu.vtc.edu.hk,A\n' }),
+      { db: mockDb, auth: mockAuth, logger: mockLogger }
+    );
+
+    const finalUpdate = updates[updates.length - 1];
+    assert.equal(finalUpdate.status, 'failed');
+    assert.match(finalUpdate.error, /requesterUid/);
+    assert.equal(batchSets.length, 0);
+  });
+
+  it('processes upload cleanly when requester is assigned teacher on class document', async () => {
+    const { mockDb, mockAuth, mockLogger, makeEvent, updates, batchSets } = createDeps({
+      classData: { ownerUid: 'teacher_1', students: { s1: 's1@stu.vtc.edu.hk' } },
+    });
+
+    await handleProcessPropertyUpload(
+      makeEvent({
+        classId: 'c1',
+        requesterUid: 'teacher_1',
+        csvData: 'StudentEmail,Group\ns1@stu.vtc.edu.hk,GroupB\n',
+      }),
+      { db: mockDb, auth: mockAuth, logger: mockLogger }
+    );
+
+    const finalUpdate = updates[updates.length - 1];
+    assert.equal(finalUpdate.status, 'completed');
+    assert.equal(finalUpdate.processedCount, 1);
+    assert.equal(batchSets.length, 1);
+    assert.deepEqual(batchSets[0].data, { Group: 'GroupB' });
   });
 });

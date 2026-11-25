@@ -597,7 +597,8 @@ export function useTeacherLiveSubtitles({
   const publishSubtitleRef = useRef(publishSubtitle);
   useEffect(() => {
     publishSubtitleRef.current = publishSubtitle;
-  });
+  }, [publishSubtitle]);
+  const activePublishedClassRef = useRef(null);
 
   const targetLanguagesKey = Array.isArray(targetLanguages) ? targetLanguages.join(',') : '';
 
@@ -1076,6 +1077,11 @@ export function useTeacherLiveSubtitles({
     const subDocRef = doc(db, 'classes', classId, 'liveSubtitles', 'current');
 
     if (enabled) {
+      if (activePublishedClassRef.current && activePublishedClassRef.current !== classId) {
+        const prevDocRef = doc(db, 'classes', activePublishedClassRef.current, 'liveSubtitles', 'current');
+        setDoc(prevDocRef, { active: false }, { merge: true }).catch(() => {});
+      }
+      activePublishedClassRef.current = classId;
       setDoc(
         subDocRef,
         {
@@ -1092,15 +1098,17 @@ export function useTeacherLiveSubtitles({
       ).catch((err) => {
         console.warn('[useTeacherLiveSubtitles] Session activation warning:', err);
       });
-    } else {
+    } else if (activePublishedClassRef.current === classId) {
+      activePublishedClassRef.current = null;
       setDoc(subDocRef, { active: false }, { merge: true }).catch(() => {});
     }
   }, [enabled, classId, speechLanguage, targetLanguagesKey, engineMode, teacherUid, teacherEmail]);
 
-  // Clean up subtitle active status strictly on final unmount
+  // Clean up subtitle active status strictly on final unmount if this session was activated
   useEffect(() => {
     return () => {
-      if (classId) {
+      if (classId && activePublishedClassRef.current === classId) {
+        activePublishedClassRef.current = null;
         const subDocRef = doc(db, 'classes', classId, 'liveSubtitles', 'current');
         setDoc(subDocRef, { active: false }, { merge: true }).catch(() => {});
       }

@@ -499,26 +499,50 @@ export async function handleVerifyPasskeyAuth({ classId, bingoId, assertionRespo
     throw new HttpsError('invalid-argument', 'Passkey biometric verification failed.');
   }
 
-  // Update passkey counter
-  await passkeyRef.update({
-    counter: verification.authenticationInfo.newCounter,
-    lastUsedAt: FieldValue.serverTimestamp(),
+  const txResult = await db.runTransaction(async (tx) => {
+    const freshBingoDoc = await tx.get(bingoRef);
+    if (!freshBingoDoc.exists) {
+      throw new HttpsError('not-found', 'Bingo record not found.');
+    }
+    const freshBingoData = freshBingoDoc.data();
+    if (freshBingoData.result === 'passed') {
+      return {
+        alreadyPassed: true,
+        elapsedSec: freshBingoData.responseTimeSec || 0.1,
+      };
+    }
+
+    const elapsedSec = timeToCompleteMillis
+      ? Math.max(0.1, Math.round(Number(timeToCompleteMillis) / 100) / 10)
+      : Math.max(0.1, Math.round((Date.now() - freshBingoData.issuedAtMillis) / 100) / 10);
+
+    tx.update(passkeyRef, {
+      counter: verification.authenticationInfo.newCounter,
+      lastUsedAt: FieldValue.serverTimestamp(),
+    });
+
+    tx.update(bingoRef, {
+      result: 'passed',
+      status: 'completed',
+      passkeyVerified: true,
+      inPersonVerified: false,
+      responseTimeSec: elapsedSec,
+      answeredAt: FieldValue.serverTimestamp(),
+      pointsAwarded: 10,
+    });
+
+    return { alreadyPassed: false, elapsedSec };
   });
 
-  const elapsedSec = timeToCompleteMillis
-    ? Math.max(0.1, Math.round(Number(timeToCompleteMillis) / 100) / 10)
-    : Math.max(0.1, Math.round((Date.now() - bingoData.issuedAtMillis) / 100) / 10);
+  if (txResult.alreadyPassed) {
+    return {
+      verified: true,
+      alreadyPassed: true,
+      responseTimeSec: txResult.elapsedSec,
+    };
+  }
 
-  // Update Bingo Record
-  await bingoRef.update({
-    result: 'passed',
-    status: 'completed',
-    passkeyVerified: true,
-    inPersonVerified: false,
-    responseTimeSec: elapsedSec,
-    answeredAt: FieldValue.serverTimestamp(),
-    pointsAwarded: 10,
-  });
+  const elapsedSec = txResult.elapsedSec;
 
   // Update Student Active Bingo Realtime State
   try {
@@ -1579,88 +1603,108 @@ export async function handleVerifyLecturePasskeyAuth({
     throw new HttpsError('invalid-argument', 'Passkey biometric assertion was not valid.');
   }
 
-  // Update passkey counter and last used timestamp
-  await studentPasskeyDoc.ref.update({
-    counter: verification.authenticationInfo.newCounter,
-    lastUsedAt: FieldValue.serverTimestamp(),
+  const individualDocRef = db.collection(`classes/${classId}/bingoRecords`).doc(`${bingoId}_${studentUid}`);
+
+  const txResult = await db.runTransaction(async (tx) => {
+    const freshBingoDoc = await tx.get(bingoRef);
+    if (!freshBingoDoc.exists) {
+      throw new HttpsError('not-found', 'Lecture attendance record not found.');
+    }
+    const freshBingoData = freshBingoDoc.data();
+
+    const responseTimeSec = timeToCompleteMillis
+      ? Math.max(0.1, Math.round(Number(timeToCompleteMillis) / 100) / 10)
+      : Math.max(0.1, Math.round((Date.now() - freshBingoData.issuedAtMillis) / 100) / 10);
+
+    const existingResponses = freshBingoData.responses || {};
+    if (existingResponses[studentUid]) {
+      return {
+        alreadyVerified: true,
+        responseTimeSec: existingResponses[studentUid].responseTimeSec || responseTimeSec,
+        pointsAwarded: existingResponses[studentUid].pointsAwarded || 10,
+      };
+    }
+
+    const currentVerifiedCount = Object.keys(existingResponses).length + 1;
+    const responseData = {
+      studentUid,
+      studentEmail,
+      verifiedAt: FieldValue.serverTimestamp(),
+      verifiedAtMillis: Date.now(),
+      responseTimeSec,
+      rank: currentVerifiedCount,
+      passkeyVerified: true,
+      pointsAwarded: 10,
+      deviceModel: passkeyData.deviceModel || 'Mobile Device',
+    };
+
+    tx.update(studentPasskeyDoc.ref, {
+      counter: verification.authenticationInfo.newCounter,
+      lastUsedAt: FieldValue.serverTimestamp(),
+    });
+
+    tx.update(bingoRef, {
+      [`responses.${studentUid}`]: responseData,
+      verifiedStudentsCount: FieldValue.increment(1),
+    });
+
+    tx.set(individualDocRef, {
+      id: individualDocRef.id,
+      parentBingoId: bingoId,
+      roundId: freshBingoData.roundId,
+      classId,
+      studentUid,
+      studentEmail,
+      question: freshBingoData.question,
+      options: freshBingoData.options,
+      correctIndex: 0,
+      selectedIndex: 0,
+      selectedOptionText: 'Biometric QR Check-In Verified',
+      result: 'passed',
+      status: 'completed',
+      passkeyVerified: true,
+      responseTimeSec,
+      rank: currentVerifiedCount,
+      pointsAwarded: 10,
+      questionSource: 'lecture_passkey_qr',
+      triggerType: 'teacher_lecture_qr',
+      strikeNumber: 1,
+      issuedAt: freshBingoData.issuedAt || FieldValue.serverTimestamp(),
+      issuedAtMillis: freshBingoData.issuedAtMillis,
+      answeredAt: FieldValue.serverTimestamp(),
+      timeLimitSeconds: freshBingoData.timeLimitSeconds,
+    });
+
+    return {
+      alreadyVerified: false,
+      responseTimeSec,
+      currentVerifiedCount,
+      freshBingoData,
+    };
   });
 
-  const responseTimeSec = timeToCompleteMillis
-    ? Math.max(0.1, Math.round(Number(timeToCompleteMillis) / 100) / 10)
-    : Math.max(0.1, Math.round((Date.now() - bingoData.issuedAtMillis) / 100) / 10);
-
-  // Check if student already checked in
-  const existingResponses = bingoData.responses || {};
-  if (existingResponses[studentUid]) {
+  if (txResult.alreadyVerified) {
     return {
       verified: true,
       alreadyVerified: true,
       studentUid,
       studentEmail,
-      responseTimeSec: existingResponses[studentUid].responseTimeSec || responseTimeSec,
-      pointsAwarded: existingResponses[studentUid].pointsAwarded || 10,
+      responseTimeSec: txResult.responseTimeSec,
+      pointsAwarded: txResult.pointsAwarded,
     };
   }
 
-  // Compute live rank
-  const currentVerifiedCount = Object.keys(existingResponses).length + 1;
-
-  // Record response in lecture session document
-  const responseData = {
-    studentUid,
-    studentEmail,
-    verifiedAt: FieldValue.serverTimestamp(),
-    verifiedAtMillis: Date.now(),
-    responseTimeSec,
-    rank: currentVerifiedCount,
-    passkeyVerified: true,
-    pointsAwarded: 10,
-    deviceModel: passkeyData.deviceModel || 'Mobile Device',
-  };
-
-  await bingoRef.update({
-    [`responses.${studentUid}`]: responseData,
-    verifiedStudentsCount: FieldValue.increment(1),
-  });
-
-  // Create an individual student record in bingoRecords for reporting & student dashboard views
-  const individualDocRef = db.collection(`classes/${classId}/bingoRecords`).doc(`${bingoId}_${studentUid}`);
-  await individualDocRef.set({
-    id: individualDocRef.id,
-    parentBingoId: bingoId,
-    roundId: bingoData.roundId,
-    classId,
-    studentUid,
-    studentEmail,
-    question: bingoData.question,
-    options: bingoData.options,
-    correctIndex: 0,
-    selectedIndex: 0,
-    selectedOptionText: 'Biometric QR Check-In Verified',
-    result: 'passed',
-    status: 'completed',
-    passkeyVerified: true,
-    responseTimeSec,
-    rank: currentVerifiedCount,
-    pointsAwarded: 10,
-    questionSource: 'lecture_passkey_qr',
-    triggerType: 'teacher_lecture_qr',
-    strikeNumber: 1,
-    issuedAt: bingoData.issuedAt || FieldValue.serverTimestamp(),
-    issuedAtMillis: bingoData.issuedAtMillis,
-    answeredAt: FieldValue.serverTimestamp(),
-    timeLimitSeconds: bingoData.timeLimitSeconds,
-  });
+  const { responseTimeSec, currentVerifiedCount, freshBingoData } = txResult;
 
   // Update Student Active Bingo Realtime State
   try {
     await db.doc(`classes/${classId}/studentProperties/${studentUid}`).set({
       activeBingo: {
         bingoId,
-        roundId: bingoData.roundId,
+        roundId: freshBingoData.roundId,
         classId,
-        question: bingoData.question,
-        options: bingoData.options,
+        question: freshBingoData.question,
+        options: freshBingoData.options,
         status: 'completed',
         result: 'passed',
         passkeyVerified: true,

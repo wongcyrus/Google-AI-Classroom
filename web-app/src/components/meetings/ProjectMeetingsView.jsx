@@ -9,11 +9,11 @@ import {
   setDoc,
   updateDoc,
   deleteDoc,
-  writeBatch,
   serverTimestamp,
   arrayUnion,
   deleteField,
 } from 'firebase/firestore';
+import { commitBatchChunks } from '../../utils/firestoreBatchUtils';
 import { ref as storageRef, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
 import { httpsCallable } from 'firebase/functions';
 import { getSupportedAudioMimeType, injectWebmDuration, formatDuration } from '../../hooks/useLectureRecorder';
@@ -49,7 +49,7 @@ import './meetings.css';
 function parseTimestampToSecs(ts) {
   if (typeof ts === 'number') return Math.max(0, ts);
   if (!ts || typeof ts !== 'string') return 0;
-  const clean = ts.replace(/[\[\]]/g, '').trim();
+  const clean = ts.replace(/\[|\]/g, '').trim();
   const parts = clean.split(':').map((n) => parseFloat(n));
   if (parts.some((n) => Number.isNaN(n))) return 0;
   if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
@@ -1154,32 +1154,35 @@ export default function ProjectMeetingsView({ classId, classInfo, user, isPrivac
             };
           });
 
-          const batch = writeBatch(db);
-          batch.set(
-            doc(db, `classes/${classId}`),
+          const batchOps = [
             {
-              projectLogSheetUrl: targetUrl,
-              projectLogLastSyncedAt: new Date().toISOString(),
-              projectLogSummary: {
-                ...parsed.summary,
-                weeks: parsed.weeks,
-                groupCount: parsed.groupNames.length,
-                studentProfileCount: builtProfiles.length,
-                lastEntryTimestamp,
-                csvSignature,
+              type: 'set',
+              ref: doc(db, `classes/${classId}`),
+              data: {
+                projectLogSheetUrl: targetUrl,
+                projectLogLastSyncedAt: new Date().toISOString(),
+                projectLogSummary: {
+                  ...parsed.summary,
+                  weeks: parsed.weeks,
+                  groupCount: parsed.groupNames.length,
+                  studentProfileCount: builtProfiles.length,
+                  lastEntryTimestamp,
+                  csvSignature,
+                },
+                studentEmails: [...existingEmailsSet].filter(Boolean),
+                studentProfiles: nextStudentProfilesMap,
+                updatedAt: serverTimestamp(),
               },
-              studentEmails: [...existingEmailsSet].filter(Boolean),
-              studentProfiles: nextStudentProfilesMap,
-              updatedAt: serverTimestamp(),
+              options: { merge: true },
             },
-            { merge: true }
-          );
+          ];
 
           if ((syncGroups || groups.length === 0) && mergedGroups.length > 0) {
             mergedGroups.forEach((grp) => {
-              batch.set(
-                doc(db, `classes/${classId}/projectGroups/${grp.id}`),
-                {
+              batchOps.push({
+                type: 'set',
+                ref: doc(db, `classes/${classId}/projectGroups/${grp.id}`),
+                data: {
                   name: grp.name || 'Group',
                   projectTopic: grp.projectTopic || '',
                   supervisorEmail: normalizeStudentEmail(grp.supervisorEmail || currentUserEmail),
@@ -1188,8 +1191,8 @@ export default function ProjectMeetingsView({ classId, classInfo, user, isPrivac
                   members: Array.isArray(grp.members) ? grp.members : [],
                   updatedAt: serverTimestamp(),
                 },
-                { merge: true }
-              );
+                options: { merge: true },
+              });
             });
           }
 
@@ -1197,9 +1200,10 @@ export default function ProjectMeetingsView({ classId, classInfo, user, isPrivac
             deltaProfiles.forEach((prof) => {
               const vtcEmail = toVtcStudentEmail(prof.email || prof.studentId || prof.key);
               if (!vtcEmail) return;
-              batch.set(
-                doc(db, `classes/${classId}/projectStudentProfiles/${vtcEmail}`),
-                {
+              batchOps.push({
+                type: 'set',
+                ref: doc(db, `classes/${classId}/projectStudentProfiles/${vtcEmail}`),
+                data: {
                   ...prof,
                   key: vtcEmail,
                   email: vtcEmail,
@@ -1207,12 +1211,12 @@ export default function ProjectMeetingsView({ classId, classInfo, user, isPrivac
                   lastSyncedAt: new Date().toISOString(),
                   updatedAt: serverTimestamp(),
                 },
-                { merge: true }
-              );
+                options: { merge: true },
+              });
             });
           }
 
-          await batch.commit().catch((err) => {
+          await commitBatchChunks(db, batchOps).catch((err) => {
             console.warn('[ProjectMeetingsView] Could not persist ingested profiles to Firestore:', err);
           });
 
@@ -1590,22 +1594,26 @@ export default function ProjectMeetingsView({ classId, classInfo, user, isPrivac
   // Save Project Groups from Modal
   const handleSaveProjectGroups = async (draftGroups) => {
     if (!classId) return;
-    const batch = writeBatch(db);
+    const ops = [];
     const keepIds = new Set(draftGroups.map((g) => g.id));
 
     // Delete removed groups
     groups.forEach((existingGrp) => {
       if (!keepIds.has(existingGrp.id)) {
-        batch.delete(doc(db, `classes/${classId}/projectGroups/${existingGrp.id}`));
+        ops.push({
+          type: 'delete',
+          ref: doc(db, `classes/${classId}/projectGroups/${existingGrp.id}`),
+        });
       }
     });
 
     // Upsert all draft groups
     draftGroups.forEach((grp) => {
       const grpRef = doc(db, `classes/${classId}/projectGroups/${grp.id}`);
-      batch.set(
-        grpRef,
-        {
+      ops.push({
+        type: 'set',
+        ref: grpRef,
+        data: {
           name: grp.name || 'Group',
           projectTopic: grp.projectTopic || '',
           supervisorEmail: normalizeStudentEmail(grp.supervisorEmail || currentUserEmail),
@@ -1614,11 +1622,11 @@ export default function ProjectMeetingsView({ classId, classInfo, user, isPrivac
           members: Array.isArray(grp.members) ? grp.members : [],
           updatedAt: serverTimestamp(),
         },
-        { merge: true }
-      );
+        options: { merge: true },
+      });
     });
 
-    await batch.commit();
+    await commitBatchChunks(db, ops);
     showToastMessage(`Saved ${draftGroups.length} Project Group(s)!`);
   };
 
@@ -2672,7 +2680,7 @@ export default function ProjectMeetingsView({ classId, classInfo, user, isPrivac
   const handleOpenEmailModal = (meeting) => {
     if (!meeting) return;
     setEmailReportTargetMeeting(meeting);
-    const grp = groups.find((g) => g.id === meeting.groupId) || selectedGroup;
+    const grp = groups.find((g) => g.id === meeting.groupId) || activeStudioGroup;
     const memberIds = (grp?.members || []).map((m) => m.uid || m.email);
     setEmailRecipientUids(memberIds);
     setEmailErrorMessage('');
@@ -2727,7 +2735,7 @@ export default function ProjectMeetingsView({ classId, classInfo, user, isPrivac
   // Launch client-side mail draft (mailto:) pre-filled with minutes and recipients
   const handleOpenMailtoDraft = () => {
     if (!emailReportTargetMeeting) return;
-    const grp = groups.find((g) => g.id === emailReportTargetMeeting.groupId) || selectedGroup;
+    const grp = groups.find((g) => g.id === emailReportTargetMeeting.groupId) || activeStudioGroup;
     const members = grp?.members || [];
     const targetMembers = members.filter((m) => emailRecipientUids.includes(m.uid || m.email));
     const toEmails = (targetMembers.length > 0 ? targetMembers : members)
@@ -6430,7 +6438,7 @@ export default function ProjectMeetingsView({ classId, classInfo, user, isPrivac
                     <button
                       type="button"
                       onClick={() => {
-                        const grp = groups.find((g) => g.id === emailReportTargetMeeting.groupId) || selectedGroup;
+                        const grp = groups.find((g) => g.id === emailReportTargetMeeting.groupId) || activeStudioGroup;
                         const allIds = (grp?.members || []).map((m) => m.uid || m.email);
                         setEmailRecipientUids(allIds);
                       }}

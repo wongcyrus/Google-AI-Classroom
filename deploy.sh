@@ -237,6 +237,27 @@ if [ "$ONLY_HOSTING" = false ]; then
     firebase experiments:enable appcheckadmin || true
     firebase appcheck:services:set ailogic unenforced --project="$TARGET_PROJECT" --force || true
 
+    echo "Ensuring Storage service agent can evaluate cross-service Firestore rules on $TARGET_PROJECT..."
+    if grep -qE "firestore\.(get|exists)" storage.rules 2>/dev/null; then
+        PROJECT_NUMBER=$(gcloud projects describe "$TARGET_PROJECT" --format="value(projectNumber)" 2>/dev/null || true)
+        if [ -n "$PROJECT_NUMBER" ]; then
+            STORAGE_RULES_SA="serviceAccount:service-${PROJECT_NUMBER}@gcp-sa-firebasestorage.iam.gserviceaccount.com"
+            HAS_CROSS_SERVICE_ROLE=$(gcloud projects get-iam-policy "$TARGET_PROJECT" \
+                --flatten="bindings[].members" \
+                --filter="bindings.role=roles/firebaserules.firestoreServiceAgent AND bindings.members=${STORAGE_RULES_SA}" \
+                --format="value(bindings.role)" 2>/dev/null || true)
+            if [ -z "$HAS_CROSS_SERVICE_ROLE" ]; then
+                echo "Granting roles/firebaserules.firestoreServiceAgent to ${STORAGE_RULES_SA}..."
+                gcloud projects add-iam-policy-binding "$TARGET_PROJECT" \
+                    --member="$STORAGE_RULES_SA" \
+                    --role="roles/firebaserules.firestoreServiceAgent" \
+                    --condition=None \
+                    --quiet >/dev/null && \
+                    echo "✅ Granted roles/firebaserules.firestoreServiceAgent (allow up to a few minutes for first-time IAM propagation)."
+            fi
+        fi
+    fi
+
     echo "Deploying Storage and Firestore rules..."
     FUNCTIONS_DISCOVERY_TIMEOUT=30 firebase deploy --project="$TARGET_PROJECT" --only storage,firestore --force || true
 

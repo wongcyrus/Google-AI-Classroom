@@ -222,9 +222,14 @@ let mockTeacherBroadcastReturn = {
   isBroadcastActive: false,
   broadcastInfo: null,
   liveFrame: null,
+  frameUpdatedAt: null,
+  hasNewFrame: false,
+  isRefreshing: false,
+  refreshStatus: 'idle',
   connectionState: 'idle',
   joinBroadcast: vi.fn(),
   leaveBroadcast: vi.fn(),
+  refreshFrame: vi.fn(),
 };
 
 vi.mock('../hooks/useClientLiteRTWhisper', () => ({
@@ -360,9 +365,14 @@ describe('StudentView Component Extended Test Suite', () => {
       isBroadcastActive: false,
       broadcastInfo: null,
       liveFrame: null,
+      frameUpdatedAt: null,
+      hasNewFrame: false,
+      isRefreshing: false,
+      refreshStatus: 'idle',
       connectionState: 'idle',
       joinBroadcast: vi.fn(),
       leaveBroadcast: vi.fn(),
+      refreshFrame: vi.fn(),
     };
 
     const mockDevices = [
@@ -821,6 +831,28 @@ describe('StudentView Component Extended Test Suite', () => {
     const closeBtn = screen.getByTitle('Close Stream');
     fireEvent.click(closeBtn);
     expect(mockTeacherBroadcastReturn.leaveBroadcast).toHaveBeenCalled();
+  });
+
+  it('shows Refresh Slide button with new-slide indicator in viewer modal and invokes refreshFrame on click', async () => {
+    const refreshMock = vi.fn().mockResolvedValue({ updated: true });
+    mockTeacherBroadcastReturn = {
+      ...mockTeacherBroadcastReturn,
+      isBroadcastActive: true,
+      broadcastInfo: { title: 'Lecture Slides', teacherEmail: 'teacher@school.edu' },
+      liveFrame: 'https://storage.googleapis.com/bucket/slide.jpg?t=1700000',
+      frameUpdatedAt: 1700000,
+      hasNewFrame: true,
+      isRefreshing: false,
+      refreshStatus: 'idle',
+      connectionState: 'connected',
+      refreshFrame: refreshMock,
+    };
+
+    render(<StudentView user={mockUser} />);
+
+    const refreshBtn = await screen.findByRole('button', { name: /Refresh Slide \(New slide available\)/i });
+    fireEvent.click(refreshBtn);
+    expect(refreshMock).toHaveBeenCalledTimes(1);
   });
 
   it('allows manual preloading of Gemma intent model from setup hero', async () => {

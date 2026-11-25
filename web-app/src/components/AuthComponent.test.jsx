@@ -433,6 +433,52 @@ describe('AuthComponent Component', () => {
       expect(screen.getByAltText('Desktop Login QR Code')).toBeInTheDocument();
     });
   });
+
+  it('does not auto-retry initiateDesktopLoginSession in a loop when initiation fails', async () => {
+    vi.spyOn(browserDetection, 'isHandheldPhone').mockReturnValue(false);
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { httpsCallable } = await import('firebase/functions');
+    const failingFn = vi.fn().mockRejectedValue(new Error('Service unavailable'));
+    vi.mocked(httpsCallable).mockImplementation(() => failingFn);
+
+    render(<AuthComponent />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Service unavailable/i)).toBeInTheDocument();
+    });
+
+    await new Promise((r) => setTimeout(r, 30));
+    expect(failingFn).toHaveBeenCalledTimes(1);
+    errSpy.mockRestore();
+  });
+
+  it('does not auto-reinitialize QR session in a loop once session status becomes expired', async () => {
+    vi.spyOn(browserDetection, 'isHandheldPhone').mockReturnValue(false);
+    let snapshotCb = null;
+    const { onSnapshot } = await import('firebase/firestore');
+    vi.mocked(onSnapshot).mockImplementation((ref, cb) => {
+      snapshotCb = cb;
+      return vi.fn();
+    });
+    const { httpsCallable } = await import('firebase/functions');
+    const expiringFn = vi.fn().mockResolvedValue({
+      data: { sessionId: 'sess-exp-1', expiresAtMillis: Date.now() + 60000 },
+    });
+    vi.mocked(httpsCallable).mockImplementation(() => expiringFn);
+
+    render(<AuthComponent />);
+
+    await waitFor(() => {
+      expect(snapshotCb).toBeTruthy();
+    });
+    snapshotCb({ exists: () => true, data: () => ({ status: 'expired' }) });
+
+    await waitFor(() => {
+      expect(screen.getByText(/QR Code Expired/i)).toBeInTheDocument();
+    });
+    await new Promise((r) => setTimeout(r, 30));
+    expect(expiringFn).toHaveBeenCalledTimes(1);
+  });
 });
 
 

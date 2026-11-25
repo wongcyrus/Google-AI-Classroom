@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { db, functions, auth } from '../../firebase-config';
-import { doc, onSnapshot, setDoc } from 'firebase/firestore';
+import { doc, setDoc } from 'firebase/firestore';
+import { subscribeDocShared } from '../../utils/sharedFirestoreListeners';
 import { httpsCallable } from 'firebase/functions';
 import { signOut } from 'firebase/auth';
 import { useStudentClassSchedule } from '../../hooks/useStudentClassSchedule';
@@ -26,12 +27,18 @@ export default function StudentMobileView({
   // Real-time listener for student's registered mobile passkey
   useEffect(() => {
     if (!user?.uid) return;
-    const unsub = onSnapshot(doc(db, `studentPasskeys/${user.uid}`), (snap) => {
-      setHasRegisteredPasskey(snap.exists());
-    }, (err) => {
-      console.warn('[StudentMobileView] passkey status listener warning:', err);
-      setHasRegisteredPasskey(false);
-    });
+    const unsub = subscribeDocShared(
+      db,
+      `studentPasskeys/${user.uid}`,
+      (snap) => {
+        setHasRegisteredPasskey(snap.exists());
+      },
+      (err) => {
+        console.warn('[StudentMobileView] passkey status listener warning:', err);
+        setHasRegisteredPasskey(false);
+      },
+      () => doc(db, `studentPasskeys/${user.uid}`)
+    );
     return () => unsub();
   }, [user?.uid]);
 
@@ -151,6 +158,12 @@ export default function StudentMobileView({
     isBroadcastActive,
     broadcastInfo,
     liveFrame,
+    frameUpdatedAt,
+    hasNewFrame,
+    isRefreshing,
+    refreshStatus,
+    refreshFrame,
+    handleFrameLoadError,
     connectionState,
     joinBroadcast,
   } = useTeacherScreenBroadcastStudent({
@@ -326,6 +339,18 @@ export default function StudentMobileView({
   const [enrolledBingoChallenges, setEnrolledBingoChallenges] = useState({});
   const [activeClassBingo, setActiveClassBingo] = useState(null);
 
+  const userClassesRef = useRef(userClasses);
+  userClassesRef.current = userClasses;
+  const activeClassRef = useRef(activeClass);
+  activeClassRef.current = activeClass;
+
+  const bingoClassIdsKey = useMemo(() => {
+    if (userClasses && userClasses.length > 0) {
+      return Array.from(new Set(userClasses.map(c => typeof c === 'string' ? c : c.id).filter(Boolean))).join(',');
+    }
+    return activeClass || '';
+  }, [userClasses, activeClass]);
+
   // Subscribe to student's private properties for active Bingo challenges from any enrolled class
   useEffect(() => {
     if (!user?.uid) {
@@ -334,67 +359,78 @@ export default function StudentMobileView({
       return;
     }
 
+    const classIdsToListen = bingoClassIdsKey ? bingoClassIdsKey.split(',').filter(Boolean) : [];
+    const currentUserClasses = userClassesRef.current || [];
+
     const unsubs = [];
-    const classIdsToListen = (userClasses && userClasses.length > 0)
-      ? Array.from(new Set(userClasses.map(c => typeof c === 'string' ? c : c.id).filter(Boolean)))
-      : (activeClass ? [activeClass] : []);
-
     classIdsToListen.forEach(cId => {
-      const classObj = userClasses?.find(c => (typeof c === 'string' ? c : c.id) === cId);
+      const classObj = currentUserClasses.find(c => (typeof c === 'string' ? c : c.id) === cId);
       const cName = typeof classObj === 'string' ? classObj : (classObj?.name || cId);
-      const studentPropsRef = doc(db, 'classes', cId, 'studentProperties', user.uid);
 
-      const unsub = onSnapshot(studentPropsRef, (docSnap) => {
-        if (docSnap.exists()) {
-          const data = docSnap.data();
-          let bingo = data.activeBingo;
-          if (!bingo && data['activeBingo.status']) {
-            bingo = {
-              status: data['activeBingo.status'],
-              result: data['activeBingo.result'],
-            };
-          }
+      const unsub = subscribeDocShared(
+        db,
+        `classes/${cId}/studentProperties/${user.uid}`,
+        (docSnap) => {
+          const currentActive = activeClassRef.current;
+          if (docSnap.exists()) {
+            const data = docSnap.data();
+            let bingo = data.activeBingo;
+            if (!bingo && data['activeBingo.status']) {
+              bingo = {
+                status: data['activeBingo.status'],
+                result: data['activeBingo.result'],
+              };
+            }
 
-          // Passkey attendance requires the student to be physically seated at their lab PC
-          // and scan the QR code displayed on the desktop screen using their phone camera.
-          // Never pop up mobile_passkey bingo in mobile view to prevent remote absent students from faking attendance.
-          if (bingo && bingo.questionSource === 'mobile_passkey') {
-            setEnrolledBingoChallenges(prev => {
-              if (!prev[cId]) return prev;
-              const next = { ...prev };
-              delete next[cId];
-              return next;
-            });
-            if (cId === activeClass) setActiveClassBingo(null);
-            return;
-          }
-
-          // Must be unfinalized and pending/active
-          if (bingo && (bingo.status === 'pending' || bingo.status === 'active') && (!bingo.result || bingo.result === 'pending')) {
-            const totalSeconds = bingo.timeLimitSeconds || 45;
-            const expiresAt = bingo.expiresAtMillis || (bingo.issuedAtMillis ? bingo.issuedAtMillis + totalSeconds * 1000 : null);
-            if (expiresAt && expiresAt <= Date.now()) {
+            // Passkey attendance requires the student to be physically seated at their lab PC
+            // and scan the QR code displayed on the desktop screen using their phone camera.
+            // Never pop up mobile_passkey bingo in mobile view to prevent remote absent students from faking attendance.
+            if (bingo && bingo.questionSource === 'mobile_passkey') {
               setEnrolledBingoChallenges(prev => {
                 if (!prev[cId]) return prev;
                 const next = { ...prev };
                 delete next[cId];
                 return next;
               });
-              if (cId === activeClass) setActiveClassBingo(null);
+              if (cId === currentActive) setActiveClassBingo(null);
               return;
             }
 
-            const challenge = {
-              ...bingo,
-              classId: bingo.classId || cId,
-              className: cName,
-            };
+            // Must be unfinalized and pending/active
+            if (bingo && (bingo.status === 'pending' || bingo.status === 'active') && (!bingo.result || bingo.result === 'pending')) {
+              const totalSeconds = bingo.timeLimitSeconds || 45;
+              const expiresAt = bingo.expiresAtMillis || (bingo.issuedAtMillis ? bingo.issuedAtMillis + totalSeconds * 1000 : null);
+              if (expiresAt && expiresAt <= Date.now()) {
+                setEnrolledBingoChallenges(prev => {
+                  if (!prev[cId]) return prev;
+                  const next = { ...prev };
+                  delete next[cId];
+                  return next;
+                });
+                if (cId === currentActive) setActiveClassBingo(null);
+                return;
+              }
 
-            setEnrolledBingoChallenges(prev => ({
-              ...prev,
-              [cId]: challenge,
-            }));
-            if (cId === activeClass) setActiveClassBingo(challenge);
+              const challenge = {
+                ...bingo,
+                classId: bingo.classId || cId,
+                className: cName,
+              };
+
+              setEnrolledBingoChallenges(prev => ({
+                ...prev,
+                [cId]: challenge,
+              }));
+              if (cId === currentActive) setActiveClassBingo(challenge);
+            } else {
+              setEnrolledBingoChallenges(prev => {
+                if (!prev[cId]) return prev;
+                const next = { ...prev };
+                delete next[cId];
+                return next;
+              });
+              if (cId === currentActive) setActiveClassBingo(null);
+            }
           } else {
             setEnrolledBingoChallenges(prev => {
               if (!prev[cId]) return prev;
@@ -402,27 +438,21 @@ export default function StudentMobileView({
               delete next[cId];
               return next;
             });
-            if (cId === activeClass) setActiveClassBingo(null);
+            if (cId === currentActive) setActiveClassBingo(null);
           }
-        } else {
-          setEnrolledBingoChallenges(prev => {
-            if (!prev[cId]) return prev;
-            const next = { ...prev };
-            delete next[cId];
-            return next;
-          });
-          if (cId === activeClass) setActiveClassBingo(null);
-        }
-      }, (err) => {
-        console.warn(`[StudentMobileView] Error subscribing to studentProperties for ${cId}:`, err);
-      });
+        },
+        (err) => {
+          console.warn(`[StudentMobileView] Error subscribing to studentProperties for ${cId}:`, err);
+        },
+        () => doc(db, 'classes', cId, 'studentProperties', user.uid)
+      );
       unsubs.push(unsub);
     });
 
     return () => {
       unsubs.forEach(u => u());
     };
-  }, [userClasses, user?.uid, activeClass]);
+  }, [bingoClassIdsKey, user?.uid]);
 
   const activeBingo = useMemo(() => {
     let candidate = null;
@@ -680,7 +710,9 @@ export default function StudentMobileView({
                   src={liveFrame}
                   alt="Live Teacher Screen"
                   className="mobile-live-screen-img"
+                  fetchPriority="high"
                   draggable={false}
+                  onError={handleFrameLoadError}
                   style={{
                     transform: `translate(${panOffset.x}px, ${panOffset.y}px) scale(${zoomScale})`,
                   }}
@@ -697,18 +729,46 @@ export default function StudentMobileView({
                     <span className={`pill-dot ${isBroadcastActive ? 'dot-active' : 'dot-idle'}`} />
                     <span>{isBroadcastActive ? 'Screen Live' : 'Screen Idle'}</span>
                   </div>
+                  {isBroadcastActive && refreshFrame && (
+                    <button
+                      type="button"
+                      className="mobile-overlay-btn mobile-refresh-btn"
+                      onClick={refreshFrame}
+                      disabled={isRefreshing}
+                      aria-label="Check for Slide"
+                    >
+                      {isRefreshing ? '⏳ Checking...' : '🔄 Load Slide'}
+                    </button>
+                  )}
                 </div>
               )}
 
-              {/* Top Overlay Bar: Resolution & Zoom Controls */}
+              {/* Top Overlay Bar: Resolution, Slide Refresh & Zoom Controls */}
               {liveFrame && (
                 <div className="mobile-screen-overlay-bar">
                   <div className="stream-badge-info">
                     <span className="live-dot" />
                     <span className="badge-text">SCREEN LIVE</span>
                     <span className="res-tag">{broadcastInfo?.resolution?.toUpperCase() || '1080P'}</span>
+                    {frameUpdatedAt && (
+                      <span className="res-tag">
+                        {new Date(frameUpdatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    )}
                   </div>
                   <div className="zoom-actions">
+                    {refreshFrame && (
+                      <button
+                        type="button"
+                        className={`mobile-overlay-btn mobile-refresh-btn ${hasNewFrame ? 'has-update' : ''} ${refreshStatus === 'up_to_date' && !hasNewFrame ? 'up-to-date' : ''}`}
+                        onClick={refreshFrame}
+                        disabled={isRefreshing}
+                        title={hasNewFrame ? 'New slide available — tap to load' : 'Refresh slide'}
+                        aria-label={hasNewFrame ? 'Refresh Slide (New slide available)' : 'Refresh Slide'}
+                      >
+                        {isRefreshing ? '⏳' : hasNewFrame ? '🔄 New' : refreshStatus === 'up_to_date' ? '✓ Latest' : '🔄 Refresh'}
+                      </button>
+                    )}
                     {zoomScale > 1 && (
                       <button type="button" className="mobile-overlay-btn" onClick={resetZoom} title="Reset Zoom" aria-label="Reset Zoom">
                         1x

@@ -205,6 +205,7 @@ describe('onLectureVideoFinalized Unit Tests', () => {
           metadata: expect.objectContaining({
             metadata: expect.objectContaining({
               hasCuesIndex: 'true',
+              isRemuxOverwrite: 'true',
               durationSeconds: '2211',
               firebaseStorageDownloadTokens: 'existing-token-123',
             }),

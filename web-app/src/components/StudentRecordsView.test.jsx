@@ -44,6 +44,7 @@ vi.mock('firebase/firestore', () => ({
   collection: vi.fn((db, ...path) => ({ path: path.join('/') })),
   query: vi.fn((...args) => ({ args })),
   where: vi.fn((field, op, val) => ({ field, op, val })),
+  limit: vi.fn((n) => ({ limit: n })),
   getDoc: (...args) => mockGetDoc(...args),
   getDocs: (...args) => mockGetDocs(...args),
   onSnapshot: (...args) => mockOnSnapshot(...args),
@@ -2953,6 +2954,64 @@ describe('StudentRecordsView Component', () => {
       expect(screen.getByText(/Solid code snippets and verifiable commit hashes provided\./i)).toBeInTheDocument();
       expect(screen.getByText(/Configured Firebase Genkit flows/i)).toBeInTheDocument();
     });
+  });
+
+  it('cancels in-flight tasks snapshot async subscription when unmounted before getDoc resolves', async () => {
+    let resolveDelayedSubmission;
+    mockGetDoc.mockImplementation((docRef) => {
+      if (docRef?.path?.includes('/submissions/')) {
+        return new Promise((resolve) => {
+          resolveDelayedSubmission = resolve;
+        });
+      }
+      if (docRef?.path?.includes('studentProfiles')) {
+        return Promise.resolve({
+          exists: () => true,
+          data: () => ({ classes: ['CLASS_A'] }),
+        });
+      }
+      return Promise.resolve({
+        id: 'CLASS_A',
+        exists: () => true,
+        data: () => ({ name: 'Class A' }),
+      });
+    });
+
+    mockGetDocs.mockResolvedValue({ docs: [] });
+
+    const subUnsub = vi.fn();
+    const tasksUnsub = vi.fn();
+    mockOnSnapshot.mockImplementation((target, callback) => {
+      const path = target?.path || '';
+      if (path.endsWith('/tasks')) {
+        callback({
+          docs: [{ id: 'task_race_1', data: () => ({ title: 'Lab Race', status: 'published' }) }],
+        });
+        return tasksUnsub;
+      }
+      return subUnsub;
+    });
+
+    const { unmount } = render(<StudentRecordsView user={mockUser} />);
+
+    await waitFor(() => {
+      expect(typeof resolveDelayedSubmission).toBe('function');
+    });
+
+    const snapshotsBeforeUnmount = mockOnSnapshot.mock.calls.length;
+    unmount();
+
+    // Resolve the pending submission getDoc AFTER unmount
+    await act(async () => {
+      resolveDelayedSubmission({
+        id: mockUser.uid,
+        exists: () => true,
+        data: () => ({ status: 'submitted' }),
+      });
+    });
+
+    expect(tasksUnsub).toHaveBeenCalled();
+    expect(mockOnSnapshot.mock.calls.length).toBe(snapshotsBeforeUnmount);
   });
 });
 

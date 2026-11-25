@@ -174,6 +174,7 @@ export async function handleLectureVideoFinalized(event, overrides = {}) {
     const updatedCustomMetadata = {
       ...(storageMeta?.metadata || {}),
       hasCuesIndex: 'true',
+      isRemuxOverwrite: 'true',
       durationSeconds: String(Math.round(durationSec || Number(storageMeta?.metadata?.durationSeconds || 0))),
       firebaseStorageDownloadTokens: token,
     };

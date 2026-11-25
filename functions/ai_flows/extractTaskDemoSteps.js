@@ -1,9 +1,12 @@
 import { onCall, HttpsError } from 'firebase-functions/v2/https';
+import { getFirestore } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
 import { CORS_ORIGINS, FUNCTION_REGION } from './config.js';
 import { generateWithResilience } from './analysisFlows.js';
 import { logJob } from './jobLogger.js';
-import { calculateCost } from './cost.js';
+import { calculateCost, estimateCost } from './cost.js';
+import { checkQuota } from './quotaManagement.js';
+import { assertTeacherInClass } from './authHelpers.js';
 
 export const handleExtractTaskDemoSteps = async ({
   classId,
@@ -81,6 +84,29 @@ Return ONLY the raw JSON object. Do not wrap in markdown code blocks (\`\`\`json
   if (resolvedVideoUri) {
     promptParts.push({ media: { url: resolvedVideoUri, contentType: 'video/mp4' } });
   }
+
+  if (classId && classId !== 'unknown_class') {
+    const estCost = estimateCost(
+      metaPrompt,
+      resolvedVideoUri ? [{ media: { url: resolvedVideoUri, contentType: 'video/mp4' } }] : [],
+      preferredModel
+    );
+    const hasQuota = await checkQuota(classId, estCost);
+    if (!hasQuota) {
+      await logJob({
+        classId,
+        jobType: 'extractTaskDemoSteps',
+        status: 'blocked-by-quota',
+        promptText: metaPrompt,
+        mediaPaths: demoVideoPath ? [demoVideoPath] : [],
+        cost: 0,
+        modelUsed: preferredModel,
+        errorDetails: 'Class AI quota exceeded.',
+      }).catch(() => {});
+      throw new HttpsError('resource-exhausted', 'Class AI quota exceeded for task demo rubric extraction.');
+    }
+  }
+
   const generateConfig = {
     prompt: promptParts,
     config: {
@@ -190,6 +216,12 @@ export const extractTaskDemoSteps = onCall(
       throw new HttpsError('unauthenticated', 'The function must be called while authenticated.');
     }
     const { classId, demoVideoPath, promptGuidelines, promptText, maxScore, model } = request.data || {};
+    await assertTeacherInClass(
+      request.auth,
+      classId,
+      getFirestore(),
+      'Only teachers assigned to this class can extract task rubric steps.'
+    );
     return await handleExtractTaskDemoSteps({
       classId,
       demoVideoPath,

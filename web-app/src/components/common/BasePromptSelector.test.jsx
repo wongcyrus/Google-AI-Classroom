@@ -117,7 +117,7 @@ describe('BasePromptSelector Component', () => {
     fireEvent.click(fullReviewBtn);
 
     expect(screen.getByText(/🔍 Prompt Review: Public Prompt/i)).toBeInTheDocument();
-    const closeBtn = screen.getByRole('button', { name: 'Close' });
+    const closeBtn = screen.getAllByRole('button', { name: 'Close' })[0];
     fireEvent.click(closeBtn);
     expect(screen.queryByText(/🔍 Prompt Review: Public Prompt/i)).not.toBeInTheDocument();
   });

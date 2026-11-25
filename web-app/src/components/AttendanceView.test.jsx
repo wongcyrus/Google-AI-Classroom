@@ -27,6 +27,7 @@ vi.mock('firebase/firestore', () => ({
   collection: vi.fn(),
   query: vi.fn(),
   where: vi.fn(),
+  limit: vi.fn(),
   getDocs: (...args) => mockGetDocs(...args),
 }));
 
@@ -38,6 +39,7 @@ vi.mock('firebase/storage', () => ({
 describe('AttendanceView Component Suite', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.setItem('teacher_privacy_mode', 'false');
   });
 
   it('renders attendance table and lesson data when lesson document exists', async () => {
@@ -128,7 +130,7 @@ describe('AttendanceView Component Suite', () => {
     expect(screen.getByText('Good session overall')).toBeInTheDocument();
     expect(screen.getByText('Keep active')).toBeInTheDocument();
 
-    const closeBtn = screen.getByRole('button', { name: 'Close' });
+    const closeBtn = screen.getAllByRole('button', { name: 'Close' })[0];
     fireEvent.click(closeBtn);
     expect(screen.queryByText(/AI Analysis for alice@school.edu/i)).not.toBeInTheDocument();
 

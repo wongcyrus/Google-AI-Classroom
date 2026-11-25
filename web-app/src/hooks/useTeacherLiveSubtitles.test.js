@@ -421,6 +421,26 @@ describe('useTeacherLiveSubtitles Hook', () => {
     );
   });
 
+  it('does not write { active: false } on mount/unmount when subtitles were never enabled', () => {
+    const { unmount, rerender } = renderHook(
+      ({ enabled }) =>
+        useTeacherLiveSubtitles({
+          classId: 'CLASS_TEST_101',
+          teacherUid: 'teacher_1',
+          teacherEmail: 'teacher@vtc.edu.hk',
+          enabled,
+        }),
+      { initialProps: { enabled: false } }
+    );
+
+    expect(mockSetDoc).not.toHaveBeenCalled();
+    rerender({ enabled: false });
+    expect(mockSetDoc).not.toHaveBeenCalled();
+
+    unmount();
+    expect(mockSetDoc).not.toHaveBeenCalled();
+  });
+
   it('resumes suspended AudioContext automatically during audio initialization', async () => {
     const mockResume = vi.fn().mockResolvedValue();
     class MockSuspendedAudioContext {

@@ -88,9 +88,23 @@ describe('Attendance Calculation Logic (functions/attendance/index.mjs)', () => 
   });
 
   describe('getAttendanceData Callable Function', () => {
+    const teacherAuth = { uid: 't1', token: { role: 'teacher', email: 't1@vtc.edu.hk' } };
+
+    it('throws unauthenticated error when request.auth is missing', async () => {
+      await expect(
+        getAttendanceData({
+          data: {
+            classId: 'c1',
+            startTime: '2026-08-29T09:00:00Z',
+            endTime: '2026-08-29T11:00:00Z',
+          },
+        })
+      ).rejects.toThrow('User must be authenticated.');
+    });
+
     it('throws invalid-argument error when required parameters are missing', async () => {
-      await expect(getAttendanceData({ data: {} })).rejects.toThrow('classId');
-      await expect(getAttendanceData({ data: { classId: 'c1' } })).rejects.toThrow('startTime');
+      await expect(getAttendanceData({ auth: teacherAuth, data: {} })).rejects.toThrow('classId');
+      await expect(getAttendanceData({ auth: teacherAuth, data: { classId: 'c1' } })).rejects.toThrow('startTime');
     });
 
     it('throws not-found when class document does not exist', async () => {
@@ -98,6 +112,7 @@ describe('Attendance Calculation Logic (functions/attendance/index.mjs)', () => 
 
       await expect(
         getAttendanceData({
+          auth: teacherAuth,
           data: {
             classId: 'non_existent',
             startTime: '2026-08-29T09:00:00Z',
@@ -107,15 +122,61 @@ describe('Attendance Calculation Logic (functions/attendance/index.mjs)', () => 
       ).rejects.toThrow('not found');
     });
 
+    it('throws permission-denied for students and unrelated teachers not assigned to the class', async () => {
+      mockDoc.get.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({
+          ownerUid: 't1',
+          teachers: { t1: 't1@vtc.edu.hk' },
+          teacherEmails: ['t1@vtc.edu.hk'],
+          students: { s1: 'alice@vtc.edu.hk' },
+        }),
+      });
+
+      await expect(
+        getAttendanceData({
+          auth: { uid: 's1', token: { role: 'student', email: 'alice@vtc.edu.hk' } },
+          data: {
+            classId: 'c1',
+            startTime: '2026-08-29T09:00:00Z',
+            endTime: '2026-08-29T10:00:00Z',
+          },
+        })
+      ).rejects.toThrow('Only teachers assigned to this class');
+
+      mockDoc.get.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({
+          ownerUid: 't1',
+          teachers: { t1: 't1@vtc.edu.hk' },
+          teacherEmails: ['t1@vtc.edu.hk'],
+          students: { s1: 'alice@vtc.edu.hk' },
+        }),
+      });
+
+      await expect(
+        getAttendanceData({
+          auth: { uid: 'other_teacher', token: { role: 'teacher', email: 'other@vtc.edu.hk' } },
+          data: {
+            classId: 'c1',
+            startTime: '2026-08-29T09:00:00Z',
+            endTime: '2026-08-29T10:00:00Z',
+          },
+        })
+      ).rejects.toThrow('Only teachers assigned to this class');
+    });
+
     it('returns empty array if calculated lesson duration is <= 0', async () => {
       mockDoc.get.mockResolvedValueOnce({
         exists: true,
         data: () => ({
+          ownerUid: 't1',
           students: { s1: 'alice@vtc.edu.hk' },
         }),
       });
 
       const res = await getAttendanceData({
+        auth: teacherAuth,
         data: {
           classId: 'c1',
           startTime: '2026-08-29T11:00:00Z',
@@ -131,6 +192,7 @@ describe('Attendance Calculation Logic (functions/attendance/index.mjs)', () => 
       mockDoc.get.mockResolvedValueOnce({
         exists: true,
         data: () => ({
+          ownerUid: 't1',
           students: {
             uid1: 'alice@vtc.edu.hk',
             uid2: 'bob@vtc.edu.hk',
@@ -183,6 +245,7 @@ describe('Attendance Calculation Logic (functions/attendance/index.mjs)', () => 
       mockDoc.set.mockResolvedValueOnce({});
 
       const res = await getAttendanceData({
+        auth: teacherAuth,
         data: {
           classId: 'c1',
           startTime: '2026-08-29T09:00:00Z',
@@ -205,6 +268,7 @@ describe('Attendance Calculation Logic (functions/attendance/index.mjs)', () => 
       mockDoc.get.mockResolvedValueOnce({
         exists: true,
         data: () => ({
+          ownerUid: 't1',
           students: {
             u1: 'student1@vtc.edu.hk',
           },
@@ -263,6 +327,7 @@ describe('Attendance Calculation Logic (functions/attendance/index.mjs)', () => 
       mockDoc.set.mockResolvedValueOnce({});
 
       const res = await getAttendanceData({
+        auth: teacherAuth,
         data: {
           classId: 'c1',
           startTime: '2026-08-29T09:00:00Z',
@@ -286,6 +351,7 @@ describe('Attendance Calculation Logic (functions/attendance/index.mjs)', () => 
       mockDoc.get.mockResolvedValueOnce({
         exists: true,
         data: () => ({
+          ownerUid: 't1',
           students: {
             uid1: 'alice@vtc.edu.hk',
           },
@@ -336,6 +402,7 @@ describe('Attendance Calculation Logic (functions/attendance/index.mjs)', () => 
       });
 
       const res = await getAttendanceData({
+        auth: teacherAuth,
         data: {
           classId: 'c1',
           startTime: '2026-08-29T09:00:00Z',
@@ -410,11 +477,14 @@ describe('Attendance Calculation Logic (functions/attendance/index.mjs)', () => 
       expect(bitmask[24]).toBe(1);
     });
 
+    const teacherAuth = { uid: 't1', token: { role: 'teacher', email: 't1@vtc.edu.hk' } };
+
     it('caps reconstructed attendance and AI working time to physical video duration based on capture interval', async () => {
       // 1. Mock class doc
       mockDoc.get.mockResolvedValueOnce({
         exists: true,
         data: () => ({
+          ownerUid: 't1',
           students: {
             shortUid: 'short@vtc.edu.hk',
           },
@@ -467,6 +537,7 @@ describe('Attendance Calculation Logic (functions/attendance/index.mjs)', () => 
       });
 
       const res = await getAttendanceData({
+        auth: teacherAuth,
         data: {
           classId: 'c1',
           startTime: '2026-10-08T07:00:00Z',
@@ -496,6 +567,7 @@ describe('Attendance Calculation Logic (functions/attendance/index.mjs)', () => 
       mockDoc.get.mockResolvedValueOnce({
         exists: true,
         data: () => ({
+          ownerUid: 't1',
           frameRate: 10,
           students: {
             student10: 's10@vtc.edu.hk',
@@ -543,6 +615,7 @@ describe('Attendance Calculation Logic (functions/attendance/index.mjs)', () => 
       });
 
       const res = await getAttendanceData({
+        auth: teacherAuth,
         data: {
           classId: 'c1',
           startTime: '2026-10-08T07:00:00Z',
@@ -561,6 +634,7 @@ describe('Attendance Calculation Logic (functions/attendance/index.mjs)', () => 
       mockDoc.get.mockResolvedValueOnce({
         exists: true,
         data: () => ({
+          ownerUid: 't1',
           students: {
             sPermanent: 'perm@vtc.edu.hk',
           },
@@ -604,6 +678,7 @@ describe('Attendance Calculation Logic (functions/attendance/index.mjs)', () => 
       });
 
       const res = await getAttendanceData({
+        auth: teacherAuth,
         data: {
           classId: 'c1',
           startTime: '2026-10-08T07:00:00Z',
@@ -625,6 +700,7 @@ describe('Attendance Calculation Logic (functions/attendance/index.mjs)', () => 
       mockDoc.get.mockResolvedValueOnce({
         exists: true,
         data: () => ({
+          ownerUid: 't1',
           students: {
             sFlagged: 'flagged@vtc.edu.hk',
           },
@@ -677,6 +753,7 @@ describe('Attendance Calculation Logic (functions/attendance/index.mjs)', () => 
       });
 
       const res = await getAttendanceData({
+        auth: teacherAuth,
         data: {
           classId: 'c1',
           startTime: '2026-10-08T07:00:00Z',
@@ -696,6 +773,7 @@ describe('Attendance Calculation Logic (functions/attendance/index.mjs)', () => 
       mockDoc.get.mockResolvedValueOnce({
         exists: true,
         data: () => ({
+          ownerUid: 't1',
           students: {
             uidLate: 'late@vtc.edu.hk',
           },
@@ -737,6 +815,7 @@ describe('Attendance Calculation Logic (functions/attendance/index.mjs)', () => 
       });
 
       const res = await getAttendanceData({
+        auth: teacherAuth,
         data: {
           classId: 'c1',
           startTime: '2026-10-08T07:00:00Z',

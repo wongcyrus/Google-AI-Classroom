@@ -1,5 +1,5 @@
 import React from 'react';
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import Modal from './Modal';
 import DateRangeFilter from './DateRangeFilter';
@@ -92,6 +92,14 @@ describe('Shared UI Components & Views', () => {
   });
 
   describe('StudentsGrid Component', () => {
+    beforeEach(() => {
+      localStorage.setItem('teacher_privacy_mode', 'false');
+    });
+
+    afterEach(() => {
+      localStorage.removeItem('teacher_privacy_mode');
+    });
+
     const mockStudents = [
       { id: 's1', email: 's1@school.edu', isSharing: true },
       { id: 's2', email: 's2@school.edu', isSharing: false },

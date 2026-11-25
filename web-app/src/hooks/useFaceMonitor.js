@@ -239,6 +239,10 @@ export const useFaceMonitor = ({
   const [isCalibrated, setIsCalibrated] = useState(false);
   const [activeViolation, setActiveViolation] = useState(null);
 
+  const userUid = user?.uid || '';
+  const userEmail = user?.email || '';
+  const userDisplayName = user?.displayName || '';
+
   const landmarkerRef = useRef(null);
   const requestAnimationRef = useRef(null);
   const videoFrameCallbackIdRef = useRef(null);
@@ -246,6 +250,34 @@ export const useFaceMonitor = ({
   const baselineOffsetRef = useRef({ yaw: 0, pitch: 0 });
   const rawYawRef = useRef(0);
   const rawPitchRef = useRef(0);
+
+  // Throttling, deduplication & incident retry backoff refs
+  const lastMetricsSyncRef = useRef(0);
+  const lastFaceStatusRef = useRef('normal');
+  const activeViolationRef = useRef(null);
+  const incidentFailCountRef = useRef(0);
+  const incidentNextRetryAtRef = useRef(0);
+  const incidentPermanentErrorRef = useRef(false);
+
+  const updateFaceStatus = useCallback((nextStatus) => {
+    if (lastFaceStatusRef.current !== nextStatus) {
+      lastFaceStatusRef.current = nextStatus;
+      setFaceStatus(nextStatus);
+    }
+  }, []);
+
+  const updateActiveViolation = useCallback((nextViolation) => {
+    if (activeViolationRef.current !== nextViolation) {
+      activeViolationRef.current = nextViolation;
+      setActiveViolation(nextViolation);
+    }
+  }, []);
+
+  useEffect(() => {
+    incidentFailCountRef.current = 0;
+    incidentNextRetryAtRef.current = 0;
+    incidentPermanentErrorRef.current = false;
+  }, [activeClass, userUid, isCapturing]);
 
   // Anti-flooding / Incident session tracking refs
   const anomalyStartRef = useRef(null);
@@ -260,12 +292,14 @@ export const useFaceMonitor = ({
       yaw: rawYawRef.current || 0,
       pitch: rawPitchRef.current || 0,
     };
+    lastMetricsSyncRef.current = 0;
     setIsCalibrated(true);
     return baselineOffsetRef.current;
   }, []);
 
   const resetCalibration = useCallback(() => {
     baselineOffsetRef.current = { yaw: 0, pitch: 0 };
+    lastMetricsSyncRef.current = 0;
     setIsCalibrated(false);
   }, []);
 
@@ -309,7 +343,7 @@ export const useFaceMonitor = ({
 
     if (effectiveMode === 'disabled') {
       setClientAiStatus('disabled');
-      setFaceStatus('disabled');
+      updateFaceStatus('disabled');
       if (landmarkerRef.current) {
         try { landmarkerRef.current.close(); } catch {}
         landmarkerRef.current = null;
@@ -319,7 +353,7 @@ export const useFaceMonitor = ({
 
     if (effectiveMode === 'cloud_only') {
       setClientAiStatus('cloud_fallback');
-      setFaceStatus('cloud_fallback');
+      updateFaceStatus('cloud_fallback');
       if (landmarkerRef.current) {
         try { landmarkerRef.current.close(); } catch {}
         landmarkerRef.current = null;
@@ -364,10 +398,10 @@ export const useFaceMonitor = ({
           setFallbackReason(err?.message || 'initialization_error');
           if (isCloudFallbackAllowed) {
             setClientAiStatus('cloud_fallback');
-            setFaceStatus('cloud_fallback');
+            updateFaceStatus('cloud_fallback');
           } else {
             setClientAiStatus('unsupported');
-            setFaceStatus('unsupported');
+            updateFaceStatus('unsupported');
           }
         }
       }
@@ -394,12 +428,12 @@ export const useFaceMonitor = ({
   useEffect(() => {
     if (clientAiStatus === 'unsupported' && isCloudFallbackAllowed) {
       setClientAiStatus('cloud_fallback');
-      setFaceStatus('cloud_fallback');
+      updateFaceStatus('cloud_fallback');
     } else if (clientAiStatus === 'cloud_fallback' && !isCloudFallbackAllowed) {
       setClientAiStatus('unsupported');
-      setFaceStatus('unsupported');
+      updateFaceStatus('unsupported');
     }
-  }, [clientAiStatus, isCloudFallbackAllowed]);
+  }, [clientAiStatus, isCloudFallbackAllowed, updateFaceStatus]);
 
   // Helper: Capture a single frame from a video element as a JPEG Blob
   const grabVideoBlob = useCallback(async (videoEl) => {
@@ -424,7 +458,8 @@ export const useFaceMonitor = ({
   // Anti-flooding Incident Manager: Open Incident
   const startIncident = useCallback(async (violationType, detailsMessage) => {
     if (activeIncidentDocRef.current || isUploadingIncidentRef.current) return;
-    if (!activeClass || !user || !user.uid) return;
+    if (!activeClass || !userUid) return;
+    if (incidentPermanentErrorRef.current || Date.now() < incidentNextRetryAtRef.current) return;
     if (!isCapturing) {
       console.debug('Class is not actively capturing (test not started). Skipping irregularity incident creation.');
       return;
@@ -453,13 +488,13 @@ export const useFaceMonitor = ({
 
         const uploadPromises = [];
         if (screenBlob) {
-          const screenRef = ref(storage, `irregularities/${activeClass}/${user.uid}/${timestamp}_${incidentId}_screen.jpg`);
+          const screenRef = ref(storage, `irregularities/${activeClass}/${userUid}/${timestamp}_${incidentId}_screen.jpg`);
           uploadPromises.push(
             uploadBytes(screenRef, screenBlob).then((s) => getDownloadURL(s.ref)).then((url) => { screenUrl = url; }).catch(e => console.warn('Screen upload err:', e))
           );
         }
         if (webcamBlob) {
-          const webcamRef = ref(storage, `irregularities/${activeClass}/${user.uid}/${timestamp}_${incidentId}_webcam.jpg`);
+          const webcamRef = ref(storage, `irregularities/${activeClass}/${userUid}/${timestamp}_${incidentId}_webcam.jpg`);
           uploadPromises.push(
             uploadBytes(webcamRef, webcamBlob).then((s) => getDownloadURL(s.ref)).then((url) => { webcamUrl = url; }).catch(e => console.warn('Webcam upload err:', e))
           );
@@ -476,10 +511,10 @@ export const useFaceMonitor = ({
       // Create exactly 1 initial document in Firestore
       const docRef = await addDoc(collection(db, 'irregularities'), {
         classId: activeClass,
-        studentUid: user.uid,
-        studentEmail: user.email || '',
-        email: user.email || '',
-        studentName: user.displayName || user.email || '',
+        studentUid: userUid,
+        studentEmail: userEmail,
+        email: userEmail,
+        studentName: userDisplayName || userEmail,
         type: violationType,
         message: detailsMessage,
         status: 'active',
@@ -492,6 +527,8 @@ export const useFaceMonitor = ({
         imageUrl: webcamUrl || screenUrl || null,
       });
 
+      incidentFailCountRef.current = 0;
+      incidentNextRetryAtRef.current = 0;
       activeIncidentDocRef.current = {
         id: docRef.id,
         type: violationType,
@@ -500,10 +537,23 @@ export const useFaceMonitor = ({
       console.log(`✅ Irregularity Incident recorded to Firestore [ID: ${docRef.id}]`);
     } catch (err) {
       console.error('Error starting incident:', err);
+      const errCode = String(err?.code || '').toLowerCase();
+      const errMsg = String(err?.message || '');
+      if (
+        errCode === 'permission-denied' ||
+        errCode === 'unauthenticated' ||
+        /missing or insufficient permissions|permission[- ]denied/i.test(errMsg)
+      ) {
+        incidentPermanentErrorRef.current = true;
+      } else {
+        incidentFailCountRef.current += 1;
+        const backoffMs = Math.min(60000, 5000 * (2 ** Math.min(4, incidentFailCountRef.current - 1)));
+        incidentNextRetryAtRef.current = Date.now() + backoffMs;
+      }
     } finally {
       isUploadingIncidentRef.current = false;
     }
-  }, [activeClass, grabVideoBlob, isCapturing, screenVideoRef, user, webcamVideoRef]);
+  }, [activeClass, grabVideoBlob, isCapturing, screenVideoRef, userDisplayName, userEmail, userUid, webcamVideoRef]);
 
   // Anti-flooding Incident Manager: Resolve Incident
   const resolveIncident = useCallback(async () => {
@@ -545,7 +595,7 @@ export const useFaceMonitor = ({
         const webcamBlob = await grabVideoBlob(webcamVideoRef?.current);
         if (!webcamBlob || isCancelled) return;
 
-        const tempPath = `temp_ai/fallback_${user.uid}_${Date.now()}.jpg`;
+        const tempPath = `temp_ai/fallback_${userUid}_${Date.now()}.jpg`;
         const storageRef = ref(storage, tempPath);
         await Promise.race([
           uploadBytes(storageRef, webcamBlob, { contentType: 'image/jpeg' }),
@@ -559,20 +609,20 @@ export const useFaceMonitor = ({
 
         const res = await analyzeFaceFallbackCallable({
           classId: activeClass,
-          studentUid: user.uid,
-          studentEmail: user.email || '',
+          studentUid: userUid,
+          studentEmail: userEmail,
           webcamUrl,
         });
 
         const data = res?.data || {};
         if (data.faceStatus === 'disabled') {
           setClientAiStatus('unsupported');
-          setFaceStatus('unsupported');
+          updateFaceStatus('unsupported');
         } else if (data.faceStatus === 'quota_exceeded') {
-          setFaceStatus('quota_exceeded');
+          updateFaceStatus('quota_exceeded');
         } else if (data.faceStatus === 'looking_away' || data.faceStatus === 'no_face' || data.faceStatus === 'multiple_faces') {
-          setFaceStatus(data.faceStatus);
-          setActiveViolation(data.faceStatus);
+          updateFaceStatus(data.faceStatus);
+          updateActiveViolation(data.faceStatus);
           
           const now = Date.now();
           lastAnomalyTimeRef.current = now;
@@ -585,8 +635,8 @@ export const useFaceMonitor = ({
             }
           }
         } else if (data.faceStatus === 'normal') {
-          setFaceStatus('normal');
-          setActiveViolation(null);
+          updateFaceStatus('normal');
+          updateActiveViolation(null);
           anomalyStartRef.current = null;
           if (activeIncidentDocRef.current) {
             resolveIncident();
@@ -603,7 +653,7 @@ export const useFaceMonitor = ({
       isCancelled = true;
       clearInterval(intervalId);
     };
-  }, [clientAiStatus, isCloudFallbackAllowed, cloudFallbackRate, isCapturing, isWebcamSharing, grabVideoBlob, webcamVideoRef, user, activeClass, debounceSeconds, startIncident, resolveIncident]);
+  }, [clientAiStatus, isCloudFallbackAllowed, cloudFallbackRate, isCapturing, isWebcamSharing, grabVideoBlob, webcamVideoRef, userUid, userEmail, activeClass, debounceSeconds, startIncident, resolveIncident, updateFaceStatus, updateActiveViolation]);
 
   // Continuous Video Processing Loop (MediaPipe Client-Side WASM)
   useEffect(() => {
@@ -615,13 +665,14 @@ export const useFaceMonitor = ({
         }
       }
       if (!isClientAiAllowed) {
-        setFaceStatus(effectiveMode === 'disabled' ? 'disabled' : 'cloud_fallback');
-        setActiveViolation(null);
+        updateFaceStatus(effectiveMode === 'disabled' ? 'disabled' : 'cloud_fallback');
+        updateActiveViolation(null);
       }
       return;
     }
 
     isRunningRef.current = true;
+    lastMetricsSyncRef.current = 0;
     let lastVideoTime = -1;
     let lastDetectionTimestamp = -1;
     let frameCount = 0;
@@ -729,9 +780,11 @@ export const useFaceMonitor = ({
 
               const vp = { offsetX, offsetY, renderW, renderH };
 
+              const hasCurrentViolation = !!activeViolationRef.current;
+
               if (showMeshOverlay && results && results.faceLandmarks) {
                 for (const landmarks of results.faceLandmarks) {
-                  const isViolating = !!activeViolation;
+                  const isViolating = hasCurrentViolation;
                   const meshColor = isViolating ? 'rgba(239, 68, 68, 0.45)' : 'rgba(16, 185, 129, 0.40)';
                   const contourColor = isViolating ? 'rgba(239, 68, 68, 0.95)' : 'rgba(5, 150, 105, 0.90)';
                   const featureColor = isViolating ? '#EF4444' : '#10B981';
@@ -796,21 +849,21 @@ export const useFaceMonitor = ({
                     // Draw anchor at nose
                     ctx.beginPath();
                     ctx.arc(noseX, noseY, 3.5, 0, 2 * Math.PI);
-                    ctx.fillStyle = activeViolation ? '#DC2626' : '#10B981';
+                    ctx.fillStyle = hasCurrentViolation ? '#DC2626' : '#10B981';
                     ctx.fill();
 
                     // Draw gaze direction line
                     ctx.beginPath();
                     ctx.moveTo(noseX, noseY);
                     ctx.lineTo(targetX, targetY);
-                    ctx.strokeStyle = activeViolation ? '#EF4444' : '#10B981';
+                    ctx.strokeStyle = hasCurrentViolation ? '#EF4444' : '#10B981';
                     ctx.lineWidth = 3;
                     ctx.stroke();
 
                     // Draw pointer tip
                     ctx.beginPath();
                     ctx.arc(targetX, targetY, 5, 0, 2 * Math.PI);
-                    ctx.fillStyle = activeViolation ? '#DC2626' : '#059669';
+                    ctx.fillStyle = hasCurrentViolation ? '#DC2626' : '#059669';
                     ctx.fill();
 
                     // Draw Iris Eye-Gaze Rays from Pupils
@@ -821,13 +874,13 @@ export const useFaceMonitor = ({
                         
                         ctx.beginPath();
                         ctx.arc(px, py, 2.5, 0, 2 * Math.PI);
-                        ctx.fillStyle = activeViolation ? '#EF4444' : '#22D3EE';
+                        ctx.fillStyle = hasCurrentViolation ? '#EF4444' : '#22D3EE';
                         ctx.fill();
 
                         ctx.beginPath();
                         ctx.moveTo(px, py);
                         ctx.lineTo(px + dirX * 0.4, py + dirY * 0.4);
-                        ctx.strokeStyle = activeViolation ? '#EF4444' : '#06B6D4';
+                        ctx.strokeStyle = hasCurrentViolation ? '#EF4444' : '#06B6D4';
                         ctx.lineWidth = 1.5;
                         ctx.stroke();
                       });
@@ -839,17 +892,18 @@ export const useFaceMonitor = ({
           }
 
           // Face Presence, Orientation & MediaPipe Iris Analysis
+          const now = Date.now();
           let currentAnomaly = null;
           let detailsMessage = '';
 
           if (faces.length === 0) {
             currentAnomaly = 'no_face';
             detailsMessage = 'No student face detected in webcam frame.';
-            setFaceStatus('no_face');
+            updateFaceStatus('no_face');
           } else if (faces.length > 1) {
             currentAnomaly = 'multiple_faces';
             detailsMessage = `Multiple faces (${faces.length}) detected in frame.`;
-            setFaceStatus('multiple_faces');
+            updateFaceStatus('multiple_faces');
           } else {
             const landmarks = faces[0];
             const nose = landmarks[1];
@@ -864,6 +918,7 @@ export const useFaceMonitor = ({
 
             // MediaPipe Iris: Depth-from-Iris Distance Calculation (11.7mm constant diameter)
             let calculatedDistanceCm = 55;
+            let hasDistanceMetric = false;
             if (landmarks[469] && landmarks[471] && landmarks[474] && landmarks[476]) {
               const leftIrisPx = Math.hypot(landmarks[469].x - landmarks[471].x, landmarks[469].y - landmarks[471].y) * (video.videoWidth || 640);
               const rightIrisPx = Math.hypot(landmarks[474].x - landmarks[476].x, landmarks[474].y - landmarks[476].y) * (video.videoWidth || 640);
@@ -873,7 +928,7 @@ export const useFaceMonitor = ({
                 const focalLength = 0.85 * (video.videoWidth || 640);
                 calculatedDistanceCm = Math.round((focalLength * 1.17) / avgIrisPx);
                 calculatedDistanceCm = Math.max(15, Math.min(220, calculatedDistanceCm));
-                setMetricDistance(calculatedDistanceCm);
+                hasDistanceMetric = true;
               }
             }
 
@@ -895,14 +950,21 @@ export const useFaceMonitor = ({
               const calculatedYaw = rawYaw - (baselineOffsetRef.current?.yaw || 0);
               const calculatedPitch = rawPitch - (baselineOffsetRef.current?.pitch || 0);
 
-              setYawAngle(calculatedYaw);
-              setPitchAngle(calculatedPitch);
-
               // Calculate Eye Aspect Ratio (EAR) & Mouth Aspect Ratio (MAR)
               const ear = calculateEAR(landmarks);
               const mar = calculateMAR(landmarks);
-              setEarValue(ear);
-              setMarValue(mar);
+
+              // Throttle numeric telemetry UI state updates to <= 4Hz (immediate on first frame)
+              if (lastMetricsSyncRef.current === 0 || now - lastMetricsSyncRef.current >= 250) {
+                lastMetricsSyncRef.current = now;
+                if (hasDistanceMetric) {
+                  setMetricDistance(calculatedDistanceCm);
+                }
+                setYawAngle(calculatedYaw);
+                setPitchAngle(calculatedPitch);
+                setEarValue(ear);
+                setMarValue(mar);
+              }
 
               // MediaPipe Iris: Eye-Gaze Ratio (Iris position within eye aperture)
               let irisGazeAway = false;
@@ -927,44 +989,43 @@ export const useFaceMonitor = ({
               if (ear < 0.18) {
                 currentAnomaly = 'eyes_closed';
                 detailsMessage = `Student eyes are closed / possible drowsiness (EAR: ${ear}).`;
-                setFaceStatus('eyes_closed');
+                updateFaceStatus('eyes_closed');
               } else if (mar > 0.58) {
                 currentAnomaly = 'talking';
                 detailsMessage = `Student mouth is open / possible talking or whispering (MAR: ${mar}).`;
-                setFaceStatus('talking');
+                updateFaceStatus('talking');
               } else if (Math.abs(calculatedYaw) >= yawThresh) {
                 currentAnomaly = 'looking_away';
                 const direction = calculatedYaw > 0 ? 'right' : 'left';
                 detailsMessage = `Student is looking away to the ${direction} (Head Yaw: ${calculatedYaw}°).`;
-                setFaceStatus('looking_away');
+                updateFaceStatus('looking_away');
               } else if (calculatedPitch < pitchDownThresh) {
                 currentAnomaly = 'looking_away';
                 detailsMessage = `Student is looking down away from screen (Head Pitch: ${calculatedPitch}°).`;
-                setFaceStatus('looking_away');
+                updateFaceStatus('looking_away');
               } else if (calculatedPitch > pitchUpThresh) {
                 currentAnomaly = 'looking_away';
                 detailsMessage = `Student is looking up away from screen (Head Pitch: ${calculatedPitch}°).`;
-                setFaceStatus('looking_away');
+                updateFaceStatus('looking_away');
               } else if (irisGazeAway) {
                 currentAnomaly = 'looking_away';
                 detailsMessage = `Student eye gaze is directed to the ${irisDirection} off-screen (Iris Gaze Shift).`;
-                setFaceStatus('looking_away');
+                updateFaceStatus('looking_away');
               } else if (calculatedDistanceCm > 140) {
                 currentAnomaly = 'looking_away';
                 detailsMessage = `Student is too far away from desk/camera (Distance: ~${calculatedDistanceCm} cm).`;
-                setFaceStatus('looking_away');
+                updateFaceStatus('looking_away');
               } else if (calculatedDistanceCm < 20) {
                 currentAnomaly = 'looking_away';
                 detailsMessage = `Student is excessively close to camera lens (Distance: ~${calculatedDistanceCm} cm).`;
-                setFaceStatus('looking_away');
+                updateFaceStatus('looking_away');
               } else {
-                setFaceStatus('normal');
+                updateFaceStatus('normal');
               }
             }
           }
 
           // Anti-Jitter Debounce Gate Logic with 600ms Grace Window
-          const now = Date.now();
           if (currentAnomaly) {
             lastAnomalyTimeRef.current = now;
             if (!anomalyStartRef.current || anomalyStartRef.current.type !== currentAnomaly) {
@@ -972,7 +1033,7 @@ export const useFaceMonitor = ({
             } else {
               const elapsedSeconds = (now - anomalyStartRef.current.startTime) / 1000;
               if (elapsedSeconds >= debounceSeconds) {
-                setActiveViolation(currentAnomaly);
+                updateActiveViolation(currentAnomaly);
                 startIncident(currentAnomaly, detailsMessage);
               }
             }
@@ -981,7 +1042,7 @@ export const useFaceMonitor = ({
             const timeSinceLastAnomaly = now - (lastAnomalyTimeRef.current || 0);
             if (timeSinceLastAnomaly > 600) {
               anomalyStartRef.current = null;
-              setActiveViolation(null);
+              updateActiveViolation(null);
               if (activeIncidentDocRef.current) {
                 resolveIncident();
               }
@@ -1020,7 +1081,7 @@ export const useFaceMonitor = ({
         resolveIncident();
       }
     };
-  }, [clientAiStatus, customPitchDownAngle, customPitchUpAngle, customYawAngle, debounceSeconds, effectiveMode, gazeSensitivity, isClientAiAllowed, isWebcamSharing, overlayCanvasRef, resolveIncident, showMeshOverlay, startIncident, webcamVideoRef]);
+  }, [clientAiStatus, customPitchDownAngle, customPitchUpAngle, customYawAngle, debounceSeconds, effectiveMode, gazeSensitivity, isClientAiAllowed, isWebcamSharing, overlayCanvasRef, resolveIncident, showMeshOverlay, startIncident, updateActiveViolation, updateFaceStatus, webcamVideoRef]);
 
   return {
     faceStatus,
