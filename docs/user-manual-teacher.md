@@ -1256,13 +1256,26 @@ When teaching, presenting, or reviewing supervision meetings on a projector or i
    - Clicking **`📋 Copy Minutes`** while Privacy Mode is active generates minutes with masked student names in the attendance record and student contribution headers.
    - Clicking **`📥 Export Full Matrix (.xlsx)`** or **`📥 Export Student Profiles (.xlsx)`** respects Privacy Mode, generating spreadsheets with masked student names, masked emails, and masked student IDs for privacy-compliant reporting.
 
-### 19.7 Resilient AI Analysis for Corrupted Clips & Long Sessions
+### 19.9 Resilient AI Analysis for Corrupted Clips & Long Sessions
 1. **0-Byte Corrupted File Safeguard**:
    - If an audio clip was accidentally started and stopped in under 2 seconds (creating a 0-byte `.webm` file), the backend automatically skips the empty clip. If all clips in a meeting are empty, the meeting is marked as `analysis_failed` with a clear explanation rather than throwing an unhandled error.
 2. **Long Audio (> 30 Mins) Routing to Gemini 4 Argon**:
    - Meetings with single audio clips longer than 28 minutes (`> 1700s`) automatically route to **`gemini-4-argon`**, bypassing the 45,000-token audio limit of `gemini-3.5-transcribe-preview` and eliminating false-positive safety blocks on Cantonese discussions.
 3. **9-Minute Extended Execution Windows**:
    - Cloud Functions Gen 2 and client callable timeouts are extended to 540 seconds (9 minutes) to support complete transcription, diarization, and grading of 60-minute capstone meetings in a single pass.
+
+### 19.10 Supervisor Performance Analytics & Gemini Teacher Evaluation (`?tab=meetings&subview=supervisors`)
+Course coordinators and supervisors can audit consultation time, speaking balance, and coaching quality across all teachers in the class by clicking **`👨‍🏫 Supervisor Performance`** in the top view-mode bar of **`👥 Project Meetings`**:
+1. **Consultation Duration & Diarized Speaking Breakdown**:
+   - Computes each supervisor's **Total Consultation Time** (`audioClips[].durationSeconds`), **Avg Duration / Group Session**, **Weekly Group Coverage %** (flagging unmet `0m` groups and short `< 5m` sessions), and **Diarized Speaking Breakdown (`👨‍🏫 Supervisor` vs. `🧑‍🎓 Students`)** from `transcriptSegments[]`.
+   - Supports filtering by **📅 Week Scope** (`All Recorded Weeks` vs. single week), **🎯 Time Attribution** (`Actual Recording Supervisor` by clip recorder vs. `Assigned Primary Group Supervisor`), and **👨‍🏫 Supervisor Matrix Filter**.
+   - Displays only clean supervisor display names (no email addresses shown in the UI or Excel export) and hides the Recording Studio card so analytics appear at the top of the viewport.
+2. **Gemini Teacher Performance Evaluator (`🤖 Evaluate with Gemini` / `🤖 Evaluate All Teachers with Gemini`)**:
+   - Invokes `analyzeProjectMeeting` (`mode: 'evaluate_supervisor_performance'`) in [`functions/ai_flows/projectMeetingFlows.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/projectMeetingFlows.js), which reads the supervisor's already-diarized `Supervisor` turns, extracted `supervisorFeedback`, `keyDecisions`, `blockersAndRisks`, and assigned student `actionItemsNextWeek` without re-transcribing audio, and stores the evaluation in `classes/{classId}/supervisorEvaluations/{supervisorKey}`.
+   - Scores each teacher on **Useful Instruction & Advice (`instructionAndAdviceScore /10`)**, **Project Group Management (`groupManagementScore /10`)**, and **Overall Score (`/10`)**, and assigns a **Coaching Style** badge (`🌟 Active Technical Mentor`, `✅ Structured Manager`, `🟡 Brief Check-In`, or `🔴 Passive / Roll-Call Only`).
+3. **Expandable Teacher Advice & Management Dossier (`🔍 View Advice & Dossier`) & Excel Export**:
+   - Opens an inline dossier displaying Gemini's **Executive Verdict**, **✅ Key Coaching Strengths**, **⚠️ Group Management Gaps**, **🎙️ Verified Useful Instructions (with `[MM:SS]` timestamps)**, **📁 Per-Group Quality Assessments**, and **📋 Recorded Consultation Evidence by Group & Week** with 1-click **`🎧 Open in Studio`** buttons.
+   - Click **`📥 Export Supervisor Performance (.xlsx)`** to download the full spreadsheet including Gemini scores, coaching style, executive verdict, and the Group $\times$ Week consultation matrix.
 
 ---
 

@@ -435,24 +435,81 @@ Click the sub-tab **`📋 Weekly Logs (Form Responses 2)`** to review your submi
 
 ## Part 5B: Course Coordinator View — "👨‍🏫 Supervisor Performance" & Gemini Teacher Evaluation (`?tab=meetings&subview=supervisors`)
 
-Course coordinators and instructors can trace how long each supervisor consults with their project groups and evaluate whether each teacher provides useful technical instruction/advice and active group management by clicking the **`👨‍🏫 Supervisor Performance`** button in [`ProjectMeetingsView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/meetings/ProjectMeetingsView.jsx):
+Course coordinators and instructors can trace how long each supervisor consults with their project groups and evaluate whether each teacher provides useful technical instruction/advice and active group management by clicking the **`👨‍🏫 Supervisor Performance`** button in [`ProjectMeetingsView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/meetings/ProjectMeetingsView.jsx) (or navigating directly to `/class/:classId?tab=meetings&subview=supervisors`).
 
-1. **Dual Time Measurement (Consultation Duration + Diarized Speaking Time)**:
-   - **Total Consultation Time (`audioClips[].durationSeconds`)**: Measures the total valid recorded meeting time with each group per week and cumulatively across the semester, attributing multi-part clips either to the **Actual Recording Supervisor (`recordedByEmail`)** or the **Assigned Primary Group Supervisor**.
-   - **Diarized Supervisor Speaking Time vs. Student Speaking Time (`transcriptSegments[]`)**: Parses Gemini's speaker-diarized turns (`Supervisor` vs. students) to display a stacked visual bar of **👨‍🏫 Supervisor Speaking Time (`%`)** vs. **🧑‍🎓 Student Speaking Time (`%`)**, total turn counts, and substantive coaching turns.
-2. **Gemini Teacher Performance Evaluation (`mode: 'evaluate_supervisor_performance'`)**:
-   - Click **`🤖 Evaluate with Gemini`** on any supervisor row (or **`🤖 Evaluate All Teachers with Gemini`** in the top bar) to invoke `analyzeProjectMeeting` (`handleEvaluateSupervisorPerformance` in [`functions/ai_flows/projectMeetingFlows.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/projectMeetingFlows.js)).
-   - Gemini (`gemini-3.8-flash` / `gemini-4-argon`) reads the supervisor's already-diarized `Supervisor` turns, extracted `supervisorFeedback`, `keyDecisions`, `blockersAndRisks`, and assigned student `actionItemsNextWeek` across all their meetings (without re-transcribing audio) and persists a structured evaluation to `classes/{classId}/supervisorEvaluations/{supervisorKey}`:
-     - **`instructionAndAdviceScore` (`/10`)**: Evaluates whether the teacher provides concrete, actionable architectural, coding, UI/UX, and testing advice rather than superficial remarks.
-     - **`groupManagementScore` (`/10`)**: Evaluates whether the teacher verifies attendance and real work, identifies blockers, steers key decisions, and assigns concrete next-week tasks.
-     - **`coachingStyle`**: Classifies the teacher as `🌟 Active Technical Mentor`, `✅ Structured Manager`, `🟡 Brief Check-In`, or `🔴 Passive / Roll-Call Only`.
-     - **Expandable Teacher Advice & Management Dossier (`🔍 View Advice & Dossier`)**: Displays Gemini's executive verdict, coaching strengths, management gaps, timestamped useful instruction quotes (`[MM:SS]`), per-group quality assessments, and raw consultation evidence with 1-click **`🎧 Open in Studio`** links.
-3. **Supervisor Leaderboard & Group Coverage**:
-   - Compares supervisors by **Groups Met / Assigned (`Coverage %`)**, **Total Consultation Time**, **Avg Duration / Session**, **Supervisor vs. Student Talk Ratio**, **Gemini Teacher Score (`/10`)**, and **Per-Week Consultation Totals**, highlighting any unmet groups (`0m`) or short sessions (`< 5m`).
-4. **Interactive Group $\times$ Week Consultation Matrix & 1-Click Drill-Down**:
-   - Color-codes every Group $\times$ Week cell (`🟢 >= 15m Thorough`, `🟡 5–14m Moderate`, `🔴 < 5m Short`, `⚪ 0m Not Recorded`) with total duration, supervisor speaking time, and recording supervisor name.
-   - Clicking any cell jumps directly into that meeting's recording and diarized transcript in the Studio Inspector.
-   - Click **`📥 Export Supervisor Performance (.xlsx)`** to download the complete supervisor summary (including Gemini scores, coaching style, and executive verdict) and group-by-week consultation matrix.
+### 5B.1 Architectural Design & Zero-Audio-Re-Ingestion Gemini Pipeline
+
+```mermaid
+flowchart LR
+    subgraph FS ["1. Existing Firestore Records (No Audio Re-Ingestion)"]
+        PG["classes/{classId}/projectGroups\n• Assigned Supervisor & Co-Supervisors\n• Project Topic & Roster"]
+        PM["classes/{classId}/projectMeetings\n• audioClips[].durationSeconds & recordedByEmail\n• transcriptSegments[] (Supervisor vs. Student turns)\n• keyInsights (supervisorFeedback, keyDecisions, blockersAndRisks)\n• studentContributions[].actionItemsNextWeek"]
+    end
+
+    subgraph Client ["2. Client Analytics (projectGroupUtils.js)"]
+        CSA["computeSupervisorPerformanceAnalytics()\n• Canonical Supervisor Name Resolution (No Emails Shown)\n• Total Consultation Time & Group Coverage %\n• Diarized Supervisor vs. Student Speaking Time (%)\n• Coaching Evidence Extraction (Advice, Decisions, Tasks)"]
+    end
+
+    subgraph Cloud ["3. Gemini Teacher Evaluator (projectMeetingFlows.js)"]
+        CF["analyzeProjectMeeting\nmode: 'evaluate_supervisor_performance'\n(handleEvaluateSupervisorPerformance)"]
+        GEM["Gemini 3.8 Flash / Gemini 4 Argon\n(JSON Schema Evaluation)"]
+        SE["classes/{classId}/supervisorEvaluations/{supKey}\n• instructionAndAdviceScore (/10)\n• groupManagementScore (/10)\n• overallScore (/10) & coachingStyle\n• executiveVerdict, strengths[], managementGaps[]\n• usefulInstructionsEvidence[] ([MM:SS] quotes)\n• groupEvaluations[]"]
+    end
+
+    PG --> CSA
+    PM --> CSA
+    PG --> CF
+    PM --> CF
+    CF --> GEM --> SE
+    SE --> CSA
+```
+
+1. **Privacy-Clean Identity Resolution (`computeSupervisorPerformanceAnalytics` in [`projectGroupUtils.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/utils/projectGroupUtils.js#L2255-L2790))**:
+   - Normalizes supervisor identities by email internally (splitting shared group labels like `"Kitson Cheung / Elka Leung"` into individual supervisor rows) while displaying **only clean supervisor display names** (never exposing raw email addresses in the UI or Excel export).
+   - Automatically hides the top Recording Studio and Weekly Log sync bar when `subViewMode === 'supervisors'` so the Supervisor Performance dashboard opens immediately at the top of the viewport.
+2. **Dual Time & Participation Measurement**:
+   - **Total Consultation Duration (`audioClips[].durationSeconds`)**: Sums valid recorded consultation clips per group and week. Supports two attribution modes:
+     - **`🎙️ Actual Recording Supervisor (By Audio Clip Recorder)`**: Credits each audio clip to `c.recordedByEmail` so multi-supervisor sessions accurately credit the teacher who recorded each part.
+     - **`📁 Assigned Primary Group Supervisor`**: Credits the full consultation duration to the group's primary assigned supervisor.
+   - **Diarized Speaking Time Breakdown (`computeMeetingDiarizedTalkStats`)**: Parses `transcriptSegments[]` (`[MM:SS]` `startTime` $\to$ `endTime`) to separate **`👨‍🏫 Supervisor`** speaking seconds/turns (including substantive coaching turns $\ge 30$ chars) from **`🧑‍🎓 Student`** speaking seconds/turns.
+3. **Zero-Re-Transcription Gemini Teacher Evaluation (`handleEvaluateSupervisorPerformance` in [`functions/ai_flows/projectMeetingFlows.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/projectMeetingFlows.js#L493-L838))**:
+   - Because Stage 1 and Stage 2 have already transcribed and diarized every meeting, evaluating a teacher's performance does **not** re-process raw audio files.
+   - Instead, `handleEvaluateSupervisorPerformance` builds a compact multi-meeting text dossier (up to 25 meetings per supervisor, including consultation duration, attendance ratio, group health status, extracted `supervisorFeedback`, `keyDecisions`, `blockersAndRisks`, assigned student `actionItemsNextWeek` count, and up to 15 verbatim `Supervisor` spoken turns per meeting) and sends it to **`gemini-3.8-flash`** (or **`gemini-4-argon`**) with `responseMimeType: 'application/json'`.
+   - Completes in **~3–5 seconds** per teacher at **~$0.002** in text tokens and persists the evaluation to `classes/{classId}/supervisorEvaluations/{supervisorKey}` (protected by teacher-only access in [`firestore.rules`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/firestore.rules#L331-L333)).
+
+### 5B.2 Step-by-Step: How to Use Supervisor Performance & Gemini Teacher Evaluation
+
+1. **Open the Supervisor Performance Dashboard**:
+   - Navigate to **`👥 Project Meetings`** in your class and click **`👨‍🏫 Supervisor Performance (N)`** in the top view-mode bar (or visit `/class/:classId?tab=meetings&subview=supervisors`).
+2. **Configure Scope & Attribution Filters**:
+   - **📅 Week Scope**: Choose **`🌐 All Recorded Weeks`** for cumulative semester analytics or select a specific **`📅 Week W Only`**.
+   - **🎯 Time Attribution**: Toggle between **`🎙️ Actual Recording Supervisor`** and **`📁 Assigned Primary Group Supervisor`**.
+   - **👨‍🏫 Filter Matrix by Supervisor**: Select a specific supervisor (or click any row in the leaderboard table) to filter the Group $\times$ Week matrix below.
+3. **Review Class-Wide KPI Cards & Supervisor Leaderboard**:
+   - Inspect top-level KPIs: **👨‍🏫 Active Supervisors**, **⏱️ Total Consultation Time**, **📊 Avg Time / Group Meeting** ($\ge 15\text{m}$ thorough, $<5\text{m}$ flagged short), **🗣️ Supervisor Speaking Time & Talk Share %**, and **✅ Weekly Group Coverage %**.
+   - In **Section 1 (Supervisor Consultation Duration & Speaking Time Comparison)**, compare each supervisor's **Groups Met / Assigned (`Coverage %`)**, **Unmet Groups (`⚠️ Unmet`)**, **Sessions & Clips**, **Total & Average Consultation Time**, **Diarized Speaking Breakdown bar (`👨‍🏫 Sup` vs. `🧑‍🎓 Stu`)**, and **Per-Week Consultation Totals**.
+4. **Run Gemini Teacher Performance Evaluation**:
+   - **Evaluate a Single Teacher**: Click **`🤖 Evaluate with Gemini`** (or **`🔄 Re-Evaluate`**) in the **`🎓 Gemini Teacher Evaluation & Advice Quality`** column for any supervisor.
+   - **Evaluate All Teachers in 1 Click**: Click **`🤖 Evaluate All Teachers with Gemini`** in the top header card to sequentially evaluate every active supervisor in the class.
+   - **Select AI Model**: Use the Gemini model selector (`gemini-3.8-flash` or `gemini-4-argon`) to choose the reasoning model used for evaluation.
+   - Once evaluated, the leaderboard cell displays:
+     - **Overall Score (`⭐ X.X/10`)**, **Instruction & Advice Score (`💡 X.X/10`)**, and **Group Management Score (`📋 X.X/10`)**.
+     - **Coaching Style Badge**:
+       - `🌟 Active Technical Mentor` — Provides deep, tailored architectural, coding, and testing guidance.
+       - `✅ Structured Manager` — Tracks deliverables, decisions, and student action items systematically.
+       - `🟡 Brief Check-In` — Conducts short status checks with limited technical depth.
+       - `🔴 Passive / Roll-Call Only` — Minimal supervisor speech, superficial remarks, or unaddressed group risks.
+     - **Extracted Coaching Counts**: `💡 N advice • 🎯 N decisions • 📋 N tasks`.
+5. **Inspect the Expandable Teacher Instruction, Advice & Group Management Dossier**:
+   - Click **`🔍 View Advice & Dossier`** on any supervisor row to open the detailed dossier panel below the leaderboard table:
+     - **Score Strip & Executive Verdict**: Displays Overall Score (`/10`), Useful Instruction & Advice (`/10`), Project Group Management (`/10`), and Gemini's 2–3 sentence executive assessment.
+     - **✅ Key Coaching Strengths & ⚠️ Group Management Gaps**: Bulleted strengths citing specific groups/weeks alongside actionable management gaps (e.g., short check-ins or `at_risk` groups needing deeper follow-up).
+     - **🎙️ Verified Useful Instructions & Technical Advice (With Timestamps)**: Concrete examples of technical advice given by the supervisor, tagged with `📁 Group • Wk W [MM:SS]`.
+     - **📁 Per-Group Instruction & Management Assessment**: Cards for each supervised group showing `Advice: high/moderate/low`, `Mgmt: high/moderate/low`, and a group-specific coaching verdict.
+     - **📋 Recorded Consultation Evidence by Group & Week**: Lists every recorded session for that supervisor with consultation duration, supervisor speaking time, extracted advice, key decisions, verbatim spoken turns (`[MM:SS]`), and a **`🎧 Open in Studio`** button.
+6. **Drill Down from the Group $\times$ Week Heatmap Matrix or Export to Excel**:
+   - In **Section 2 (Group $\times$ Week Consultation Duration & Supervisor Talk-Time Matrix)**, every cell is color-coded (`🟢 >=15m Thorough`, `🟡 5–14m Moderate`, `🔴 <5m Short`, `⚪ 0m Not Recorded`). Click any recorded week cell to jump straight into that meeting's audio player and diarized transcript in Studio.
+   - Click **`📥 Export Supervisor Performance (.xlsx)`** in the header to download a complete Excel report containing both **SUPERVISOR SUMMARY** rows (including Gemini Overall, Instruction & Advice, and Group Management scores, Coaching Style, Advice/Task counts, and Executive Verdict) and **GROUP BREAKDOWN** rows across all weeks.
 
 ---
 

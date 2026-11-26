@@ -1007,6 +1007,33 @@ The platform decouples **Authority/Origin** (`isSystem` and `owner`) from **Visi
 - **Step-by-Step Breakdown Checklist:** Green checkmarks for verified criteria, red cross for missed steps, with evidence rationale and clickable timecode links to review the student's submission video.
 
 ---
+
+## 21. Project Group Meetings — Supervisor Performance & Gemini Teacher Evaluation
+**Primary Sources:** [`ProjectMeetingsView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/meetings/ProjectMeetingsView.jsx), [`projectGroupUtils.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/utils/projectGroupUtils.js), [`projectMeetingFlows.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/projectMeetingFlows.js)
+
+### 21.1 View Mode & Filter Controls (`?tab=meetings&subview=supervisors`)
+- **`👨‍🏫 Supervisor Performance (N)` Sub-View Button:** Switches `ProjectMeetingsView` to the Supervisor Performance workspace and hides the top Recording Studio & Weekly Log sync bar so analytics appear at the top of the page.
+- **`🤖 Evaluate All Teachers with Gemini` Button:** Sequentially runs `analyzeProjectMeeting` (`mode: 'evaluate_supervisor_performance'`) across all active supervisors in the class.
+- **`📥 Export Supervisor Performance (.xlsx)` Button:** Exports supervisor summary rows (including Gemini scores, coaching style, and executive verdict) and Group $\times$ Week consultation breakdown rows to Excel.
+- **Filter Bar:**
+  - **`📅 Week Scope` Select (`#sup-perf-week-filter`):** Filters analytics by `🌐 All Recorded Weeks` or any individual recorded `📅 Week W Only`.
+  - **`🎯 Time Attribution` Select (`#sup-perf-attribution-mode`):** Toggles between `🎙️ Actual Recording Supervisor (By Audio Clip Recorder)` and `📁 Assigned Primary Group Supervisor`.
+  - **`👨‍🏫 Filter Matrix by Supervisor` Select (`#sup-perf-supervisor-select`):** Filters the Group $\times$ Week matrix to a specific supervisor.
+
+### 21.2 Supervisor Leaderboard, Gemini Evaluation Column & Expandable Dossier
+- **Top KPI Summary Cards (5 Cards):** Active Supervisors, Total Consultation Time, Avg Time / Group Meeting, Diarized Supervisor Speaking Time (`%`), and Weekly Group Coverage (`%`).
+- **Supervisor Comparison Leaderboard Table:**
+  - Displays clean supervisor display names (no email addresses), Groups Met / Assigned (`Coverage %` + `⚠️ Unmet` groups), Sessions & Clips (`<5m` short warning count), Total & Average Consultation Time, Diarized Speaking Breakdown bar (`👨‍🏫 Sup` vs. `🧑‍🎓 Stu` + substantive turn count), Per-Week Consultation Totals, and AI/Email status.
+  - **`🎓 Gemini Teacher Evaluation & Advice Quality` Column:**
+    - Displays `⭐ {overallScore}/10`, Coaching Style badge (`🌟 Active Technical Mentor`, `✅ Structured Manager`, `🟡 Brief Check-In`, `🔴 Passive / Roll-Call Only`), `💡 Instruction: X/10 • 📋 Management: Y/10`, executive verdict preview, and extracted counts (`💡 advice • 🎯 decisions • 📋 tasks`).
+    - **`🤖 Evaluate with Gemini` / `🔄 Re-Evaluate` Button:** Evaluates or re-evaluates that specific teacher via Gemini and persists to `classes/{classId}/supervisorEvaluations/{supervisorKey}`.
+    - **`🔍 View Advice & Dossier` / `🔼 Hide Dossier` Button:** Toggles the expandable **🎓 Teacher Instruction, Advice & Group Management Dossier** panel.
+- **Expandable Teacher Dossier Panel (`[data-testid="supervisor-gemini-dossier"]`):**
+  - Displays Overall, Instruction & Advice, and Group Management score cards, Gemini Executive Verdict, **✅ Key Coaching Strengths**, **⚠️ Group Management Gaps**, **🎙️ Verified Useful Instructions & Technical Advice (With `[MM:SS]` Timestamps)**, **📁 Per-Group Instruction & Management Assessment** cards, and **📋 Recorded Consultation Evidence by Group & Week** with **`🎧 Open in Studio`** drill-down buttons.
+- **Group $\times$ Week Consultation Duration & Talk-Time Matrix:**
+  - Color-coded cells (`🟢 >=15m Thorough`, `🟡 5–14m Moderate`, `🔴 <5m Short`, `⚪ 0m Not Recorded`) showing consultation duration, diarized supervisor speaking time, and recording supervisor name; clicking any recorded cell opens that session in the Studio Inspector.
+
+---
 *Catalog Version: 2026.4.0 &bull; Platform: Google AI Classroom &bull; Audited from Source Code*
 
 ---
