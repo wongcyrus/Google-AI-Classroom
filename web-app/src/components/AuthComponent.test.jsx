@@ -287,7 +287,7 @@ describe('AuthComponent Component', () => {
 
     await waitFor(() => {
       expect(sendPasswordResetEmail).toHaveBeenCalledWith(expect.anything(), 'teacher@vtc.edu.hk');
-      expect(screen.getByText(/Password reset email sent\. Please check your inbox\./i)).toBeInTheDocument();
+      expect(screen.getByText(/Password reset email sent\. Please check your inbox \(and Junk \/ Spam folder\)\./i)).toBeInTheDocument();
     });
   });
 
@@ -303,7 +303,7 @@ describe('AuthComponent Component', () => {
     fireEvent.click(resendBtn);
     await waitFor(() => {
       expect(sendEmailVerification).toHaveBeenCalledWith(mockUnverified);
-      expect(screen.getByText(/A new verification email has been sent\. Please check your inbox\./i)).toBeInTheDocument();
+      expect(screen.getByText(/A new verification email has been sent\. Please check your inbox \(and Junk \/ Spam folder\)\./i)).toBeInTheDocument();
     });
   });
 

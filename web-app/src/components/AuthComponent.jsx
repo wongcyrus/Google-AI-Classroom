@@ -87,7 +87,7 @@ const AuthComponent = ({ unverifiedUser }) => {
       await sendEmailVerification(userCredential.user);
       // Immediately sign out unverified account so that subsequent sign-in is clean and triggers auth observers
       await signOut(auth);
-      setMessage('Registration successful. A verification email has been sent. Please check your email inbox, verify your account, and then sign in.');
+      setMessage('Registration successful. A verification email has been sent. Please check your email inbox (and Junk / Spam folder), verify your account, and then sign in.');
     } catch (err) {
       if (err.code === 'auth/too-many-requests') {
         setError('Too many requests. Please wait a moment before trying again.');
@@ -142,7 +142,7 @@ const AuthComponent = ({ unverifiedUser }) => {
 
       if (loggedInUser && !loggedInUser.emailVerified) {
         setLocalUnverifiedUser(loggedInUser);
-        setError('Please verify your email address before logging in. Check your inbox for the verification email.');
+        setError('Please verify your email address before logging in. Check your inbox (and Junk / Spam folder) for the verification email.');
         await signOut(auth);
         return;
       }
@@ -176,7 +176,7 @@ const AuthComponent = ({ unverifiedUser }) => {
       setError('');
       try {
         await sendEmailVerification(targetUser);
-        setMessage('A new verification email has been sent. Please check your inbox.');
+        setMessage('A new verification email has been sent. Please check your inbox (and Junk / Spam folder).');
         setCooldown(60);
       } catch (err) {
         if (err.code === 'auth/too-many-requests') {
@@ -205,7 +205,7 @@ const AuthComponent = ({ unverifiedUser }) => {
 
     try {
       await sendPasswordResetEmail(auth, email.trim());
-      setMessage('Password reset email sent. Please check your inbox.');
+      setMessage('Password reset email sent. Please check your inbox (and Junk / Spam folder).');
     } catch (err) {
       if (err.code === 'auth/too-many-requests') {
         setError('Too many requests. Please wait a moment before trying again.');
