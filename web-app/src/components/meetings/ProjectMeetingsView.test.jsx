@@ -2030,4 +2030,159 @@ Group Beta,New Beta Topic,other@vtc.edu.hk,eva@stu.vtc.edu.hk,Eva Ho,Leader`;
     expect(screen.getByText(/Week 11 Overview/i)).toBeInTheDocument();
     expect(screen.getByText(/⚪ Not recorded/i)).toBeInTheDocument();
   });
+
+  it('renders Supervisor Performance view, filters by week/attribution/supervisor, exports Excel, and drills down to Studio', async () => {
+    mockGroupsSnapshotDocs = [
+      {
+        id: 'grp_a01',
+        data: () => ({
+          id: 'grp_a01',
+          name: 'A01',
+          projectTopic: 'AI Cloud Assistant',
+          supervisorName: 'Kitson Cheung',
+          supervisorEmail: 'kcheung@vtc.edu.hk',
+          members: [{ uid: 's1', email: 'alice@stu.vtc.edu.hk', name: 'Alice' }],
+        }),
+      },
+      {
+        id: 'grp_a03',
+        data: () => ({
+          id: 'grp_a03',
+          name: 'A03',
+          projectTopic: 'Smart Robotics',
+          supervisorName: 'James Chan',
+          supervisorEmail: 'james.chan@vtc.edu.hk',
+          members: [{ uid: 's2', email: 'bob@stu.vtc.edu.hk', name: 'Bob' }],
+        }),
+      },
+    ];
+
+    mockMeetingsSnapshotDocs = [
+      {
+        id: 'mtg_a01_wk12',
+        data: () => ({
+          id: 'mtg_a01_wk12',
+          groupId: 'grp_a01',
+          groupName: 'A01',
+          weekNumber: 12,
+          title: 'Week 12 Sprint Review',
+          supervisorName: 'Kitson Cheung',
+          supervisorEmail: 'kcheung@vtc.edu.hk',
+          analyzedAt: '2026-11-19T04:00:00Z',
+          audioClips: [
+            {
+              clipId: 'c1',
+              durationSeconds: 1200,
+              recordedByEmail: 'kcheung@vtc.edu.hk',
+              storagePath: 'a01_w12.webm',
+            },
+          ],
+          transcriptSegments: [
+            { startTime: '00:00', endTime: '04:00', speaker: 'Supervisor', text: 'Architecture review.' },
+            { startTime: '04:00', endTime: '12:00', speaker: 'Alice', text: 'Implemented backend API.' },
+          ],
+        }),
+      },
+    ];
+
+    render(
+      <ProjectMeetingsView
+        classId="it114115-fyp-2627"
+        classInfo={{ name: 'FYP', teacherEmails: ['kcheung@vtc.edu.hk', 'james.chan@vtc.edu.hk'] }}
+        user={{ uid: 't_1', email: 'kcheung@vtc.edu.hk', displayName: 'Kitson Cheung' }}
+      />
+    );
+
+    // Switch to Supervisor Performance view
+    const supBtn = screen.getByRole('button', { name: /👨‍🏫 Supervisor Performance/i });
+    fireEvent.click(supBtn);
+
+    expect(screen.getByTestId('supervisor-performance-view')).toBeInTheDocument();
+    expect(
+      screen.getByText(/Supervisor Performance, Useful Instruction & Group Management Analytics/i)
+    ).toBeInTheDocument();
+
+    // Check KPI and leaderboard rows
+    expect(screen.getAllByText(/Kitson Cheung/i).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText(/James Chan/i).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText(/20m 00s/i).length).toBeGreaterThanOrEqual(1);
+
+    // Open Teacher Advice & Management Dossier and trigger Gemini Teacher Evaluation
+    const dossierBtns = screen.getAllByRole('button', { name: /🔍 View Advice & Dossier/i });
+    fireEvent.click(dossierBtns[0]);
+    expect(screen.getByTestId('supervisor-gemini-dossier')).toBeInTheDocument();
+
+    mockHttpsCallable.mockResolvedValueOnce({
+      data: {
+        success: true,
+        mode: 'evaluate_supervisor_performance',
+        evaluation: {
+          supervisorKey: 'kcheung@vtc.edu.hk',
+          supervisorEmail: 'kcheung@vtc.edu.hk',
+          supervisorName: 'Kitson Cheung',
+          overallScore: 9.0,
+          instructionAndAdviceScore: 9.2,
+          groupManagementScore: 8.8,
+          coachingStyle: 'active_technical_mentor',
+          executiveVerdict: 'Provides concrete architecture advice and tracks deliverables.',
+          strengths: ['Detailed architecture review in Week 12'],
+          managementGaps: [],
+          usefulInstructionsEvidence: [
+            {
+              groupName: 'A01',
+              weekNumber: 12,
+              timestamp: '00:00',
+              quoteOrSummary: 'Architecture review.',
+            },
+          ],
+          groupEvaluations: [
+            {
+              groupName: 'A01',
+              instructionQuality: 'high',
+              managementQuality: 'high',
+              verdict: 'Well managed group.',
+            },
+          ],
+        },
+      },
+    });
+
+    const evalBtns = screen.getAllByRole('button', { name: /🤖 Evaluate with Gemini/i });
+    fireEvent.click(evalBtns[0]);
+    await waitFor(() => {
+      expect(mockHttpsCallable).toHaveBeenCalledWith(
+        expect.objectContaining({
+          classId: 'it114115-fyp-2627',
+          mode: 'evaluate_supervisor_performance',
+          supervisorEmail: 'kcheung@vtc.edu.hk',
+        })
+      );
+    });
+    expect(
+      (await screen.findAllByText(/Provides concrete architecture advice and tracks deliverables/i))
+        .length
+    ).toBeGreaterThanOrEqual(1);
+
+    // Filter by week and attribution mode
+    fireEvent.change(screen.getByLabelText(/Filter supervisor performance by week/i), {
+      target: { value: '12' },
+    });
+    fireEvent.change(screen.getByLabelText(/Supervisor time attribution mode/i), {
+      target: { value: 'assigned_supervisor' },
+    });
+
+    // Click export button
+    fireEvent.click(
+      screen.getByRole('button', { name: /📥 Export Supervisor Performance \(\.xlsx\)/i })
+    );
+
+    // Click week cell for A01 Week 12 to drill down to Studio
+    const thoroughCell = screen.getByTitle(
+      /Click to inspect Group A01 Week 12 recording & diarized transcript/i
+    );
+    fireEvent.click(thoroughCell);
+
+    // Should return to Studio view with Week 12 Sprint Review selected
+    expect(screen.queryByTestId('supervisor-performance-view')).not.toBeInTheDocument();
+  });
 });

@@ -32,6 +32,10 @@ import {
   bootstrapProjectGroupsFromWeeklyLogs,
   mergeIncrementalStudentProfiles,
   exportStudentContributionProfilesExcel,
+  computeMeetingDiarizedTalkStats,
+  computeSupervisorPerformanceAnalytics,
+  exportSupervisorPerformanceExcel,
+  formatConsultationDuration,
 } from './projectGroupUtils';
 
 describe('projectGroupUtils', () => {
@@ -557,5 +561,171 @@ describe('projectGroupUtils', () => {
     expect(profRows[0][2]).toBe('***7062'); // Masked student ID
     expect(profRows[0][3]).toBe('C***,C**** Y****'); // Masked name
     expect(profRows[0][4]).toBe('***7062@stu.vtc.edu.hk'); // Masked email
+  });
+
+  it('computes supervisor performance analytics, diarized speaking time, recorder attribution, and Excel export', async () => {
+    mockExportToExcel.mockClear();
+
+    expect(formatConsultationDuration(0)).toBe('0m');
+    expect(formatConsultationDuration(45)).toBe('45s');
+    expect(formatConsultationDuration(125, false)).toBe('2m 05s');
+    expect(formatConsultationDuration(3725, true)).toBe('1h 2m');
+
+    const sampleGroups = [
+      {
+        id: 'grp_a01',
+        name: 'A01',
+        projectTopic: 'Cloud FinOps',
+        supervisorName: 'Kitson Cheung / Elka Leung',
+        supervisorEmail: 'kcheung@vtc.edu.hk',
+        coSupervisorEmails: ['kakaleung@vtc.edu.hk'],
+        members: [{ email: 's1@stu.vtc.edu.hk', name: 'Student 1' }],
+      },
+      {
+        id: 'grp_a09',
+        name: 'A09',
+        projectTopic: 'Edge AI Camera',
+        supervisorName: 'Elka Leung',
+        supervisorEmail: 'kakaleung@vtc.edu.hk',
+        members: [{ email: 's2@stu.vtc.edu.hk', name: 'Student 2' }],
+      },
+      {
+        id: 'grp_e01',
+        name: 'E01',
+        projectTopic: 'Smart Grid',
+        supervisorName: 'Kitson Cheung',
+        supervisorEmail: 'kcheung@vtc.edu.hk',
+        members: [{ email: 's3@stu.vtc.edu.hk', name: 'Student 3' }],
+      },
+    ];
+
+    const sampleMeetings = [
+      {
+        id: 'mtg_a01_wk11',
+        groupId: 'grp_a01',
+        groupName: 'A01',
+        weekNumber: 11,
+        supervisorName: 'Kitson Cheung / Elka Leung',
+        supervisorEmail: 'kcheung@vtc.edu.hk',
+        analyzedAt: '2026-11-12T05:00:00Z',
+        emailDispatch: { sentAt: '2026-11-12T06:00:00Z' },
+        audioClips: [
+          {
+            clipId: 'c1',
+            durationSeconds: 1000,
+            recordedByEmail: 'kcheung@vtc.edu.hk',
+            storagePath: 'p1.webm',
+          },
+          {
+            clipId: 'c2',
+            durationSeconds: 500,
+            recordedByEmail: 'kakaleung@vtc.edu.hk',
+            storagePath: 'p2.webm',
+          },
+        ],
+        transcriptSegments: [
+          { startTime: '00:00', endTime: '01:00', speaker: 'Supervisor', text: 'Welcome team.' },
+          { startTime: '01:00', endTime: '03:00', speaker: 'Student 1', text: 'Here is our demo.' },
+        ],
+      },
+      {
+        id: 'mtg_a09_wk11',
+        groupId: 'grp_a09',
+        groupName: 'A09',
+        weekNumber: 11,
+        supervisorName: 'Elka Leung',
+        supervisorEmail: 'kakaleung@vtc.edu.hk',
+        analyzedAt: '2026-11-12T07:00:00Z',
+        audioClips: [
+          {
+            clipId: 'c3',
+            durationSeconds: 240, // < 5 min short session
+            recordedByEmail: 'kakaleung@vtc.edu.hk',
+            storagePath: 'p3.webm',
+          },
+        ],
+        transcriptSegments: [
+          { startTime: '00:00', endTime: '00:30', speaker: 'Elka Leung', text: 'Quick check.' },
+          { startTime: '00:30', endTime: '01:30', speaker: 'Student 2', text: 'Status update.' },
+        ],
+      },
+    ];
+
+    const talkStats = computeMeetingDiarizedTalkStats(sampleMeetings[0]);
+    expect(talkStats.hasDiarization).toBe(true);
+    expect(talkStats.supervisorSpeakingSeconds).toBe(60);
+    expect(talkStats.studentSpeakingSeconds).toBe(120);
+    expect(talkStats.supervisorTalkSharePct).toBe(33);
+
+    const analytics = computeSupervisorPerformanceAnalytics({
+      groups: sampleGroups,
+      meetings: sampleMeetings,
+      weekFilter: 'all',
+      attributionMode: 'recording_supervisor',
+    });
+
+    expect(analytics.allWeeks).toEqual([11]);
+    expect(analytics.summary.totalSupervisors).toBe(2);
+    expect(analytics.summary.totalGroups).toBe(3);
+    expect(analytics.summary.totalConsultationSeconds).toBe(1740); // 1000 + 500 + 240
+    expect(analytics.summary.shortGroupWeekSlots).toBe(1); // A09 is 240s (<300s)
+    expect(analytics.summary.missedGroupWeekSlots).toBe(1); // E01 had no meeting in wk 11
+
+    const kitson = analytics.supervisors.find((s) => s.email === 'kcheung@vtc.edu.hk');
+    const elka = analytics.supervisors.find((s) => s.email === 'kakaleung@vtc.edu.hk');
+    expect(kitson.name).toBe('Kitson Cheung');
+    expect(kitson.totalConsultationSeconds).toBe(1000);
+    expect(kitson.unmetAssignedGroupNames).toEqual(['E01']);
+
+    expect(elka.name).toBe('Elka Leung');
+    expect(elka.totalConsultationSeconds).toBe(740); // 500 from A01 + 240 from A09
+    expect(elka.touchedGroupNames).toEqual(['A01', 'A09']);
+
+    // Test assigned_supervisor mode + Gemini supervisorEvaluations merge
+    const assignedAnalytics = computeSupervisorPerformanceAnalytics({
+      groups: sampleGroups,
+      meetings: sampleMeetings,
+      supervisorEvaluations: [
+        {
+          supervisorKey: 'kcheung@vtc.edu.hk',
+          supervisorEmail: 'kcheung@vtc.edu.hk',
+          supervisorName: 'Kitson Cheung',
+          overallScore: 9.1,
+          instructionAndAdviceScore: 9.3,
+          groupManagementScore: 8.9,
+          coachingStyle: 'active_technical_mentor',
+          executiveVerdict: 'Strong technical mentoring and task management.',
+        },
+      ],
+      weekFilter: 11,
+      attributionMode: 'assigned_supervisor',
+    });
+    const kitsonAssigned = assignedAnalytics.supervisors.find((s) => s.email === 'kcheung@vtc.edu.hk');
+    expect(kitsonAssigned.totalConsultationSeconds).toBe(1500);
+    expect(kitsonAssigned.geminiEvaluation).toEqual(
+      expect.objectContaining({
+        overallScore: 9.1,
+        instructionAndAdviceScore: 9.3,
+        groupManagementScore: 8.9,
+        coachingStyle: 'active_technical_mentor',
+      })
+    );
+
+    await exportSupervisorPerformanceExcel({
+      classId: 'it114115-fyp-2627',
+      analytics: assignedAnalytics,
+    });
+    expect(mockExportToExcel).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        'Record Type',
+        'Supervisor / Group',
+        'Total Consultation Time (min)',
+        'Gemini Overall Score (/10)',
+        'Instruction & Advice Score (/10)',
+        'Group Management Score (/10)',
+      ]),
+      expect.any(Array),
+      'it114115-fyp-2627_supervisor_performance_report.xlsx'
+    );
   });
 });

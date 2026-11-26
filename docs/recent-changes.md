@@ -4,6 +4,29 @@
 **System**: Google AI Classroom  
 **Production URL**: `https://it114115-2627.web.app`
 
+## 0.0.0.0.0.0.0.0.0.0.5.0 Supervisor Performance, Consultation Time & Gemini Teacher Evaluation (`ProjectMeetingsView`, `projectGroupUtils` & `projectMeetingFlows`)
+
+**Date**: November 26, 2026  
+**Status**: Implemented, Verified & Deployed to `it114115-dev-2026` & `it114115-2627`  
+**Primary Files**:
+- [`functions/ai_flows/projectMeetingFlows.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/projectMeetingFlows.js), [`firestore.rules`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/firestore.rules)
+- [`web-app/src/utils/projectGroupUtils.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/utils/projectGroupUtils.js), [`web-app/src/components/meetings/ProjectMeetingsView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/meetings/ProjectMeetingsView.jsx), & [`web-app/src/components/meetings/meetings.css`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/meetings/meetings.css)
+- [`functions/ai_flows/projectMeetingFlows.test.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/projectMeetingFlows.test.js), [`web-app/src/utils/projectGroupUtils.test.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/utils/projectGroupUtils.test.js), [`web-app/src/components/meetings/ProjectMeetingsView.test.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/meetings/ProjectMeetingsView.test.jsx)
+- [`docs/project-group-meetings-and-weekly-log-user-guide.md`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/docs/project-group-meetings-and-weekly-log-user-guide.md)
+
+### Changes:
+1. **Supervisor Performance Sub-View (`subViewMode === 'supervisors'`)**:
+   - Added the **`👨‍🏫 Supervisor Performance`** view mode in [`ProjectMeetingsView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/meetings/ProjectMeetingsView.jsx) (also deep-linkable via `?tab=meetings&subview=supervisors`) with class-wide KPI cards (Active Supervisors, Total Consultation Time, Avg Time / Group Meeting, Diarized Supervisor Speaking Time & Talk Share %, and Weekly Group Coverage %).
+   - Hid the top Recording Studio & Weekly Log sync bar when `subViewMode === 'supervisors'` so the Supervisor Performance analytics appear at the top of the page, and removed supervisor email addresses from display/export.
+2. **Gemini Teacher Performance Evaluator (`handleEvaluateSupervisorPerformance`)**:
+   - Added `mode: 'evaluate_supervisor_performance'` to `analyzeProjectMeeting` in [`functions/ai_flows/projectMeetingFlows.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/projectMeetingFlows.js) and teacher-only security rules for `classes/{classId}/supervisorEvaluations/{evalId}` in [`firestore.rules`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/firestore.rules).
+   - Evaluates each supervisor using Gemini (`gemini-3.8-flash` / `gemini-4-argon`) across their already-diarized `transcriptSegments`, `keyInsights` (`supervisorFeedback`, `keyDecisions`, `blockersAndRisks`), and assigned student `actionItemsNextWeek`, outputting `instructionAndAdviceScore` (`/10`), `groupManagementScore` (`/10`), `overallScore` (`/10`), `coachingStyle`, `executiveVerdict`, `strengths[]`, `managementGaps[]`, `usefulInstructionsEvidence[]` (with `[MM:SS]` timestamps), and `groupEvaluations[]`.
+   - Added **`🤖 Evaluate All Teachers with Gemini`**, per-supervisor **`🤖 Evaluate with Gemini`**, and the expandable **🎓 Teacher Instruction, Advice & Group Management Dossier** (`🔍 View Advice & Dossier`) in [`ProjectMeetingsView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/meetings/ProjectMeetingsView.jsx).
+3. **Diarized Speaking Breakdown & Group $\times$ Week Consultation Matrix**:
+   - Added `computeMeetingDiarizedTalkStats` and `computeSupervisorPerformanceAnalytics` in [`projectGroupUtils.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/utils/projectGroupUtils.js) to canonicalize supervisor identities, compute total consultation duration and diarized `Supervisor` vs. `Student` speaking time/turns, extract coaching evidence counts, merge `supervisorEvaluations`, and export to `.xlsx` (`exportSupervisorPerformanceExcel`).
+
+---
+
 ## 0.0.0.0.0.0.0.0.0.0.4.9 Student Voice Recording Playback & Download Removal (`StudentRecordsView` & `VideoPlayerModal`) & Frontend Coverage Expansion
 
 **Date**: November 25, 2026  

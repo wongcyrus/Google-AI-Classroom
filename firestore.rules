@@ -328,6 +328,10 @@ service cloud.firestore {
         allow create, update, delete: if isTeacherInClass(classId);
       }
 
+      match /supervisorEvaluations/{evalId} {
+        allow read, write: if isTeacherInClass(classId);
+      }
+
       match /projectMeetings/{meetingId} {
         allow read: if isTeacherInClass(classId);
         allow create, delete: if isTeacherInClass(classId);

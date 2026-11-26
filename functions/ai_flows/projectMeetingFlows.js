@@ -485,6 +485,359 @@ Respond strictly with valid JSON matching this structure:
 }
 
 /**
+ * Evaluates a teacher/supervisor's coaching, technical instruction, and group management performance
+ * across their project group meetings using Gemini (`gemini-3.8-flash` / `gemini-4-argon`).
+ * Reads already-diarized meeting transcripts (`transcriptSegments` / `rawDiarizedTranscript`),
+ * `keyInsights`, `studentContributions`, and `weeklyLogs` from Firestore without re-ingesting raw audio.
+ */
+export async function handleEvaluateSupervisorPerformance({
+  classId,
+  supervisorEmail,
+  supervisorName,
+  weekFilter = 'all',
+  preferredModel,
+  auth,
+}) {
+  if (!classId) {
+    throw new HttpsError('invalid-argument', 'Missing required "classId" parameter.');
+  }
+
+  const reasoningModel = preferredModel || DEFAULT_LECTURE_AI_MODEL || 'gemini-3.8-flash';
+  const estCost = estimateCost('Evaluate supervisor coaching and group management performance.', [], reasoningModel);
+  const hasQuota = await checkQuota(classId, estCost);
+  if (!hasQuota) {
+    throw new HttpsError('resource-exhausted', `Monthly AI quota exceeded for class ${classId}.`);
+  }
+
+  const [groupsSnap, meetingsSnap] = await Promise.all([
+    db.collection(`classes/${classId}/projectGroups`).get(),
+    db.collection(`classes/${classId}/projectMeetings`).get(),
+  ]);
+
+  const allGroups = extractQueryDocs(groupsSnap).map((d) => ({ id: d.id, ...(d.data() || {}) }));
+  const allMeetings = extractQueryDocs(meetingsSnap).map((d) => ({ id: d.id, ...(d.data() || {}) }));
+
+  const normEmail = (em) => normalizeStudentIdentity(em || '');
+  const targetSupEmail = normEmail(supervisorEmail);
+
+  // Filter meetings by weekFilter if specified
+  const targetWeekNum =
+    weekFilter !== 'all' && Number.isFinite(Number(weekFilter)) && Number(weekFilter) > 0
+      ? Number(weekFilter)
+      : null;
+
+  const groupById = new Map(allGroups.map((g) => [g.id, g]));
+
+  // Collect meetings where this supervisor recorded clips or is the meeting/group supervisor
+  const matchedMeetings = allMeetings.filter((m) => {
+    if (targetWeekNum && Number(m.weekNumber) !== targetWeekNum) return false;
+    const grp = groupById.get(m.groupId);
+    const clips = Array.isArray(m.audioClips) ? m.audioClips : [];
+    const hasValidContent =
+      clips.length > 0 ||
+      Number(m.durationSeconds) > 0 ||
+      Boolean(m.analyzedAt || m.rawDiarizedTranscript);
+    if (!hasValidContent) return false;
+
+    if (!targetSupEmail || targetSupEmail === 'all') return true;
+    const clipRecMatch = clips.some((c) => normEmail(c.recordedByEmail) === targetSupEmail);
+    const mtgSupMatch = normEmail(m.supervisorEmail) === targetSupEmail;
+    const grpSupMatch = normEmail(grp?.supervisorEmail) === targetSupEmail;
+    return clipRecMatch || mtgSupMatch || grpSupMatch;
+  });
+
+  if (matchedMeetings.length === 0) {
+    throw new HttpsError(
+      'failed-precondition',
+      `No recorded project meetings found for supervisor ${supervisorName || supervisorEmail || 'in this class'}.`
+    );
+  }
+
+  matchedMeetings.sort((a, b) => {
+    const gCmp = String(a.groupName || a.groupId || '').localeCompare(String(b.groupName || b.groupId || ''));
+    if (gCmp !== 0) return gCmp;
+    return (Number(a.weekNumber) || 0) - (Number(b.weekNumber) || 0);
+  });
+
+  const resolvedSupName =
+    supervisorName ||
+    matchedMeetings.find((m) => m.supervisorName && !m.supervisorName.includes('/'))?.supervisorName ||
+    matchedMeetings[0]?.supervisorName ||
+    supervisorEmail ||
+    'Supervisor';
+
+  // Build compact evidence packet per meeting for Gemini
+  const meetingDossiers = matchedMeetings.slice(0, 25).map((m, idx) => {
+    const grp = groupById.get(m.groupId);
+    const clips = Array.isArray(m.audioClips) ? m.audioClips : [];
+    const relevantClips = targetSupEmail && targetSupEmail !== 'all'
+      ? clips.filter((c) => !c.recordedByEmail || normEmail(c.recordedByEmail) === targetSupEmail)
+      : clips;
+    const durSec =
+      (relevantClips.length > 0 ? relevantClips : clips).reduce(
+        (s, c) => s + (Number(c.durationSeconds) || 0),
+        0
+      ) ||
+      Number(m.durationSeconds) ||
+      0;
+
+    const segments = Array.isArray(m.transcriptSegments) ? m.transcriptSegments : [];
+    const supSegments = segments.filter((seg) => {
+      const sp = String(seg?.speaker || '').toLowerCase();
+      return (
+        sp.includes('supervisor') ||
+        sp.includes('instructor') ||
+        sp.includes('teacher') ||
+        sp.includes('老師') ||
+        sp.includes('導師') ||
+        (resolvedSupName &&
+          resolvedSupName
+            .toLowerCase()
+            .split(/[/,&\s]+/)
+            .filter((t) => t.length >= 3)
+            .some((t) => sp.includes(t)))
+      );
+    });
+
+    const supTurnsLines =
+      supSegments.length > 0
+        ? supSegments
+            .slice(0, 15)
+            .map((s) => `  - [${s.startTime || '00:00'}-${s.endTime || ''}] ${s.speaker}: "${String(s.text || '').slice(0, 260)}"`)
+            .join('\n')
+        : '  - [No diarized Supervisor turns recorded in transcriptSegments]';
+
+    const feedbackList = Array.isArray(m.keyInsights?.supervisorFeedback)
+      ? m.keyInsights.supervisorFeedback.join(' | ')
+      : 'None';
+    const decisionsList = Array.isArray(m.keyInsights?.keyDecisions)
+      ? m.keyInsights.keyDecisions.join(' | ')
+      : 'None';
+    const blockersList = Array.isArray(m.keyInsights?.blockersAndRisks)
+      ? m.keyInsights.blockersAndRisks.join(' | ')
+      : 'None';
+
+    const contribs = Array.isArray(m.studentContributions) ? m.studentContributions : [];
+    const actionItemsCount = contribs.reduce(
+      (s, c) => s + (Array.isArray(c.actionItemsNextWeek) ? c.actionItemsNextWeek.length : 0),
+      0
+    );
+    const presentCount = (Array.isArray(m.attendanceRecord) ? m.attendanceRecord : []).filter(
+      (a) => a.status === 'present' || a.status === 'late'
+    ).length;
+    const rosterCount = (grp?.members || m.attendanceRecord || []).length;
+
+    return `### Meeting ${idx + 1}: Group ${m.groupName || grp?.name || m.groupId} (${grp?.projectTopic || m.projectTopic || 'Capstone'}) — Week ${m.weekNumber || 1}
+- Consultation Duration: ${formatSecondsToMmSs(durSec)} (${Math.round(durSec / 60)} min) | Attendance: ${presentCount}/${rosterCount} students
+- Group Health Status: ${m.keyInsights?.overallGroupProgress || 'unknown'} | Student Action Items Assigned: ${actionItemsCount}
+- Extracted Supervisor Advice: ${feedbackList}
+- Key Decisions Made: ${decisionsList}
+- Blockers Identified: ${blockersList}
+- Supervisor Spoken Turns (${supSegments.length} turns out of ${segments.length} total meeting turns):
+${supTurnsLines}`;
+  });
+
+  const prompt = `You are an Academic Quality Assurance Director evaluating the **Teacher / Project Supervisor Performance** of **${resolvedSupName}** (${supervisorEmail || 'Supervisor'}) across their Capstone Project (FYP) group consultations in class \`${classId}\`.
+
+## Evaluation Criteria
+Assess whether the supervisor is:
+1. **Giving Useful Technical Instruction & Advice (\`instructionAndAdviceScore\`: 0 to 10)**:
+   - Does the supervisor provide concrete, technically sound architectural, UI/UX, coding, testing, or stakeholder advice tailored to each group's topic?
+   - Or do they only make superficial remarks ("OK", "Good", roll call only) without substantive technical mentoring?
+2. **Actively Managing the Project Group (\`groupManagementScore\`: 0 to 10)**:
+   - Does the supervisor verify student attendance and real work, challenge vague or suspected AI weekly logs, identify blockers/risks, steer key decisions, and ensure every student leaves with clear next-week action items?
+   - Are \`at_risk\` or \`behind\` groups receiving active intervention and adequate consultation time, or being neglected with ultra-short (<5 min) check-ins?
+
+## Recorded Supervision Sessions for ${resolvedSupName} (${matchedMeetings.length} meetings)
+${meetingDossiers.join('\n\n')}
+
+## Output Format
+Respond strictly with valid JSON matching this exact structure:
+{
+  "instructionAndAdviceScore": 8.5,
+  "groupManagementScore": 8.0,
+  "overallScore": 8.3,
+  "coachingStyle": "active_technical_mentor",
+  "executiveVerdict": "2-3 sentence rigorous assessment of the supervisor's instruction quality, technical advice depth, and project management effectiveness across their groups.",
+  "strengths": [
+    "Concrete strength 1 citing specific groups/weeks",
+    "Concrete strength 2"
+  ],
+  "managementGaps": [
+    "Specific area for improvement or group/week where consultation was too brief, passive, or lacked follow-through"
+  ],
+  "usefulInstructionsEvidence": [
+    {
+      "groupName": "A01",
+      "weekNumber": 11,
+      "timestamp": "07:34",
+      "quoteOrSummary": "Advised the group on multimodal baby growth analysis, RAG grounding with public health guidelines, and privacy-preserving deletion."
+    }
+  ],
+  "groupEvaluations": [
+    {
+      "groupName": "A01",
+      "instructionQuality": "high",
+      "managementQuality": "high",
+      "verdict": "1-2 sentence evaluation of how well the supervisor guided and managed this specific group across weeks."
+    }
+  ]
+}
+Note: \`coachingStyle\` must be one of: \`"active_technical_mentor"\`, \`"structured_project_manager"\`, \`"brief_check_in"\`, or \`"passive_or_roll_call_only"\`. \`instructionQuality\` and \`managementQuality\` must be one of: \`"high"\`, \`"moderate"\`, or \`"low"\`.`;
+
+  const { response, modelUsed } = await generateWithResilience(
+    {
+      prompt: [{ text: prompt }],
+      config: {
+        temperature: 0.2,
+        maxOutputTokens: 8192,
+        responseMimeType: 'application/json',
+      },
+    },
+    reasoningModel,
+    DEFAULT_LECTURE_AI_MODEL || 'gemini-3.8-flash',
+    'gemini-4-argon'
+  );
+
+  const usage = response.usage || {};
+  const inputTokens = usage.inputTokens ?? usage.promptTokenCount ?? 0;
+  const outputTokens = usage.outputTokens ?? usage.candidatesTokenCount ?? 0;
+  const cost = calculateCost(usage, modelUsed);
+
+  let rawText = (response.text || '').trim();
+  if (rawText.startsWith('```json')) {
+    rawText = rawText.replace(/^```json\s*/i, '').replace(/```\s*$/i, '');
+  } else if (rawText.startsWith('```')) {
+    rawText = rawText.replace(/^```\s*/, '').replace(/```\s*$/i, '');
+  }
+
+  let parsed = {};
+  try {
+    parsed = JSON.parse(rawText);
+  } catch (e) {
+    console.warn('[handleEvaluateSupervisorPerformance] JSON parse fallback:', e.message);
+    parsed = {
+      instructionAndAdviceScore: 7,
+      groupManagementScore: 7,
+      overallScore: 7,
+      coachingStyle: 'structured_project_manager',
+      executiveVerdict: rawText.slice(0, 500) || 'Supervisor evaluation completed.',
+      strengths: [],
+      managementGaps: [],
+      usefulInstructionsEvidence: [],
+      groupEvaluations: [],
+    };
+  }
+
+  const clampScore = (val, def = 7) => {
+    const n = Number(val);
+    return Number.isFinite(n) ? Number(Math.max(0, Math.min(10, n)).toFixed(1)) : def;
+  };
+
+  const instScore = clampScore(parsed.instructionAndAdviceScore, 7);
+  const mgmtScore = clampScore(parsed.groupManagementScore, 7);
+  const overallScore = clampScore(
+    parsed.overallScore,
+    Number(((instScore + mgmtScore) / 2).toFixed(1))
+  );
+
+  const validStyles = [
+    'active_technical_mentor',
+    'structured_project_manager',
+    'brief_check_in',
+    'passive_or_roll_call_only',
+  ];
+  const coachingStyle = validStyles.includes(parsed.coachingStyle)
+    ? parsed.coachingStyle
+    : overallScore >= 8
+    ? 'active_technical_mentor'
+    : overallScore >= 6.5
+    ? 'structured_project_manager'
+    : overallScore >= 4.5
+    ? 'brief_check_in'
+    : 'passive_or_roll_call_only';
+
+  const supDocKey =
+    (targetSupEmail || resolvedSupName.toLowerCase()).replace(/[^a-z0-9@._-]/gi, '_') ||
+    'supervisor';
+
+  const evaluationRecord = {
+    supervisorKey: supDocKey,
+    supervisorEmail: targetSupEmail || '',
+    supervisorName: resolvedSupName,
+    weekFilter: String(weekFilter || 'all'),
+    meetingsEvaluatedCount: matchedMeetings.length,
+    instructionAndAdviceScore: instScore,
+    groupManagementScore: mgmtScore,
+    overallScore,
+    coachingStyle,
+    executiveVerdict: String(parsed.executiveVerdict || '').trim(),
+    strengths: Array.isArray(parsed.strengths) ? parsed.strengths.map(String) : [],
+    managementGaps: Array.isArray(parsed.managementGaps) ? parsed.managementGaps.map(String) : [],
+    usefulInstructionsEvidence: Array.isArray(parsed.usefulInstructionsEvidence)
+      ? parsed.usefulInstructionsEvidence.map((item) => ({
+          groupName: String(item?.groupName || ''),
+          weekNumber: Number(item?.weekNumber) || 1,
+          timestamp: String(item?.timestamp || '00:00').replace(/[\[\]]/g, ''),
+          quoteOrSummary: String(item?.quoteOrSummary || ''),
+        }))
+      : [],
+    groupEvaluations: Array.isArray(parsed.groupEvaluations)
+      ? parsed.groupEvaluations.map((ge) => ({
+          groupName: String(ge?.groupName || ''),
+          instructionQuality: ['high', 'moderate', 'low'].includes(ge?.instructionQuality)
+            ? ge.instructionQuality
+            : 'moderate',
+          managementQuality: ['high', 'moderate', 'low'].includes(ge?.managementQuality)
+            ? ge.managementQuality
+            : 'moderate',
+          verdict: String(ge?.verdict || ''),
+        }))
+      : [],
+    aiModelUsed: modelUsed,
+    aiCost: cost,
+    evaluatedAt: new Date().toISOString(),
+    updatedAt: FieldValue.serverTimestamp(),
+  };
+
+  await db
+    .doc(`classes/${classId}/supervisorEvaluations/${supDocKey}`)
+    .set(evaluationRecord, { merge: true })
+    .catch((e) =>
+      console.warn('[handleEvaluateSupervisorPerformance] Could not persist evaluation doc:', e.message)
+    );
+
+  await logJob({
+    classId,
+    studentUid: auth?.uid || 'teacher',
+    studentEmail: auth?.token?.email || '',
+    jobType: 'evaluateSupervisorPerformance',
+    status: 'completed',
+    promptText: prompt.slice(0, 2000),
+    mediaPaths: [],
+    usage: { inputTokens, outputTokens },
+    cost,
+    modelUsed,
+    result: JSON.stringify({
+      supervisorEmail: targetSupEmail,
+      supervisorName: resolvedSupName,
+      overallScore,
+      instructionAndAdviceScore: instScore,
+      groupManagementScore: mgmtScore,
+      meetingsEvaluatedCount: matchedMeetings.length,
+    }),
+  }).catch(() => {});
+
+  return {
+    success: true,
+    mode: 'evaluate_supervisor_performance',
+    evaluation: evaluationRecord,
+    aiModelUsed: modelUsed,
+    aiCost: cost,
+  };
+}
+
+/**
  * Core handler for Two-Stage Project Group Meeting Analysis:
  * Stage 1: Speaker Diarization via `gemini-3.5-transcribe-preview` (`AI_TRANSCRIBE_MODEL`) across all grouped `audioClips[]`.
  * Stage 2: Roster Attribution, Attendance, Key Insights, Log Quality vs. Real Work Verification & Weekly Feedback via `gemini-3.8-flash` (or `preferredModel`).
@@ -500,6 +853,9 @@ export async function handleAnalyzeProjectMeeting({
   groupName: reqGroupName,
   projectTopic: reqProjectTopic,
   weekNumber: reqWeekNumber,
+  supervisorEmail: reqSupervisorEmail,
+  supervisorName: reqSupervisorName,
+  weekFilter: reqWeekFilter,
   auth,
 }) {
   if (mode === 'prepare_log_questions') {
@@ -511,6 +867,16 @@ export async function handleAnalyzeProjectMeeting({
       projectTopic: reqProjectTopic,
       weekNumber: reqWeekNumber,
       weeklyLogs,
+      preferredModel,
+      auth,
+    });
+  }
+  if (mode === 'evaluate_supervisor_performance') {
+    return await handleEvaluateSupervisorPerformance({
+      classId,
+      supervisorEmail: reqSupervisorEmail,
+      supervisorName: reqSupervisorName,
+      weekFilter: reqWeekFilter,
       preferredModel,
       auth,
     });
@@ -1285,6 +1651,9 @@ export const analyzeProjectMeeting = onCall(
       groupName,
       projectTopic,
       weekNumber,
+      supervisorEmail,
+      supervisorName,
+      weekFilter,
     } = request.data || {};
     let isAuthorized = isAdminCaller(request.auth);
 
@@ -1310,6 +1679,9 @@ export const analyzeProjectMeeting = onCall(
       groupName,
       projectTopic,
       weekNumber,
+      supervisorEmail,
+      supervisorName,
+      weekFilter,
       auth: request.auth,
     });
   }

@@ -65,6 +65,7 @@ import {
   resolveAudioMimeType,
   reconcileMeetingRosterResults,
   handlePrepareProjectLogQuestions,
+  handleEvaluateSupervisorPerformance,
   handleAnalyzeProjectMeeting,
   analyzeProjectMeeting,
   generateMeetingEmailHtml,
@@ -1509,6 +1510,149 @@ describe('projectMeetingFlows', () => {
       expect(serialized).not.toContain('Bob secret log');
       expect(serialized).not.toContain('Contains Bob Lee PII');
       expect(serialized).not.toContain('anchor_secret');
+    });
+
+    it('evaluates teacher/supervisor performance via Gemini and persists evaluation to supervisorEvaluations', async () => {
+      mockDocGet.mockImplementation(async (path) => {
+        if (path === 'classes/it114115-fyp-2627') {
+          return {
+            exists: true,
+            data: () => ({
+              teacherEmails: ['kcheung@vtc.edu.hk'],
+              aiQuota: 50,
+            }),
+          };
+        }
+        return { exists: false };
+      });
+
+      mockCollectionGet.mockImplementation(async (colPath) => {
+        if (colPath === 'classes/it114115-fyp-2627/projectGroups') {
+          return {
+            docs: [
+              {
+                id: 'grp_a01',
+                data: () => ({
+                  id: 'grp_a01',
+                  name: 'A01',
+                  projectTopic: 'AI Baby Health Assistant',
+                  supervisorEmail: 'kcheung@vtc.edu.hk',
+                  supervisorName: 'Kitson Cheung',
+                  members: [{ uid: 's1', name: 'Alice', email: 'alice@stu.vtc.edu.hk' }],
+                }),
+              },
+            ],
+          };
+        }
+        if (colPath === 'classes/it114115-fyp-2627/projectMeetings') {
+          return {
+            docs: [
+              {
+                id: 'mtg_a01_w11',
+                data: () => ({
+                  id: 'mtg_a01_w11',
+                  groupId: 'grp_a01',
+                  groupName: 'A01',
+                  weekNumber: 11,
+                  supervisorEmail: 'kcheung@vtc.edu.hk',
+                  supervisorName: 'Kitson Cheung',
+                  analyzedAt: '2026-11-12T04:00:00Z',
+                  audioClips: [
+                    {
+                      clipId: 'c1',
+                      durationSeconds: 1140,
+                      recordedByEmail: 'kcheung@vtc.edu.hk',
+                    },
+                  ],
+                  keyInsights: {
+                    overallGroupProgress: 'on_track',
+                    supervisorFeedback: ['Implement RAG grounding with Hong Kong health guidelines'],
+                    keyDecisions: ['Adopt Vertex AI multimodal pipeline'],
+                    blockersAndRisks: ['Privacy policy compliance'],
+                  },
+                  studentContributions: [
+                    {
+                      uid: 's1',
+                      actionItemsNextWeek: ['Complete RAG ingestion script', 'Add privacy auto-delete'],
+                    },
+                  ],
+                  attendanceRecord: [{ uid: 's1', status: 'present' }],
+                  transcriptSegments: [
+                    {
+                      startTime: '02:10',
+                      endTime: '04:00',
+                      speaker: 'Supervisor',
+                      text: 'Make sure your RAG vector store cites official Department of Health infant growth charts and deletes raw baby photos after inference.',
+                    },
+                  ],
+                }),
+              },
+            ],
+          };
+        }
+        return { docs: [] };
+      });
+
+      mockGenerateWithResilience.mockResolvedValueOnce({
+        response: {
+          text: JSON.stringify({
+            instructionAndAdviceScore: 9.2,
+            groupManagementScore: 8.8,
+            overallScore: 9.0,
+            coachingStyle: 'active_technical_mentor',
+            executiveVerdict:
+              'Kitson Cheung provides highly specific architectural guidance on RAG grounding and privacy compliance while assigning clear student deliverables.',
+            strengths: ['Concrete RAG and privacy architecture guidance for Group A01'],
+            managementGaps: [],
+            usefulInstructionsEvidence: [
+              {
+                groupName: 'A01',
+                weekNumber: 11,
+                timestamp: '02:10',
+                quoteOrSummary:
+                  'Advised citing official Department of Health charts and deleting raw photos.',
+              },
+            ],
+            groupEvaluations: [
+              {
+                groupName: 'A01',
+                instructionQuality: 'high',
+                managementQuality: 'high',
+                verdict: 'Strong technical mentoring and clear task tracking.',
+              },
+            ],
+          }),
+          usage: { inputTokens: 800, outputTokens: 250 },
+        },
+        modelUsed: 'gemini-3.8-flash',
+      });
+
+      const res = await handleAnalyzeProjectMeeting({
+        classId: 'it114115-fyp-2627',
+        mode: 'evaluate_supervisor_performance',
+        supervisorEmail: 'kcheung@vtc.edu.hk',
+        supervisorName: 'Kitson Cheung',
+        weekFilter: 'all',
+        auth: { uid: 't_1', token: { email: 'kcheung@vtc.edu.hk', role: 'teacher' } },
+      });
+
+      expect(res.success).toBe(true);
+      expect(res.mode).toBe('evaluate_supervisor_performance');
+      expect(res.evaluation.instructionAndAdviceScore).toBe(9.2);
+      expect(res.evaluation.groupManagementScore).toBe(8.8);
+      expect(res.evaluation.overallScore).toBe(9);
+      expect(res.evaluation.coachingStyle).toBe('active_technical_mentor');
+      expect(res.evaluation.usefulInstructionsEvidence).toHaveLength(1);
+      expect(mockDocSet).toHaveBeenCalledWith(
+        'classes/it114115-fyp-2627/supervisorEvaluations/kcheung@vtc.edu.hk',
+        expect.objectContaining({
+          supervisorName: 'Kitson Cheung',
+          instructionAndAdviceScore: 9.2,
+          groupManagementScore: 8.8,
+          overallScore: 9,
+        }),
+        { merge: true }
+      );
     });
   });
 });

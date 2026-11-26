@@ -433,6 +433,29 @@ Click the sub-tab **`📋 Weekly Logs (Form Responses 2)`** to review your submi
 
 ---
 
+## Part 5B: Course Coordinator View — "👨‍🏫 Supervisor Performance" & Gemini Teacher Evaluation (`?tab=meetings&subview=supervisors`)
+
+Course coordinators and instructors can trace how long each supervisor consults with their project groups and evaluate whether each teacher provides useful technical instruction/advice and active group management by clicking the **`👨‍🏫 Supervisor Performance`** button in [`ProjectMeetingsView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/meetings/ProjectMeetingsView.jsx):
+
+1. **Dual Time Measurement (Consultation Duration + Diarized Speaking Time)**:
+   - **Total Consultation Time (`audioClips[].durationSeconds`)**: Measures the total valid recorded meeting time with each group per week and cumulatively across the semester, attributing multi-part clips either to the **Actual Recording Supervisor (`recordedByEmail`)** or the **Assigned Primary Group Supervisor**.
+   - **Diarized Supervisor Speaking Time vs. Student Speaking Time (`transcriptSegments[]`)**: Parses Gemini's speaker-diarized turns (`Supervisor` vs. students) to display a stacked visual bar of **👨‍🏫 Supervisor Speaking Time (`%`)** vs. **🧑‍🎓 Student Speaking Time (`%`)**, total turn counts, and substantive coaching turns.
+2. **Gemini Teacher Performance Evaluation (`mode: 'evaluate_supervisor_performance'`)**:
+   - Click **`🤖 Evaluate with Gemini`** on any supervisor row (or **`🤖 Evaluate All Teachers with Gemini`** in the top bar) to invoke `analyzeProjectMeeting` (`handleEvaluateSupervisorPerformance` in [`functions/ai_flows/projectMeetingFlows.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/functions/ai_flows/projectMeetingFlows.js)).
+   - Gemini (`gemini-3.8-flash` / `gemini-4-argon`) reads the supervisor's already-diarized `Supervisor` turns, extracted `supervisorFeedback`, `keyDecisions`, `blockersAndRisks`, and assigned student `actionItemsNextWeek` across all their meetings (without re-transcribing audio) and persists a structured evaluation to `classes/{classId}/supervisorEvaluations/{supervisorKey}`:
+     - **`instructionAndAdviceScore` (`/10`)**: Evaluates whether the teacher provides concrete, actionable architectural, coding, UI/UX, and testing advice rather than superficial remarks.
+     - **`groupManagementScore` (`/10`)**: Evaluates whether the teacher verifies attendance and real work, identifies blockers, steers key decisions, and assigns concrete next-week tasks.
+     - **`coachingStyle`**: Classifies the teacher as `🌟 Active Technical Mentor`, `✅ Structured Manager`, `🟡 Brief Check-In`, or `🔴 Passive / Roll-Call Only`.
+     - **Expandable Teacher Advice & Management Dossier (`🔍 View Advice & Dossier`)**: Displays Gemini's executive verdict, coaching strengths, management gaps, timestamped useful instruction quotes (`[MM:SS]`), per-group quality assessments, and raw consultation evidence with 1-click **`🎧 Open in Studio`** links.
+3. **Supervisor Leaderboard & Group Coverage**:
+   - Compares supervisors by **Groups Met / Assigned (`Coverage %`)**, **Total Consultation Time**, **Avg Duration / Session**, **Supervisor vs. Student Talk Ratio**, **Gemini Teacher Score (`/10`)**, and **Per-Week Consultation Totals**, highlighting any unmet groups (`0m`) or short sessions (`< 5m`).
+4. **Interactive Group $\times$ Week Consultation Matrix & 1-Click Drill-Down**:
+   - Color-codes every Group $\times$ Week cell (`🟢 >= 15m Thorough`, `🟡 5–14m Moderate`, `🔴 < 5m Short`, `⚪ 0m Not Recorded`) with total duration, supervisor speaking time, and recording supervisor name.
+   - Clicking any cell jumps directly into that meeting's recording and diarized transcript in the Studio Inspector.
+   - Click **`📥 Export Supervisor Performance (.xlsx)`** to download the complete supervisor summary (including Gemini scores, coaching style, and executive verdict) and group-by-week consultation matrix.
+
+---
+
 ## Part 6: Frequently Asked Questions (Holidays, ID Typos, 20-Min Meetings & Security)
 
 | Question | How the System Handles It |

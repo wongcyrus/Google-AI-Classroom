@@ -39,6 +39,9 @@ import {
   mergeIncrementalStudentProfiles,
   bootstrapProjectGroupsFromWeeklyLogs,
   exportStudentContributionProfilesExcel,
+  computeSupervisorPerformanceAnalytics,
+  exportSupervisorPerformanceExcel,
+  formatConsultationDuration,
   toVtcStudentEmail,
   extractVtcStudentId,
 } from '../../utils/projectGroupUtils';
@@ -513,11 +516,31 @@ export default function ProjectMeetingsView({ classId, classInfo, user, isPrivac
   const [groups, setGroups] = useState([]);
   const [meetings, setMeetings] = useState([]);
   const [persistedProfiles, setPersistedProfiles] = useState([]);
+  const [supervisorEvaluations, setSupervisorEvaluations] = useState([]);
   const [loading, setLoading] = useState(true);
 
   // Filter & Navigation state
   const [supervisorFilter, setSupervisorFilter] = useState('all'); // 'mine' | 'all'
-  const [subViewMode, setSubViewMode] = useState('studio'); // 'studio' | 'matrix'
+  const [subViewMode, setSubViewMode] = useState(() => {
+    try {
+      if (typeof window !== 'undefined' && window.location?.search) {
+        const sp = new URLSearchParams(window.location.search);
+        const sv = sp.get('subview');
+        if (sv && ['studio', 'profiles', 'matrix', 'supervisors'].includes(sv)) {
+          return sv;
+        }
+      }
+    } catch {
+      // ignore
+    }
+    return 'studio';
+  }); // 'studio' | 'profiles' | 'matrix' | 'supervisors'
+  const [supervisorPerfWeekFilter, setSupervisorPerfWeekFilter] = useState('all');
+  const [supervisorPerfAttributionMode, setSupervisorPerfAttributionMode] = useState('recording_supervisor'); // 'recording_supervisor' | 'assigned_supervisor'
+  const [supervisorPerfSelectedEmail, setSupervisorPerfSelectedEmail] = useState('all');
+  const [evaluatingSupervisorKey, setEvaluatingSupervisorKey] = useState('');
+  const [isEvaluatingAllSupervisors, setIsEvaluatingAllSupervisors] = useState(false);
+  const [inspectedSupervisorKey, setInspectedSupervisorKey] = useState('');
   const [selectedMeetingId, setSelectedMeetingId] = useState(null);
   const [mobileSidebarExpanded, setMobileSidebarExpanded] = useState(false);
   const [showGroupEditorModal, setShowGroupEditorModal] = useState(false);
@@ -743,6 +766,7 @@ export default function ProjectMeetingsView({ classId, classInfo, user, isPrivac
     const groupsRef = collection(db, `classes/${classId}/projectGroups`);
     const meetingsRef = collection(db, `classes/${classId}/projectMeetings`);
     const profilesRef = collection(db, `classes/${classId}/projectStudentProfiles`);
+    const supEvalsRef = collection(db, `classes/${classId}/supervisorEvaluations`);
 
     const unsubGroups = onSnapshot(
       groupsRef,
@@ -781,10 +805,20 @@ export default function ProjectMeetingsView({ classId, classInfo, user, isPrivac
       (err) => console.error('[ProjectMeetingsView] Error loading projectStudentProfiles:', err)
     );
 
+    const unsubSupEvals = onSnapshot(
+      supEvalsRef,
+      (snap) => {
+        const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        setSupervisorEvaluations(list);
+      },
+      (err) => console.error('[ProjectMeetingsView] Error loading supervisorEvaluations:', err)
+    );
+
     return () => {
       unsubGroups();
       unsubMeetings();
       unsubProfiles();
+      unsubSupEvals();
     };
   }, [classId]);
 
@@ -3284,6 +3318,134 @@ export default function ProjectMeetingsView({ classId, classInfo, user, isPrivac
     return meetings.reduce((sum, m) => sum + (Number(m.aiCost) || 0), 0);
   }, [meetings]);
 
+  // Supervisor Performance & Group Consultation Time Analytics
+  const supervisorPerformanceAnalytics = useMemo(() => {
+    return computeSupervisorPerformanceAnalytics({
+      groups: visibleGroups,
+      meetings,
+      supervisorEvaluations,
+      weekFilter: supervisorPerfWeekFilter,
+      attributionMode: supervisorPerfAttributionMode,
+    });
+  }, [
+    visibleGroups,
+    meetings,
+    supervisorEvaluations,
+    supervisorPerfWeekFilter,
+    supervisorPerfAttributionMode,
+  ]);
+
+  const handleEvaluateSupervisorWithGemini = useCallback(
+    async (sup) => {
+      if (!classId || !sup) return;
+      const targetKey = sup.key || sup.email || sup.name;
+      setEvaluatingSupervisorKey(targetKey);
+      setStudioError('');
+      try {
+        const callAnalyze = httpsCallable(functions, 'analyzeProjectMeeting', { timeout: 180000 });
+        const res = await callAnalyze({
+          classId,
+          mode: 'evaluate_supervisor_performance',
+          supervisorEmail: sup.email || '',
+          supervisorName: sup.name || '',
+          weekFilter: supervisorPerfWeekFilter,
+          preferredModel: preferredAiModel,
+        });
+        const evalDoc = res?.data?.evaluation;
+        if (evalDoc) {
+          setSupervisorEvaluations((prev) => {
+            const filtered = prev.filter(
+              (item) =>
+                item.supervisorKey !== evalDoc.supervisorKey &&
+                normalizeStudentEmail(item.supervisorEmail) !==
+                  normalizeStudentEmail(evalDoc.supervisorEmail)
+            );
+            return [...filtered, evalDoc];
+          });
+          setInspectedSupervisorKey(targetKey);
+        }
+        showToastMessage(
+          `🎓 Gemini evaluated ${sup.name}: ${evalDoc?.overallScore ?? '—'}/10 (Instruction ${evalDoc?.instructionAndAdviceScore ?? '—'}/10 • Management ${evalDoc?.groupManagementScore ?? '—'}/10)`
+        );
+      } catch (err) {
+        console.error('[ProjectMeetingsView] evaluate_supervisor_performance error:', err);
+        setStudioError(`Could not evaluate ${sup.name}: ${err.message}`);
+      } finally {
+        setEvaluatingSupervisorKey('');
+      }
+    },
+    [classId, supervisorPerfWeekFilter, preferredAiModel, showToastMessage]
+  );
+
+  const handleEvaluateAllSupervisorsWithGemini = useCallback(async () => {
+    const list = (supervisorPerformanceAnalytics.supervisors || []).filter(
+      (s) => s.sessionsCount > 0
+    );
+    if (!classId || list.length === 0) return;
+    setIsEvaluatingAllSupervisors(true);
+    setStudioError('');
+    let doneCount = 0;
+    try {
+      const callAnalyze = httpsCallable(functions, 'analyzeProjectMeeting', { timeout: 180000 });
+      for (const sup of list) {
+        const targetKey = sup.key || sup.email || sup.name;
+        setEvaluatingSupervisorKey(targetKey);
+        const res = await callAnalyze({
+          classId,
+          mode: 'evaluate_supervisor_performance',
+          supervisorEmail: sup.email || '',
+          supervisorName: sup.name || '',
+          weekFilter: supervisorPerfWeekFilter,
+          preferredModel: preferredAiModel,
+        });
+        const evalDoc = res?.data?.evaluation;
+        if (evalDoc) {
+          doneCount += 1;
+          setSupervisorEvaluations((prev) => {
+            const filtered = prev.filter(
+              (item) =>
+                item.supervisorKey !== evalDoc.supervisorKey &&
+                normalizeStudentEmail(item.supervisorEmail) !==
+                  normalizeStudentEmail(evalDoc.supervisorEmail)
+            );
+            return [...filtered, evalDoc];
+          });
+        }
+      }
+      if (list[0]) {
+        setInspectedSupervisorKey(list[0].key || list[0].email || list[0].name);
+      }
+      showToastMessage(`🎓 Gemini completed teacher evaluations for ${doneCount} supervisor(s)!`);
+    } catch (err) {
+      console.error('[ProjectMeetingsView] evaluate all supervisors error:', err);
+      setStudioError(`Batch supervisor evaluation error: ${err.message}`);
+    } finally {
+      setEvaluatingSupervisorKey('');
+      setIsEvaluatingAllSupervisors(false);
+    }
+  }, [
+    classId,
+    supervisorPerformanceAnalytics.supervisors,
+    supervisorPerfWeekFilter,
+    preferredAiModel,
+    showToastMessage,
+  ]);
+
+  const filteredSupervisorGroupRows = useMemo(() => {
+    const list = supervisorPerformanceAnalytics.groupRows || [];
+    if (!supervisorPerfSelectedEmail || supervisorPerfSelectedEmail === 'all') {
+      return list;
+    }
+    const targetEm = normalizeStudentEmail(supervisorPerfSelectedEmail);
+    return list.filter((g) => {
+      if (normalizeStudentEmail(g.supervisorEmail) === targetEm) return true;
+      if ((g.coSupervisorEmails || []).includes(targetEm)) return true;
+      return Object.values(g.weekCells || {}).some((c) =>
+        (c?.recorderEmails || []).includes(targetEm)
+      );
+    });
+  }, [supervisorPerformanceAnalytics, supervisorPerfSelectedEmail]);
+
   return (
     <div className="project-meetings-container">
       {/* Top Supervisor Filter & Module Toolbar */}
@@ -3341,7 +3503,7 @@ export default function ProjectMeetingsView({ classId, classInfo, user, isPrivac
               className={`sup-pill-btn ${subViewMode === 'studio' ? 'active' : ''}`}
               onClick={() => setSubViewMode('studio')}
             >
-              🎙️ Meetings & Recorder
+              🎙️ Meetings &amp; Recorder
             </button>
             <button
               type="button"
@@ -3355,7 +3517,15 @@ export default function ProjectMeetingsView({ classId, classInfo, user, isPrivac
               className={`sup-pill-btn ${subViewMode === 'matrix' ? 'active' : ''}`}
               onClick={() => setSubViewMode('matrix')}
             >
-              📊 Weekly Matrix & Export
+              📊 Weekly Matrix &amp; Export
+            </button>
+            <button
+              type="button"
+              className={`sup-pill-btn ${subViewMode === 'supervisors' ? 'active' : ''}`}
+              onClick={() => setSubViewMode('supervisors')}
+              title="Trace supervisor consultation duration, active speaking time, and group coverage across weeks"
+            >
+              👨‍🏫 Supervisor Performance ({supervisorPerformanceAnalytics.supervisors.length})
             </button>
           </div>
 
@@ -3370,6 +3540,7 @@ export default function ProjectMeetingsView({ classId, classInfo, user, isPrivac
       </div>
 
       {/* Class-Scoped Public Weekly Log Google Sheet On-Demand Sync & Historical Log Ingestion Bar */}
+      {subViewMode !== 'supervisors' && (
       <div className="weekly-log-sheet-sync-bar">
         <div className="log-sheet-url-group">
           <span className="log-sheet-badge">📗 Class Weekly Log Sheet (Form Responses 2):</span>
@@ -3499,6 +3670,7 @@ export default function ProjectMeetingsView({ classId, classInfo, user, isPrivac
           )}
         </div>
       </div>
+      )}
 
       {studioToast && <div className="project-meetings-toast">✅ {studioToast}</div>}
       {studioError && <div className="project-meetings-error-banner">⚠️ {studioError}</div>}
@@ -3509,6 +3681,7 @@ export default function ProjectMeetingsView({ classId, classInfo, user, isPrivac
       )}
 
       {/* Mobile-Responsive Dual-Device Recording Studio Card */}
+      {subViewMode !== 'supervisors' && (
       <div className="project-meeting-recorder-studio">
         {/* High-Contrast Active Target Banner (Prominent on Mobile, prevents accidental recording to Group #1) */}
         <button
@@ -4015,6 +4188,7 @@ export default function ProjectMeetingsView({ classId, classInfo, user, isPrivac
           </div>
         )}
       </div>
+      )}
 
       {/* Live Batch Analysis Progress Banner (Persistent across Studio, Profiles & Matrix views) */}
       {batchAnalysisProgress && (
@@ -4544,6 +4718,947 @@ export default function ProjectMeetingsView({ classId, classInfo, user, isPrivac
               );
             })
           )}
+        </div>
+      ) : subViewMode === 'supervisors' ? (
+        <div className="supervisor-performance-workspace" data-testid="supervisor-performance-view">
+          <div className="supervisor-perf-header-card">
+            <div>
+              <h3>👨‍🏫 Supervisor Performance, Useful Instruction &amp; Group Management Analytics</h3>
+              <p style={{ margin: '2px 0 0', fontSize: '0.84rem', color: '#64748b' }}>
+                Tracks how long each supervisor consults with their assigned project groups and uses <strong>Gemini</strong> to evaluate whether each teacher provides concrete technical instruction/advice and actively manages student deliverables &amp; risks.
+              </p>
+            </div>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+              <button
+                type="button"
+                className="btn-eval-all-supervisors-gemini"
+                onClick={handleEvaluateAllSupervisorsWithGemini}
+                disabled={
+                  isEvaluatingAllSupervisors ||
+                  Boolean(evaluatingSupervisorKey) ||
+                  supervisorPerformanceAnalytics.supervisors.length === 0
+                }
+              >
+                {isEvaluatingAllSupervisors
+                  ? '⏳ Gemini Evaluating All Teachers...'
+                  : '🤖 Evaluate All Teachers with Gemini'}
+              </button>
+              <button
+                type="button"
+                className="btn-export-matrix-xlsx"
+                onClick={() =>
+                  exportSupervisorPerformanceExcel({
+                    classId,
+                    analytics: supervisorPerformanceAnalytics,
+                  })
+                }
+                disabled={supervisorPerformanceAnalytics.groupRows.length === 0}
+              >
+                📥 Export Supervisor Performance (.xlsx)
+              </button>
+            </div>
+          </div>
+
+          {/* Controls & Filter Strip */}
+          <div className="supervisor-perf-filter-bar">
+            <div className="sup-perf-filter-group">
+              <label htmlFor="sup-perf-week-filter">📅 Week Scope:</label>
+              <select
+                id="sup-perf-week-filter"
+                aria-label="Filter supervisor performance by week"
+                value={supervisorPerfWeekFilter}
+                onChange={(e) => setSupervisorPerfWeekFilter(e.target.value)}
+              >
+                <option value="all">
+                  🌐 All Recorded Weeks (
+                  {supervisorPerformanceAnalytics.allWeeks.length > 0
+                    ? `Weeks ${supervisorPerformanceAnalytics.allWeeks[0]}–${supervisorPerformanceAnalytics.allWeeks[supervisorPerformanceAnalytics.allWeeks.length - 1]}`
+                    : 'No weeks'}
+                  )
+                </option>
+                {supervisorPerformanceAnalytics.allWeeks.map((wk) => (
+                  <option key={wk} value={String(wk)}>
+                    📅 Week {wk} Only
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="sup-perf-filter-group">
+              <label htmlFor="sup-perf-attribution-mode">🎯 Time Attribution:</label>
+              <select
+                id="sup-perf-attribution-mode"
+                aria-label="Supervisor time attribution mode"
+                value={supervisorPerfAttributionMode}
+                onChange={(e) => setSupervisorPerfAttributionMode(e.target.value)}
+              >
+                <option value="recording_supervisor">
+                  🎙️ Actual Recording Supervisor (By Audio Clip Recorder)
+                </option>
+                <option value="assigned_supervisor">
+                  📁 Assigned Primary Group Supervisor
+                </option>
+              </select>
+            </div>
+
+            <div className="sup-perf-filter-group">
+              <label htmlFor="sup-perf-supervisor-select">👨‍🏫 Filter Matrix by Supervisor:</label>
+              <select
+                id="sup-perf-supervisor-select"
+                aria-label="Filter group matrix by supervisor"
+                value={supervisorPerfSelectedEmail}
+                onChange={(e) => setSupervisorPerfSelectedEmail(e.target.value)}
+              >
+                <option value="all">
+                  👥 All Supervisors ({supervisorPerformanceAnalytics.supervisors.length})
+                </option>
+                {supervisorPerformanceAnalytics.supervisors.map((s) => (
+                  <option key={s.key} value={s.email || s.key}>
+                    👨‍🏫 {s.name} ({formatConsultationDuration(s.totalConsultationSeconds, true)})
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Top KPI Summary Cards */}
+          <div className="supervisor-perf-kpi-grid">
+            <div className="sup-perf-kpi-card">
+              <span className="sup-kpi-eyebrow">👨‍🏫 Active Supervisors</span>
+              <strong className="sup-kpi-value">
+                {supervisorPerformanceAnalytics.summary.totalSupervisors}
+              </strong>
+              <span className="sup-kpi-sub">
+                Across {supervisorPerformanceAnalytics.summary.totalGroups} project groups
+              </span>
+            </div>
+
+            <div className="sup-perf-kpi-card">
+              <span className="sup-kpi-eyebrow">⏱️ Total Consultation Time</span>
+              <strong className="sup-kpi-value" style={{ color: '#1d4ed8' }}>
+                {formatConsultationDuration(
+                  supervisorPerformanceAnalytics.summary.totalConsultationSeconds,
+                  true
+                )}
+              </strong>
+              <span className="sup-kpi-sub">
+                {Math.round(supervisorPerformanceAnalytics.summary.totalConsultationSeconds / 60)} total recorded minutes
+              </span>
+            </div>
+
+            <div className="sup-perf-kpi-card">
+              <span className="sup-kpi-eyebrow">📊 Avg Time / Group Meeting</span>
+              <strong
+                className="sup-kpi-value"
+                style={{
+                  color:
+                    supervisorPerformanceAnalytics.summary.avgConsultationSecondsPerGroupWeek >= 900
+                      ? '#15803d'
+                      : supervisorPerformanceAnalytics.summary.avgConsultationSecondsPerGroupWeek >= 300
+                      ? '#d97706'
+                      : '#dc2626',
+                }}
+              >
+                {formatConsultationDuration(
+                  supervisorPerformanceAnalytics.summary.avgConsultationSecondsPerGroupWeek,
+                  false
+                )}
+              </strong>
+              <span className="sup-kpi-sub">
+                Target: &ge;15m thorough (&lt;5m flagged short)
+              </span>
+            </div>
+
+            <div className="sup-perf-kpi-card">
+              <span className="sup-kpi-eyebrow">🗣️ Supervisor Speaking Time</span>
+              <strong className="sup-kpi-value" style={{ color: '#7c3aed' }}>
+                {formatConsultationDuration(
+                  supervisorPerformanceAnalytics.summary.totalSupervisorSpeakingSeconds,
+                  true
+                )}
+                {supervisorPerformanceAnalytics.summary.overallSupervisorTalkSharePct !== null && (
+                  <span style={{ fontSize: '0.9rem', fontWeight: 700, marginLeft: '6px' }}>
+                    ({supervisorPerformanceAnalytics.summary.overallSupervisorTalkSharePct}%)
+                  </span>
+                )}
+              </strong>
+              <span className="sup-kpi-sub">
+                Students spoke:{' '}
+                {formatConsultationDuration(
+                  supervisorPerformanceAnalytics.summary.totalStudentSpeakingSeconds,
+                  true
+                )}
+              </span>
+            </div>
+
+            <div className="sup-perf-kpi-card">
+              <span className="sup-kpi-eyebrow">✅ Weekly Group Coverage</span>
+              <strong
+                className="sup-kpi-value"
+                style={{
+                  color:
+                    supervisorPerformanceAnalytics.summary.overallGroupCoveragePct >= 85
+                      ? '#15803d'
+                      : supervisorPerformanceAnalytics.summary.overallGroupCoveragePct >= 60
+                      ? '#d97706'
+                      : '#dc2626',
+                }}
+              >
+                {supervisorPerformanceAnalytics.summary.overallGroupCoveragePct}%
+              </strong>
+              <span className="sup-kpi-sub">
+                {supervisorPerformanceAnalytics.summary.metGroupWeekSlots}/
+                {supervisorPerformanceAnalytics.summary.totalGroupWeekSlots} group-weeks met
+                {supervisorPerformanceAnalytics.summary.shortGroupWeekSlots > 0
+                  ? ` • ⚠️ ${supervisorPerformanceAnalytics.summary.shortGroupWeekSlots} <5m`
+                  : ''}
+              </span>
+            </div>
+          </div>
+
+          {/* Section 1: Supervisor Comparison Leaderboard Table & Talk-Share Bars */}
+          <div className="supervisor-leaderboard-card">
+            <div className="supervisor-section-header">
+              <h4>1. 🏆 Supervisor Consultation Duration &amp; Speaking Time Comparison</h4>
+              <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
+                Click any supervisor row to filter the Group &times; Week matrix below
+              </span>
+            </div>
+
+            {supervisorPerformanceAnalytics.supervisors.length === 0 ? (
+              <div className="empty-meetings-box">
+                No supervisor records or recorded meetings found yet.
+              </div>
+            ) : (
+              <div className="matrix-table-wrapper">
+                <table className="project-meetings-matrix-table supervisor-leaderboard-table">
+                  <thead>
+                    <tr>
+                      <th>Supervisor</th>
+                      <th>Groups (Met / Assigned)</th>
+                      <th>Sessions &amp; Clips</th>
+                      <th>Total Consultation Time</th>
+                      <th>Avg / Group Session</th>
+                      <th>Diarized Speaking Breakdown (👨‍🏫 Supervisor vs. 🧑‍🎓 Students)</th>
+                      <th>🎓 Gemini Teacher Evaluation &amp; Advice Quality</th>
+                      {supervisorPerformanceAnalytics.allWeeks.map((wk) => (
+                        <th key={wk}>Week {wk}</th>
+                      ))}
+                      <th>AI &amp; Email Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {supervisorPerformanceAnalytics.supervisors.map((sup) => {
+                      const isSelectedSup =
+                        supervisorPerfSelectedEmail !== 'all' &&
+                        normalizeStudentEmail(supervisorPerfSelectedEmail) ===
+                          normalizeStudentEmail(sup.email || sup.key);
+                      const avgMin = sup.avgConsultationSecondsPerSession / 60;
+                      const avgBadgeClass =
+                        avgMin >= 15 ? 'good' : avgMin >= 5 ? 'warn' : 'low';
+                      const supShare = sup.supervisorTalkSharePct ?? 0;
+                      const stuShare = sup.supervisorTalkSharePct !== null ? 100 - supShare : 0;
+                      const gem = sup.geminiEvaluation || null;
+                      const isEvaluatingThisSup =
+                        evaluatingSupervisorKey === (sup.key || sup.email || sup.name);
+                      const isInspectedSup =
+                        inspectedSupervisorKey === (sup.key || sup.email || sup.name);
+
+                      const styleBadge =
+                        gem?.coachingStyle === 'active_technical_mentor'
+                          ? { label: '🌟 Active Technical Mentor', cls: 'good' }
+                          : gem?.coachingStyle === 'structured_project_manager'
+                          ? { label: '✅ Structured Manager', cls: 'good' }
+                          : gem?.coachingStyle === 'brief_check_in'
+                          ? { label: '🟡 Brief Check-In', cls: 'warn' }
+                          : gem?.coachingStyle === 'passive_or_roll_call_only'
+                          ? { label: '🔴 Passive / Roll-Call Only', cls: 'low' }
+                          : null;
+
+                      return (
+                        <tr
+                          key={sup.key}
+                          className={`supervisor-perf-row ${isSelectedSup ? 'active-row' : ''}`}
+                          onClick={() =>
+                            setSupervisorPerfSelectedEmail((prev) =>
+                              normalizeStudentEmail(prev) ===
+                              normalizeStudentEmail(sup.email || sup.key)
+                                ? 'all'
+                                : sup.email || sup.key
+                            )
+                          }
+                          style={{ cursor: 'pointer' }}
+                        >
+                          <td>
+                            <div style={{ fontWeight: 700, color: '#0f172a', fontSize: '0.9rem' }}>
+                              👨‍🏫 {sup.name}
+                            </div>
+                          </td>
+
+                          <td>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                              <span
+                                className={`rate-pill ${
+                                  sup.coveragePct >= 85
+                                    ? 'good'
+                                    : sup.coveragePct >= 50
+                                    ? 'warn'
+                                    : 'low'
+                                }`}
+                              >
+                                {sup.groupsMetCount} group{sup.groupsMetCount === 1 ? '' : 's'} ({sup.coveragePct}%)
+                              </span>
+                            </div>
+                            <div style={{ fontSize: '0.73rem', color: '#475569', marginTop: '4px' }}>
+                              <strong>Groups:</strong>{' '}
+                              {sup.touchedGroupNames.length > 0
+                                ? sup.touchedGroupNames.join(', ')
+                                : sup.assignedGroupNames.join(', ') || '—'}
+                            </div>
+                            {sup.unmetAssignedGroupNames.length > 0 && (
+                              <div style={{ fontSize: '0.71rem', color: '#dc2626', fontWeight: 600, marginTop: '2px' }}>
+                                ⚠️ Unmet: {sup.unmetAssignedGroupNames.join(', ')}
+                              </div>
+                            )}
+                          </td>
+
+                          <td>
+                            <strong>{sup.sessionsCount}</strong> sessions
+                            <div style={{ fontSize: '0.73rem', color: '#64748b' }}>
+                              🎙️ {sup.clipsCount} clip{sup.clipsCount === 1 ? '' : 's'}
+                              {sup.shortSessionsCount > 0 && (
+                                <span style={{ color: '#d97706', fontWeight: 600, marginLeft: '4px' }}>
+                                  • ⚠️ {sup.shortSessionsCount} &lt;5m
+                                </span>
+                              )}
+                            </div>
+                          </td>
+
+                          <td>
+                            <strong style={{ fontSize: '0.96rem', color: '#1e3a8a' }}>
+                              {formatConsultationDuration(sup.totalConsultationSeconds, false)}
+                            </strong>
+                            <div style={{ fontSize: '0.72rem', color: '#64748b' }}>
+                              ({(sup.totalConsultationSeconds / 60).toFixed(1)} min total)
+                            </div>
+                          </td>
+
+                          <td>
+                            <span className={`rate-pill ${avgBadgeClass}`}>
+                              {formatConsultationDuration(sup.avgConsultationSecondsPerSession, false)} / session
+                            </span>
+                            <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '3px' }}>
+                              {formatConsultationDuration(sup.avgConsultationSecondsPerGroup, true)} / group
+                            </div>
+                          </td>
+
+                          <td style={{ minWidth: '230px' }}>
+                            {sup.supervisorTalkSharePct !== null ? (
+                              <div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.74rem', marginBottom: '4px' }}>
+                                  <span style={{ color: '#6d28d9', fontWeight: 700 }}>
+                                    👨‍🏫 Sup: {formatConsultationDuration(sup.totalSupervisorSpeakingSeconds, false)} ({supShare}%)
+                                  </span>
+                                  <span style={{ color: '#0369a1', fontWeight: 600 }}>
+                                    🧑‍🎓 Stu: {formatConsultationDuration(sup.totalStudentSpeakingSeconds, false)} ({stuShare}%)
+                                  </span>
+                                </div>
+                                <div className="sup-talk-share-bar">
+                                  <div
+                                    className="sup-talk-share-fill-sup"
+                                    style={{ width: `${supShare}%` }}
+                                    title={`Supervisor spoke ${formatConsultationDuration(sup.totalSupervisorSpeakingSeconds, false)} (${supShare}%, ${sup.supervisorTurnsCount} turns)`}
+                                  />
+                                  <div
+                                    className="sup-talk-share-fill-stu"
+                                    style={{ width: `${stuShare}%` }}
+                                    title={`Students spoke ${formatConsultationDuration(sup.totalStudentSpeakingSeconds, false)} (${stuShare}%, ${sup.studentTurnsCount} turns)`}
+                                  />
+                                </div>
+                                <div style={{ fontSize: '0.69rem', color: '#64748b', marginTop: '3px' }}>
+                                  {sup.supervisorTurnsCount} supervisor turns ({sup.substantiveSupervisorTurnsCount || 0} substantive) • {sup.studentTurnsCount} student turns
+                                </div>
+                              </div>
+                            ) : (
+                              <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
+                                Pending AI diarization
+                              </span>
+                            )}
+                          </td>
+
+                          <td
+                            style={{ minWidth: '280px' }}
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            {gem ? (
+                              <div className="sup-gemini-eval-cell">
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                  <span
+                                    className={`rate-pill ${
+                                      gem.overallScore >= 7.5
+                                        ? 'good'
+                                        : gem.overallScore >= 5.5
+                                        ? 'warn'
+                                        : 'low'
+                                    }`}
+                                  >
+                                    ⭐ {gem.overallScore}/10
+                                  </span>
+                                  {styleBadge && (
+                                    <span className={`rate-pill ${styleBadge.cls}`}>
+                                      {styleBadge.label}
+                                    </span>
+                                  )}
+                                </div>
+                                <div style={{ fontSize: '0.73rem', color: '#1e293b', marginTop: '4px', fontWeight: 600 }}>
+                                  💡 Instruction: <strong>{gem.instructionAndAdviceScore}/10</strong> • 📋 Management: <strong>{gem.groupManagementScore}/10</strong>
+                                </div>
+                                {gem.executiveVerdict && (
+                                  <div
+                                    style={{
+                                      fontSize: '0.72rem',
+                                      color: '#475569',
+                                      marginTop: '3px',
+                                      display: '-webkit-box',
+                                      WebkitLineClamp: 2,
+                                      WebkitBoxOrient: 'vertical',
+                                      overflow: 'hidden',
+                                    }}
+                                    title={gem.executiveVerdict}
+                                  >
+                                    {gem.executiveVerdict}
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              <div style={{ fontSize: '0.74rem', color: '#64748b' }}>
+                                Not evaluated by Gemini yet
+                              </div>
+                            )}
+
+                            <div style={{ fontSize: '0.71rem', color: '#475569', marginTop: '4px' }}>
+                              💡 <strong>{sup.adviceItemsCount || 0}</strong> advice • 🎯 <strong>{sup.decisionsCount || 0}</strong> decisions • 📋 <strong>{sup.actionItemsAssignedCount || 0}</strong> tasks
+                            </div>
+
+                            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '6px' }}>
+                              <button
+                                type="button"
+                                className="btn-sup-eval-gemini"
+                                onClick={() => handleEvaluateSupervisorWithGemini(sup)}
+                                disabled={isEvaluatingThisSup || isEvaluatingAllSupervisors || sup.sessionsCount === 0}
+                              >
+                                {isEvaluatingThisSup
+                                  ? '⏳ Evaluating...'
+                                  : gem
+                                  ? '🔄 Re-Evaluate'
+                                  : '🤖 Evaluate with Gemini'}
+                              </button>
+                              <button
+                                type="button"
+                                className="btn-sup-view-dossier"
+                                onClick={() =>
+                                  setInspectedSupervisorKey((prev) =>
+                                    prev === (sup.key || sup.email || sup.name)
+                                      ? ''
+                                      : sup.key || sup.email || sup.name
+                                  )
+                                }
+                              >
+                                {isInspectedSup ? '🔼 Hide Dossier' : '🔍 View Advice & Dossier'}
+                              </button>
+                            </div>
+                          </td>
+
+                          {supervisorPerformanceAnalytics.allWeeks.map((wk) => {
+                            const b = (sup.weeklyBreakdown || []).find((x) => x.weekNumber === wk);
+                            const sec = b?.consultationSeconds || 0;
+                            return (
+                              <td key={wk}>
+                                {sec > 0 ? (
+                                  <div>
+                                    <strong style={{ color: sec >= 900 ? '#15803d' : sec >= 300 ? '#1e40af' : '#b45309' }}>
+                                      {formatConsultationDuration(sec, true)}
+                                    </strong>
+                                    <div style={{ fontSize: '0.7rem', color: '#64748b' }}>
+                                      {b.groupsMetCount} grp ({b.groupsMetNames.join(', ')})
+                                    </div>
+                                    {b.supervisorSpeakingSeconds > 0 && (
+                                      <div style={{ fontSize: '0.68rem', color: '#6d28d9', fontWeight: 600 }}>
+                                        🗣️ Sup: {formatConsultationDuration(b.supervisorSpeakingSeconds, true)}
+                                      </div>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <span style={{ color: '#94a3b8', fontSize: '0.75rem' }}>— (0m)</span>
+                                )}
+                              </td>
+                            );
+                          })}
+
+                          <td>
+                            <div style={{ fontSize: '0.75rem', color: '#15803d', fontWeight: 600 }}>
+                              ✨ {sup.analyzedSessionsCount}/{sup.sessionsCount} Analyzed
+                            </div>
+                            <div style={{ fontSize: '0.73rem', color: '#1d4ed8', marginTop: '2px' }}>
+                              📧 {sup.emailedSessionsCount}/{sup.sessionsCount} Emailed
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* Expandable Gemini Teacher Instruction, Advice & Group Management Dossier */}
+            {(() => {
+              const inspectedSup = (supervisorPerformanceAnalytics.supervisors || []).find(
+                (s) => (s.key || s.email || s.name) === inspectedSupervisorKey
+              );
+              if (!inspectedSup) return null;
+              const gem = inspectedSup.geminiEvaluation || null;
+              const evidenceList = inspectedSup.meetingCoachingEvidence || [];
+
+              return (
+                <div
+                  className="supervisor-gemini-dossier-panel"
+                  data-testid="supervisor-gemini-dossier"
+                >
+                  <div className="sup-dossier-header">
+                    <div>
+                      <h5 style={{ margin: 0, fontSize: '0.96rem', color: '#0f172a' }}>
+                        🎓 Teacher Instruction, Advice &amp; Group Management Dossier —{' '}
+                        <span style={{ color: '#4338ca' }}>{inspectedSup.name}</span>
+                      </h5>
+                      <span style={{ fontSize: '0.77rem', color: '#64748b' }}>
+                        {inspectedSup.sessionsCount} recorded sessions •{' '}
+                        {formatConsultationDuration(inspectedSup.totalConsultationSeconds, false)}{' '}
+                        consultation • 💡 {inspectedSup.adviceItemsCount || 0} extracted advice items •{' '}
+                        🎯 {inspectedSup.decisionsCount || 0} decisions • 📋{' '}
+                        {inspectedSup.actionItemsAssignedCount || 0} student tasks assigned
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      <button
+                        type="button"
+                        className="btn-sup-eval-gemini"
+                        onClick={() => handleEvaluateSupervisorWithGemini(inspectedSup)}
+                        disabled={
+                          Boolean(evaluatingSupervisorKey) ||
+                          isEvaluatingAllSupervisors ||
+                          inspectedSup.sessionsCount === 0
+                        }
+                      >
+                        {evaluatingSupervisorKey ===
+                        (inspectedSup.key || inspectedSup.email || inspectedSup.name)
+                          ? '⏳ Gemini Evaluating...'
+                          : gem
+                          ? '🔄 Re-Run Gemini Evaluation'
+                          : '🤖 Evaluate Teacher with Gemini'}
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-edit-student-work"
+                        onClick={() => setInspectedSupervisorKey('')}
+                      >
+                        ✕ Close Dossier
+                      </button>
+                    </div>
+                  </div>
+
+                  {gem ? (
+                    <div className="sup-dossier-gemini-grid">
+                      <div className="sup-dossier-score-strip">
+                        <div className="sup-dossier-score-box">
+                          <span className="sup-kpi-eyebrow">⭐ Overall Teacher Score</span>
+                          <strong style={{ fontSize: '1.35rem', color: '#4338ca' }}>
+                            {gem.overallScore}/10
+                          </strong>
+                        </div>
+                        <div className="sup-dossier-score-box">
+                          <span className="sup-kpi-eyebrow">💡 Useful Instruction &amp; Advice</span>
+                          <strong style={{ fontSize: '1.35rem', color: '#0f766e' }}>
+                            {gem.instructionAndAdviceScore}/10
+                          </strong>
+                        </div>
+                        <div className="sup-dossier-score-box">
+                          <span className="sup-kpi-eyebrow">📋 Project Group Management</span>
+                          <strong style={{ fontSize: '1.35rem', color: '#1d4ed8' }}>
+                            {gem.groupManagementScore}/10
+                          </strong>
+                        </div>
+                        <div className="sup-dossier-verdict-box">
+                          <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#334155', marginBottom: '4px' }}>
+                            🤖 Gemini Executive Verdict ({gem.aiModelUsed || 'gemini-3.8-flash'})
+                          </div>
+                          <div style={{ fontSize: '0.83rem', color: '#0f172a', lineHeight: 1.45 }}>
+                            {gem.executiveVerdict}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="sup-dossier-columns">
+                        <div className="sup-dossier-card">
+                          <h6>✅ Key Coaching Strengths</h6>
+                          {(gem.strengths || []).length > 0 ? (
+                            <ul>
+                              {gem.strengths.map((st, idx) => (
+                                <li key={idx}>{st}</li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <p style={{ fontSize: '0.78rem', color: '#64748b' }}>No specific strengths listed.</p>
+                          )}
+                        </div>
+
+                        <div className="sup-dossier-card">
+                          <h6>⚠️ Group Management Gaps &amp; Follow-Up Needed</h6>
+                          {(gem.managementGaps || []).length > 0 ? (
+                            <ul>
+                              {gem.managementGaps.map((gap, idx) => (
+                                <li key={idx}>{gap}</li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <p style={{ fontSize: '0.78rem', color: '#15803d' }}>
+                              No major management gaps identified.
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      {(gem.usefulInstructionsEvidence || []).length > 0 && (
+                        <div className="sup-dossier-card">
+                          <h6>🎙️ Verified Useful Instructions &amp; Technical Advice (With Timestamps)</h6>
+                          <div className="sup-evidence-pills-list">
+                            {gem.usefulInstructionsEvidence.map((ev, idx) => (
+                              <div key={idx} className="sup-evidence-quote-item">
+                                <span className="rate-pill good" style={{ flexShrink: 0 }}>
+                                  📁 Group {ev.groupName} • Wk {ev.weekNumber} [{ev.timestamp || '00:00'}]
+                                </span>
+                                <span style={{ fontSize: '0.8rem', color: '#1e293b' }}>
+                                  {ev.quoteOrSummary}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {(gem.groupEvaluations || []).length > 0 && (
+                        <div className="sup-dossier-card">
+                          <h6>📁 Per-Group Instruction &amp; Management Assessment</h6>
+                          <div className="sup-group-eval-grid">
+                            {gem.groupEvaluations.map((ge, idx) => (
+                              <div key={idx} className="sup-group-eval-item">
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '6px' }}>
+                                  <strong style={{ fontSize: '0.84rem', color: '#0f172a' }}>
+                                    📁 Group {ge.groupName}
+                                  </strong>
+                                  <div style={{ display: 'flex', gap: '4px' }}>
+                                    <span
+                                      className={`rate-pill ${
+                                        ge.instructionQuality === 'high'
+                                          ? 'good'
+                                          : ge.instructionQuality === 'moderate'
+                                          ? 'warn'
+                                          : 'low'
+                                      }`}
+                                    >
+                                      Advice: {ge.instructionQuality}
+                                    </span>
+                                    <span
+                                      className={`rate-pill ${
+                                        ge.managementQuality === 'high'
+                                          ? 'good'
+                                          : ge.managementQuality === 'moderate'
+                                          ? 'warn'
+                                          : 'low'
+                                      }`}
+                                    >
+                                      Mgmt: {ge.managementQuality}
+                                    </span>
+                                  </div>
+                                </div>
+                                <div style={{ fontSize: '0.77rem', color: '#334155', marginTop: '4px' }}>
+                                  {ge.verdict}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="sup-dossier-empty-gemini">
+                      Click <strong>🤖 Evaluate Teacher with Gemini</strong> above to score{' '}
+                      <strong>{inspectedSup.name}</strong> on Technical Instruction &amp; Advice (/10) and
+                      Group Management (/10) based on their recorded meeting transcripts below.
+                    </div>
+                  )}
+
+                  {/* Raw Extracted Advice & Diarized Spoken Turns per Meeting */}
+                  {evidenceList.length > 0 && (
+                    <div className="sup-dossier-card" style={{ marginTop: '10px' }}>
+                      <h6>
+                        📋 Recorded Consultation Evidence by Group &amp; Week ({evidenceList.length}{' '}
+                        Sessions)
+                      </h6>
+                      <div className="sup-raw-meetings-list">
+                        {evidenceList.map((ev) => (
+                          <div key={`${ev.meetingId}_${ev.weekNumber}`} className="sup-raw-meeting-item">
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '6px' }}>
+                              <div>
+                                <strong style={{ fontSize: '0.84rem', color: '#0f172a' }}>
+                                  📁 Group {ev.groupName} — Week {ev.weekNumber}
+                                </strong>
+                                {ev.projectTopic && (
+                                  <span style={{ fontSize: '0.75rem', color: '#64748b', marginLeft: '6px' }}>
+                                    ({ev.projectTopic})
+                                  </span>
+                                )}
+                              </div>
+                              <div style={{ display: 'flex', gap: '6px', alignItems: 'center', fontSize: '0.74rem' }}>
+                                <span className="rate-pill good">
+                                  ⏱️ {formatConsultationDuration(ev.consultationSeconds, false)}
+                                </span>
+                                {ev.supervisorSpeakingSeconds > 0 && (
+                                  <span style={{ color: '#6d28d9', fontWeight: 700 }}>
+                                    🗣️ Sup Spoke: {formatConsultationDuration(ev.supervisorSpeakingSeconds, false)}
+                                  </span>
+                                )}
+                                <span style={{ color: '#475569' }}>
+                                  📋 {ev.actionItemsAssignedCount} student tasks
+                                </span>
+                                {ev.meetingId && (
+                                  <button
+                                    type="button"
+                                    className="btn-edit-student-work"
+                                    onClick={() => {
+                                      setSelectedMeetingId(ev.meetingId);
+                                      if (ev.groupId) setStudioGroupId(ev.groupId);
+                                      setStudioWeekNumber(ev.weekNumber);
+                                      setSubViewMode('studio');
+                                    }}
+                                  >
+                                    🎧 Open in Studio
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+
+                            {ev.supervisorFeedback.length > 0 && (
+                              <div style={{ fontSize: '0.78rem', color: '#1e293b', marginTop: '5px' }}>
+                                <strong>💡 Extracted Advice:</strong> {ev.supervisorFeedback.join(' • ')}
+                              </div>
+                            )}
+
+                            {ev.keyDecisions.length > 0 && (
+                              <div style={{ fontSize: '0.76rem', color: '#334155', marginTop: '3px' }}>
+                                <strong>🎯 Key Decisions:</strong> {ev.keyDecisions.join(' • ')}
+                              </div>
+                            )}
+
+                            {ev.spokenAdviceTurns.length > 0 && (
+                              <div className="sup-spoken-turns-preview">
+                                {ev.spokenAdviceTurns.slice(0, 3).map((turn, tIdx) => (
+                                  <div key={tIdx} className="sup-spoken-turn-line">
+                                    <span className="sup-turn-time">[{turn.startTime}]</span>{' '}
+                                    <span>&ldquo;{turn.text}&rdquo;</span>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+          </div>
+
+          {/* Section 2: Group x Week Consultation Duration & Talk-Time Heatmap Matrix */}
+          <div className="supervisor-leaderboard-card">
+            <div className="supervisor-section-header">
+              <div>
+                <h4>
+                  2. 📁 Group &times; Week Consultation Duration &amp; Supervisor Talk-Time Matrix (
+                  {filteredSupervisorGroupRows.length} Groups)
+                </h4>
+                <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
+                  🟢 &ge;15m Thorough • 🟡 5–14m Moderate • 🔴 &lt;5m Short • ⚪ 0m Not Recorded — Click any week cell to open the recording &amp; transcript in Studio
+                </span>
+              </div>
+              {supervisorPerfSelectedEmail !== 'all' && (
+                <button
+                  type="button"
+                  className="btn-edit-student-work"
+                  onClick={() => setSupervisorPerfSelectedEmail('all')}
+                >
+                  ✕ Clear Supervisor Filter
+                </button>
+              )}
+            </div>
+
+            {filteredSupervisorGroupRows.length === 0 ? (
+              <div className="empty-meetings-box">
+                No groups match the selected supervisor filter.
+              </div>
+            ) : (
+              <div className="matrix-table-wrapper">
+                <table className="project-meetings-matrix-table">
+                  <thead>
+                    <tr>
+                      <th>Group</th>
+                      <th>Assigned Supervisor</th>
+                      <th>Weeks Met</th>
+                      <th>Total Consultation Time</th>
+                      <th>Avg / Met Week</th>
+                      <th>👨‍🏫 Supervisor Speaking Time</th>
+                      {supervisorPerformanceAnalytics.allWeeks.map((wk) => (
+                        <th key={wk}>Week {wk}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredSupervisorGroupRows.map((gRow) => {
+                      const avgMin = gRow.avgConsultationSecondsPerMetWeek / 60;
+                      const avgClass =
+                        avgMin >= 15 ? 'good' : avgMin >= 5 ? 'warn' : 'low';
+
+                      return (
+                        <tr key={gRow.groupId}>
+                          <td>
+                            <strong style={{ fontSize: '0.9rem', color: '#0f172a' }}>
+                              📁 {gRow.groupName}
+                            </strong>
+                            {gRow.projectTopic && (
+                              <div style={{ fontSize: '0.73rem', color: '#64748b', maxWidth: '200px' }}>
+                                {gRow.projectTopic}
+                              </div>
+                            )}
+                          </td>
+
+                          <td>
+                            <div style={{ fontWeight: 600, fontSize: '0.82rem', color: '#1e293b' }}>
+                              👨‍🏫 {gRow.supervisorName || gRow.canonicalSupervisorName}
+                            </div>
+                          </td>
+
+                          <td>
+                            <span
+                              className={`rate-pill ${
+                                gRow.coveragePct >= 80
+                                  ? 'good'
+                                  : gRow.coveragePct >= 50
+                                  ? 'warn'
+                                  : 'low'
+                              }`}
+                            >
+                              {gRow.weeksMetCount}/{gRow.totalActiveWeeksCount} ({gRow.coveragePct}%)
+                            </span>
+                          </td>
+
+                          <td>
+                            <strong style={{ color: '#1e3a8a' }}>
+                              {formatConsultationDuration(gRow.totalConsultationSeconds, false)}
+                            </strong>
+                          </td>
+
+                          <td>
+                            {gRow.weeksMetCount > 0 ? (
+                              <span className={`rate-pill ${avgClass}`}>
+                                {formatConsultationDuration(gRow.avgConsultationSecondsPerMetWeek, false)}
+                              </span>
+                            ) : (
+                              <span style={{ color: '#94a3b8' }}>—</span>
+                            )}
+                          </td>
+
+                          <td>
+                            {gRow.supervisorTalkSharePct !== null ? (
+                              <div>
+                                <strong style={{ color: '#6d28d9' }}>
+                                  {formatConsultationDuration(gRow.totalSupervisorSpeakingSeconds, false)}
+                                </strong>{' '}
+                                <span style={{ fontSize: '0.75rem', color: '#475569' }}>
+                                  ({gRow.supervisorTalkSharePct}% of talk)
+                                </span>
+                              </div>
+                            ) : (
+                              <span style={{ color: '#94a3b8', fontSize: '0.75rem' }}>—</span>
+                            )}
+                          </td>
+
+                          {supervisorPerformanceAnalytics.allWeeks.map((wk) => {
+                            const cell = gRow.weekCells?.[wk];
+                            const sec = cell?.consultationSeconds || 0;
+                            const status = cell?.durationStatus || 'none';
+
+                            return (
+                              <td
+                                key={wk}
+                                className={`sup-matrix-week-cell status-${status}`}
+                                onClick={() => {
+                                  if (cell?.primaryMeetingId) {
+                                    setSelectedMeetingId(cell.primaryMeetingId);
+                                    setStudioGroupId(gRow.groupId);
+                                    setStudioWeekNumber(wk);
+                                    setSubViewMode('studio');
+                                  }
+                                }}
+                                style={{
+                                  cursor: cell?.primaryMeetingId ? 'pointer' : 'default',
+                                }}
+                                title={
+                                  cell?.primaryMeetingId
+                                    ? `Click to inspect Group ${gRow.groupName} Week ${wk} recording & diarized transcript`
+                                    : `No recording for Group ${gRow.groupName} in Week ${wk}`
+                                }
+                              >
+                                {sec > 0 ? (
+                                  <div className="sup-week-cell-content">
+                                    <span className={`sup-dur-pill ${status}`}>
+                                      {status === 'thorough'
+                                        ? '🟢'
+                                        : status === 'moderate'
+                                        ? '🟡'
+                                        : '🔴'}{' '}
+                                      {formatConsultationDuration(sec, false)}
+                                    </span>
+                                    {cell.validClipsCount > 1 && (
+                                      <span style={{ fontSize: '0.68rem', color: '#64748b' }}>
+                                        ({cell.validClipsCount} parts)
+                                      </span>
+                                    )}
+                                    {cell.hasDiarization && (
+                                      <div style={{ fontSize: '0.7rem', color: '#6d28d9', fontWeight: 600 }}>
+                                        🗣️ Sup: {formatConsultationDuration(cell.supervisorSpeakingSeconds, false)} ({cell.supervisorTalkSharePct}%)
+                                      </div>
+                                    )}
+                                    {cell.recorderNames?.length > 0 && (
+                                      <div style={{ fontSize: '0.68rem', color: '#475569' }}>
+                                        🎙️ {cell.recorderNames.join(', ')}
+                                      </div>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <span className="sup-dur-pill none">⚪ 0m</span>
+                                )}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </div>
       ) : (
         <div className="project-meetings-workspace-grid">

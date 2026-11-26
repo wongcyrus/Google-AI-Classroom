@@ -2114,3 +2114,901 @@ export async function exportStudentContributionProfilesExcel({
 
   return await exportToExcel(headers, rows, `${classId}_student_contribution_profiles.xlsx`);
 }
+
+/**
+ * Parses a timestamp string ("MM:SS" or "HH:MM:SS" or "[MM:SS]") into seconds.
+ */
+function parseTranscriptTimeSec(ts) {
+  if (typeof ts === 'number' && Number.isFinite(ts)) return Math.max(0, ts);
+  if (!ts || typeof ts !== 'string') return 0;
+  const clean = ts.replace(/\[|\]/g, '').trim();
+  const parts = clean.split(':').map((n) => parseFloat(n));
+  if (parts.some((n) => Number.isNaN(n))) return 0;
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  if (parts.length === 2) return parts[0] * 60 + parts[1];
+  return parts[0] || 0;
+}
+
+/**
+ * Checks if an audio clip in a project meeting is valid (non-empty, >2s or valid size).
+ */
+function isMeetingAudioClipValid(clip) {
+  if (!clip) return false;
+  const dur = Number(clip.durationSeconds);
+  const rawSize = clip.fileSize ?? clip.fileSizeBytes ?? clip.size;
+  const size = rawSize !== undefined && rawSize !== null ? Number(rawSize) : undefined;
+  if (size === 0) return false;
+  if (!Number.isNaN(dur) && dur <= 2 && size !== undefined && !Number.isNaN(size) && size <= 256) return false;
+  if (!Number.isNaN(dur) && dur <= 2 && size === undefined) return false;
+  return Boolean(clip.storagePath || clip.downloadUrl || dur > 2);
+}
+
+/**
+ * Computes valid consultation duration (in seconds) for a meeting document.
+ */
+function getValidMeetingConsultationSeconds(meeting) {
+  if (!meeting) return 0;
+  const clips = Array.isArray(meeting.audioClips) ? meeting.audioClips : [];
+  if (clips.length > 0) {
+    return clips
+      .filter((c) => isMeetingAudioClipValid(c))
+      .reduce((sum, c) => sum + (Number(c.durationSeconds) || 0), 0);
+  }
+  return Math.max(0, Number(meeting.durationSeconds) || 0);
+}
+
+/**
+ * Computes diarized speaking time (Supervisor vs. Students) from `meeting.transcriptSegments`.
+ */
+export function computeMeetingDiarizedTalkStats(meeting = {}, supervisorNames = []) {
+  const segments = Array.isArray(meeting?.transcriptSegments) ? meeting.transcriptSegments : [];
+  if (segments.length === 0) {
+    return {
+      hasDiarization: false,
+      supervisorSpeakingSeconds: 0,
+      studentSpeakingSeconds: 0,
+      totalDiarizedSeconds: 0,
+      supervisorTurnsCount: 0,
+      studentTurnsCount: 0,
+      supervisorTalkSharePct: null,
+    };
+  }
+
+  const extraNames = (Array.isArray(supervisorNames) ? supervisorNames : [])
+    .flatMap((n) => String(n || '').split(/[/,&]+/))
+    .map((s) => s.trim().toLowerCase())
+    .filter((s) => s.length >= 3);
+
+  let supervisorSpeakingSeconds = 0;
+  let studentSpeakingSeconds = 0;
+  let supervisorTurnsCount = 0;
+  let studentTurnsCount = 0;
+
+  segments.forEach((seg) => {
+    const startSec = parseTranscriptTimeSec(seg?.startTime);
+    const endSec = parseTranscriptTimeSec(seg?.endTime);
+    const rawDur = endSec >= startSec ? endSec - startSec : 0;
+    const turnSec = Math.min(600, Math.max(rawDur, seg?.text ? 2 : 0));
+    const speakerRaw = String(seg?.speaker || '').trim().toLowerCase();
+
+    const isSupervisorSpeaker =
+      speakerRaw.includes('supervisor') ||
+      speakerRaw.includes('instructor') ||
+      speakerRaw.includes('teacher') ||
+      speakerRaw.includes('advisor') ||
+      speakerRaw.includes('assessor') ||
+      speakerRaw.includes('老師') ||
+      speakerRaw.includes('導師') ||
+      extraNames.some((nameTok) => speakerRaw.includes(nameTok));
+
+    if (isSupervisorSpeaker) {
+      supervisorSpeakingSeconds += turnSec;
+      supervisorTurnsCount += 1;
+    } else {
+      studentSpeakingSeconds += turnSec;
+      studentTurnsCount += 1;
+    }
+  });
+
+  const totalDiarizedSeconds = supervisorSpeakingSeconds + studentSpeakingSeconds;
+  const supervisorTalkSharePct =
+    totalDiarizedSeconds > 0
+      ? Math.round((supervisorSpeakingSeconds / totalDiarizedSeconds) * 100)
+      : null;
+
+  return {
+    hasDiarization: totalDiarizedSeconds > 0,
+    supervisorSpeakingSeconds,
+    studentSpeakingSeconds,
+    totalDiarizedSeconds,
+    supervisorTurnsCount,
+    studentTurnsCount,
+    supervisorTalkSharePct,
+  };
+}
+
+/**
+ * Formats seconds into human-readable duration (e.g. "1h 12m", "24m 15s", "45s", "0m").
+ */
+export function formatConsultationDuration(seconds, compact = false) {
+  const sec = Math.max(0, Math.round(Number(seconds) || 0));
+  if (sec === 0) return '0m';
+  const hrs = Math.floor(sec / 3600);
+  const mins = Math.floor((sec % 3600) / 60);
+  const remSecs = sec % 60;
+  if (hrs > 0) {
+    return compact ? `${hrs}h ${mins}m` : `${hrs}h ${mins}m ${remSecs}s`;
+  }
+  if (mins > 0) {
+    return compact ? `${mins}m` : `${mins}m ${remSecs < 10 ? `0${remSecs}` : remSecs}s`;
+  }
+  return `${remSecs}s`;
+}
+
+/**
+ * Computes comprehensive Supervisor Performance & Group Consultation Time Analytics:
+ *  - Normalizes supervisor identities by email (resolving shared group labels like "Kitson Cheung / Elka Leung")
+ *  - Computes Total Consultation Duration (`audioClips[].durationSeconds`) per supervisor, per group, and per week
+ *  - Computes Diarized Supervisor Speaking Time vs. Student Speaking Time (`transcriptSegments`)
+ *  - Tracks Group Coverage %, Short Sessions (< 5 min), and Missed Group-Weeks (0m)
+ */
+export function computeSupervisorPerformanceAnalytics({
+  groups = [],
+  meetings = [],
+  supervisorEvaluations = [],
+  weekFilter = 'all',
+  attributionMode = 'recording_supervisor', // 'recording_supervisor' | 'assigned_supervisor'
+} = {}) {
+  const cleanEmail = (em) => normalizeStudentEmail(em || '');
+  const toEvalKey = (str) =>
+    String(str || '')
+      .toLowerCase()
+      .replace(/[^a-z0-9@._-]/gi, '_') || '';
+
+  const evalByEmailOrKey = new Map();
+  (Array.isArray(supervisorEvaluations) ? supervisorEvaluations : []).forEach((ev) => {
+    if (!ev) return;
+    if (ev.supervisorEmail) evalByEmailOrKey.set(cleanEmail(ev.supervisorEmail), ev);
+    if (ev.supervisorKey) evalByEmailOrKey.set(toEvalKey(ev.supervisorKey), ev);
+    if (ev.id) evalByEmailOrKey.set(toEvalKey(ev.id), ev);
+    if (ev.supervisorName) evalByEmailOrKey.set(toEvalKey(ev.supervisorName), ev);
+  });
+
+  // 1. Discover canonical display names per supervisor email
+  const nameCandidatesByEmail = new Map();
+  const addNameCandidate = (email, name) => {
+    const em = cleanEmail(email);
+    const nm = String(name || '').trim();
+    if (!em || !nm) return;
+    if (!nameCandidatesByEmail.has(em)) nameCandidatesByEmail.set(em, []);
+    nameCandidatesByEmail.get(em).push(nm);
+  };
+
+  (Array.isArray(groups) ? groups : []).forEach((g) => {
+    const primaryEmail = cleanEmail(g?.supervisorEmail);
+    const rawName = String(g?.supervisorName || '').trim();
+    if (primaryEmail && rawName) {
+      addNameCandidate(primaryEmail, rawName);
+      // If slash-separated (e.g. "Kitson Cheung / Elka Leung") and coSupervisorEmails present, map first part to primaryEmail
+      if (rawName.includes('/')) {
+        const parts = rawName.split('/').map((s) => s.trim()).filter(Boolean);
+        if (parts[0]) addNameCandidate(primaryEmail, parts[0]);
+      }
+    }
+  });
+
+  (Array.isArray(meetings) ? meetings : []).forEach((m) => {
+    addNameCandidate(m?.supervisorEmail, m?.supervisorName);
+  });
+
+  const resolveSupervisorName = (email, fallbackName = '') => {
+    const em = cleanEmail(email);
+    const candidates = nameCandidatesByEmail.get(em) || [];
+    // Prefer single-person name without '/'
+    const singleNames = candidates.filter((c) => !c.includes('/') && !c.includes('@'));
+    if (singleNames.length > 0) {
+      // Pick most frequent single name
+      const freq = new Map();
+      singleNames.forEach((n) => freq.set(n, (freq.get(n) || 0) + 1));
+      return [...freq.entries()].sort((a, b) => b[1] - a[1])[0][0];
+    }
+    if (candidates.length > 0) return candidates[0];
+    if (fallbackName && !fallbackName.includes('/')) return fallbackName;
+    if (em) return em.split('@')[0];
+    return fallbackName || 'Unassigned Supervisor';
+  };
+
+  // 2. Determine all active weeks across meetings with valid audio or analysis
+  const validMeetings = (Array.isArray(meetings) ? meetings : []).filter((m) => {
+    const dur = getValidMeetingConsultationSeconds(m);
+    const isAnalyzed = Boolean(m?.analyzedAt || m?.aiModelUsed || m?.rawDiarizedTranscript);
+    return dur > 0 || isAnalyzed;
+  });
+
+  const allWeeks = [
+    ...new Set(
+      validMeetings
+        .map((m) => Number(m.weekNumber) || 0)
+        .filter((w) => w > 0)
+    ),
+  ].sort((a, b) => a - b);
+
+  const targetWeeks =
+    weekFilter !== 'all' && Number.isFinite(Number(weekFilter)) && Number(weekFilter) > 0
+      ? [Number(weekFilter)]
+      : allWeeks;
+  const targetWeekSet = new Set(targetWeeks);
+
+  // 3. Build Group x Week consultation matrix
+  const groupRows = (Array.isArray(groups) ? groups : []).map((grp) => {
+    const primaryEmail = cleanEmail(grp.supervisorEmail);
+    const primaryName = resolveSupervisorName(primaryEmail, grp.supervisorName);
+    const grpMeetings = validMeetings.filter((m) => m.groupId === grp.id);
+
+    const weekCells = {};
+    allWeeks.forEach((wk) => {
+      const wkMeetings = grpMeetings.filter((m) => Number(m.weekNumber) === wk);
+      let consultationSeconds = 0;
+      let validClipsCount = 0;
+      let supervisorSpeakingSeconds = 0;
+      let studentSpeakingSeconds = 0;
+      let supervisorTurnsCount = 0;
+      let studentTurnsCount = 0;
+      let hasDiarization = false;
+      const recorderEmailsSet = new Set();
+
+      wkMeetings.forEach((m) => {
+        const clips = (Array.isArray(m.audioClips) ? m.audioClips : []).filter((c) =>
+          isMeetingAudioClipValid(c)
+        );
+        if (clips.length > 0) {
+          clips.forEach((c) => {
+            consultationSeconds += Number(c.durationSeconds) || 0;
+            validClipsCount += 1;
+            const recEm = cleanEmail(c.recordedByEmail || m.supervisorEmail || primaryEmail);
+            if (recEm) recorderEmailsSet.add(recEm);
+          });
+        } else {
+          const fallbackDur = Math.max(0, Number(m.durationSeconds) || 0);
+          consultationSeconds += fallbackDur;
+          if (fallbackDur > 0) validClipsCount += 1;
+          const recEm = cleanEmail(m.supervisorEmail || primaryEmail);
+          if (recEm) recorderEmailsSet.add(recEm);
+        }
+
+        const talk = computeMeetingDiarizedTalkStats(m, [
+          grp.supervisorName,
+          m.supervisorName,
+          primaryName,
+        ]);
+        if (talk.hasDiarization) {
+          hasDiarization = true;
+          supervisorSpeakingSeconds += talk.supervisorSpeakingSeconds;
+          studentSpeakingSeconds += talk.studentSpeakingSeconds;
+          supervisorTurnsCount += talk.supervisorTurnsCount;
+          studentTurnsCount += talk.studentTurnsCount;
+        }
+      });
+
+      const totalDiarizedSeconds = supervisorSpeakingSeconds + studentSpeakingSeconds;
+      const supervisorTalkSharePct =
+        totalDiarizedSeconds > 0
+          ? Math.round((supervisorSpeakingSeconds / totalDiarizedSeconds) * 100)
+          : null;
+
+      const sortedMeetings = [...wkMeetings].sort(
+        (a, b) => getValidMeetingConsultationSeconds(b) - getValidMeetingConsultationSeconds(a)
+      );
+      const primaryMeeting = sortedMeetings[0] || null;
+      const isAnalyzed = wkMeetings.some((m) =>
+        Boolean(m.analyzedAt || m.aiModelUsed || m.rawDiarizedTranscript)
+      );
+      const isEmailed = wkMeetings.some((m) =>
+        Boolean(m.emailDispatch?.sentAt || m.emailDispatch?.lastEmailedAt)
+      );
+
+      let durationStatus = 'none';
+      if (consultationSeconds >= 900) durationStatus = 'thorough'; // >= 15 min
+      else if (consultationSeconds >= 300) durationStatus = 'moderate'; // 5 - 15 min
+      else if (consultationSeconds > 0) durationStatus = 'short'; // < 5 min
+
+      const recorderEmails = [...recorderEmailsSet];
+      const recorderNames = recorderEmails.map((em) => resolveSupervisorName(em));
+
+      weekCells[wk] = {
+        weekNumber: wk,
+        meetingsCount: wkMeetings.length,
+        primaryMeetingId: primaryMeeting?.id || null,
+        consultationSeconds,
+        validClipsCount,
+        hasDiarization,
+        supervisorSpeakingSeconds,
+        studentSpeakingSeconds,
+        supervisorTurnsCount,
+        studentTurnsCount,
+        supervisorTalkSharePct,
+        recorderEmails,
+        recorderNames,
+        isAnalyzed,
+        isEmailed,
+        durationStatus,
+      };
+    });
+
+    // Aggregate across targetWeeks
+    const activeCells = targetWeeks.map((wk) => weekCells[wk]).filter(Boolean);
+    const metCells = activeCells.filter((c) => c.consultationSeconds > 0 || c.meetingsCount > 0);
+    const totalConsultationSeconds = activeCells.reduce((s, c) => s + c.consultationSeconds, 0);
+    const totalSupervisorSpeakingSeconds = activeCells.reduce(
+      (s, c) => s + c.supervisorSpeakingSeconds,
+      0
+    );
+    const totalStudentSpeakingSeconds = activeCells.reduce(
+      (s, c) => s + c.studentSpeakingSeconds,
+      0
+    );
+    const totalDiarizedSeconds = totalSupervisorSpeakingSeconds + totalStudentSpeakingSeconds;
+    const supervisorTalkSharePct =
+      totalDiarizedSeconds > 0
+        ? Math.round((totalSupervisorSpeakingSeconds / totalDiarizedSeconds) * 100)
+        : null;
+
+    const avgConsultationSecondsPerMetWeek =
+      metCells.length > 0 ? Math.round(totalConsultationSeconds / metCells.length) : 0;
+    const coveragePct =
+      targetWeeks.length > 0 ? Math.round((metCells.length / targetWeeks.length) * 100) : 0;
+
+    return {
+      groupId: grp.id,
+      groupName: grp.name || grp.id,
+      projectTopic: grp.projectTopic || '',
+      supervisorEmail: primaryEmail,
+      supervisorName: grp.supervisorName || primaryName,
+      canonicalSupervisorName: primaryName,
+      coSupervisorEmails: (Array.isArray(grp.coSupervisorEmails) ? grp.coSupervisorEmails : []).map(
+        cleanEmail
+      ),
+      membersCount: (Array.isArray(grp.members) ? grp.members : []).length,
+      weekCells,
+      weeksMetCount: metCells.length,
+      totalActiveWeeksCount: targetWeeks.length,
+      coveragePct,
+      totalConsultationSeconds,
+      avgConsultationSecondsPerMetWeek,
+      totalSupervisorSpeakingSeconds,
+      totalStudentSpeakingSeconds,
+      supervisorTalkSharePct,
+    };
+  });
+
+  // 4. Build Per-Supervisor Performance Rollup
+  const supervisorMap = new Map();
+  const ensureSupervisor = (email, fallbackName = '') => {
+    const key = cleanEmail(email) || String(fallbackName || 'unassigned').toLowerCase();
+    if (!supervisorMap.has(key)) {
+      supervisorMap.set(key, {
+        key,
+        email: cleanEmail(email),
+        name: resolveSupervisorName(email, fallbackName),
+        assignedGroupsMap: new Map(),
+        touchedGroupsByWeek: new Map(), // wk -> Set(groupName)
+        touchedGroupsSet: new Set(),
+        sessionsCount: 0,
+        clipsCount: 0,
+        analyzedSessionsCount: 0,
+        emailedSessionsCount: 0,
+        shortSessionsCount: 0,
+        totalConsultationSeconds: 0,
+        totalSupervisorSpeakingSeconds: 0,
+        totalStudentSpeakingSeconds: 0,
+        supervisorTurnsCount: 0,
+        studentTurnsCount: 0,
+        diarizedSessionsCount: 0,
+        adviceItemsCount: 0,
+        decisionsCount: 0,
+        blockersIdentifiedCount: 0,
+        actionItemsAssignedCount: 0,
+        substantiveSupervisorTurnsCount: 0,
+        meetingCoachingEvidence: [],
+        weeklyBreakdownMap: new Map(),
+      });
+    }
+    return supervisorMap.get(key);
+  };
+
+  // Register assigned groups per supervisor
+  groupRows.forEach((gRow) => {
+    if (gRow.supervisorEmail) {
+      const sup = ensureSupervisor(gRow.supervisorEmail, gRow.canonicalSupervisorName);
+      sup.assignedGroupsMap.set(gRow.groupId, gRow);
+    }
+    // Also register explicit single-group co-supervisors if they have recorded meetings or are named in supervisorName
+    if (String(gRow.supervisorName || '').includes('/')) {
+      (gRow.coSupervisorEmails || []).forEach((coEm) => {
+        if (coEm && nameCandidatesByEmail.has(coEm)) {
+          const coSup = ensureSupervisor(coEm);
+          coSup.assignedGroupsMap.set(gRow.groupId, gRow);
+        }
+      });
+    }
+  });
+
+  const ensureWeekBucket = (sup, wk) => {
+    if (!sup.weeklyBreakdownMap.has(wk)) {
+      sup.weeklyBreakdownMap.set(wk, {
+        weekNumber: wk,
+        consultationSeconds: 0,
+        supervisorSpeakingSeconds: 0,
+        studentSpeakingSeconds: 0,
+        sessionsCount: 0,
+        clipsCount: 0,
+        groupsMetSet: new Set(),
+      });
+    }
+    return sup.weeklyBreakdownMap.get(wk);
+  };
+
+  // Attribute meetings & clips across targetWeeks
+  const groupById = new Map(groupRows.map((g) => [g.groupId, g]));
+
+  validMeetings.forEach((m) => {
+    const wk = Number(m.weekNumber) || 0;
+    if (!targetWeekSet.has(wk)) return;
+
+    const grp = groupById.get(m.groupId);
+    const groupLabel = grp?.groupName || m.groupName || m.groupId || 'Group';
+    const clips = (Array.isArray(m.audioClips) ? m.audioClips : []).filter((c) =>
+      isMeetingAudioClipValid(c)
+    );
+    const meetingDur = getValidMeetingConsultationSeconds(m);
+    const talk = computeMeetingDiarizedTalkStats(m, [
+      grp?.supervisorName,
+      m.supervisorName,
+      grp?.canonicalSupervisorName,
+    ]);
+    const isAnalyzed = Boolean(m.analyzedAt || m.aiModelUsed || m.rawDiarizedTranscript);
+    const isEmailed = Boolean(m.emailDispatch?.sentAt || m.emailDispatch?.lastEmailedAt);
+
+    // Extract coaching & management evidence from meeting insights & diarized supervisor turns
+    const feedbackArr = Array.isArray(m.keyInsights?.supervisorFeedback)
+      ? m.keyInsights.supervisorFeedback.filter(Boolean)
+      : [];
+    const decisionsArr = Array.isArray(m.keyInsights?.keyDecisions)
+      ? m.keyInsights.keyDecisions.filter(Boolean)
+      : [];
+    const blockersArr = Array.isArray(m.keyInsights?.blockersAndRisks)
+      ? m.keyInsights.blockersAndRisks.filter(Boolean)
+      : [];
+    const actionItemsCount = (Array.isArray(m.studentContributions) ? m.studentContributions : []).reduce(
+      (sum, sc) => sum + (Array.isArray(sc?.actionItemsNextWeek) ? sc.actionItemsNextWeek.length : 0),
+      0
+    );
+
+    const supNameHints = [grp?.supervisorName, m.supervisorName, grp?.canonicalSupervisorName]
+      .filter(Boolean)
+      .flatMap((n) =>
+        String(n)
+          .toLowerCase()
+          .split(/[/,&\s]+/)
+          .map((t) => t.trim())
+          .filter((t) => t.length >= 3)
+      );
+
+    const supSpokenSegments = (Array.isArray(m.transcriptSegments) ? m.transcriptSegments : []).filter(
+      (seg) => {
+        const sp = String(seg?.speaker || '').toLowerCase();
+        return (
+          sp.includes('supervisor') ||
+          sp.includes('instructor') ||
+          sp.includes('teacher') ||
+          sp.includes('老師') ||
+          sp.includes('導師') ||
+          supNameHints.some((h) => sp.includes(h))
+        );
+      }
+    );
+
+    const substantiveSupSegments = supSpokenSegments.filter(
+      (seg) => String(seg?.text || '').trim().length >= 30
+    );
+
+    const recordCoachingEvidenceForSup = (sup, sessionDurSec, supSpeakingSec) => {
+      sup.adviceItemsCount += feedbackArr.length;
+      sup.decisionsCount += decisionsArr.length;
+      sup.blockersIdentifiedCount += blockersArr.length;
+      sup.actionItemsAssignedCount += actionItemsCount;
+      sup.substantiveSupervisorTurnsCount += substantiveSupSegments.length;
+      sup.meetingCoachingEvidence.push({
+        meetingId: m.id,
+        groupId: m.groupId || grp?.groupId || '',
+        groupName: groupLabel,
+        projectTopic: grp?.projectTopic || m.projectTopic || '',
+        weekNumber: wk,
+        consultationSeconds: sessionDurSec,
+        supervisorSpeakingSeconds: supSpeakingSec,
+        overallGroupProgress: m.keyInsights?.overallGroupProgress || null,
+        supervisorFeedback: feedbackArr,
+        keyDecisions: decisionsArr,
+        blockersAndRisks: blockersArr,
+        actionItemsAssignedCount: actionItemsCount,
+        substantiveSupervisorTurnsCount: substantiveSupSegments.length,
+        spokenAdviceTurns: substantiveSupSegments.slice(0, 6).map((seg) => ({
+          startTime: seg.startTime || '00:00',
+          endTime: seg.endTime || '',
+          speaker: seg.speaker || 'Supervisor',
+          text: String(seg.text || '').trim(),
+        })),
+      });
+    };
+
+    if (attributionMode === 'recording_supervisor' && clips.length > 0) {
+      // Group clips by their recordedByEmail so multi-recorder meetings credit each supervisor accurately
+      const clipsBySup = new Map();
+      clips.forEach((c) => {
+        const recEm = cleanEmail(c.recordedByEmail || m.supervisorEmail || grp?.supervisorEmail);
+        if (!clipsBySup.has(recEm)) clipsBySup.set(recEm, []);
+        clipsBySup.get(recEm).push(c);
+      });
+
+      clipsBySup.forEach((supClips, recEm) => {
+        const sup = ensureSupervisor(recEm, m.supervisorName || grp?.canonicalSupervisorName);
+        const clipSumSec = supClips.reduce((s, c) => s + (Number(c.durationSeconds) || 0), 0);
+        const shareRatio = meetingDur > 0 ? clipSumSec / meetingDur : 1 / clipsBySup.size;
+
+        sup.sessionsCount += 1;
+        sup.clipsCount += supClips.length;
+        if (isAnalyzed) sup.analyzedSessionsCount += 1;
+        if (isEmailed) sup.emailedSessionsCount += 1;
+        if (clipSumSec > 0 && clipSumSec < 300) sup.shortSessionsCount += 1;
+        sup.totalConsultationSeconds += clipSumSec;
+        sup.touchedGroupsSet.add(groupLabel);
+        if (!sup.touchedGroupsByWeek.has(wk)) sup.touchedGroupsByWeek.set(wk, new Set());
+        sup.touchedGroupsByWeek.get(wk).add(groupLabel);
+
+        const wkBucket = ensureWeekBucket(sup, wk);
+        wkBucket.consultationSeconds += clipSumSec;
+        wkBucket.sessionsCount += 1;
+        wkBucket.clipsCount += supClips.length;
+        wkBucket.groupsMetSet.add(groupLabel);
+
+        let supSpeak = 0;
+        if (talk.hasDiarization) {
+          supSpeak = Math.round(talk.supervisorSpeakingSeconds * shareRatio);
+          const stuSpeak = Math.round(talk.studentSpeakingSeconds * shareRatio);
+          sup.totalSupervisorSpeakingSeconds += supSpeak;
+          sup.totalStudentSpeakingSeconds += stuSpeak;
+          sup.supervisorTurnsCount += Math.round(talk.supervisorTurnsCount * shareRatio);
+          sup.studentTurnsCount += Math.round(talk.studentTurnsCount * shareRatio);
+          sup.diarizedSessionsCount += 1;
+          wkBucket.supervisorSpeakingSeconds += supSpeak;
+          wkBucket.studentSpeakingSeconds += stuSpeak;
+        }
+        recordCoachingEvidenceForSup(sup, clipSumSec, supSpeak);
+      });
+    } else {
+      const targetEmail = cleanEmail(
+        attributionMode === 'assigned_supervisor'
+          ? grp?.supervisorEmail || m.supervisorEmail
+          : m.supervisorEmail || grp?.supervisorEmail
+      );
+      const sup = ensureSupervisor(targetEmail, grp?.canonicalSupervisorName || m.supervisorName);
+      sup.sessionsCount += 1;
+      sup.clipsCount += Math.max(1, clips.length);
+      if (isAnalyzed) sup.analyzedSessionsCount += 1;
+      if (isEmailed) sup.emailedSessionsCount += 1;
+      if (meetingDur > 0 && meetingDur < 300) sup.shortSessionsCount += 1;
+      sup.totalConsultationSeconds += meetingDur;
+      sup.touchedGroupsSet.add(groupLabel);
+      if (!sup.touchedGroupsByWeek.has(wk)) sup.touchedGroupsByWeek.set(wk, new Set());
+      sup.touchedGroupsByWeek.get(wk).add(groupLabel);
+
+      const wkBucket = ensureWeekBucket(sup, wk);
+      wkBucket.consultationSeconds += meetingDur;
+      wkBucket.sessionsCount += 1;
+      wkBucket.clipsCount += Math.max(1, clips.length);
+      wkBucket.groupsMetSet.add(groupLabel);
+
+      if (talk.hasDiarization) {
+        sup.totalSupervisorSpeakingSeconds += talk.supervisorSpeakingSeconds;
+        sup.totalStudentSpeakingSeconds += talk.studentSpeakingSeconds;
+        sup.supervisorTurnsCount += talk.supervisorTurnsCount;
+        sup.studentTurnsCount += talk.studentTurnsCount;
+        sup.diarizedSessionsCount += 1;
+        wkBucket.supervisorSpeakingSeconds += talk.supervisorSpeakingSeconds;
+        wkBucket.studentSpeakingSeconds += talk.studentSpeakingSeconds;
+      }
+      recordCoachingEvidenceForSup(sup, meetingDur, talk.supervisorSpeakingSeconds || 0);
+    }
+  });
+
+  // Finalize supervisor objects
+  const supervisors = [...supervisorMap.values()]
+    .map((sup) => {
+      const assignedGroups = [...sup.assignedGroupsMap.values()].sort((a, b) =>
+        (a.groupName || '').localeCompare(b.groupName || '', undefined, { numeric: true })
+      );
+      const assignedGroupNames = assignedGroups.map((g) => g.groupName);
+      const touchedGroupNames = [...sup.touchedGroupsSet].sort((a, b) =>
+        a.localeCompare(b, undefined, { numeric: true })
+      );
+
+      // Evaluate how many assigned groups were met in targetWeeks
+      const metAssignedGroups = assignedGroups.filter((g) =>
+        targetWeeks.some((wk) => (g.weekCells[wk]?.consultationSeconds || 0) > 0)
+      );
+      const unmetAssignedGroupNames = assignedGroups
+        .filter((g) => !targetWeeks.some((wk) => (g.weekCells[wk]?.consultationSeconds || 0) > 0))
+        .map((g) => g.groupName);
+
+      const assignedGroupsCount = assignedGroups.length;
+      const groupsMetCount = Math.max(metAssignedGroups.length, touchedGroupNames.length);
+      const coveragePct =
+        assignedGroupsCount > 0
+          ? Math.round((metAssignedGroups.length / assignedGroupsCount) * 100)
+          : touchedGroupNames.length > 0
+          ? 100
+          : 0;
+
+      const avgConsultationSecondsPerSession =
+        sup.sessionsCount > 0 ? Math.round(sup.totalConsultationSeconds / sup.sessionsCount) : 0;
+      const avgConsultationSecondsPerGroup =
+        groupsMetCount > 0 ? Math.round(sup.totalConsultationSeconds / groupsMetCount) : 0;
+
+      const totalDiarizedSeconds =
+        sup.totalSupervisorSpeakingSeconds + sup.totalStudentSpeakingSeconds;
+      const supervisorTalkSharePct =
+        totalDiarizedSeconds > 0
+          ? Math.round((sup.totalSupervisorSpeakingSeconds / totalDiarizedSeconds) * 100)
+          : null;
+      const avgSupervisorSpeakingSecondsPerSession =
+        sup.diarizedSessionsCount > 0
+          ? Math.round(sup.totalSupervisorSpeakingSeconds / sup.diarizedSessionsCount)
+          : 0;
+
+      const weeklyBreakdown = allWeeks.map((wk) => {
+        const b = sup.weeklyBreakdownMap.get(wk);
+        return {
+          weekNumber: wk,
+          consultationSeconds: b?.consultationSeconds || 0,
+          supervisorSpeakingSeconds: b?.supervisorSpeakingSeconds || 0,
+          studentSpeakingSeconds: b?.studentSpeakingSeconds || 0,
+          sessionsCount: b?.sessionsCount || 0,
+          clipsCount: b?.clipsCount || 0,
+          groupsMetCount: b ? b.groupsMetSet.size : 0,
+          groupsMetNames: b ? [...b.groupsMetSet].sort() : [],
+        };
+      });
+
+      const geminiEvaluation =
+        evalByEmailOrKey.get(cleanEmail(sup.email)) ||
+        evalByEmailOrKey.get(toEvalKey(sup.email)) ||
+        evalByEmailOrKey.get(toEvalKey(sup.key)) ||
+        evalByEmailOrKey.get(toEvalKey(sup.name)) ||
+        null;
+
+      const sortedCoachingEvidence = [...sup.meetingCoachingEvidence].sort((a, b) => {
+        const gCmp = (a.groupName || '').localeCompare(b.groupName || '', undefined, {
+          numeric: true,
+        });
+        if (gCmp !== 0) return gCmp;
+        return (a.weekNumber || 0) - (b.weekNumber || 0);
+      });
+
+      return {
+        key: sup.key,
+        email: sup.email,
+        name: sup.name,
+        assignedGroupsCount,
+        assignedGroupNames,
+        touchedGroupNames,
+        groupsMetCount,
+        metAssignedGroupsCount: metAssignedGroups.length,
+        unmetAssignedGroupNames,
+        coveragePct,
+        sessionsCount: sup.sessionsCount,
+        clipsCount: sup.clipsCount,
+        analyzedSessionsCount: sup.analyzedSessionsCount,
+        emailedSessionsCount: sup.emailedSessionsCount,
+        shortSessionsCount: sup.shortSessionsCount,
+        totalConsultationSeconds: sup.totalConsultationSeconds,
+        avgConsultationSecondsPerSession,
+        avgConsultationSecondsPerGroup,
+        totalSupervisorSpeakingSeconds: sup.totalSupervisorSpeakingSeconds,
+        totalStudentSpeakingSeconds: sup.totalStudentSpeakingSeconds,
+        avgSupervisorSpeakingSecondsPerSession,
+        supervisorTalkSharePct,
+        supervisorTurnsCount: sup.supervisorTurnsCount,
+        studentTurnsCount: sup.studentTurnsCount,
+        adviceItemsCount: sup.adviceItemsCount,
+        decisionsCount: sup.decisionsCount,
+        blockersIdentifiedCount: sup.blockersIdentifiedCount,
+        actionItemsAssignedCount: sup.actionItemsAssignedCount,
+        substantiveSupervisorTurnsCount: sup.substantiveSupervisorTurnsCount,
+        meetingCoachingEvidence: sortedCoachingEvidence,
+        geminiEvaluation,
+        weeklyBreakdown,
+      };
+    })
+    .sort((a, b) => b.totalConsultationSeconds - a.totalConsultationSeconds);
+
+  // 5. Class-wide summary KPIs
+  const totalConsultationSeconds = groupRows.reduce(
+    (s, g) => s + g.totalConsultationSeconds,
+    0
+  );
+  const totalSupervisorSpeakingSeconds = groupRows.reduce(
+    (s, g) => s + g.totalSupervisorSpeakingSeconds,
+    0
+  );
+  const totalStudentSpeakingSeconds = groupRows.reduce(
+    (s, g) => s + g.totalStudentSpeakingSeconds,
+    0
+  );
+  const totalDiarized = totalSupervisorSpeakingSeconds + totalStudentSpeakingSeconds;
+  const overallSupervisorTalkSharePct =
+    totalDiarized > 0 ? Math.round((totalSupervisorSpeakingSeconds / totalDiarized) * 100) : null;
+
+  let totalGroupWeekSlots = 0;
+  let metGroupWeekSlots = 0;
+  let shortGroupWeekSlots = 0;
+  let missedGroupWeekSlots = 0;
+
+  groupRows.forEach((g) => {
+    targetWeeks.forEach((wk) => {
+      totalGroupWeekSlots += 1;
+      const cell = g.weekCells[wk];
+      const dur = cell?.consultationSeconds || 0;
+      if (dur > 0) {
+        metGroupWeekSlots += 1;
+        if (dur < 300) shortGroupWeekSlots += 1;
+      } else {
+        missedGroupWeekSlots += 1;
+      }
+    });
+  });
+
+  const avgConsultationSecondsPerGroupWeek =
+    metGroupWeekSlots > 0 ? Math.round(totalConsultationSeconds / metGroupWeekSlots) : 0;
+  const overallGroupCoveragePct =
+    totalGroupWeekSlots > 0 ? Math.round((metGroupWeekSlots / totalGroupWeekSlots) * 100) : 0;
+
+  return {
+    allWeeks,
+    targetWeeks,
+    supervisors,
+    groupRows,
+    summary: {
+      totalSupervisors: supervisors.length,
+      totalGroups: groupRows.length,
+      totalGroupWeekSlots,
+      metGroupWeekSlots,
+      missedGroupWeekSlots,
+      shortGroupWeekSlots,
+      overallGroupCoveragePct,
+      totalConsultationSeconds,
+      avgConsultationSecondsPerGroupWeek,
+      totalSupervisorSpeakingSeconds,
+      totalStudentSpeakingSeconds,
+      overallSupervisorTalkSharePct,
+    },
+  };
+}
+
+/**
+ * Exports Supervisor Performance & Consultation Time Analytics to Excel (.xlsx).
+ */
+export async function exportSupervisorPerformanceExcel({
+  classId = 'class',
+  analytics = null,
+  groups = [],
+  meetings = [],
+} = {}) {
+  const data =
+    analytics ||
+    computeSupervisorPerformanceAnalytics({
+      groups,
+      meetings,
+    });
+  const weeks = data.allWeeks || [];
+  const weekHeaders = weeks.map((w) => `Week ${w} Consultation & Talk Time`);
+
+  const headers = [
+    'Record Type',
+    'Supervisor / Group',
+    'Project Topic',
+    'Assigned / Members',
+    'Groups Met / Weeks Met',
+    'Coverage (%)',
+    'Total Sessions (Clips)',
+    'Total Consultation Time (min)',
+    'Avg Consultation / Session (min)',
+    'Supervisor Speaking Time (min)',
+    'Student Speaking Time (min)',
+    'Supervisor Talk Share (%)',
+    'Gemini Overall Score (/10)',
+    'Instruction & Advice Score (/10)',
+    'Group Management Score (/10)',
+    'Coaching Style',
+    'Advice & Action Items',
+    'Gemini Executive Verdict',
+    ...weekHeaders,
+  ];
+
+  const rows = [];
+
+  // Section 1: Supervisor Summary Rows
+  (data.supervisors || []).forEach((sup) => {
+    const wkCells = weeks.map((wk) => {
+      const b = (sup.weeklyBreakdown || []).find((x) => x.weekNumber === wk);
+      if (!b || b.consultationSeconds === 0) return '0m (0 groups)';
+      const consultStr = formatConsultationDuration(b.consultationSeconds, true);
+      const speakStr =
+        b.supervisorSpeakingSeconds > 0
+          ? ` | Sup Spoke: ${formatConsultationDuration(b.supervisorSpeakingSeconds, true)}`
+          : '';
+      return `${consultStr} (${b.groupsMetCount} grp: ${b.groupsMetNames.join(', ')})${speakStr}`;
+    });
+
+    const gem = sup.geminiEvaluation || null;
+
+    rows.push([
+      'SUPERVISOR SUMMARY',
+      sup.name,
+      '—',
+      sup.assignedGroupNames.join(', ') || 'Co-Supervisor / Ad-hoc',
+      `${sup.groupsMetCount} group(s)`,
+      sup.coveragePct,
+      `${sup.sessionsCount} (${sup.clipsCount} clips)`,
+      Number((sup.totalConsultationSeconds / 60).toFixed(1)),
+      Number((sup.avgConsultationSecondsPerSession / 60).toFixed(1)),
+      Number((sup.totalSupervisorSpeakingSeconds / 60).toFixed(1)),
+      Number((sup.totalStudentSpeakingSeconds / 60).toFixed(1)),
+      sup.supervisorTalkSharePct ?? 'N/A',
+      gem?.overallScore ?? 'Not Evaluated',
+      gem?.instructionAndAdviceScore ?? '—',
+      gem?.groupManagementScore ?? '—',
+      gem?.coachingStyle || '—',
+      `${sup.adviceItemsCount || 0} advice | ${sup.decisionsCount || 0} decisions | ${sup.actionItemsAssignedCount || 0} tasks`,
+      gem?.executiveVerdict || '—',
+      ...wkCells,
+    ]);
+  });
+
+  // Section 2: Per-Group Consultation Time Rows
+  (data.groupRows || []).forEach((g) => {
+    const wkCells = weeks.map((wk) => {
+      const c = g.weekCells?.[wk];
+      if (!c || c.consultationSeconds === 0) return '— (0m)';
+      const consultStr = formatConsultationDuration(c.consultationSeconds, false);
+      const speakStr = c.hasDiarization
+        ? ` | Sup Spoke: ${formatConsultationDuration(c.supervisorSpeakingSeconds, false)} (${c.supervisorTalkSharePct}%)`
+        : '';
+      const recStr = c.recorderNames?.length ? ` [${c.recorderNames.join(', ')}]` : '';
+      return `${consultStr}${speakStr}${recStr}`;
+    });
+
+    rows.push([
+      'GROUP BREAKDOWN',
+      `Group ${g.groupName} (${g.supervisorName})`,
+      g.projectTopic || '',
+      `${g.membersCount} students`,
+      `${g.weeksMetCount}/${g.totalActiveWeeksCount} weeks`,
+      g.coveragePct,
+      `${g.weeksMetCount} wks`,
+      Number((g.totalConsultationSeconds / 60).toFixed(1)),
+      Number((g.avgConsultationSecondsPerMetWeek / 60).toFixed(1)),
+      Number((g.totalSupervisorSpeakingSeconds / 60).toFixed(1)),
+      Number((g.totalStudentSpeakingSeconds / 60).toFixed(1)),
+      g.supervisorTalkSharePct ?? 'N/A',
+      '—',
+      '—',
+      '—',
+      '—',
+      '—',
+      '—',
+      ...wkCells,
+    ]);
+  });
+
+  return await exportToExcel(headers, rows, `${classId}_supervisor_performance_report.xlsx`);
+}
