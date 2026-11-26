@@ -44,7 +44,7 @@ flowchart TD
         VAD -->|Mode 2: Live Moving Window| RollingBuf[30s Window / 15s Stride Buffer]
         RollingBuf -->|Silence Suppressed| DropSilence[Quiet Segment Dropped\n>80% Cost Savings]
         RollingBuf -->|Speech Detected| WebMChunk[Export WebM Segment]
-        WebMChunk --> StorageUpload[Firebase Storage: /audios/...]
+        WebMChunk --> StorageUpload[Direct Firebase Storage Upload:\naudio/classId/studentUid/...]
 
         %% Mode 3: Discussion Summarization
         VAD -->|Mode 3: Discussion Summary| SummaryBuf[Configurable Long Buffer\n5m, 10m, 15m, 30m, Full Session]
@@ -70,6 +70,10 @@ flowchart TD
         FirestoreAudits --> SummaryView[Discussion Summary Modal]
     end
 ```
+
+> [!NOTE]
+> **Direct-to-Bucket Upload (`uploadBytes` + `storage.rules`, No Pre-Signed Upload URL)**:
+> Student voice segments (`audio/{classId}/{studentUid}/audio_{ts}_stride_{n}.webm` in [`useAudioRecorder.js`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/hooks/useAudioRecorder.js)) and client Whisper speech clips ([`StudentView.jsx`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/web-app/src/components/StudentView.jsx)) are uploaded **directly from the browser to the Cloud Storage bucket** via the Firebase Storage Web SDK (`uploadBytes`) authenticated with the student's Firebase Auth JWT (`request.auth`). [`storage.rules`](file:///home/developer/Documents/Gemini-AI-Classroom-Assistant/storage.rules) enforces `request.auth.uid == studentUid`, `isStudentInClass(classId)`, `request.resource.size < 10485760` (`10 MB`), and `audio/*` content type at the bucket edge—avoiding any Cloud Function pre-signed upload URL round-trip.
 
 ---
 
@@ -152,7 +156,7 @@ flowchart LR
 sequenceDiagram
     autonumber
     actor S as Student Browser (useAudioRecorder)
-    participant CS as Firebase Storage (/audios/...)
+    participant CS as Firebase Storage (audio/{classId}/{studentUid}/...)
     participant CF as Cloud Function (analyzeAudioSegment)
     participant PL as Prompt Library (Firestore)
     participant G as Gemini 3.5 Transcribe
