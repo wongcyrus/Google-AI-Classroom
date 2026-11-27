@@ -437,6 +437,8 @@ export const processVideoJob = onDocumentCreated({ document: 'videoJobs/{jobId}'
     // BATCH_SIZE of 15 provides optimal throughput without memory pressure
     const BATCH_SIZE = 15;
     const MAX_WIDTH = 1920;
+    let skippedMissing = 0;
+    const writtenFiles = new Array(screenshots.length).fill(null);
 
     for (let i = 0; i < screenshots.length; i += BATCH_SIZE) {
       const batch = screenshots.slice(i, i + BATCH_SIZE);
@@ -446,7 +448,17 @@ export const processVideoJob = onDocumentCreated({ document: 'videoJobs/{jobId}'
         const fileName = `image-${overallIndex.toString().padStart(5, '0')}.jpg`;
         const filePath = path.join(tempDir, fileName);
         const imgPath = screenshot.imagePath || screenshot.storagePath;
-        await bucket.file(imgPath).download({ destination: filePath });
+        try {
+          await bucket.file(imgPath).download({ destination: filePath });
+        } catch (dlErr) {
+          const msg = dlErr?.message || '';
+          if (dlErr?.code === 404 || msg.includes('No such object') || msg.includes('Not Found')) {
+            skippedMissing++;
+            console.warn(`Skipping missing GCS screenshot (${imgPath}): ${msg}`);
+            return;
+          }
+          throw dlErr;
+        }
         
         const image = sharp(filePath);
         const metadata = await image.metadata();
@@ -491,9 +503,25 @@ export const processVideoJob = onDocumentCreated({ document: 'videoJobs/{jobId}'
 
         // Overwrite original file
         await fs.promises.rename(tempOutputPath, filePath);
+        writtenFiles[overallIndex] = filePath;
       });
             
       await Promise.all(processPromises);
+    }
+
+    const survivingFiles = writtenFiles.filter(Boolean);
+    if (survivingFiles.length === 0) {
+      throw new Error('No screenshots found in storage for the selected time range.');
+    }
+
+    if (skippedMissing > 0) {
+      for (let idx = 0; idx < survivingFiles.length; idx++) {
+        const targetPath = path.join(tempDir, `image-${idx.toString().padStart(5, '0')}.jpg`);
+        if (survivingFiles[idx] !== targetPath) {
+          await fs.promises.rename(survivingFiles[idx], targetPath);
+        }
+      }
+      console.log(`Skipped ${skippedMissing} missing GCS screenshot(s); compacted ${survivingFiles.length} frames for ffmpeg.`);
     }
 
     console.log('All images downloaded and processed. Starting ffmpeg.');
@@ -515,7 +543,7 @@ export const processVideoJob = onDocumentCreated({ document: 'videoJobs/{jobId}'
         ])
         .on('progress', (progress) => {
           if (progress.frames) {
-            const totalFrames = screenshots.length;
+            const totalFrames = survivingFiles.length;
             if (totalFrames > 0) {
               const percent = Math.min(100, Math.floor((progress.frames / totalFrames) * 100));
               if (percent > lastPercent) {

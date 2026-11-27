@@ -87,6 +87,20 @@ export const updateStorageUsageOnUpload = onObjectFinalized({
     return;
   }
 
+  // Dispatch lecture.webm EBML indexing only for matching lecture recordings (avoids 44K+/day 2GiB trigger invocations)
+  const lectureMatch = filePath.match(/^recordings\/([^/]+)\/([^/]+)\/lecture\.webm$/);
+  if (lectureMatch && customMeta.hasCuesIndex !== 'true') {
+    const [, lecClassId, lecSessionId] = lectureMatch;
+    await db.collection('lectureIndexJobs').doc(`${lecClassId}_${lecSessionId}_${Date.now()}`).set({
+      filePath,
+      bucket: event.bucket,
+      metadata: customMeta,
+      classId: lecClassId,
+      sessionId: lecSessionId,
+      createdAt: FieldValue.serverTimestamp(),
+    }).catch((err) => console.warn(`Could not enqueue lectureIndexJob for ${filePath}:`, err));
+  }
+
   console.log(`Updating storage for class ${classId} by ${fileSize} bytes for ${usageField}.`);
 
   const classRef = db.collection('classes').doc(classId);

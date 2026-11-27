@@ -1,5 +1,5 @@
 import './firebase.js';
-import { onObjectFinalized } from 'firebase-functions/v2/storage';
+import { onDocumentCreated } from 'firebase-functions/v2/firestore';
 import { getStorage } from 'firebase-admin/storage';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { FUNCTION_REGION } from './config.js';
@@ -220,21 +220,33 @@ export async function handleLectureVideoFinalized(event, overrides = {}) {
 }
 
 /**
- * Cloud Storage Event Trigger (Gen 2):
- * Automatically fires whenever a file is created or overwritten in Cloud Storage.
- * Filters strictly for `recordings/{classId}/{sessionId}/lecture.webm` and guarantees
- * every uploaded lecture recording has Matroska SeekHead and Cues indexed in seconds,
- * completely decoupled from browser connection or subtitle generation flows.
+ * Firestore Document Trigger (Gen 2):
+ * Dispatched by updateStorageUsageOnUpload ONLY when a `recordings/{classId}/{sessionId}/lecture.webm`
+ * file is uploaded (avoiding waking up this 2GiB FFmpeg container on 44K+ daily student screenshots).
  */
-export const onLectureVideoFinalized = onObjectFinalized(
+export const onLectureVideoFinalized = onDocumentCreated(
   {
-    bucket: process.env.STORAGE_BUCKET_NAME || `${process.env.GCLOUD_PROJECT || 'it114115-2627'}.firebasestorage.app`,
+    document: 'lectureIndexJobs/{jobId}',
     region: FUNCTION_REGION,
     memory: '2GiB',
     timeoutSeconds: 300,
     maxInstances: 20,
   },
   async (event) => {
-    return await handleLectureVideoFinalized(event);
+    const jobData = event.data?.data?.() || {};
+    const syntheticEvent = {
+      data: {
+        name: jobData.filePath || '',
+        bucket: jobData.bucket,
+        metadata: jobData.metadata || {},
+      },
+    };
+    try {
+      return await handleLectureVideoFinalized(syntheticEvent);
+    } finally {
+      if (event.data?.ref?.delete) {
+        await event.data.ref.delete().catch(() => {});
+      }
+    }
   }
 );
