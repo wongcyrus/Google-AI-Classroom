@@ -464,7 +464,9 @@ const TeacherView = ({ user }) => {
                            Math.max(0, c.storageUsageReports || 0);
             const usage = Math.max(0, Number(c.storageUsage) || 0, catSum);
             const quota = Number(c.storageQuota) > 0 ? Number(c.storageQuota) : (5 * 1024 * 1024 * 1024);
-            const storagePercent = Math.min(100, Math.max(0, (usage / quota) * 100));
+            const rawStoragePercent = Math.max(0, (usage / quota) * 100);
+            const storagePercent = Math.min(100, rawStoragePercent);
+            const isStorageOverflow = usage > quota;
 
             const aiUsed = Math.max(0, Number(c.aiUsedQuota) || 0);
             const aiQuota = Number(c.aiQuota) > 0 ? Number(c.aiQuota) : 10;
@@ -564,11 +566,20 @@ const TeacherView = ({ user }) => {
                 <div className="class-resources">
                   <div>
                     <div className="meter-header">
-                      <span>Storage Quota</span>
-                      <span>{formatBytes(usage)} / {formatBytes(quota)} <small style={{ color: '#64748b' }}>(~{formatStorageCost(usage, storageRatePerGibMonth)}/mo)</small></span>
+                      <span>
+                        Storage Quota
+                        {isStorageOverflow && (
+                          <span style={{ marginLeft: '6px', fontSize: '0.72rem', fontWeight: 700, color: '#dc2626', background: '#fef2f2', border: '1px solid #fca5a5', padding: '1px 6px', borderRadius: '999px' }}>
+                            ⚠️ OVERFLOW (+{formatBytes(usage - quota)})
+                          </span>
+                        )}
+                      </span>
+                      <span style={isStorageOverflow ? { color: '#dc2626', fontWeight: 700 } : undefined}>
+                        {formatBytes(usage)} / {formatBytes(quota)} ({rawStoragePercent.toFixed(1)}%) <small style={{ color: '#64748b' }}>(~{formatStorageCost(usage, storageRatePerGibMonth)}/mo)</small>
+                      </span>
                     </div>
                     <div className="meter-track">
-                      <div className="meter-fill storage" style={{ width: `${storagePercent}%` }} />
+                      <div className="meter-fill storage" style={{ width: `${storagePercent}%`, backgroundColor: isStorageOverflow ? '#ef4444' : undefined }} />
                     </div>
                     <div className="meter-breakdown">
                       <span>Screens: {formatBytes(Math.max(0, c.storageUsageScreenShots || 0))}</span>

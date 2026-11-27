@@ -250,8 +250,10 @@ export function aggregateAiCost(jobs = [], options = {}) {
     const totalStorageCostMonthly = Number(((totalStorageBytes / gibBytes) * storageRatePerGibMonth).toFixed(6));
     const storageQuotaCostMonthly = Number(((storageQuotaBytes / gibBytes) * storageRatePerGibMonth).toFixed(6));
     const storageQuotaPercentage = storageQuotaBytes > 0
-      ? Number(Math.min(100, Math.max(0, (totalStorageBytes / storageQuotaBytes) * 100)).toFixed(1))
+      ? Number(Math.max(0, (totalStorageBytes / storageQuotaBytes) * 100).toFixed(1))
       : 0;
+    const isStorageOverflow = storageQuotaBytes > 0 && totalStorageBytes > storageQuotaBytes;
+    const storageOverflowBytes = isStorageOverflow ? totalStorageBytes - storageQuotaBytes : 0;
 
     const categories = [
       { key: 'screenshots', label: '📸 Routine Screenshots', bytes: usageShots },
@@ -281,6 +283,8 @@ export function aggregateAiCost(jobs = [], options = {}) {
       storageQuotaBytes,
       storageQuotaCostMonthly,
       storageQuotaPercentage,
+      isStorageOverflow,
+      storageOverflowBytes,
       storageRatePerGibMonth,
       storageRegion,
       storageDescription,

@@ -254,17 +254,21 @@ const DataManagementView = ({
   const totalUsage = Math.max(0, Number(storageData?.storageUsage) || 0, categorySum);
 
   const effectiveQuota = Number(classQuotaBytes) > 0 ? Number(classQuotaBytes) : (5 * 1024 * 1024 * 1024);
-  const quotaPercent = Math.min(100, Math.max(0, (totalUsage / effectiveQuota) * 100)).toFixed(1);
+  const rawQuotaPercent = effectiveQuota > 0 ? Math.max(0, (totalUsage / effectiveQuota) * 100) : 0;
+  const quotaPercent = rawQuotaPercent.toFixed(1);
+  const isStorageOverflow = effectiveQuota > 0 && totalUsage > effectiveQuota;
+  const overflowBytes = isStorageOverflow ? totalUsage - effectiveQuota : 0;
 
-  // Each segment's width is its proportion OF THE TOTAL CLASS QUOTA (so stacked segments fill up to quotaPercent% of the full bar)
-  const pShots = Math.min(100, Math.max(0, (usageShots / effectiveQuota) * 100));
-  const pAudio = Math.min(100, Math.max(0, (usageAudio / effectiveQuota) * 100));
-  const pVideos = Math.min(100, Math.max(0, (usageVideos / effectiveQuota) * 100));
-  const pRecordings = Math.min(100, Math.max(0, (usageRecordings / effectiveQuota) * 100));
-  const pZips = Math.min(100, Math.max(0, (usageZips / effectiveQuota) * 100));
-  const pIrregularities = Math.min(100, Math.max(0, (usageIrregularities / effectiveQuota) * 100));
-  const pTasks = Math.min(100, Math.max(0, (usageTasks / effectiveQuota) * 100));
-  const pReports = Math.min(100, Math.max(0, (usageReports / effectiveQuota) * 100));
+  // Each segment's width is its proportion OF THE TOTAL CLASS QUOTA, scaled down if total exceeds 100% so stacked segments fit within the bar
+  const barScale = rawQuotaPercent > 100 ? (100 / rawQuotaPercent) : 1;
+  const pShots = Math.min(100, Math.max(0, (usageShots / effectiveQuota) * 100 * barScale));
+  const pAudio = Math.min(100, Math.max(0, (usageAudio / effectiveQuota) * 100 * barScale));
+  const pVideos = Math.min(100, Math.max(0, (usageVideos / effectiveQuota) * 100 * barScale));
+  const pRecordings = Math.min(100, Math.max(0, (usageRecordings / effectiveQuota) * 100 * barScale));
+  const pZips = Math.min(100, Math.max(0, (usageZips / effectiveQuota) * 100 * barScale));
+  const pIrregularities = Math.min(100, Math.max(0, (usageIrregularities / effectiveQuota) * 100 * barScale));
+  const pTasks = Math.min(100, Math.max(0, (usageTasks / effectiveQuota) * 100 * barScale));
+  const pReports = Math.min(100, Math.max(0, (usageReports / effectiveQuota) * 100 * barScale));
 
   return (
     <div className="view-container">
@@ -289,7 +293,7 @@ const DataManagementView = ({
 
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem', fontSize: '0.9rem', color: '#475569', marginBottom: '6px' }}>
           <div>
-            <span><strong>Total Allocated:</strong> {formatBytes(totalUsage)} / {formatBytes(classQuotaBytes)} ({quotaPercent}%)</span>
+            <span><strong>Total Allocated:</strong> {formatBytes(totalUsage)} / {formatBytes(classQuotaBytes)} (<span style={isStorageOverflow ? { color: '#dc2626', fontWeight: 700 } : undefined}>{quotaPercent}%</span>)</span>
             <span style={{ marginLeft: '8px', color: '#0284c7', fontWeight: 600 }}>
               • Est. Cost: ~{formatStorageCost(totalUsage, storageRatePerGibMonth)}/mo
             </span>
@@ -301,12 +305,44 @@ const DataManagementView = ({
             <span style={{ fontSize: '0.78rem', background: '#f1f5f9', padding: '2px 8px', borderRadius: '4px', color: '#475569', border: '1px solid #e2e8f0' }} title={`Synced from Cloud Billing Catalog API (${storageDescription})`}>
               🏷️ Rate: ${storageRatePerGibMonth}/GB-mo ({storageRegion})
             </span>
-            <span>{formatBytes(Math.max(0, classQuotaBytes - totalUsage))} remaining</span>
+            {isStorageOverflow ? (
+              <span style={{ color: '#dc2626', fontWeight: 700 }}>
+                ⚠️ OVERFLOW: +{formatBytes(overflowBytes)} over quota
+              </span>
+            ) : (
+              <span>{formatBytes(Math.max(0, classQuotaBytes - totalUsage))} remaining</span>
+            )}
           </div>
         </div>
 
+        {isStorageOverflow && (
+          <div
+            role="alert"
+            data-testid="data-mgmt-storage-overflow-alert"
+            style={{
+              marginBottom: '10px',
+              padding: '8px 12px',
+              borderRadius: '8px',
+              backgroundColor: '#fef2f2',
+              border: '1px solid #fca5a5',
+              color: '#991b1b',
+              fontSize: '0.85rem',
+              fontWeight: 600,
+            }}
+          >
+            ⚠️ Storage quota exceeded by {formatBytes(overflowBytes)} ({quotaPercent}% used). Clean up old screenshots/archives or increase the class storage quota.
+          </div>
+        )}
+
         {/* Visual Stacked Progress Bar */}
-        <div className="storage-progress-container" role="progressbar" aria-valuenow={quotaPercent} aria-valuemin="0" aria-valuemax="100">
+        <div
+          className="storage-progress-container"
+          role="progressbar"
+          aria-valuenow={quotaPercent}
+          aria-valuemin="0"
+          aria-valuemax={Math.max(100, Math.ceil(rawQuotaPercent))}
+          style={isStorageOverflow ? { border: '1px solid #ef4444' } : undefined}
+        >
           <div className="storage-segment screenshots" style={{ width: `${pShots}%` }} title={`Screenshots: ${formatBytes(usageShots)} (~${formatStorageCost(usageShots, storageRatePerGibMonth)}/mo)`} />
           <div className="storage-segment audio" style={{ width: `${pAudio}%` }} title={`Audio: ${formatBytes(usageAudio)} (~${formatStorageCost(usageAudio, storageRatePerGibMonth)}/mo)`} />
           <div className="storage-segment videos" style={{ width: `${pVideos}%` }} title={`Student Videos: ${formatBytes(usageVideos)} (~${formatStorageCost(usageVideos, storageRatePerGibMonth)}/mo)`} />

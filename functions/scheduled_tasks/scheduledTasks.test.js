@@ -1941,6 +1941,61 @@ describe('Scheduled Tasks & Auto-Capture Time Calculations (functions/scheduled_
 
       vi.useRealTimers();
     });
+
+    it('creates videoJobs when lesson ended 45 minutes ago after delayed broadcast sweep, and ignores stale broadcast > 10m old', async () => {
+      // Simulate 17:45 HKT (09:45 UTC) for a Thu 15:00-17:00 HKT class
+      // where screenBroadcast/session had isBroadcasting: true with lastActiveAt > 10 mins ago (17:05 HKT)
+      const fixedTime = new Date('2026-11-26T09:45:00Z');
+      vi.useFakeTimers();
+      vi.setSystemTime(fixedTime);
+
+      mockDb.doc.mockImplementation((path) => {
+        if (path === 'classes/it3101-ab/screenBroadcast/session') {
+          return {
+            get: vi.fn().mockResolvedValue({
+              exists: true,
+              data: () => ({
+                isBroadcasting: true,
+                broadcastMode: 'static_url',
+                lastActiveAt: new Date('2026-11-26T09:05:00Z'), // 40m ago -> stale!
+              }),
+            }),
+          };
+        }
+        return mockDoc;
+      });
+
+      const classDoc = {
+        id: 'it3101-ab',
+        data: () => ({
+          automaticCombine: true,
+          students: { 'student-uid-1': 'student1@stu.vtc.edu.hk' },
+          teachers: { 'teacher-uid-1': 'teacher1@vtc.edu.hk' },
+          schedule: {
+            timeZone: 'Asia/Hong_Kong',
+            timeSlots: [
+              { days: ['Thu'], startTime: '15:00', endTime: '17:00' },
+            ],
+          },
+        }),
+      };
+
+      mockCollection.get
+        .mockResolvedValueOnce({ empty: false, size: 1, docs: [classDoc] })
+        .mockResolvedValueOnce({ empty: true, docs: [] });
+
+      await handlePostLessonMediaConsolidation();
+
+      expect(mockDoc.set).toHaveBeenCalledWith(
+        expect.objectContaining({
+          classId: 'it3101-ab',
+          studentUid: 'student-uid-1',
+          status: 'pending',
+        })
+      );
+
+      vi.useRealTimers();
+    });
   });
 });
 

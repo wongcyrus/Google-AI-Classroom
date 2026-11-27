@@ -482,5 +482,39 @@ describe('DataManagementView Component', () => {
     expect(screen.getByText(/Total Allocated:/i).parentElement).not.toHaveTextContent('0 Bytes / 5 GB');
     expect(screen.getByText(/Total Allocated:/i).parentElement).toHaveTextContent('300 MB / 5 GB');
   });
+
+  it('displays actual percentage (>100%) and overflow alert when storage usage exceeds quota', () => {
+    const sixGB = 6 * 1024 * 1024 * 1024;
+    mockOnSnapshot.mockImplementation((ref, callback) => {
+      if (typeof callback === 'function') {
+        callback({
+          exists: () => true,
+          data: () => ({
+            storageUsage: sixGB,
+            storageUsageScreenShots: sixGB,
+            storageUsageAudio: 0,
+            storageUsageVideos: 0,
+            storageUsageRecordings: 0,
+            storageUsageZips: 0,
+            storageUsageIrregularities: 0,
+          }),
+        });
+      }
+      return vi.fn();
+    });
+
+    render(
+      <DataManagementView
+        classId="CLASS_OVERFLOW"
+        startTime="2026-08-30T00:00"
+        endTime="2026-08-30T23:59"
+        filterField="createdAt"
+        timezone="UTC"
+      />
+    );
+
+    expect(screen.getAllByText(/120\.0%/).length).toBeGreaterThan(0);
+    expect(screen.getByTestId('data-mgmt-storage-overflow-alert')).toHaveTextContent(/Storage quota exceeded by 1 GB/i);
+  });
 });
 

@@ -397,8 +397,9 @@ const AiCostReportView = ({
           <div className="kpi-value">
             {formatStorageCost(summary.storageSummary?.totalStorageBytes || 0, storageRatePerGibMonth)}/mo
           </div>
-          <div className="kpi-subtext">
+          <div className="kpi-subtext" style={summary.storageSummary?.isStorageOverflow ? { color: '#dc2626', fontWeight: 700 } : undefined}>
             {formatBytes(summary.storageSummary?.totalStorageBytes || 0)} used ({summary.storageSummary?.storageQuotaPercentage || 0}% of {formatBytes(effectiveStorageQuotaBytes)})
+            {summary.storageSummary?.isStorageOverflow ? ` — ⚠️ OVERFLOW (+${formatBytes(summary.storageSummary.storageOverflowBytes)})` : ''}
           </div>
         </div>
 
@@ -524,7 +525,10 @@ const AiCostReportView = ({
           <div className="breakdown-section">
             <h3>💾 Cloud Storage Expenditure by Asset Category</h3>
             <div className="storage-summary-meta">
-              <span><strong>Total Allocated:</strong> {formatBytes(summary.storageSummary.totalStorageBytes)} / {formatBytes(summary.storageSummary.storageQuotaBytes)} ({summary.storageSummary.storageQuotaPercentage}%)</span>
+              <span style={summary.storageSummary.isStorageOverflow ? { color: '#dc2626', fontWeight: 700 } : undefined}>
+                <strong>Total Allocated:</strong> {formatBytes(summary.storageSummary.totalStorageBytes)} / {formatBytes(summary.storageSummary.storageQuotaBytes)} ({summary.storageSummary.storageQuotaPercentage}%)
+                {summary.storageSummary.isStorageOverflow ? ` ⚠️ OVERFLOW (+${formatBytes(summary.storageSummary.storageOverflowBytes)})` : ''}
+              </span>
               <span><strong>Est. Monthly Run-Rate:</strong> ~{formatStorageCost(summary.storageSummary.totalStorageBytes, storageRatePerGibMonth)}/mo</span>
             </div>
 

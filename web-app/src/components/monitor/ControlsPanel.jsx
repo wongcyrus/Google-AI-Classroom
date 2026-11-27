@@ -481,7 +481,11 @@ const ControlsPanel = ({
 
     const categorySum = usageShots + usageVids + usageZip + usageAud + usageRecs + usageIrreg + usageTasks + usageReports;
     const effectiveUsage = Math.max(0, Number(storageUsage) || 0, categorySum);
-    const storagePercentage = Number(storageQuota) > 0 ? Math.min(100, Math.max(0, (effectiveUsage / Number(storageQuota)) * 100)) : 0;
+    const numericStorageQuota = Number(storageQuota) || 0;
+    const rawStoragePercentage = numericStorageQuota > 0 ? Math.max(0, (effectiveUsage / numericStorageQuota) * 100) : 0;
+    const storageBarWidth = Math.min(100, rawStoragePercentage);
+    const isStorageOverflow = numericStorageQuota > 0 && effectiveUsage > numericStorageQuota;
+    const storageOverflowBytes = isStorageOverflow ? effectiveUsage - numericStorageQuota : 0;
     const aiPercentage = Number(aiQuota) > 0 ? Math.min(100, Math.max(0, (Number(aiUsedQuota) / Number(aiQuota)) * 100)) : 0;
 
     return (
@@ -1330,14 +1334,16 @@ const ControlsPanel = ({
             <div className="quota-block">
                 <div className="quota-header-row">
                   <span>Storage:</span>
-                  <span className="quota-percent">{storagePercentage.toFixed(1)}%</span>
+                  <span className="quota-percent" style={isStorageOverflow ? { color: '#dc2626', fontWeight: 700 } : undefined}>
+                    {rawStoragePercentage.toFixed(1)}%{isStorageOverflow ? ' (OVERFLOW)' : ''}
+                  </span>
                 </div>
                 <div className="progress-bar-container">
                     <div 
                       className="progress-bar" 
                       style={{ 
-                        width: `${storagePercentage}%`,
-                        backgroundColor: storagePercentage > 85 ? '#ef4444' : '#10b981'
+                        width: `${storageBarWidth}%`,
+                        backgroundColor: rawStoragePercentage > 85 ? '#ef4444' : '#10b981'
                       }}
                     ></div>
                 </div>
@@ -1346,6 +1352,25 @@ const ControlsPanel = ({
                       ? `${formatBytes(effectiveUsage)} of ${formatBytes(storageQuota)} (~${formatStorageCost(effectiveUsage, storageRatePerGibMonth)}/mo)` 
                       : `${formatBytes(effectiveUsage)} used (~${formatStorageCost(effectiveUsage, storageRatePerGibMonth)}/mo)`}
                 </p>
+                {isStorageOverflow && (
+                  <div
+                    role="alert"
+                    data-testid="storage-overflow-alert"
+                    style={{
+                      marginTop: '4px',
+                      marginBottom: '6px',
+                      padding: '4px 8px',
+                      borderRadius: '6px',
+                      backgroundColor: '#fef2f2',
+                      border: '1px solid #fca5a5',
+                      color: '#b91c1c',
+                      fontSize: '0.75rem',
+                      fontWeight: 600,
+                    }}
+                  >
+                    ⚠️ Storage overflow: +{formatBytes(storageOverflowBytes)} over quota. New uploads may be blocked.
+                  </div>
+                )}
                 <div className="storage-breakdown">
                     <span>Screenshots: {formatBytes(usageShots)}</span>
                     <span>Videos: {formatBytes(usageVids)}</span>

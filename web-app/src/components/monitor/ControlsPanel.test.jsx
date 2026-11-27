@@ -1111,6 +1111,23 @@ describe('ControlsPanel Full Component Suite', () => {
     expect(summary).toHaveTextContent('🎙️ Whisper (40MB):');
     expect(summary).toHaveTextContent('🤖 Gemma 4 (1.9GB):');
   });
+
+  it('displays actual percentage (>100%) and storage overflow alert when usage exceeds quota', () => {
+    const sixGB = 6 * 1024 * 1024 * 1024;
+    const fiveGB = 5 * 1024 * 1024 * 1024;
+    render(
+      <ControlsPanel
+        {...defaultProps}
+        storageUsage={sixGB}
+        storageQuota={fiveGB}
+        storageUsageScreenShots={sixGB}
+        storageUsageVideos={0}
+      />
+    );
+
+    expect(screen.getByText(/120\.0% \(OVERFLOW\)/i)).toBeInTheDocument();
+    expect(screen.getByTestId('storage-overflow-alert')).toHaveTextContent(/Storage overflow: \+1 GB over quota/i);
+  });
 });
 
 

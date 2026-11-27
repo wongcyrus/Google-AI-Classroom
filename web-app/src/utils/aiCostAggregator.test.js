@@ -240,4 +240,21 @@ describe('aiCostAggregator utility', () => {
     expect(summary.storageSummary.byStorageCategory.some(c => c.key === 'projectMeetings')).toBe(true);
     expect(summary.combinedTotalMonthlyCost).toBeCloseTo(1.50 + 0.023, 4);
   });
+
+  it('reports unclamped storageQuotaPercentage and overflow flags when storage exceeds quota', () => {
+    const mockStorage = {
+      storageUsage: 6 * 1024 * 1024 * 1024, // 6 GiB
+      storageUsageScreenShots: 6 * 1024 * 1024 * 1024,
+    };
+
+    const summary = aggregateAiCost([], {
+      storageData: mockStorage,
+      storageQuotaBytes: 5 * 1024 * 1024 * 1024, // 5 GiB
+      storageRatePerGibMonth: 0.023,
+    });
+
+    expect(summary.storageSummary.storageQuotaPercentage).toBeCloseTo(120.0, 1);
+    expect(summary.storageSummary.isStorageOverflow).toBe(true);
+    expect(summary.storageSummary.storageOverflowBytes).toBe(1024 * 1024 * 1024);
+  });
 });

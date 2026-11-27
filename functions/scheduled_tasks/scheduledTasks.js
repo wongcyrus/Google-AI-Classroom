@@ -326,13 +326,13 @@ export const handlePostLessonMediaConsolidation = onSchedule(videoCombinationOpt
       const isWithinDates = !schedule.startDate || !schedule.endDate || !localDate || (localDate >= schedule.startDate && localDate <= schedule.endDate);
       if (isWithinDates) {
         const todayStr = format(now, 'yyyy-MM-dd', { timeZone });
-        const thirtyMinutesAgo = new Date(now.getTime() - 30 * 60 * 1000);
+        const consolidationLookbackCutoff = new Date(now.getTime() - 120 * 60 * 1000);
         const offset = format(now, 'XXX', { timeZone });
 
         for (const slot of schedule.timeSlots) {
           if (!slot.days?.includes(localDay)) continue;
           const lessonEndDateTimeInZone = new Date(`${todayStr}T${slot.endTime}:00${offset}`);
-          if (lessonEndDateTimeInZone > thirtyMinutesAgo && lessonEndDateTimeInZone <= now) {
+          if (lessonEndDateTimeInZone > consolidationLookbackCutoff && lessonEndDateTimeInZone <= now) {
             hasRecentlyEndedSlot = true;
             break;
           }
@@ -348,7 +348,12 @@ export const handlePostLessonMediaConsolidation = onSchedule(videoCombinationOpt
         const sessionSnap = await db.doc(`classes/${classId}/screenBroadcast/session`).get();
         const sessionData = sessionSnap?.exists ? (sessionSnap.data() || {}) : {};
         if (sessionData.isBroadcasting === true && (sessionData.startedAt || sessionData.broadcastMode)) {
-          isOvertimeOrBroadcasting = true;
+          const tz = schedule?.timeZone || 'UTC';
+          const activityTs = sessionData.lastActiveAt || sessionData.frameUpdatedAt || sessionData.startedAt;
+          const activityMs = activityTs ? parsePeriodDateMs(activityTs, tz) : NaN;
+          if (isNaN(activityMs) || (now.getTime() - activityMs) <= 10 * 60 * 1000) {
+            isOvertimeOrBroadcasting = true;
+          }
         }
       } catch {
         // Ignore session check errors
@@ -361,7 +366,7 @@ export const handlePostLessonMediaConsolidation = onSchedule(videoCombinationOpt
       const { timeZone } = schedule;
       const { localDay, localTime } = getLocalTimeInfo(now, timeZone);
       const todayStr = format(now, 'yyyy-MM-dd', { timeZone });
-      const thirtyMinutesAgo = new Date(now.getTime() - 30 * 60 * 1000);
+      const consolidationLookbackCutoff = new Date(now.getTime() - 120 * 60 * 1000);
 
       logger.info(`Checking student screen video jobs for class '${classId}'. Current time in ${timeZone}: ${localDay} ${localTime}.`);
 
@@ -374,8 +379,9 @@ export const handlePostLessonMediaConsolidation = onSchedule(videoCombinationOpt
         const lessonEndDateTimeStr = `${todayStr}T${slot.endTime}:00${offset}`;
         const lessonEndDateTimeInZone = new Date(lessonEndDateTimeStr);
 
-        // Check if the lesson ended within the last 30 minutes
-        if (lessonEndDateTimeInZone > thirtyMinutesAgo && lessonEndDateTimeInZone <= now) {
+        // Check if the lesson ended within the consolidation lookback window (2 hours)
+        // Idempotent via existingSlotJobs check so delayed post-broadcast runs are caught safely.
+        if (lessonEndDateTimeInZone > consolidationLookbackCutoff && lessonEndDateTimeInZone <= now) {
           const lessonStartDateTimeInZone = new Date(`${todayStr}T${slot.startTime}:00${offset}`);
 
           // Check if this lesson overlaps with any defined exam/test periods
